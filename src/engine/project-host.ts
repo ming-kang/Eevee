@@ -1,45 +1,65 @@
 import { join } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
-import type { CredentialStore, Models } from "@earendil-works/pi-ai";
+import type { WatchHandle } from "@earendil-works/chord/watch";
+import type { Models } from "@earendil-works/pi-ai";
 import {
   type Conversation,
   type ConversationId,
+  type ConversationWindow,
+  configure,
   createRegistry,
+  type ConversationView as DurableView,
+  defineExtension,
+  type EntryQuery,
+  type EntryRecord,
+  type Extension,
   Harness,
   LiveDoc,
+  type Registry,
   type ToolExecutionApi,
   type Tx,
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import type { BoardView, ConversationView, TicketView } from "../api/contract.ts";
-import { Board, QuestionDoc, ReportLog, TicketDoc } from "../contracts/docs.ts";
-import { deriveStage, pickModel, type QuestionId, type TicketId } from "../contracts/index.ts";
-import { createMemory, MemoryRepo } from "../extensions/memory/index.ts";
-import { conversationOf } from "../extensions/orchestration/board.ts";
+import type { BoardView, ConversationView, MemoryCommitView, UsageView } from "../api/contract.ts";
+import { Board, QuestionDoc, TicketDoc } from "../contracts/docs.ts";
+import {
+  type MemoryScope,
+  pickModel,
+  type QuestionId,
+  ROLE_NAMES,
+  type RoleName,
+  type Ticket,
+  type TicketId,
+} from "../contracts/index.ts";
+import { createMemory, ensureDreamTimer, MemoryRepo } from "../extensions/memory/index.ts";
 import {
   contextUsage,
+  conversationOf,
   createOrchestration,
   type DeliveryContext,
   deliver,
   type EngineEvent,
   flush,
+  openTicket,
   pump,
-  queuedTickets,
+  readTicket,
   remindRouter,
+  reportRunFailures,
   route,
   routerIdle,
 } from "../extensions/orchestration/index.ts";
 import { createResources } from "../extensions/resources/index.ts";
 import { createWorkspace } from "../extensions/workspace/index.ts";
 import { renderCatalog } from "../models/catalog.ts";
-import { createRoles } from "../roles/index.ts";
+import { createRoles, type Roles } from "../roles/index.ts";
 import { readText } from "../shared/fs.ts";
 import type { EeveePaths } from "../shared/paths.ts";
-import type { Settings } from "../shared/settings.ts";
+import { enabledExtensions, type Settings } from "../shared/settings.ts";
 import { JobHost } from "./jobs.ts";
 import type { ProjectMeta } from "./project.ts";
-import { entryText, recentLines, recentRounds, summarizeLine } from "./transcript.ts";
+import { recentRounds, transcriptSource } from "./transcript.ts";
+import { boardView, conversationView, usageView } from "./views.ts";
 
 export class NotFound extends Error {
   override name = "NotFound";
@@ -49,10 +69,8 @@ export class Conflict extends Error {
   override name = "Conflict";
 }
 
-const ROLES = ["router", "worker", "dreamer"] as const;
 const TICK_MS = 250;
 const UPKEEP_MS = 5_000;
-const RECENT_ROUNDS = 3;
 const INITIAL_MEMORY = "# 项目记忆\n\n每个对话都需要知道的核心约定，以及指向主题笔记的索引。\n";
 const INITIAL_GLOBAL_MEMORY = "# 全局记忆\n\n与用户本人有关的跨项目偏好，保持极短。\n";
 
@@ -62,42 +80,52 @@ export type ProjectHostOptions = {
   models: () => Models;
   settings: () => Settings;
   globalMemory: MemoryRepo;
+  /** Extensions every project installs on top of Eevee's own; read again by `refreshExtensions()`. */
+  shared: () => readonly Extension[];
   context: Context;
-  credentials?: Pick<CredentialStore, "list">;
   upkeepMs?: number;
 };
 
+type Parts = {
+  options: ProjectHostOptions;
+  harness: Harness;
+  root: Conversation;
+  registry: Registry;
+  roles: Roles;
+  jobs: JobHost;
+  repos: Record<MemoryScope, MemoryRepo>;
+  shared: Set<string>;
+};
+
+/**
+ * One project: its Harness over `session.sqlite`, the extensions every conversation of it may select, the Router's
+ * root conversation, and the loop that hands queued work to free slots and keeps the board moving.
+ */
 export class ProjectHost {
   readonly meta: ProjectMeta;
+  readonly #options: ProjectHostOptions;
   readonly #harness: Harness;
   readonly #root: Conversation;
+  readonly #registry: Registry;
+  readonly #roles: Roles;
   readonly #jobs: JobHost;
-  readonly #models: () => Models;
-  readonly #settings: () => Settings;
-  readonly #context: Context;
+  readonly #repos: Record<MemoryScope, MemoryRepo>;
+  /** Names of the shared extensions installed now. */
+  #shared: Set<string>;
   readonly #timer: NodeJS.Timeout;
   #ticking = false;
   #lastUpkeep = 0;
-  readonly #upkeepMs: number;
 
-  private constructor(parts: {
-    meta: ProjectMeta;
-    harness: Harness;
-    root: Conversation;
-    jobs: JobHost;
-    models: () => Models;
-    settings: () => Settings;
-    context: Context;
-    upkeepMs: number;
-  }) {
-    this.meta = parts.meta;
+  private constructor(parts: Parts) {
+    this.meta = parts.options.meta;
+    this.#options = parts.options;
     this.#harness = parts.harness;
     this.#root = parts.root;
+    this.#registry = parts.registry;
+    this.#roles = parts.roles;
     this.#jobs = parts.jobs;
-    this.#models = parts.models;
-    this.#settings = parts.settings;
-    this.#context = parts.context;
-    this.#upkeepMs = parts.upkeepMs;
+    this.#repos = parts.repos;
+    this.#shared = parts.shared;
     this.#timer = setInterval(() => void this.#tick(), TICK_MS);
     this.#timer.unref();
     void this.#tick();
@@ -105,83 +133,108 @@ export class ProjectHost {
 
   static async open(options: ProjectHostOptions): Promise<ProjectHost> {
     const { meta, context } = options;
-    const projectPaths = options.paths.project(meta.id);
-    const projectMemory = new MemoryRepo(projectPaths.memory);
-    await projectMemory.ensure(INITIAL_MEMORY);
-    await options.globalMemory.ensure(INITIAL_GLOBAL_MEMORY);
-    const repos = { project: projectMemory, global: options.globalMemory };
+    const paths = options.paths.project(meta.id);
+    const repos: Record<MemoryScope, MemoryRepo> = {
+      project: new MemoryRepo(paths.memory),
+      global: options.globalMemory,
+    };
+    await repos.project.ensure(INITIAL_MEMORY);
+    await repos.global.ensure(INITIAL_GLOBAL_MEMORY);
 
+    // The Harness opens after the extensions that need it are built; they reach it through these.
     let harness: Harness | undefined;
     let delivery: DeliveryContext | undefined;
-    const requireHarness = () => {
-      if (harness === undefined) throw new Error("Harness 尚未打开");
-      return harness;
+    const late = <T>(value: T | undefined): T => {
+      if (value === undefined) throw new Error("Harness 尚未打开");
+      return value;
     };
-    const jobLog = (id: string) => join(projectPaths.jobs, `${id}.log`);
-    const jobs = new JobHost({
-      logPath: jobLog,
-      delivery: () => {
-        if (delivery === undefined) throw new Error("Harness 尚未打开");
-        return delivery;
-      },
-      context,
-    });
+    const conversation = (id: ConversationId, ctx: Context) => late(harness).conversation(id, ctx);
+    const defaultModel = (role: RoleName) =>
+      pickModel(role, meta.models, options.settings().models);
 
+    const jobLog = (id: string) => join(paths.jobs, `${id}.log`);
+    const jobs = new JobHost({ logPath: jobLog, delivery: () => late(delivery), context });
+
+    const reported = new Set<string>();
     const roles = createRoles({
       project: { title: meta.title, workspace: meta.workspace },
       memory: async () => ({
         global: (await repos.global.read("MEMORY.md")) ?? "",
         project: (await repos.project.read("MEMORY.md")) ?? "",
       }),
-      defaultModel: (role) => pickModel(role, meta.models, options.settings().models),
-      recent: async (conversationId, ctx) => {
-        const conversation = await requireHarness().conversation(conversationId, ctx);
-        return conversation === undefined ? "" : recentRounds(conversation, RECENT_ROUNDS, ctx);
+      defaultModel,
+      enabled: (role) => enabledExtensions(options.settings(), role),
+      maxTurns: (role) => options.settings().roles[role]?.maxTurns,
+      recent: async (id, rounds, ctx) => {
+        const found = await conversation(id, ctx);
+        return found === undefined ? "" : recentRounds(found, rounds, ctx);
+      },
+      onMissing: (role, missing) => {
+        const fresh = missing.filter((name) => !reported.has(`${role}:${name}`));
+        for (const name of fresh) reported.add(`${role}:${name}`);
+        if (fresh.length > 0) {
+          console.error(`[${meta.id}] ${role} 启用的扩展没有安装，先不选：${fresh.join("、")}`);
+        }
       },
     });
 
+    const memory = createMemory({
+      repos,
+      dreaming: {
+        // Off while the dreamer has no model, so the timer never opens a ticket that cannot run.
+        intervalMs: () =>
+          defaultModel("dreamer") === undefined ? 0 : options.settings().dreamIntervalMs,
+        open: async (tx, draft, { now, registry }, ctx) => {
+          const ticket = await openTicket(
+            tx,
+            roles.ticketConversations,
+            registry,
+            { role: "dreamer", ...draft, deliverTo: [] },
+            now,
+            ctx,
+          );
+          return ticket.id;
+        },
+      },
+    });
+    const orchestration = createOrchestration({
+      conversations: roles.ticketConversations,
+      handoff: {
+        shouldHandoff: async (id, ctx) => {
+          const found = await conversation(id, ctx);
+          if (found === undefined) return false;
+          const fraction = await contextFraction(found, options.models(), ctx);
+          return fraction > options.settings().handoffThreshold;
+        },
+      },
+      jobs,
+    });
+
     const registry = createRegistry();
-    registry.install(
+    const native = [
       createResources({
         memoryDir: (scope) => repos[scope].dir,
         jobLog,
         models: async () =>
           renderCatalog({
             models: options.models(),
-            ...(options.credentials === undefined ? {} : { credentials: options.credentials }),
-            defaults: Object.fromEntries(
-              ROLES.map((role) => [role, pickModel(role, meta.models, options.settings().models)]),
-            ),
+            defaults: Object.fromEntries(ROLE_NAMES.map((role) => [role, defaultModel(role)])),
             profiles: await readText(options.paths.modelProfiles),
           }),
-        transcript: (conversationId, entryId, ctx) =>
-          renderTranscript(requireHarness(), conversationId, entryId, ctx),
+        transcript: transcriptSource(conversation),
       }),
-    );
-    registry.install(
       createWorkspace({ backgroundAfterMs: () => options.settings().backgroundAfterMs, jobs }),
-    );
-    registry.install(createMemory({ repos }));
-    registry.install(
-      createOrchestration({
-        conversations: roles.ticketConversations,
-        handoff: {
-          shouldHandoff: async (conversationId, ctx) => {
-            const conversation = await requireHarness().conversation(conversationId, ctx);
-            if (conversation === undefined) return false;
-            return (
-              (await contextFraction(conversation, options.models(), ctx)) >
-              options.settings().handoffThreshold
-            );
-          },
-        },
-        jobs,
-      }),
-    );
-    registry.install(roles.extension);
+      memory.memory,
+      memory.projectMemory,
+      orchestration.dispatch,
+      orchestration.reporting,
+      roles.extension,
+    ];
+    for (const extension of native) registry.install(extension);
+    const shared = installShared(registry, new Set(), options.shared());
 
     harness = await Harness.open(
-      await openNodeSqliteStorage(projectPaths.session),
+      await openNodeSqliteStorage(paths.session),
       {
         models: options.models,
         registry,
@@ -190,28 +243,24 @@ export class ProjectHost {
       },
       context,
     );
+    const root = await harness.root(context, {
+      agent: roles.agent("router", registry.snapshot()),
+    });
+    delivery = deliveryHost(harness, root);
 
-    const routerAgent = roles.routerAgent(registry.snapshot());
-    const root = await harness.root(context, { agent: routerAgent });
-    await root.configure(routerAgent, context);
+    const host = new ProjectHost({ options, harness, root, registry, roles, jobs, repos, shared });
+    await host.#applyRoles();
     const first = await root.entries({}, 1, undefined, context);
     if (first.items.length === 0)
       await root.reset(await roles.routerOpening(harness, context), context);
-    delivery = deliveryHost(harness, root);
     await flush(delivery, context);
     await jobs.recover();
+    await ensureDreamTimer(harness, root, memory.timer, context);
     harness.resume();
-    return new ProjectHost({
-      meta,
-      harness,
-      root,
-      jobs,
-      models: options.models,
-      settings: options.settings,
-      context,
-      upkeepMs: options.upkeepMs ?? UPKEEP_MS,
-    });
+    return host;
   }
+
+  // ── Conversations ──────────────────────────────────────────────────────────
 
   async sendUserMessage(text: string): Promise<void> {
     await this.#dispatch({ type: "user-message", id: crypto.randomUUID(), text });
@@ -229,65 +278,6 @@ export class ProjectHost {
     });
   }
 
-  async board(): Promise<BoardView> {
-    const ctx = this.#context;
-    const state = await this.#harness.snapshot(Board, ctx);
-    const openQuestions = [];
-    for (const id of state?.openQuestions ?? []) {
-      const question = await this.#harness.snapshot(QuestionDoc, id, ctx);
-      if (question) openQuestions.push(question);
-    }
-    const queued = await queuedTickets(this.#harness, ctx);
-    const tickets: TicketView[] = [];
-    for (const id of (state?.tickets ?? []) as TicketId[]) {
-      const ticket = await this.#harness.snapshot(TicketDoc, id, ctx);
-      if (ticket === undefined) continue;
-      const reports = [...((await this.#harness.snapshot(ReportLog, id, ctx))?.reports ?? [])];
-      const live = await this.#harness.snapshot(LiveDoc, conversationOf(ticket), ctx);
-      const stage = deriveStage({
-        openQuestion: openQuestions.some((q) => q.ticketId === id),
-        reports,
-        queued: queued.has(id),
-        running: live?.run !== undefined,
-        jobsRunning: this.#jobs.running(id).length > 0,
-      });
-      tickets.push({ ticket, stage, reports });
-    }
-    return { tickets, openQuestions };
-  }
-
-  async conversation(limit = 100): Promise<ConversationView> {
-    return this.#view(this.#root, limit);
-  }
-
-  async retry(ticketId?: TicketId): Promise<void> {
-    const conversation = ticketId === undefined ? this.#root : await this.#worker(ticketId);
-    if (ticketId !== undefined) await this.#openTicket(ticketId);
-    const live = await this.#harness.snapshot(LiveDoc, conversation.id, this.#context);
-    if (live?.run !== undefined) throw new Conflict("对话正在运行");
-    if (live?.runFailure === undefined) throw new Conflict("上一轮没有失败，不需要重试");
-    await conversation.submit({ type: "continue" }, this.#context);
-  }
-
-  async #view(conversation: Conversation, limit: number): Promise<ConversationView> {
-    const live = await this.#harness.snapshot(LiveDoc, conversation.id, this.#context);
-    const failure = live?.run === undefined ? live?.runFailure : undefined;
-    return {
-      lines: await recentLines(conversation, limit, this.#context),
-      running: live?.run !== undefined,
-      ...(failure === undefined ? {} : { failure: describeFailure(failure) }),
-    };
-  }
-
-  async refreshRouterModel(): Promise<void> {
-    const model = pickModel("router", this.meta.models, this.#settings().models);
-    if (model !== undefined) await this.#root.configure({ model }, this.#context);
-  }
-
-  async ticketConversation(id: TicketId, limit = 200): Promise<ConversationView> {
-    return this.#view(await this.#worker(id), limit);
-  }
-
   async messageWorker(id: TicketId, text: string, whenBusy: "steer" | "followUp"): Promise<void> {
     await this.#openTicket(id);
     await this.#dispatch({
@@ -300,26 +290,104 @@ export class ProjectHost {
   }
 
   async interruptWorker(id: TicketId): Promise<void> {
-    const worker = await this.#worker(id);
+    const worker = await this.#conversationOf(id);
     await this.#openTicket(id);
     await worker.abort(this.#context);
     await this.#dispatch({ type: "panel-interrupt", id: crypto.randomUUID(), ticketId: id });
   }
 
-  async #openTicket(id: TicketId) {
-    const ticket = await this.#harness.snapshot(TicketDoc, id, this.#context);
-    if (ticket === undefined) throw new NotFound(`没有工单 ${id}`);
-    if (ticket.status !== "open") throw new Conflict(`${id} 已经结单`);
-    return ticket;
+  /** Runs the Router's, or a ticket's, failed last turn again. */
+  async retry(ticketId?: TicketId): Promise<void> {
+    if (ticketId !== undefined) await this.#openTicket(ticketId);
+    const conversation = await this.#conversationOf(ticketId);
+    const live = await this.#harness.snapshot(LiveDoc, conversation.id, this.#context);
+    if (live?.run !== undefined) throw new Conflict("对话正在运行");
+    if (live?.runFailure === undefined) throw new Conflict("上一轮没有失败，不需要重试");
+    await conversation.submit({ type: "continue" }, this.#context);
   }
 
-  async #worker(id: TicketId): Promise<Conversation> {
-    const ticket = await this.#harness.snapshot(TicketDoc, id, this.#context);
-    if (ticket === undefined) throw new NotFound(`没有工单 ${id}`);
-    const conversation = await this.#harness.conversation(conversationOf(ticket), this.#context);
-    if (conversation === undefined) throw new NotFound(`找不到 ${id} 的执行对话`);
-    return conversation;
+  // ── Views ──────────────────────────────────────────────────────────────────
+
+  board(): Promise<BoardView> {
+    return boardView(this.#harness, (id) => this.#jobs.running(id), this.#context);
   }
+
+  async conversation(limit = 100): Promise<ConversationView> {
+    return conversationView(this.#harness, this.#root, limit, this.#context);
+  }
+
+  async ticketConversation(id: TicketId, limit = 200): Promise<ConversationView> {
+    return conversationView(this.#harness, await this.#conversationOf(id), limit, this.#context);
+  }
+
+  usage(): Promise<UsageView> {
+    return usageView(this.#harness, this.#context);
+  }
+
+  /** The Router's conversation, or a ticket's, as Durable's structural view; for the realtime stream. */
+  async watch(
+    ticketId: TicketId | undefined,
+    context: Context,
+    window?: ConversationWindow,
+  ): Promise<WatchHandle<DurableView>> {
+    return (await this.#conversationOf(ticketId)).watch(context, window);
+  }
+
+  /** A page of entries, for filling the gaps of a watched transcript. */
+  async entries(
+    ticketId: TicketId | undefined,
+    query: Omit<EntryQuery, "conversationId">,
+    limit: number,
+  ): Promise<EntryRecord[]> {
+    const conversation = await this.#conversationOf(ticketId);
+    const page = await conversation.entries(query, limit, undefined, this.#context);
+    return [...page.items];
+  }
+
+  // ── Memory ─────────────────────────────────────────────────────────────────
+
+  memoryLog(scope: MemoryScope, limit?: number): Promise<MemoryCommitView[]> {
+    return this.#repos[scope].history(limit);
+  }
+
+  memoryDiff(scope: MemoryScope, commit?: string): Promise<string> {
+    return this.#repos[scope].diff(commit);
+  }
+
+  memoryRevert(scope: MemoryScope, commit: string): Promise<void> {
+    return this.#repos[scope].revert(commit);
+  }
+
+  // ── Capabilities ───────────────────────────────────────────────────────────
+
+  /** Installs the shared extensions as they are now and applies every role again. */
+  async refreshExtensions(): Promise<void> {
+    this.#shared = installShared(this.#registry, this.#shared, this.#options.shared());
+    await this.#applyRoles();
+  }
+
+  /**
+   * Applies the roles to the Router and to every open ticket: their extensions as settings.json enables them now, the
+   * current default models where a ticket chose none. Writing an unchanged agent records nothing.
+   */
+  async #applyRoles(): Promise<void> {
+    const snapshot = this.#registry.snapshot();
+    const tickets: Ticket[] = [];
+    for (const id of ((await this.#harness.snapshot(Board, this.#context))?.tickets ??
+      []) as TicketId[]) {
+      const ticket = await readTicket(this.#harness, id, this.#context);
+      if (ticket?.status === "open") tickets.push(ticket);
+    }
+    await this.#root.commit(async (tx) => {
+      await configure(tx, this.#root.id, this.#roles.agent("router", snapshot));
+      for (const ticket of tickets) {
+        const change = this.#roles.agent(ticket.role, snapshot, ticket.model);
+        await configure(tx, conversationOf(ticket), change);
+      }
+    }, this.#context);
+  }
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   async close(): Promise<void> {
     clearInterval(this.#timer);
@@ -327,16 +395,21 @@ export class ProjectHost {
     await this.#harness.close(this.#context);
   }
 
+  get #context(): Context {
+    return this.#options.context;
+  }
+
   async #tick(): Promise<void> {
     if (this.#ticking) return;
     this.#ticking = true;
     try {
       const host = deliveryHost(this.#harness, this.#root);
-      const settings = this.#settings();
+      const settings = this.#options.settings();
       await pump(host, settings.maxActiveWorkers, this.#context);
       const now = Date.now();
-      if (now - this.#lastUpkeep >= this.#upkeepMs) {
+      if (now - this.#lastUpkeep >= (this.#options.upkeepMs ?? UPKEEP_MS)) {
         this.#lastUpkeep = now;
+        await reportRunFailures(host, now, this.#context);
         await remindRouter(host, { olderThan: settings.reminderAfterMs, now }, this.#context);
         await this.#nudgeHandoff(host, settings.handoffThreshold);
       }
@@ -349,7 +422,7 @@ export class ProjectHost {
 
   async #nudgeHandoff(host: DeliveryContext, threshold: number): Promise<void> {
     if (!(await routerIdle(host, this.#context))) return;
-    const fraction = await contextFraction(this.#root, this.#models(), this.#context);
+    const fraction = await contextFraction(this.#root, this.#options.models(), this.#context);
     if (fraction <= threshold) return;
     const { epoch } = await contextUsage(this.#root, this.#context);
     await this.#dispatch({ type: "handoff-nudge", epoch });
@@ -358,20 +431,37 @@ export class ProjectHost {
   async #dispatch(event: EngineEvent, change?: (tx: Tx) => Promise<void>): Promise<void> {
     await deliver(deliveryHost(this.#harness, this.#root), route(event), this.#context, change);
   }
+
+  async #openTicket(id: TicketId) {
+    const ticket = await this.#harness.snapshot(TicketDoc, id, this.#context);
+    if (ticket === undefined) throw new NotFound(`没有工单 ${id}`);
+    if (ticket.status !== "open") throw new Conflict(`${id} 已经结单`);
+    return ticket;
+  }
+
+  /** The Router's conversation without `ticketId`, else the ticket's. */
+  async #conversationOf(ticketId?: TicketId): Promise<Conversation> {
+    if (ticketId === undefined) return this.#root;
+    const ticket = await this.#harness.snapshot(TicketDoc, ticketId, this.#context);
+    if (ticket === undefined) throw new NotFound(`没有工单 ${ticketId}`);
+    const conversation = await this.#harness.conversation(conversationOf(ticket), this.#context);
+    if (conversation === undefined) throw new NotFound(`找不到 ${ticketId} 的执行对话`);
+    return conversation;
+  }
 }
 
-const FAILURE_LABEL: Record<string, string> = {
-  model_error: "模型调用失败",
-  no_model: "没有配置模型",
-  aborted: "已中止",
-  interrupted: "运行被中断",
-  turn_limit: "超出轮次上限",
-  restart_limit: "多次重启后放弃",
-};
-
-function describeFailure(failure: { reason: string; detail?: unknown }): string {
-  const label = FAILURE_LABEL[failure.reason] ?? failure.reason;
-  return failure.detail === undefined ? label : `${label}：${String(failure.detail)}`;
+/** Installs `next`, replacing extensions by name, and uninstalls the shared ones no longer in it. */
+function installShared(
+  registry: Registry,
+  installed: ReadonlySet<string>,
+  next: readonly Extension[],
+): Set<string> {
+  const names = new Set(next.map((e) => e.name));
+  for (const name of installed) {
+    if (!names.has(name)) registry.uninstall(defineExtension({ name }));
+  }
+  for (const extension of next) registry.install(extension);
+  return names;
 }
 
 async function contextFraction(
@@ -391,17 +481,4 @@ function deliveryHost(harness: Harness, root: Conversation): DeliveryContext {
     conversation: (id: ConversationId, ctx: Context) => harness.conversation(id, ctx),
     commit: (change, ctx) => root.commit(change, ctx),
   };
-}
-
-async function renderTranscript(
-  harness: Harness,
-  conversationId: number,
-  entryId: number | undefined,
-  context: Context,
-): Promise<string | undefined> {
-  const conversation = await harness.conversation(conversationId as ConversationId, context);
-  if (conversation === undefined) return undefined;
-  if (entryId !== undefined) return entryText(conversation, entryId, context);
-  const lines = await recentLines(conversation, 20, context);
-  return lines.map((line) => summarizeLine(line)).join("\n");
 }

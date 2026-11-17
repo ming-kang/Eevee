@@ -109,6 +109,8 @@ const DOMAIN_ERRORS: Record<string, [number, string]> = {
   Conflict: [409, "conflict"],
   NoModelConfigured: [409, "no_model"],
   UnknownModel: [404, "unknown_model"],
+  UnknownExtension: [404, "unknown_extension"],
+  MemoryHistoryError: [409, "memory_history"],
 };
 
 function fromDomainError(error: unknown): HttpError | undefined {

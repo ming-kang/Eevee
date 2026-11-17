@@ -4,6 +4,7 @@ import { createModelRuntime } from "../models/index.ts";
 import { Auth } from "../server/auth.ts";
 import { createHttpServer } from "../server/http.ts";
 import { createRoutes } from "../server/routes.ts";
+import { attachStream } from "../server/stream.ts";
 import { uiDir, version } from "../shared/package.ts";
 import { eeveePaths } from "../shared/paths.ts";
 import { SettingsStore } from "../shared/settings.ts";
@@ -17,7 +18,13 @@ const settings = store.current;
 const release = await acquireLock(paths.runtime.lock);
 
 const models = await createModelRuntime(paths);
-const engine = await Engine.open({ paths, settings: store, models, context });
+const engine = await Engine.open({
+  paths,
+  settings: store,
+  models,
+  context,
+  client: { name: "eevee", version },
+});
 const auth = await Auth.open({
   cliTokenPath: paths.runtime.cliToken,
   sessionsPath: paths.runtime.sessions,
@@ -28,6 +35,7 @@ let stopping = false;
 const shutdown = async () => {
   if (stopping) return;
   stopping = true;
+  await stream.close();
   server.close();
   await engine.close();
   await release();
@@ -45,6 +53,7 @@ const server = createHttpServer({
   auth,
   uiDir: uiDir(),
 });
+const stream = attachStream(server, { source: engine, auth });
 port = await listen(server, settings.port);
 await writeRuntimeRecord(paths.runtime.record, {
   pid: process.pid,

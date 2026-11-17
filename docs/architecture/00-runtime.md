@@ -44,6 +44,7 @@ Worker 的对话、工具、扩展和任务都由 Eevee 在 Durable 上直接组
 
 - **只监听回环地址，并校验请求头**：只绑定 `127.0.0.1`，并检查 `Host` 和 `Origin` 都是回环地址，防止 DNS 重绑定和网页跨站请求。
 - **所有接口都要鉴权**：只有健康检查对外公开。CLI 使用存放在私有文件里的 token，并且只有 CLI 能调用停止 Engine、生成授权码这类接口；浏览器使用会话 token。两者都放在 `x-eevee-token` 请求头里。
+- **实时流**：`/api/stream` 上的 WebSocket 同样只接受回环地址；浏览器无法给 WebSocket 设请求头，所以 token 放在子协议里（`eevee.v1` 加 `token.<token>`），Engine 只回应 `eevee.v1`，token 不会被回显。
 - **浏览器授权**：`eevee web` 生成一个 90 秒内有效、只能用一次的授权码，放在打开的 URL 里；页面换到会话后立刻从地址栏移除。会话 12 小时无操作才过期，Engine 只存会话的哈希，重启后已授权的页面可以继续使用。
 - **执行环境去敏**：当前实现让 `bash` 和后台作业使用清理过的环境变量，不主动把 Engine 的 API key 注入子进程。这只是减少意外泄漏，不构成对 Worker 的隔离边界。
 - **私有文件**：`auth.json`、`settings.json` 等私有文件用原子写入（先写临时文件再改名），POSIX 上的权限为 `0600`。
@@ -55,7 +56,8 @@ Worker 的对话、工具、扩展和任务都由 Eevee 在 Durable 上直接组
 contracts ──► orchestration ─┐
           ──► resources ─────┤
           ──► workspace ─────┼──► roles ──► ProjectHost ──► Engine ◄── server ◄── api ──► cli / web
-          ──► memory ────────┘
+          ──► memory ────────┘                               ▲
+          ──► mcp ───────────────────────────────────────────┘
 ```
 
 | 模块 | 内容 | 详见 |
@@ -65,11 +67,23 @@ contracts ──► orchestration ─┐
 | `resources` | Durable 扩展：统一的 `read` 工具与地址解析、分页、超长输出修剪 | [上下文](02-context.md) |
 | `workspace` | Durable 扩展：工作目录里的 `write` / `edit` / `bash`；`bash` 只继承白名单环境变量，超时转为后台作业 | [工单与调度](../design/03-orchestration.md) |
 | `memory` | Durable 扩展：`memory` 工具、按轮提交、Dreaming 定时器 | [记忆](../design/04-memory.md) |
-| `roles` | 定义 `router`、`worker`、`dreamer` 的提示词、Opening 与 Extension 选择，组装各角色能力，并为 `orchestration` 提供端口实现 | [角色与能力](../design/02-roles.md) |
-| `ProjectHost` / `Engine` | 每个项目一个 Harness，组装上述模块；Engine 承载全部项目 | §1 |
-| `api` / `server` / `cli` / `web` | 本地接口契约、HTTP 服务、命令行与 WebUI | §2、[WebUI](../design/06-ui.md) |
+| `mcp` | 读取 `mcp.json`，连接 MCP 服务器，把每个服务器桥接成扩展 `mcp.<名字>` | §3.1 |
+| `roles` | 定义 `router`、`worker`、`dreamer` 的提示词、Opening 与 Extension 选择，组装各角色能力，并为 `orchestration` 提供端口实现；Router 专用的 `handoff` 也在这里 | [角色与能力](../design/02-roles.md) |
+| `ProjectHost` / `Engine` | 每个项目一个 Harness，组装上述模块；Engine 承载全部项目，以及各项目共享的扩展（`tool-search`、`codemode`、MCP、用户扩展） | §1、§3.1 |
+| `api` / `server` / `cli` / `web` | 本地接口契约、HTTP 服务与实时流、命令行与 WebUI | §2、[WebUI](../design/06-ui.md) |
 
 另外，**模型接入**不是扩展：在 `@earendil-works/pi-ai` 之上读写 `auth.json`、读取 `models.json`，组装出 Durable 需要的 `Models`（见 [模型接入与画像](../design/05-models.md)）。
+
+### 3.1 扩展的安装与启用
+
+每个项目的 Registry 装两类扩展：
+
+- **Eevee 原生扩展**，由 `ProjectHost` 组装：`eevee.resources`（`read`）、`eevee.workspace`（`write` / `edit` / `bash`）、`eevee.dispatch`（`ticket` / `ask_user`）、`eevee.report`（`report` 与兜底报告）、`eevee.memory`（两个记忆库与 Dreaming 定时器）、`eevee.memory-project`（只能整理项目记忆）、`eevee.router`（`handoff`）。
+- **共享扩展**，由 Engine 持有、装进每个项目，变化时重新安装：Durable 的 `tool-search` 与 `codemode`、每个 MCP 服务器一个 `mcp.<名字>`、`~/.eevee/extensions/` 里的用户扩展（默认导出 Durable extension 或返回它的函数；`eevee.*`、`mcp.*` 等名字保留）。
+
+角色的能力 = 角色自带的扩展 + `settings.json` 里 `roles.<角色>.extensions` 启用的扩展。应用角色时按名字从 Registry 解析：选中的工具里有延迟加载（`deferred`）的就带上 `tool-search`，有只给脚本调用的就带上 `codemode`；没安装的名字先跳过并记日志。设置或共享扩展一变，Router 和全部未结工单立刻重新应用角色；Durable 写入不变的配置不会产生记录。
+
+MCP 服务器在 Engine 启动时后台连接，不阻塞开门；没连上的服务器扩展照样存在（没有工具），角色可以照常启用它。`exposure` 决定工具怎样给模型：`deferred`（默认，经 `tool_search` 找到）、`direct`、`codemode`（只给脚本调用，按服务器分组）、`hidden`。stdio 服务器只继承 `bash` 也能拿到的环境变量，`env` / `headers` 可以引用 Engine 的环境变量（`${NAME}`）。
 
 ### 工程规则
 
@@ -82,16 +96,19 @@ contracts ──► orchestration ─┐
 
 ```
 ~/.eevee/
-  settings.json          全局配置、角色 Extension 启用、模型默认值、首选端口与并发上限
+  settings.json          全局配置：角色启用的扩展与轮次上限、模型默认值、Dreaming 间隔、首选端口与并发上限
   runtime/               私有的运行时文件
     engine.lock          实例锁（持有者的 pid）
     engine.json          运行时记录：pid、实际端口、bootId、启动时间
     cli-token            CLI 的 token
     sessions.json        浏览器会话的哈希
     engine.log           eevee start 启动时的日志
+    mcp-output/          MCP 工具输出被截断时的完整内容
   auth.json              凭据
   models.json            自定义 provider、模型和覆盖
   models.md              模型画像：用户写的使用经验
+  mcp.json               MCP 服务器（mcpServers 格式，另加 exposure）
+  extensions/            用户扩展：*.ts / *.js / *.mjs
   memory/                全局记忆库（Git）
     MEMORY.md            只有这一个文件，保持极短
   projects/<projectId>/

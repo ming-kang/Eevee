@@ -24,6 +24,7 @@
 | | `interrupt` | 打断执行对话当前这一轮，工单仍为 `open` |
 | | `review`（`accept` + 证据，或 `rework` + 缺什么） | 处理 `ready` 报告：结单为 `done`，或打回接着做 |
 | | `close`（原因） | 取消工单，结单为 `cancelled` |
+| | `model`（provider、模型、理由） | 给执行对话换模型，从下一次请求起生效 |
 | `ask_user` | 问题列表，可选 `ticketId` | 写入 `Question` 后立即返回，不等待 |
 | `read` | 地址、分页、`query` | 见 [上下文](../architecture/02-context.md) |
 | `memory` | `edit` / `create` / `log` / `diff` / `revert` | 见 [04 记忆](04-memory.md) |
@@ -33,9 +34,9 @@
 
 ### Worker
 
-`worker` 角色的基础工具是 `read` / `write` / `edit` / `bash` / `report`，`dreamer` 使用内部记忆维护能力。
+`worker` 角色的基础工具是 `read` / `write` / `edit` / `bash` / `report`，`dreamer` 使用 `read`、只能整理项目记忆的 `memory` 和 `report`。
 
-日后开发新工具或接入 MCP 时另行配置
+MCP 服务器、用户扩展等在 `settings.json` 里按角色启用，见 [02 角色与能力](02-roles.md) 与 [运行时架构](../architecture/00-runtime.md)。
 
 ## 3. 报告
 
@@ -52,7 +53,7 @@
 - **原子投递**：`report` 在同一个 commit 里写入报告文档，并用 `submit(tx, draft)` 向 Router 提交，`requestId` 取 `report://t12#3`。不需要单独的 reporter 任务，重启也不会重复投递。
 - **摘要限长**：投给 Router 的只有状态、600 字以内的摘要、产物列表和报告地址；`detail` 留在文档里按需 `read`。
 - **结构化而非自由文本**：需要用户决定的问题写进 `questions`，值得记住的经验写进 `lessons`，不靠 Router 从摘要里去猜。
-- **兜底**：执行对话一轮结束时，引擎检查本轮是否交过收尾报告。没交、并且也没有运行中的后台作业时，用最后一段回答补一份 `waiting`。运行失败（重试用尽、超出 `maxTurns`）由引擎记一份 `failed`。
+- **兜底**：执行对话一轮结束时，引擎检查本轮是否交过收尾报告。没交、并且也没有运行中的后台作业时，用最后一段回答补一份 `waiting`。运行失败（重试用尽、超出 `maxTurns`）由引擎记一份 `failed`，摘要写明失败原因，`need` 提示用 `ticket message` 让它继续或取消工单；中止、重置等有意的结束不算失败。
 
 ## 4. 工单阶段
 

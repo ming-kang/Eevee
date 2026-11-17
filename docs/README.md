@@ -18,7 +18,7 @@
 | [01 Pi-Durable 实现映射](architecture/01-durable.md) | 产品概念到 Durable 对话、任务、文档与投递机制的映射 |
 | [02 上下文](architecture/02-context.md) | 上下文契约与当前 Opening / reset 实现策略 |
 
-`design/` 描述产品目标与行为契约，`architecture/` 描述跨模块技术方案，`research/` 保存外部资料与源码调研。具体完成情况以 [实现进度](status.md) 为准。
+`design/` 描述产品目标与行为契约，`architecture/` 描述跨模块技术方案，`research/` 保存外部资料与源码调研。
 
 ## 备忘
 

@@ -17,10 +17,30 @@ export class MemoryConflict extends Error {
   }
 }
 
+/** A history operation that cannot be done: an unknown commit, or a revert that conflicts. */
+export class MemoryHistoryError extends Error {
+  override name = "MemoryHistoryError";
+}
+
+export type MemoryCommit = { commit: string; at: string; subject: string };
+
+const COMMIT = /^[0-9a-f]{4,40}$/i;
+
+function commitRef(commit: string): string {
+  if (!COMMIT.test(commit)) throw new MemoryHistoryError(`不是 commit 编号：${commit}`);
+  return commit;
+}
+
+/**
+ * A Git repository of Markdown notes. Edits only change the working tree; each conversation's edits are
+ * committed together when its run ends (`commitRound`), and changes nobody made through here are committed
+ * first as a separate `user edit`.
+ */
 export class MemoryRepo {
   readonly dir: string;
   #queue: Promise<unknown> = Promise.resolve();
-  readonly #round = new Map<string, string[]>();
+  /** Uncommitted edits by round (one conversation's run): file → what was done to it. */
+  readonly #rounds = new Map<string, Map<string, string[]>>();
 
   constructor(dir: string) {
     this.dir = dir;
@@ -41,7 +61,7 @@ export class MemoryRepo {
     return readText(resolveInside(this.dir, file));
   }
 
-  edit(file: string, oldText: string, newText: string): Promise<void> {
+  edit(file: string, oldText: string, newText: string, round: string): Promise<void> {
     return this.#serial(async () => {
       const path = resolveInside(this.dir, file);
       const current = await readText(path);
@@ -54,57 +74,92 @@ export class MemoryRepo {
         path,
         current.slice(0, at) + newText + current.slice(at + oldText.length),
       );
-      this.#note(file, `edit ${file}`);
+      this.#note(round, file, `edit ${file}`);
     });
   }
 
-  create(file: string, content: string): Promise<void> {
+  create(file: string, content: string, round: string): Promise<void> {
     return this.#serial(async () => {
       const path = resolveInside(this.dir, file);
       const current = await readText(path);
       if (current !== undefined)
         throw new MemoryConflict(`${file} 已存在，修改请用 edit。`, current);
       await writeFileAtomic(path, content);
-      this.#note(file, `create ${file}`);
+      this.#note(round, file, `create ${file}`);
     });
   }
 
-  log(limit = 20): Promise<string> {
-    return this.#git("log", `-${limit}`, "--format=%h %ad %s", "--date=short");
+  /** The newest commits first. */
+  async history(limit = 20): Promise<MemoryCommit[]> {
+    const out = await this.#git("log", `-${limit}`, "--format=%h%x09%aI%x09%s");
+    return out
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => {
+        const [commit = "", at = "", ...subject] = line.split("\t");
+        return { commit, at, subject: subject.join("\t") };
+      });
   }
 
-  diff(commit?: string): Promise<string> {
-    return commit === undefined
-      ? this.#git("diff", "HEAD")
-      : this.#git("show", "--stat", "--patch", commit);
+  async log(limit = 20): Promise<string> {
+    return (await this.history(limit))
+      .map((c) => `${c.commit} ${c.at.slice(0, 10)} ${c.subject}`)
+      .join("\n");
   }
 
-  revert(commit: string): Promise<string> {
-    return this.#serial(() => this.#git("revert", "--no-edit", commit));
+  /** One commit's changes, or the uncommitted ones without `commit`. */
+  async diff(commit?: string): Promise<string> {
+    if (commit === undefined) return this.#git("diff", "HEAD");
+    const ref = commitRef(commit);
+    try {
+      return await this.#git("show", "--stat", "--patch", ref);
+    } catch {
+      throw new MemoryHistoryError(`没有 commit ${commit}`);
+    }
   }
 
-  commitRound(): Promise<void> {
+  /** Undoes a commit with a new one; a revert that conflicts is abandoned and changes nothing. */
+  async revert(commit: string): Promise<void> {
+    const ref = commitRef(commit);
+    await this.#serial(async () => {
+      try {
+        await this.#git("revert", "--no-edit", ref);
+      } catch {
+        await this.#git("revert", "--abort").catch(() => undefined);
+        throw new MemoryHistoryError(
+          `撤销 ${commit} 失败：没有这个 commit，或后来的改动（含还没提交的）与它冲突。`,
+        );
+      }
+    });
+  }
+
+  /** Commits the round's edits as one commit, `<label>: <what was done>`, after any user edits. */
+  commitRound(round: string, label: string): Promise<void> {
     return this.#serial(async () => {
       const changed = await this.#changedFiles();
       if (changed.length === 0) return;
-      const userEdits = changed.filter((file) => !this.#round.has(file));
+      const noted = new Set([...this.#rounds.values()].flatMap((files) => [...files.keys()]));
+      const userEdits = changed.filter((file) => !noted.has(file));
       if (userEdits.length > 0) {
         await this.#git("add", "--", ...userEdits);
         await this.#git("commit", "--quiet", "-m", "user edit");
       }
-      const ours = changed.filter((file) => this.#round.has(file));
+      const notes = this.#rounds.get(round);
+      this.#rounds.delete(round);
+      const ours = changed.filter((file) => notes?.has(file));
       if (ours.length > 0) {
-        const notes = ours.flatMap((file) => this.#round.get(file) ?? []);
+        const done = ours.flatMap((file) => notes?.get(file) ?? []);
         await this.#git("add", "--", ...ours);
-        await this.#git("commit", "--quiet", "-m", `memory: ${notes.join("; ")}`);
+        await this.#git("commit", "--quiet", "-m", `${label}: ${done.join("; ")}`);
       }
-      this.#round.clear();
     });
   }
 
-  #note(file: string, action: string): void {
+  #note(round: string, file: string, action: string): void {
     const key = relative(this.dir, resolveInside(this.dir, file)).replaceAll("\\", "/");
-    this.#round.set(key, [...(this.#round.get(key) ?? []), action]);
+    const files = this.#rounds.get(round) ?? new Map<string, string[]>();
+    files.set(key, [...(files.get(key) ?? []), action]);
+    this.#rounds.set(round, files);
   }
 
   async #changedFiles(): Promise<string[]> {

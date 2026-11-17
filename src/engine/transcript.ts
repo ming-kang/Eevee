@@ -2,6 +2,7 @@ import type { Context } from "@earendil-works/chord/context";
 import {
   AssistantEntry,
   type Conversation,
+  type ConversationId,
   type EntryId,
   type EntryRecord,
   ResetEntry,
@@ -10,14 +11,53 @@ import {
 } from "@earendil-works/pi-durable";
 import type { ChatLine } from "../api/contract.ts";
 import { NOTICE_KIND } from "../extensions/orchestration/index.ts";
+import type { TranscriptPage, TranscriptSource } from "../extensions/resources/index.ts";
+
+type OpenConversation = (id: ConversationId, context: Context) => Promise<Conversation | undefined>;
+
+/** `read transcript://` over the session's conversations. */
+export function transcriptSource(open: OpenConversation): TranscriptSource {
+  return {
+    async entry(conversationId, entryId, context) {
+      const conversation = await open(conversationId as ConversationId, context);
+      return conversation && entryText(conversation, entryId, context);
+    },
+    async page(conversationId, range, context) {
+      const conversation = await open(conversationId as ConversationId, context);
+      return conversation && transcriptPage(conversation, range, context);
+    },
+  };
+}
 
 export async function recentLines(
   conversation: Conversation,
   limit: number,
   context: Context,
 ): Promise<ChatLine[]> {
-  const page = await conversation.entries({ order: "descending" }, limit, undefined, context);
-  return page.items.flatMap(toLine).reverse();
+  return (await transcriptPage(conversation, { limit }, context)).lines;
+}
+
+/** Lines of `limit` entries from entry `from` on, or of the newest `limit` entries without it. */
+export async function transcriptPage(
+  conversation: Conversation,
+  range: { from?: number; limit: number },
+  context: Context,
+): Promise<TranscriptPage & { lines: ChatLine[] }> {
+  if (range.from === undefined) {
+    const page = await conversation.entries(
+      { order: "descending" },
+      range.limit,
+      undefined,
+      context,
+    );
+    const lines = page.items.flatMap(toLine).reverse();
+    return page.next === undefined ? { lines } : { lines, earlier: true };
+  }
+  const query = { minEntryId: range.from as EntryId };
+  const page = await conversation.entries(query, range.limit, undefined, context);
+  const lines = page.items.flatMap(toLine);
+  const last = page.items.at(-1)?.id;
+  return page.next === undefined || last === undefined ? { lines } : { lines, next: last + 1 };
 }
 
 export function toLine(entry: EntryRecord): ChatLine[] {
@@ -29,12 +69,6 @@ export function toLine(entry: EntryRecord): ChatLine[] {
   if (ResetEntry.is(entry)) return line("reset", textOf(entry.model) || "（上下文已重置）");
   if (entry.kind === NOTICE_KIND) return line("notice", textOf(entry.model));
   return [];
-}
-
-export function summarizeLine(line: ChatLine, max = 200): string {
-  const text = line.text.replaceAll("\n", " ");
-  const short = text.length > max ? `${text.slice(0, max - 1)}…` : text;
-  return `#${line.id} ${line.role}: ${short}`;
 }
 
 function textOf(messages: EntryRecord["model"]): string {

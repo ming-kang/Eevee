@@ -71,7 +71,13 @@ export function createReportTool(deps: OrchestrationDeps) {
 
       await deliver(api, route({ type: "report", ticket, report }), context, async (tx) => {
         await appendReport(tx, report);
-        if (autoAccept) await closeTicket(tx, ticket, "done", "整理工单自动验收");
+        if (autoAccept) {
+          await closeTicket(tx, ticket, {
+            status: "done",
+            note: "整理工单自动验收",
+            at: api.now(),
+          });
+        }
       });
 
       if (autoAccept) deps.jobs.stop(ticket.id);
@@ -79,7 +85,10 @@ export function createReportTool(deps: OrchestrationDeps) {
       if (!final) return ok(`已记录 ${address}，继续工作。`);
 
       const handoff = (await deps.handoff.shouldHandoff(api.conversationId, context))
-        ? await deps.conversations.opening(ticket, report, context)
+        ? await deps.conversations.opening(ticket, context, {
+            conversationId: api.conversationId,
+            latest: report,
+          })
         : undefined;
       return ok(`已提交 ${address}，本轮结束。`, undefined, {
         terminate: true,

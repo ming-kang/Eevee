@@ -78,10 +78,14 @@ export async function markHandled(tx: Tx, id: TicketId): Promise<void> {
 export async function closeTicket(
   tx: Tx,
   ticket: Ticket,
-  status: "done" | "cancelled",
-  note: string,
+  close: { status: "done" | "cancelled"; note: string; at: number },
 ): Promise<void> {
-  await saveTicket(tx, { ...ticket, status, closeNote: note });
+  await saveTicket(tx, {
+    ...ticket,
+    status: close.status,
+    closeNote: close.note,
+    closedAt: close.at,
+  });
   await markHandled(tx, ticket.id);
 }
 

@@ -6,7 +6,8 @@ export const ticketId = (n: number): TicketId => `t${n}`;
 export const questionId = (n: number): QuestionId => `q${n}`;
 export const jobId = (n: number): JobId => `j${n}`;
 
-export type RoleName = "router" | "worker" | "dreamer";
+export const ROLE_NAMES = ["router", "worker", "dreamer"] as const;
+export type RoleName = (typeof ROLE_NAMES)[number];
 export type TicketRole = Exclude<RoleName, "router">;
 
 export type ModelChoice = {
@@ -46,6 +47,7 @@ export type Ticket = {
   status: TicketStatus;
   closeNote?: string;
   createdAt: number;
+  closedAt?: number;
 };
 
 export type ReportStatus = "progress" | "waiting" | "ready" | "blocked" | "failed" | "dropped";

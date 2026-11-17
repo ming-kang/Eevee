@@ -38,3 +38,26 @@ Extension 可以提供工具、提示词段落、Hook、包装器和后台任务
 - **角色只声明名称**：应用角色时从 Registry 解析 Extension 和工具，角色定义不持有扩展实例。
 
 角色应用最终映射为 Durable 的 `configure()`：选择 `extensions`，按需收窄 `tools` 或 `modelTools`，并设置 `instructions`、模型和工作目录。具体协同工具与事件流见 [03 工单与调度](03-orchestration.md)。
+
+## 5. 当前实现
+
+各角色自带的扩展：
+
+| 角色 | 自带扩展 |
+|:-:|---|
+| `router` | `eevee.resources`、`eevee.dispatch`、`eevee.memory`、`eevee.router` |
+| `worker` | `eevee.resources`、`eevee.workspace`、`eevee.report` |
+| `dreamer` | `eevee.resources`、`eevee.memory-project`、`eevee.report` |
+
+在此之上，`settings.json` 按角色启用其他扩展、设置每次运行的轮次上限，所有项目共用：
+
+```json
+{
+  "roles": {
+    "router": { "extensions": ["mcp.deepwiki"] },
+    "worker": { "extensions": ["mcp.deepwiki", "mcp.github"], "maxTurns": 80 }
+  }
+}
+```
+
+也可以用 `eevee role list / enable / disable / turns`，或 `GET /api/capabilities`、`POST /api/capabilities/roles/:role` 修改；改动立即应用到 Router 和全部未结工单。可启用的扩展、MCP 服务器的连接状态和用户扩展的加载错误都在 `eevee role list`（`GET /api/capabilities`）里。

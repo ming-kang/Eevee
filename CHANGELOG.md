@@ -15,11 +15,25 @@
 - Worker 观察与介入：查看执行对话、引导或排队发消息、打断（API 与 WebUI）
 - 对话视图返回运行状态与失败原因，可以重试失败的一轮
 - 基于 faux 模型的端到端测试
+- 角色能力按扩展配置：各角色自带扩展，`settings.json` 的 `roles.<角色>.extensions` 启用更多、`maxTurns` 限制轮次；延迟加载的工具自动带上 `tool-search`，只给脚本用的工具自动带上 `codemode`；改动立即应用到 Router 与未结工单（`eevee role`、`/api/capabilities`）
+- MCP：`~/.eevee/mcp.json`（`mcpServers` 格式，`exposure` 为 `deferred` / `direct` / `codemode` / `hidden`），每个服务器是扩展 `mcp.<名字>`，后台连接、断线后失去工具、`eevee mcp reload` 重连
+- 用户扩展：`~/.eevee/extensions/` 下默认导出 Durable extension 的文件，装进每个项目，按角色启用
+- `ticket model`：Router 中途给工单换模型
+- 执行对话运行失败（重试用尽、超出轮次上限等）时引擎记一份 `failed` 报告并唤醒 Router
+- Dreaming：按 `dreamIntervalMs`（默认 24 小时，0 关闭）定期开一张整理工单，列出有新发言的对话和新结的工单；`ready` 自动验收，改动提交为 `dreaming tN`
+- 记忆历史：`eevee memory log / show / revert` 与对应 API；撤销冲突时放弃，不改动仓库
+- 花费汇总：`eevee project usage` 与 `/api/projects/:project/usage`（合计、按模型、Router、每张工单）
+- 实时流：`/api/stream` WebSocket，转发对话 watch 的值与 ops、推送看板变化、补齐记录缺口；token 走子协议
+- `models.json`：新增或修改 provider、追加模型、`modelOverrides`，`apiKey` / `headers` 可引用环境变量；配错的 provider 只影响自己
+- `read transcript://<对话>` 按条目分页，给出前后翻页的位置；`read` 文件时可带 `query` 搜索
 
 ### Changed
 
 - 建单时 `output`、模型与理由改为可选，缺省使用默认模型
 - 用户消息以普通用户条目写入对话，不再显示为通知
+- `settings.json` 读写都按结构校验，格式不对时指出字段
+- 工单视图带上运行中的后台作业
+- CLI 按命令组拆分
 
 ### Fixed
 

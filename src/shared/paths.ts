@@ -25,6 +25,9 @@ export type EeveePaths = {
   auth: string;
   models: string;
   modelProfiles: string;
+  mcp: string;
+  /** User extensions: `*.ts`, `*.js` or `*.mjs` files whose default export is an extension. */
+  extensions: string;
   globalMemory: string;
   runtime: {
     dir: string;
@@ -32,6 +35,8 @@ export type EeveePaths = {
     record: string;
     cliToken: string;
     sessions: string;
+    /** Full text of MCP outputs cut to fit the model. */
+    mcpOutput: string;
   };
   projects: string;
   project(id: string): ProjectPaths;
@@ -50,6 +55,8 @@ export function eeveePaths(home: string = resolveHome()): EeveePaths {
     auth: join(home, "auth.json"),
     models: join(home, "models.json"),
     modelProfiles: join(home, "models.md"),
+    mcp: join(home, "mcp.json"),
+    extensions: join(home, "extensions"),
     globalMemory: join(home, "memory"),
     runtime: {
       dir: runtime,
@@ -57,6 +64,7 @@ export function eeveePaths(home: string = resolveHome()): EeveePaths {
       record: join(runtime, "engine.json"),
       cliToken: join(runtime, "cli-token"),
       sessions: join(runtime, "sessions.json"),
+      mcpOutput: join(runtime, "mcp-output"),
     },
     projects,
     project: (id) => projectPaths(join(projects, id)),

@@ -378,3 +378,35 @@ test("模型调用失败时暴露原因，修好后可以重试", async () => {
     await project.close();
   }
 });
+
+test("read transcript:// 按条目分页，给出前后翻页的位置", async () => {
+  const pages: string[] = [];
+  const brain: Brain = ({ role, last }) => {
+    if (role !== "router") return say("好的。");
+    if (last?.role === "user" && textOf(last).includes("翻记录")) {
+      return call("read", { path: "transcript://1", offset: 0, limit: 2 });
+    }
+    if (toolName(last) === "read" && pages.length === 0) {
+      pages.push(textOf(last));
+      return call("read", { path: "transcript://1", limit: 2 });
+    }
+    if (toolName(last) === "read") {
+      pages.push(textOf(last));
+      return say("翻完了。");
+    }
+    return say("好的。");
+  };
+  const project = await openTestProject(brain);
+  try {
+    await project.host.sendUserMessage("先说一句");
+    await project.until(async () => project.calls.length >= 1);
+    await project.host.sendUserMessage("翻记录");
+    await project.until(async () => pages.length === 2);
+    const [fromStart, newest] = pages;
+    assert.match(fromStart ?? "", /还有更新的条目：read\("transcript:\/\/1", offset: \d+\)/);
+    assert.match(newest ?? "", /更早的条目：read\("transcript:\/\/1", offset: \d+\)/);
+    assert.match(newest ?? "", /#\d+ tool: /);
+  } finally {
+    await project.close();
+  }
+});

@@ -26,7 +26,7 @@
 |:-:|---|
 | `router` | 全局 `MEMORY.md`、项目 `MEMORY.md`、项目概况、工单一览（生成那一刻的快照）、交接小结、最近几轮原文 |
 | `worker` | 全局 `MEMORY.md`、项目 `MEMORY.md`、工单内容、最新报告、最近 2 条消息 |
-| `dreamer` | 全局 `MEMORY.md`、项目 `MEMORY.md`、自上次整理以来新增的对话记录和已结工单清单（只给地址） |
+| `dreamer` | 全局 `MEMORY.md`、项目 `MEMORY.md`、整理工单（输入里列出自上次整理以来有新发言的对话和已结工单，只给地址和起读位置） |
 
 几条约束，都是为了保护缓存前缀：
 
@@ -56,7 +56,8 @@ Durable 的 `reset` 只换掉模型看到的内容，完整记录仍留在存储
 | `ticket://t12` | 工单内容与阶段 |
 | `ticket://` | 工单列表（可按状态过滤） |
 | `report://t12#3`、`report://t12` | 某份报告 / 该工单的全部报告 |
-| `transcript://<conv>/<entry>` | 某段原始对话记录 |
+| `transcript://<conv>` | 对话记录，按条目分页：不带 `offset` 读最新的条目，带 `offset` 从那个条目编号读起；结果附上前后翻页的位置 |
+| `transcript://<conv>/<entry>` | 某个条目的全文 |
 | `memory://project/<file>`、`memory://global/MEMORY.md` | 记忆笔记 |
 | `job://<jobId>` | 后台作业的状态与输出（对应 `jobs/<jobId>.log`） |
 | `models://` | 可用模型及其画像（见 [模型接入与画像](../design/05-models.md)） |

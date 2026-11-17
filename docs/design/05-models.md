@@ -5,7 +5,23 @@
 模型接入在 `@earendil-works/pi-ai` 之上自己实现，沿用其配置习惯（细节见 [research/pi-models-auth.md](../research/pi-models-auth.md)）：
 
 - **`~/.eevee/auth.json`**：凭据存储，实现 pi-ai 的 `CredentialStore` 接口。只有引擎单进程写入，用进程内串行队列即可，不需要文件锁。
-- **`~/.eevee/models.json`**：自定义 provider、模型覆盖和其他参数，如 `contextWindow`、`promptCache`。
+- **`~/.eevee/models.json`**：自定义 provider、模型覆盖和其他参数，如 `contextWindow`、`promptCache`。格式沿用 pi coding agent 的 `models.json` 的一个子集：
+
+  ```json
+  {
+    "providers": {
+      "local": {
+        "baseUrl": "http://127.0.0.1:11434/v1",
+        "api": "openai-completions",
+        "apiKey": "ollama",
+        "models": [{ "id": "qwen3", "contextWindow": 32768 }]
+      },
+      "anthropic": { "modelOverrides": { "claude-opus-4-7": { "contextWindow": 500000 } } }
+    }
+  }
+  ```
+
+  用内置 provider 的名字是修改它（`baseUrl`、`headers`、追加模型、`modelOverrides`），其他名字是新增 provider，需要 `baseUrl` 和 `api`。`apiKey`、`headers` 的值可以引用环境变量（`$NAME`、`${NAME}`）；`eevee model login` 保存的凭据优先于 `apiKey`。某个 provider 配错只影响它自己，问题写进日志。
 - 组装出的 `Models` 以函数形式传给 Durable 的 `HarnessOptions.models`，修改配置后不用重新打开 Harness。
 
 模型选择分为两层：

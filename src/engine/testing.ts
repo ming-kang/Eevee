@@ -12,7 +12,7 @@ import {
   fauxToolCall,
   type Message,
 } from "@earendil-works/pi-ai";
-import type { JsonObject } from "@earendil-works/pi-durable";
+import type { Extension, JsonObject } from "@earendil-works/pi-durable";
 import { MemoryRepo } from "../extensions/memory/index.ts";
 import { eeveePaths } from "../shared/paths.ts";
 import { DEFAULT_SETTINGS, type Settings } from "../shared/settings.ts";
@@ -20,9 +20,14 @@ import { createProjectMeta } from "./project.ts";
 import { ProjectHost } from "./project-host.ts";
 
 export type Turn = {
-  role: "router" | "worker";
+  role: "router" | "worker" | "dreamer";
   messages: readonly Message[];
+  /** The last message other than a system one (which only adds instructions or tools). */
   last: Message | undefined;
+  /** Names of the tools offered to the model. */
+  tools: string[];
+  /** The model asked. */
+  model: string;
 };
 
 type Reply = ReturnType<typeof fauxAssistantMessage>;
@@ -46,6 +51,22 @@ export function toolName(message: Message | undefined): string | undefined {
   return message?.role === "toolResult" ? message.toolName : undefined;
 }
 
+/** The tools the system messages of a request leave available, in order. */
+function offeredTools(messages: readonly Message[]): string[] {
+  const tools: string[] = [];
+  for (const message of messages) {
+    if (message.role !== "system") continue;
+    for (const removed of message.toolsRemoved ?? []) {
+      const at = tools.indexOf(removed.name);
+      if (at >= 0) tools.splice(at, 1);
+    }
+    for (const added of message.toolsAdded ?? []) {
+      if (!tools.includes(added.name)) tools.push(added.name);
+    }
+  }
+  return tools;
+}
+
 export type TestProject = {
   host: ProjectHost;
   home: string;
@@ -57,11 +78,17 @@ export type TestProject = {
   close(): Promise<void>;
 };
 
-export type TestOptions = Partial<Settings> & { contextWindow?: number };
+export type TestOptions = Partial<Settings> & {
+  contextWindow?: number;
+  /** Models of the `faux` provider besides `brain`. */
+  extraModels?: string[];
+  /** Extensions installed as the Engine's shared ones. */
+  shared?: Extension[];
+};
 
 export async function openTestProject(
   brain: Brain,
-  { contextWindow, ...overrides }: TestOptions = {},
+  { contextWindow, shared = [], extraModels = [], ...overrides }: TestOptions = {},
 ): Promise<TestProject> {
   process.env.GIT_AUTHOR_NAME = process.env.GIT_COMMITTER_NAME = "eevee-test";
   process.env.GIT_AUTHOR_EMAIL = process.env.GIT_COMMITTER_EMAIL = "eevee@test.invalid";
@@ -73,12 +100,25 @@ export async function openTestProject(
   const calls: Turn[] = [];
   const faux = fauxProvider({
     provider: "faux",
-    models: [{ id: "brain", ...(contextWindow === undefined ? {} : { contextWindow }) }],
+    models: ["brain", ...extraModels].map((id) => ({
+      id,
+      ...(contextWindow === undefined ? {} : { contextWindow }),
+    })),
   });
-  const factory: FauxResponseFactory = (context) => {
+  const factory: FauxResponseFactory = (context, _options, _state, model) => {
     const serialized = JSON.stringify(context.messages.filter((m) => m.role !== "toolResult"));
-    const role = serialized.includes("你是 Eevee 的调度者") ? "router" : "worker";
-    const turn = { role, messages: context.messages, last: context.messages.at(-1) } as const;
+    const role = serialized.includes("你是 Eevee 的调度者")
+      ? "router"
+      : serialized.includes("你负责整理项目的记忆库")
+        ? "dreamer"
+        : "worker";
+    const turn: Turn = {
+      role,
+      messages: context.messages,
+      last: context.messages.findLast((m) => m.role !== "system"),
+      tools: offeredTools(context.messages),
+      model: model.id,
+    };
     calls.push(turn);
     return brain(turn);
   };
@@ -89,6 +129,7 @@ export async function openTestProject(
   const settings: Settings = {
     ...DEFAULT_SETTINGS,
     models: { default: { provider: "faux", modelId: "brain" } },
+    dreamIntervalMs: 0,
     ...overrides,
   };
   const meta = await createProjectMeta(paths, { title: "测试项目", workspace });
@@ -99,6 +140,7 @@ export async function openTestProject(
       models: () => models,
       settings: () => settings,
       globalMemory: new MemoryRepo(paths.globalMemory),
+      shared: () => shared,
       context: BACKGROUND_CONTEXT,
       upkeepMs: 100,
     });

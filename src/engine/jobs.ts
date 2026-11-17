@@ -4,9 +4,16 @@ import { dirname } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
 import { formatAddress, type Job, type JobId, type TicketId } from "../contracts/index.ts";
-import { readBinding, readTicket } from "../extensions/orchestration/board.ts";
-import { type DeliveryContext, deliver, route } from "../extensions/orchestration/index.ts";
-import { registerJob, runningJobs, settleJob } from "../extensions/orchestration/jobs.ts";
+import {
+  type DeliveryContext,
+  deliver,
+  readBinding,
+  readTicket,
+  registerJob,
+  route,
+  runningJobs,
+  settleJob,
+} from "../extensions/orchestration/index.ts";
 import type {
   BackgroundJobs,
   CommandResult,
