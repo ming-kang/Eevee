@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
+import { Conflict, NotFound } from "./project-host.ts";
 import { type Brain, call, openTestProject, say, textOf, toolName } from "./testing.ts";
 
 test("Router 建单，Worker 交 ready，Router 验收结单", async () => {
@@ -407,6 +409,159 @@ test("read transcript:// 按条目分页，给出前后翻页的位置", async (
     assert.match(newest ?? "", /更早的条目：read\("transcript:\/\/1", offset: \d+\)/);
     assert.match(newest ?? "", /#\d+ tool: /);
   } finally {
+    await project.close();
+  }
+});
+
+test("读取后台作业日志尾部并在运行中终止作业", async () => {
+  const brain: Brain = ({ role, last }) => {
+    if (role === "router") {
+      if (last?.role === "user" && textOf(last).includes("跑长作业")) {
+        return call("ticket", {
+          action: "create",
+          title: "长作业",
+          goal: "跑",
+          acceptance: ["跑完"],
+        });
+      }
+      return say("好的。");
+    }
+    if (toolName(last) === "bash") return say("等作业。");
+    if (last?.role === "user" && textOf(last).includes("已终止")) return say("作业被终止了。");
+    if (last?.role === "user") {
+      return call("bash", {
+        command: "echo row-1; echo row-2; echo row-3; echo row-4; sleep 30",
+      });
+    }
+    return say("…");
+  };
+
+  const project = await openTestProject(brain, { backgroundAfterMs: 100 });
+  try {
+    await project.host.sendUserMessage("跑长作业");
+    const jobsTicket = await project.until(async () => {
+      const ticket = (await project.host.board()).tickets[0];
+      return ticket?.stage === "jobs" && ticket;
+    });
+    const jobId = jobsTicket.jobs[0]?.id;
+    assert.ok(jobId);
+
+    const runningLog = await project.until(async () => {
+      const log = await project.host.jobLog(jobId);
+      return log.content.includes("row-4") && log;
+    });
+    assert.equal(runningLog.job.status, "running");
+    assert.equal(runningLog.truncated, false);
+
+    const tailed = await project.host.jobLog(jobId, 2);
+    assert.equal(tailed.truncated, true);
+    assert.deepEqual(tailed.content.trim().split(/\r?\n/), ["row-3", "row-4"]);
+
+    await project.host.killJob(jobId);
+
+    const afterKill = await project.host.jobLog(jobId);
+    assert.equal(afterKill.job.status, "killed");
+    assert.match(afterKill.content, /\[已终止\]/);
+    assert.equal((await project.host.board()).tickets[0]?.jobs.length, 0);
+    // The ticket is still open: its Worker hears about the kill instead of waiting forever.
+    await project.until(async () => {
+      const worker = await project.host.ticketConversation(jobsTicket.ticket.id);
+      return worker.lines.some((line) => line.text.includes("作业被终止了。"));
+    });
+
+    await assert.rejects(project.host.killJob(jobId), Conflict);
+    await assert.rejects(project.host.killJob("j99"), NotFound);
+    await assert.rejects(project.host.jobLog("j99"), NotFound);
+  } finally {
+    await project.close();
+  }
+});
+
+test("memoryFiles 和 memoryFile 列出并安全读取项目与全局记忆文件", async () => {
+  const project = await openTestProject(() => say("好的。"));
+  try {
+    const projectMemoryDir = join(project.home, "projects", project.host.meta.id, "memory");
+    await mkdir(join(projectMemoryDir, "topics"), { recursive: true });
+    await writeFile(join(projectMemoryDir, "topics", "sim.md"), "# 仿真\n- dt = 0.01\n");
+
+    const files = await project.host.memoryFiles("project");
+    assert.equal(files[0]?.path, "MEMORY.md");
+    assert.equal(
+      files.some((f) => f.path === "topics/sim.md"),
+      true,
+    );
+    assert.equal(
+      files.some((f) => f.path.startsWith(".git")),
+      false,
+    );
+
+    const file = await project.host.memoryFile("project", "topics/sim.md");
+    assert.equal(file.path, "topics/sim.md");
+    assert.match(file.content, /dt = 0\.01/);
+
+    const globalFiles = await project.host.memoryFiles("global");
+    assert.equal(globalFiles[0]?.path, "MEMORY.md");
+
+    await assert.rejects(project.host.memoryFile("project", "missing.md"), NotFound);
+    await assert.rejects(project.host.memoryFile("project", "../project.json"), NotFound);
+    await assert.rejects(project.host.memoryFile("project", ".git/HEAD"), NotFound);
+  } finally {
+    await project.close();
+  }
+});
+
+test("BoardView 反映 Router 运行状态与失败原因，ProjectSummary.activeAt 跨重启持久", async () => {
+  let enteredGate = false;
+  let releaseGate: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    releaseGate = resolve;
+  });
+  let shouldFail = false;
+  const brain: Brain = async ({ last }) => {
+    if (shouldFail) throw new Error("403 forbidden");
+    if (last?.role === "user" && textOf(last).includes("慢一点")) {
+      enteredGate = true;
+      await gate;
+    }
+    return say("完成。");
+  };
+
+  const project = await openTestProject(brain);
+  try {
+    const initial = project.host.summary();
+    assert.equal(initial.activeAt, project.host.meta.createdAt);
+    assert.deepEqual((await project.host.board()).router, { running: false });
+
+    await sleep(20);
+    await project.host.sendUserMessage("慢一点回复");
+    const whileRunning = await project.until(async () => {
+      if (!enteredGate) return false;
+      const b = await project.host.board();
+      return b.router.running && b;
+    });
+    assert.equal(whileRunning.router.running, true);
+    assert.equal(whileRunning.router.failure, undefined);
+
+    releaseGate();
+    await project.until(async () => !(await project.host.board()).router.running);
+
+    const afterTurn = project.host.summary().activeAt ?? 0;
+    assert.ok(initial.activeAt !== undefined && afterTurn > initial.activeAt);
+
+    shouldFail = true;
+    await project.host.sendUserMessage("触发失败");
+    const failedBoard = await project.until(async () => {
+      const b = await project.host.board();
+      return b.router.failure !== undefined && b;
+    });
+    assert.equal(failedBoard.router.running, false);
+    assert.match(failedBoard.router.failure ?? "", /403 forbidden/);
+
+    await project.reopen();
+    assert.ok((project.host.summary().activeAt ?? 0) >= afterTurn);
+    assert.match((await project.host.board()).router.failure ?? "", /403 forbidden/);
+  } finally {
+    releaseGate();
     await project.close();
   }
 });

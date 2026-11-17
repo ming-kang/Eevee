@@ -17,7 +17,7 @@ export {
 } from "./deliver.ts";
 export type { EngineEvent } from "./delivery.ts";
 export { route } from "./delivery.ts";
-export { describeRunFailure, reportRunFailures } from "./failures.ts";
+export { reportRunFailures } from "./failures.ts";
 export { registerJob, runningJobs, settleJob } from "./jobs.ts";
 export { openTicket, type TicketDraft } from "./open.ts";
 export type { HandoffPolicy, OrchestrationDeps, TicketConversations, TicketJobs } from "./ports.ts";

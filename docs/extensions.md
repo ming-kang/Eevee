@@ -1,8 +1,8 @@
 # 编写扩展
 
-Eevee 的扩展就是 Pi Durable 扩展，可以提供工具、系统提示词段落、钩子和后台任务。扩展本身怎么写，见 [Pi Durable 的文档](https://github.com/earendil-works/pi/tree/main/packages/durable)；这一页只说明 Eevee 怎样加载和启用扩展。
+Eevee 的扩展就是 Pi Durable 扩展，可以提供工具、系统提示词段落、Hooks 与后台任务；扩展写法参见 [Pi Durable 的文档](https://github.com/earendil-works/pi/tree/main/packages/durable)。
 
-放进 `~/.eevee/extensions/` 的扩展会安装到每个项目，再由你为角色启用。扩展在 Engine 进程里运行，拥有 Engine 的全部权限，能读到所有项目的数据和凭据。只加载你信任的代码。
+放进 `~/.eevee/extensions/` 的扩展适用于所有项目，可以为角色启用。扩展在 Engine 进程里运行，拥有 Engine 的全部权限。
 
 ## 快速开始
 
@@ -42,7 +42,7 @@ Eevee 的扩展就是 Pi Durable 扩展，可以提供工具、系统提示词�
    eevee role enable worker clock
    ```
 
-Node.js 26 直接运行 `.ts` 文件，不需要编译。Node 只是去掉类型标注，所以 `enum`、`namespace`、构造函数参数属性这类需要编译的 TypeScript 语法不能使用。
+Node.js 26 直接运行 `.ts` 文件，无需编译。Node 只是去掉类型标注，所以 `enum`、`namespace`、构造函数参数属性这类需要编译的 TypeScript 语法不能使用。
 
 ## 位置与加载
 
@@ -61,7 +61,7 @@ Node.js 26 直接运行 `.ts` 文件，不需要编译。Node 只是去掉类型
 扩展名就是角色启用它时写的名字：
 
 - 每个扩展的 `name` 必须唯一，重名的后一个文件会加载失败；
-- `eevee.*`、`mcp.*`、`tool-search`、`codemode` 是 Eevee 保留的名字。
+- `eevee.*`、`mcp.*`、`tool-search`、`codemode` 等是 Eevee 保留的名字。
 
 工具名在一个对话选中的全部工具里也应当唯一，建议给工具加上扩展相关的前缀。
 

@@ -1,8 +1,6 @@
 # 配置角色能力
 
-Eevee 的每种对话都属于一个角色：Router、Worker，或者整理记忆用的 `dreamer`。角色的能力由它选用的扩展决定，每个角色自带一组扩展，你可以为它再启用 MCP 服务器和自己写的扩展。
-
-能力按角色共享：所有项目的同一角色使用同一份配置，不需要为每张工单单独设置。
+Eevee 的每个对话都属于一种角色：Router、Worker，或者整理记忆用的 `dreamer`。角色的能力由它选用的扩展决定，除了每个角色自带的扩展外，还可以为它启用 MCP 服务器和新扩展。
 
 ## 角色自带的扩展
 
@@ -12,7 +10,7 @@ Eevee 的每种对话都属于一个角色：Router、Worker，或者整理记�
 | `worker` | `eevee.resources`、`eevee.workspace`、`eevee.report` | `read`、`write`、`edit`、`bash`、`report` |
 | `dreamer` | `eevee.resources`、`eevee.memory-project`、`eevee.report` | `read`、只能整理项目记忆的 `memory`、`report` |
 
-自带扩展总是选中，不能停用。Router 没有写文件和执行命令的工具，这是有意的：耗时的工作都应该变成工单。各工具的参数见 [内置工具](tools.md)。
+自带扩展总是选中，各工具的参数见 [内置工具](tools.md)。
 
 ## 可启用的扩展
 

@@ -29,12 +29,13 @@ export type JobHostDeps = {
   now?: () => number;
 };
 
-type Tracked = { job: Job; command: RunningCommand; settled: Promise<void> };
+type Tracked = { job: Job; command: RunningCommand; settled: Promise<void>; settling?: boolean };
 
 export class JobHost implements BackgroundJobs {
   readonly #deps: JobHostDeps;
   readonly #running = new Map<JobId, Tracked>();
-  readonly #killed = new Set<JobId>();
+  /** Why a job was killed: its ticket closed (nobody to tell), or someone stopped it (its Worker hears). */
+  readonly #killed = new Map<JobId, "closed" | "stopped">();
   #closing = false;
 
   constructor(deps: JobHostDeps) {
@@ -79,11 +80,21 @@ export class JobHost implements BackgroundJobs {
   }
 
   stop(ticketId: TicketId): void {
-    for (const { job, command } of this.#running.values()) {
-      if (job.ticketId !== ticketId) continue;
-      this.#killed.add(job.id);
-      command.kill();
+    for (const tracked of this.#running.values()) {
+      if (tracked.job.ticketId !== ticketId || tracked.settling) continue;
+      this.#killed.set(tracked.job.id, "closed");
+      tracked.command.kill();
     }
+  }
+
+  /** Kills one running background job and waits for its log & durable state to settle. */
+  async kill(id: JobId): Promise<boolean> {
+    const tracked = this.#running.get(id);
+    if (tracked === undefined || tracked.settling) return false;
+    this.#killed.set(id, "stopped");
+    tracked.command.kill();
+    await tracked.settled;
+    return true;
   }
 
   async close(): Promise<void> {
@@ -120,7 +131,11 @@ export class JobHost implements BackgroundJobs {
     result: CommandResult,
     log: WriteStream,
   ): Promise<void> {
-    const killed = this.#killed.delete(job.id);
+    const tracked = this.#running.get(job.id);
+    if (tracked !== undefined) tracked.settling = true;
+    const killedFor = this.#killed.get(job.id);
+    this.#killed.delete(job.id);
+    const killed = killedFor !== undefined;
     log.write(`\n[${describe(result, killed)}]\n`);
     await new Promise<void>((resolve) => log.end(resolve));
     this.#running.delete(job.id);
@@ -136,13 +151,13 @@ export class JobHost implements BackgroundJobs {
     };
     const ticket = await readTicket(host, job.ticketId, context);
     const deliveries =
-      killed || ticket?.status !== "open"
+      killedFor === "closed" || ticket?.status !== "open"
         ? []
         : route({
             type: "job-finished",
             ticketId: job.ticketId,
             jobId: job.id,
-            outcome: describe(result, false),
+            outcome: describe(result, killed),
             tail: command.output().slice(-TAIL_CHARS),
           });
     await deliver(host, deliveries, context, async (tx) => {

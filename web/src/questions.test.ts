@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatAnswer, initialDraft, isComplete } from "./questions.ts";
+import { formatAnswer, initialDraft, initialOtherFlags, isComplete } from "./questions.ts";
 
 const single = {
   items: [{ text: "用哪个数据库？", options: ["SQLite", "Postgres"], recommended: "SQLite" }],
@@ -15,6 +15,12 @@ const double = {
 test("推荐选项预先选中", () => {
   assert.deepEqual(initialDraft(single), ["SQLite"]);
   assert.deepEqual(initialDraft(double), ["", "本机"]);
+});
+
+test("初始“其他”状态在开放题或非预置选项时打开", () => {
+  assert.deepEqual(initialOtherFlags(single, ["SQLite"]), [false]);
+  assert.deepEqual(initialOtherFlags(single, ["DuckDB"]), [true]);
+  assert.deepEqual(initialOtherFlags(double, ["TS", "本机"]), [false, true]);
 });
 
 test("每一问都有答案才算完成", () => {

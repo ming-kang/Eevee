@@ -1,8 +1,12 @@
-import { join } from "node:path";
+import { type FileHandle, open } from "node:fs/promises";
+import { join, relative } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
 import type { WatchHandle } from "@earendil-works/chord/watch";
 import type { Models } from "@earendil-works/pi-ai";
 import {
+  AssistantEntry,
+  type CommitObservation,
+  type CommitPublication,
   type Conversation,
   type ConversationId,
   type ConversationWindow,
@@ -17,16 +21,30 @@ import {
   LiveDoc,
   type Registry,
   type ToolExecutionApi,
+  ToolResultEntry,
   type Tx,
+  UserEntry,
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import type { BoardView, ConversationView, MemoryCommitView, UsageView } from "../api/contract.ts";
-import { Board, QuestionDoc, TicketDoc } from "../contracts/docs.ts";
+import type {
+  BoardView,
+  ConversationView,
+  JobLogView,
+  MemoryCommitView,
+  MemoryFileEntry,
+  MemoryFileView,
+  ProjectSummary,
+  UsageView,
+} from "../api/contract.ts";
+import { Board, JobBoard, JobDoc, QuestionDoc, ReportLog, TicketDoc } from "../contracts/docs.ts";
 import {
+  type JobId,
+  jobId,
   type MemoryScope,
   pickModel,
   type QuestionId,
+  questionId,
   ROLE_NAMES,
   type RoleName,
   type Ticket,
@@ -41,6 +59,7 @@ import {
   deliver,
   type EngineEvent,
   flush,
+  NOTICE_KIND,
   openTicket,
   pump,
   readTicket,
@@ -53,8 +72,8 @@ import { createResources } from "../extensions/resources/index.ts";
 import { createWorkspace } from "../extensions/workspace/index.ts";
 import { renderCatalog } from "../models/catalog.ts";
 import { createRoles, type Roles } from "../roles/index.ts";
-import { readText } from "../shared/fs.ts";
-import type { EeveePaths } from "../shared/paths.ts";
+import { isNotFound, readText } from "../shared/fs.ts";
+import { type EeveePaths, resolveInside } from "../shared/paths.ts";
 import { enabledExtensions, type Settings } from "../shared/settings.ts";
 import { JobHost } from "./jobs.ts";
 import type { ProjectMeta } from "./project.ts";
@@ -71,6 +90,8 @@ export class Conflict extends Error {
 
 const TICK_MS = 250;
 const UPKEEP_MS = 5_000;
+const JOB_LOG_MAX_BYTES = 64 * 1024;
+const JOB_LOG_DEFAULT_LINES = 200;
 const INITIAL_MEMORY = "# 项目记忆\n\n每个对话都需要知道的核心约定，以及指向主题笔记的索引。\n";
 const INITIAL_GLOBAL_MEMORY = "# 全局记忆\n\n与用户本人有关的跨项目偏好，保持极短。\n";
 
@@ -93,8 +114,10 @@ type Parts = {
   registry: Registry;
   roles: Roles;
   jobs: JobHost;
+  jobLog: (id: JobId) => string;
   repos: Record<MemoryScope, MemoryRepo>;
   shared: Set<string>;
+  activeAt: number;
 };
 
 /**
@@ -109,9 +132,12 @@ export class ProjectHost {
   readonly #registry: Registry;
   readonly #roles: Roles;
   readonly #jobs: JobHost;
+  readonly #jobLogPath: (id: JobId) => string;
   readonly #repos: Record<MemoryScope, MemoryRepo>;
   /** Names of the shared extensions installed now. */
   #shared: Set<string>;
+  #activeAt: number;
+  #activityWatch: CommitObservation | undefined;
   readonly #timer: NodeJS.Timeout;
   #ticking = false;
   #lastUpkeep = 0;
@@ -124,8 +150,10 @@ export class ProjectHost {
     this.#registry = parts.registry;
     this.#roles = parts.roles;
     this.#jobs = parts.jobs;
+    this.#jobLogPath = parts.jobLog;
     this.#repos = parts.repos;
     this.#shared = parts.shared;
+    this.#activeAt = parts.activeAt;
     this.#timer = setInterval(() => void this.#tick(), TICK_MS);
     this.#timer.unref();
     void this.#tick();
@@ -248,7 +276,19 @@ export class ProjectHost {
     });
     delivery = deliveryHost(harness, root);
 
-    const host = new ProjectHost({ options, harness, root, registry, roles, jobs, repos, shared });
+    const activeAt = await initialActiveAt(harness, root, meta.createdAt, context);
+    const host = new ProjectHost({
+      options,
+      harness,
+      root,
+      registry,
+      roles,
+      jobs,
+      jobLog,
+      repos,
+      shared,
+      activeAt,
+    });
     await host.#applyRoles();
     const first = await root.entries({}, 1, undefined, context);
     if (first.items.length === 0)
@@ -256,6 +296,7 @@ export class ProjectHost {
     await flush(delivery, context);
     await jobs.recover();
     await ensureDreamTimer(harness, root, memory.timer, context);
+    host.#watchActivity();
     harness.resume();
     return host;
   }
@@ -308,8 +349,26 @@ export class ProjectHost {
 
   // ── Views ──────────────────────────────────────────────────────────────────
 
+  summary(): ProjectSummary {
+    return { ...this.meta, activeAt: this.#activeAt };
+  }
+
   board(): Promise<BoardView> {
     return boardView(this.#harness, (id) => this.#jobs.running(id), this.#context);
+  }
+
+  async killJob(id: JobId): Promise<void> {
+    if (await this.#jobs.kill(id)) return;
+    const job = await this.#harness.snapshot(JobDoc, id, this.#context);
+    if (job === undefined) throw new NotFound(`没有作业 ${id}`);
+    throw new Conflict(`作业 ${id} 已经结束`);
+  }
+
+  async jobLog(id: JobId, maxLines = JOB_LOG_DEFAULT_LINES): Promise<JobLogView> {
+    const job = await this.#harness.snapshot(JobDoc, id, this.#context);
+    if (job === undefined) throw new NotFound(`没有作业 ${id}`);
+    const tail = await readLogTail(this.#jobLogPath(id), maxLines);
+    return { job, ...tail };
   }
 
   async conversation(limit = 100): Promise<ConversationView> {
@@ -358,6 +417,27 @@ export class ProjectHost {
     return this.#repos[scope].revert(commit);
   }
 
+  memoryFiles(scope: MemoryScope): Promise<MemoryFileEntry[]> {
+    return this.#repos[scope].listFiles();
+  }
+
+  async memoryFile(scope: MemoryScope, file: string): Promise<MemoryFileView> {
+    const repo = this.#repos[scope];
+    let resolved: string;
+    try {
+      resolved = resolveInside(repo.dir, file);
+    } catch {
+      throw new NotFound(`没有记忆文件 ${file}`);
+    }
+    const rel = relative(repo.dir, resolved).replaceAll("\\", "/");
+    if (rel === ".git" || rel.startsWith(".git/")) {
+      throw new NotFound(`没有记忆文件 ${file}`);
+    }
+    const content = await repo.read(rel);
+    if (content === undefined) throw new NotFound(`没有记忆文件 ${file}`);
+    return { path: rel, content };
+  }
+
   // ── Capabilities ───────────────────────────────────────────────────────────
 
   /** Installs the shared extensions as they are now and applies every role again. */
@@ -390,9 +470,21 @@ export class ProjectHost {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   async close(): Promise<void> {
+    this.#activityWatch?.detach();
     clearInterval(this.#timer);
     await this.#jobs.close();
     await this.#harness.close(this.#context);
+  }
+
+  #watchActivity(): void {
+    this.#activityWatch = this.#harness.observeCommits({
+      advance: (pub) => {
+        if (isActivityCommit(pub)) {
+          this.#activeAt = Math.max(this.#activeAt, Date.now());
+        }
+      },
+      end: () => {},
+    });
   }
 
   get #context(): Context {
@@ -481,4 +573,128 @@ function deliveryHost(harness: Harness, root: Conversation): DeliveryContext {
     conversation: (id: ConversationId, ctx: Context) => harness.conversation(id, ctx),
     commit: (change, ctx) => root.commit(change, ctx),
   };
+}
+
+const ACTIVITY_ENTRY_KINDS = new Set([
+  UserEntry.kind,
+  AssistantEntry.kind,
+  ToolResultEntry.kind,
+  NOTICE_KIND,
+]);
+
+const ACTIVITY_DOC_KINDS = new Set([
+  Board.definition.kind,
+  TicketDoc.definition.kind,
+  ReportLog.definition.kind,
+  QuestionDoc.definition.kind,
+  JobDoc.definition.kind,
+]);
+
+function isActivityCommit(pub: CommitPublication): boolean {
+  return pub.changes.some(
+    (c) =>
+      (c.type === "entry" && ACTIVITY_ENTRY_KINDS.has(c.value.kind)) ||
+      (c.type === "document" && ACTIVITY_DOC_KINDS.has(c.record.kind)),
+  );
+}
+
+async function initialActiveAt(
+  harness: Harness,
+  root: Conversation,
+  createdAt: number,
+  context: Context,
+): Promise<number> {
+  let latest = createdAt;
+  const max = (t: number | undefined) => {
+    if (typeof t === "number" && t > latest) latest = t;
+  };
+  const scanConversation = async (conv: Conversation, limit: number) => {
+    const entries = await conv.entries({ order: "descending" }, limit, undefined, context);
+    for (const entry of entries.items) {
+      for (const msg of entry.model ?? []) {
+        max((msg as { timestamp?: number }).timestamp);
+      }
+    }
+  };
+  const board = await harness.snapshot(Board, context);
+  const ticketIds = (board?.tickets ?? []) as TicketId[];
+  for (const id of ticketIds) {
+    const ticket = await harness.snapshot(TicketDoc, id, context);
+    max(ticket?.createdAt);
+    max(ticket?.closedAt);
+    const reports = await harness.snapshot(ReportLog, id, context);
+    for (const report of reports?.reports ?? []) max(report.at);
+    // A closed ticket's conversation ended by `closedAt`; only open ones can be newer than their docs.
+    if (ticket?.status === "open") {
+      const conv = await harness.conversation(conversationOf(ticket), context);
+      if (conv !== undefined) await scanConversation(conv, 4);
+    }
+  }
+  const jobBoard = await harness.snapshot(JobBoard, context);
+  const nextJob = jobBoard?.nextJob ?? 1;
+  for (let i = Math.max(1, nextJob - 10); i < nextJob; i++) {
+    const job = await harness.snapshot(JobDoc, jobId(i), context);
+    max(job?.startedAt);
+    max(job?.endedAt);
+  }
+  const nextQuestion = board?.nextQuestion ?? 1;
+  for (let i = Math.max(1, nextQuestion - 10); i < nextQuestion; i++) {
+    const q = await harness.snapshot(QuestionDoc, questionId(i), context);
+    max(q?.askedAt);
+    max(q?.answeredAt);
+  }
+  await scanConversation(root, 10);
+  return latest;
+}
+
+async function readLogTail(
+  path: string,
+  maxLines: number,
+): Promise<{ content: string; truncated: boolean }> {
+  let handle: FileHandle;
+  try {
+    handle = await open(path, "r");
+  } catch (error) {
+    if (isNotFound(error)) return { content: "", truncated: false };
+    throw error;
+  }
+  try {
+    const { size } = await handle.stat();
+    if (size === 0) return { content: "", truncated: false };
+    const readBytes = Math.min(size, JOB_LOG_MAX_BYTES);
+    const offset = size - readBytes;
+    const buf = Buffer.allocUnsafe(readBytes);
+    let totalRead = 0;
+    while (totalRead < readBytes) {
+      const { bytesRead } = await handle.read(
+        buf,
+        totalRead,
+        readBytes - totalRead,
+        offset + totalRead,
+      );
+      if (bytesRead === 0) break;
+      totalRead += bytesRead;
+    }
+    let text = buf.subarray(0, totalRead).toString("utf8");
+    const truncatedByBytes = offset > 0;
+    if (truncatedByBytes) {
+      const nl = text.indexOf("\n");
+      if (nl >= 0) {
+        text = text.slice(nl + 1);
+      } else if (text.startsWith("\uFFFD")) {
+        text = text.replace(/^\uFFFD+/, "");
+      }
+    }
+    const lines = text.split(/\r?\n/);
+    const hasTrailingNewline = lines.length > 1 && lines.at(-1) === "";
+    const bodyLines = hasTrailingNewline ? lines.slice(0, -1) : lines;
+    const truncatedByLines = bodyLines.length > maxLines;
+    const tailLines = truncatedByLines ? bodyLines.slice(-maxLines) : bodyLines;
+    return {
+      content: tailLines.join("\n") + (hasTrailingNewline && tailLines.length > 0 ? "\n" : ""),
+      truncated: truncatedByBytes || truncatedByLines,
+    };
+  } finally {
+    await handle.close();
+  }
 }

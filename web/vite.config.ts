@@ -18,6 +18,6 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    proxy: { "/api": { target: engine, changeOrigin: true } },
+    proxy: { "/api": { target: engine, changeOrigin: true, ws: true } },
   },
 });

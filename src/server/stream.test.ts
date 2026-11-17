@@ -44,7 +44,8 @@ function fakeWatch(value: ConversationView) {
 }
 
 const view = { conversation: { id: 1 }, entries: [], docs: {} } as unknown as ConversationView;
-let board: BoardView = { tickets: [], openQuestions: [] };
+const emptyRouter = { running: false };
+let board: BoardView = { tickets: [], openQuestions: [], router: emptyRouter };
 let watch = fakeWatch(view);
 const watched: unknown[] = [];
 
@@ -147,13 +148,13 @@ test("连上先收到 hello；对话 watch 先发 value 再转发 ops，源结�
 });
 
 test("看板 watch 先发当前看板，变化时再发；unwatch 后不再发", async () => {
-  board = { tickets: [], openQuestions: [] };
+  board = { tickets: [], openQuestions: [], router: emptyRouter };
   const client = await connect();
   await client.next();
   client.send({ type: "watch", id: "b", topic: { kind: "board", project: "p1" } });
   assert.deepEqual(await client.next(), { type: "board", id: "b", board });
 
-  board = { tickets: [], openQuestions: [{ id: "q1" } as never] };
+  board = { tickets: [], openQuestions: [{ id: "q1" } as never], router: emptyRouter };
   assert.deepEqual(await client.next(), { type: "board", id: "b", board });
 
   client.send({ type: "unwatch", id: "b" });
@@ -164,7 +165,7 @@ test("看板 watch 先发当前看板，变化时再发；unwatch 后不再发",
     query: { minEntryId: 3 as never },
     limit: 9999,
   });
-  board = { tickets: [], openQuestions: [] };
+  board = { tickets: [], openQuestions: [], router: emptyRouter };
   assert.deepEqual(await client.next(), {
     type: "entries",
     id: "e",

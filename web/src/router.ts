@@ -1,0 +1,86 @@
+export const SETTINGS_SECTIONS = ["models", "roles", "mcp", "engine"] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
+export type Route =
+  | { name: "chat"; pid: string }
+  | { name: "worker"; pid: string; tid: string }
+  | { name: "memory"; pid: string }
+  | { name: "usage"; pid: string }
+  | { name: "settings"; section: SettingsSection }
+  | { name: "connect" }
+  | { name: "home" };
+
+function decode(segment: string): string | undefined {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractAuthCode(hash: string): string | undefined {
+  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (raw === "" || raw.startsWith("/")) return undefined;
+  const query = raw.startsWith("?") ? raw.slice(1) : raw;
+  const code = new URLSearchParams(query).get("code");
+  return code && code !== "" ? code : undefined;
+}
+
+export function isSettingsSection(value: string): value is SettingsSection {
+  return (SETTINGS_SECTIONS as readonly string[]).includes(value);
+}
+
+export function parseRoute(hash: string): Route | undefined {
+  if (extractAuthCode(hash) !== undefined) return undefined;
+  const trimmed = hash.replace(/^#\/?/, "");
+  if (trimmed === "") return undefined;
+  const parts = trimmed.split("/").filter(Boolean);
+  if (parts.length === 0) return undefined;
+
+  if (parts[0] === "connect" && parts.length === 1) {
+    return { name: "connect" };
+  }
+  if (parts[0] === "settings") {
+    const raw = parts[1] ? decode(parts[1]) : undefined;
+    const section: SettingsSection = raw && isSettingsSection(raw) ? raw : "models";
+    return { name: "settings", section };
+  }
+  if (parts[0] === "p" && parts[1]) {
+    const pid = decode(parts[1]);
+    if (!pid) return undefined;
+    if (parts.length === 2) return { name: "chat", pid };
+    if (parts[2] === "t" && parts[3] && parts.length === 4) {
+      const tid = decode(parts[3]);
+      return tid ? { name: "worker", pid, tid } : undefined;
+    }
+    if (parts[2] === "memory" && parts.length === 3) return { name: "memory", pid };
+    if (parts[2] === "usage" && parts.length === 3) return { name: "usage", pid };
+  }
+  return undefined;
+}
+
+export function resolveRoute(hash: string, fallbackPid?: string): Route {
+  return (
+    parseRoute(hash) ??
+    (fallbackPid !== undefined ? { name: "chat", pid: fallbackPid } : { name: "home" })
+  );
+}
+
+export function formatRoute(route: Route): string {
+  switch (route.name) {
+    case "chat":
+      return `#/p/${encodeURIComponent(route.pid)}`;
+    case "worker":
+      return `#/p/${encodeURIComponent(route.pid)}/t/${encodeURIComponent(route.tid)}`;
+    case "memory":
+      return `#/p/${encodeURIComponent(route.pid)}/memory`;
+    case "usage":
+      return `#/p/${encodeURIComponent(route.pid)}/usage`;
+    case "settings":
+      return `#/settings/${route.section}`;
+    case "connect":
+      return "#/connect";
+    case "home":
+      return "#/";
+  }
+}

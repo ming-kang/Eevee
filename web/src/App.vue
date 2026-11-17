@@ -1,114 +1,419 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
-import { computed, onMounted, ref, shallowRef } from "vue";
+import type { ProjectSummary } from "@shared/api/contract.ts";
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
+import type { RailTab } from "./board.ts";
+import AppShell from "./components/AppShell.vue";
+import CommandPalette from "./components/CommandPalette.vue";
+import ConnectPage from "./components/ConnectPage.vue";
+import Icon from "./components/Icon.vue";
+import MemoryPage from "./components/MemoryPage.vue";
+import NewProjectDialog from "./components/NewProjectDialog.vue";
+import ProjectHoverCard from "./components/ProjectHoverCard.vue";
 import ProjectView from "./components/ProjectView.vue";
-import { usePolling } from "./polling.ts";
-import { openSession } from "./session.ts";
+import RightRail from "./components/RightRail.vue";
+import SettingsPage from "./components/SettingsPage.vue";
+import SideNav from "./components/SideNav.vue";
+import Toasts from "./components/Toasts.vue";
+import UsagePage from "./components/UsagePage.vue";
+import { useConversationWatch, useEngineData } from "./engine-data.ts";
+import { summarizeRun } from "@shared/contracts/index.ts";
+import { buildPaletteItems, deriveProjectState, type PaletteItem } from "./projects.ts";
+import { formatRoute, type Route, resolveRoute } from "./router.ts";
+import { type SessionInfo, Unauthorized, openSession } from "./session.ts";
+import { useTheme } from "./theme.ts";
 
-const client = shallowRef<Client>();
+const SIDE_KEY = "eevee.sideCollapsed";
+const PROJECT_KEY = "eevee.project";
+
+const isMac =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform ?? "");
+const paletteShortcut = isMac ? "⌘K" : "Ctrl K";
+const sideShortcut = isMac ? "⌘B" : "Ctrl B";
+
+const { toggleTheme } = useTheme();
+
+const session = shallowRef<SessionInfo>();
+const connecting = ref(true);
 const authError = ref<string>();
-const selected = ref(localStorage.getItem("eevee.project") ?? "");
+const networkError = ref<string>();
+const hash = ref("");
+const lastPid = ref(localStorage.getItem(PROJECT_KEY) ?? "");
+const sideCollapsed = ref(localStorage.getItem(SIDE_KEY) === "true");
+const drawer = ref<"side" | "rail" | null>(null);
+const railTab = ref<RailTab>("tickets");
+const openJobId = ref<string | undefined>(undefined);
+const newProjectOpen = ref(false);
+const paletteOpen = ref(false);
+const memoryModalOpen = ref(false);
 
-onMounted(async () => {
-  try {
-    client.value = await openSession();
-  } catch (error) {
-    authError.value = error instanceof Error ? error.message : String(error);
-  }
+const hoverState = ref<{ visible: boolean; pid?: string; top: number; left: number }>({
+  visible: false,
+  top: 0,
+  left: 0,
 });
 
-const status = usePolling(async () => client.value?.call("GET /api/status"), 5000);
-const projects = computed(() => status.data.value?.projects ?? []);
-const current = computed(
-  () => projects.value.find((p) => p.id === selected.value) ?? projects.value[0],
+const engine = useEngineData(session);
+
+function hideHover(): void {
+  if (hoverState.value.visible) {
+    hoverState.value = { ...hoverState.value, visible: false };
+  }
+}
+
+function showHover(payload: { pid: string; top: number; left: number }): void {
+  if (paletteOpen.value || newProjectOpen.value) return;
+  hoverState.value = { visible: true, ...payload };
+}
+
+function onHashChange(): void {
+  hash.value = location.hash;
+  drawer.value = null;
+  hideHover();
+}
+
+function onGlobalKeydown(event: KeyboardEvent): void {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    if (!session.value || route.value.name === "connect") return;
+    event.preventDefault();
+    hideHover();
+    newProjectOpen.value = false;
+    drawer.value = null;
+    paletteOpen.value = !paletteOpen.value;
+  }
+}
+
+async function connect(): Promise<void> {
+  connecting.value = true;
+  authError.value = undefined;
+  networkError.value = undefined;
+  try {
+    const opened = await openSession();
+    hash.value = location.hash;
+    session.value = opened;
+  } catch (error) {
+    if (error instanceof Unauthorized) authError.value = error.message;
+    else networkError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    connecting.value = false;
+  }
+}
+
+onMounted(() => {
+  window.addEventListener("hashchange", onHashChange);
+  window.addEventListener("keydown", onGlobalKeydown);
+  window.addEventListener("mousedown", hideHover);
+  void connect();
+});
+
+onUnmounted(() => {
+  window.removeEventListener("hashchange", onHashChange);
+  window.removeEventListener("keydown", onGlobalKeydown);
+  window.removeEventListener("mousedown", hideHover);
+});
+
+const projects = computed<ProjectSummary[]>(() => engine.projects.value);
+
+const fallbackPid = computed(() => {
+  if (projects.value.some((p) => p.id === lastPid.value)) return lastPid.value;
+  return projects.value[0]?.id;
+});
+
+const route = computed<Route>(() => resolveRoute(hash.value, fallbackPid.value));
+
+watch(
+  route,
+  (next) => {
+    if ("pid" in next) {
+      lastPid.value = next.pid;
+      localStorage.setItem(PROJECT_KEY, next.pid);
+    }
+  },
+  { immediate: true },
 );
 
-function select(id: string): void {
-  selected.value = id;
-  localStorage.setItem("eevee.project", id);
+const currentProject = computed(() => {
+  const r = route.value;
+  if (!("pid" in r)) return undefined;
+  return projects.value.find((p) => p.id === r.pid);
+});
+
+watch(
+  () => currentProject.value?.id,
+  () => {
+    openJobId.value = undefined;
+  },
+);
+
+watch(drawer, hideHover);
+
+const routerConversation = useConversationWatch(engine.stream, () =>
+  currentProject.value ? { kind: "conversation", project: currentProject.value.id } : undefined,
+);
+
+const activeRouterSummary = computed(() => summarizeRun(routerConversation.live.value));
+
+const currentBoardState = computed(() =>
+  currentProject.value ? engine.boardOf(currentProject.value.id) : undefined,
+);
+
+const controlPid = computed(() => ("pid" in route.value ? route.value.pid : fallbackPid.value));
+const withRail = computed(
+  () =>
+    (route.value.name === "chat" || route.value.name === "worker") &&
+    currentProject.value !== undefined,
+);
+
+const hoveredProject = computed(() =>
+  hoverState.value.pid ? projects.value.find((p) => p.id === hoverState.value.pid) : undefined,
+);
+
+const hoveredBoardState = computed(() =>
+  hoverState.value.pid ? engine.boardOf(hoverState.value.pid) : undefined,
+);
+
+const hoveredProjectState = computed(() =>
+  hoveredProject.value
+    ? deriveProjectState({
+        board: hoveredBoardState.value?.board,
+        router:
+          hoveredProject.value.id === currentProject.value?.id
+            ? activeRouterSummary.value
+            : undefined,
+        activeAt: hoveredProject.value.activeAt,
+      })
+    : undefined,
+);
+
+const paletteItems = computed(() =>
+  buildPaletteItems({
+    projects: projects.value,
+    boards: engine.boards.value,
+    activeProjectId: controlPid.value,
+    sideShortcut,
+  }),
+);
+
+function navigate(next: Route): void {
+  const target = formatRoute(next);
+  drawer.value = null;
+  hideHover();
+  if (location.hash === target) return;
+  location.hash = target;
+}
+
+function toggleSide(): void {
+  sideCollapsed.value = !sideCollapsed.value;
+  localStorage.setItem(SIDE_KEY, String(sideCollapsed.value));
+  hideHover();
+}
+
+function openRail(tab?: RailTab, jobId?: string): void {
+  if (tab) railTab.value = tab;
+  if (jobId !== undefined) openJobId.value = jobId;
+  if (window.innerWidth <= 1240) {
+    drawer.value = "rail";
+  }
+}
+
+function openNewProject(): void {
+  drawer.value = null;
+  hideHover();
+  newProjectOpen.value = true;
+}
+
+async function onProjectCreated(project: ProjectSummary): Promise<void> {
+  await engine.refreshStatus();
+  navigate({ name: "chat", pid: project.id });
+}
+
+function onPaletteSelect(item: PaletteItem): void {
+  if (item.kind === "route") {
+    navigate(item.route);
+  } else if (item.action === "new-project") {
+    openNewProject();
+  } else if (item.action === "toggle-theme") {
+    toggleTheme();
+  } else if (item.action === "toggle-side") {
+    toggleSide();
+  }
 }
 </script>
 
 <template>
-  <main v-if="authError" class="center"><p>{{ authError }}</p></main>
-  <main v-else-if="!client" class="center"><p class="muted">正在连接 Engine…</p></main>
-  <div v-else class="frame">
-    <nav class="sidebar">
-      <div class="brand">Eevee <span class="muted">{{ status.data.value?.version }}</span></div>
-      <div class="section muted">项目</div>
-      <button
-        v-for="p in projects"
-        :key="p.id"
-        class="project"
-        :class="{ active: p.id === current?.id }"
-        :title="p.workspace"
-        @click="select(p.id)"
-      >
-        {{ p.title }}
-      </button>
-      <p v-if="projects.length === 0" class="muted hint">
-        还没有项目：<code>eevee project create &lt;标题&gt; -w &lt;目录&gt;</code>
-      </p>
-      <p v-if="status.error.value" class="error hint">{{ status.error.value }}</p>
-    </nav>
-    <ProjectView v-if="current" :key="current.id" :client="client" :project="current" />
-    <main v-else class="center muted">选择或新建一个项目</main>
+  <div v-if="connecting" class="viewport">
+    <main class="empty">
+      <p class="muted">正在连接 Engine…</p>
+    </main>
+    <Toasts />
   </div>
+  <div v-else-if="!session || route.name === 'connect'" class="viewport">
+    <ConnectPage :reason="authError" :network-error="networkError" @retry="connect" />
+    <Toasts />
+  </div>
+  <AppShell
+    v-else
+    :with-rail="withRail"
+    :side-collapsed="sideCollapsed"
+    :drawer="drawer"
+    :modal-open="paletteOpen || newProjectOpen || memoryModalOpen"
+    @close-drawer="drawer = null"
+    @toggle-side="toggleSide"
+  >
+    <template #sidebar>
+      <SideNav
+        :projects="projects"
+        :boards="engine.boards.value"
+        :active-router-pid="currentProject?.id"
+        :active-router-summary="activeRouterSummary"
+        :route="route"
+        :current-pid="currentProject?.id"
+        :control-pid="controlPid"
+        :side-collapsed="sideCollapsed"
+        :side-shortcut="sideShortcut"
+        :palette-shortcut="paletteShortcut"
+        :status-error="engine.statusError.value"
+        :stream-state="engine.streamState.value"
+        @navigate="drawer = null"
+        @toggle-side="toggleSide"
+        @new-project="openNewProject"
+        @open-palette="
+          drawer = null;
+          paletteOpen = true;
+        "
+        @hover-show="showHover"
+        @hover-hide="hideHover"
+      />
+    </template>
+
+    <template v-if="(route.name === 'chat' || route.name === 'worker') && currentProject">
+      <ProjectView
+        :key="currentProject.id"
+        :client="session.client"
+        :stream="engine.stream"
+        :project="currentProject"
+        :board="currentBoardState?.board"
+        :router-conversation="routerConversation"
+        :ticket-id="route.name === 'worker' ? route.tid : undefined"
+        @open-side="drawer = 'side'"
+        @open-rail="openRail"
+        @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
+        @close-ticket="navigate({ name: 'chat', pid: currentProject.id })"
+      />
+    </template>
+
+    <template v-else-if="route.name === 'chat' || route.name === 'worker' || route.name === 'home'">
+      <header class="header">
+        <button type="button" class="btn ghost icon menu-btn" title="菜单" aria-label="菜单" @click="drawer = 'side'">
+          <Icon name="menu" />
+        </button>
+        <h1>Eevee</h1>
+      </header>
+      <div class="empty">
+        <div class="e-ico"><Icon name="folder" size="lg" /></div>
+        <h3>{{ projects.length === 0 ? "还没有项目" : "找不到这个项目" }}</h3>
+        <p>
+          {{
+            projects.length === 0
+              ? "点击左栏“+”创建项目，或从左侧导航查看设置。"
+              : "请从左侧选择一个现有项目。"
+          }}
+        </p>
+        <button
+          v-if="projects.length === 0"
+          type="button"
+          class="btn primary sm"
+          @click="openNewProject"
+        >
+          <Icon name="plus" size="xs" />
+          <span>新建项目</span>
+        </button>
+      </div>
+    </template>
+
+    <template v-else-if="route.name === 'memory' && currentProject">
+      <MemoryPage
+        :client="session.client"
+        :project="currentProject"
+        @open-side="drawer = 'side'"
+        @modal-change="memoryModalOpen = $event"
+      />
+    </template>
+
+    <template v-else-if="route.name === 'usage' && currentProject">
+      <UsagePage
+        :client="session.client"
+        :project="currentProject"
+        @open-side="drawer = 'side'"
+        @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
+      />
+    </template>
+
+    <template v-else-if="route.name === 'memory' || route.name === 'usage'">
+      <header class="header">
+        <button type="button" class="btn ghost icon menu-btn" title="菜单" aria-label="菜单" @click="drawer = 'side'">
+          <Icon name="menu" />
+        </button>
+        <h1>{{ route.name === "memory" ? "记忆" : "花费" }}</h1>
+      </header>
+      <div class="empty">
+        <div class="e-ico"><Icon name="folder" size="lg" /></div>
+        <h3>找不到这个项目</h3>
+        <p>请从左侧选择一个现有项目。</p>
+      </div>
+    </template>
+
+    <template v-else-if="route.name === 'settings'">
+      <SettingsPage
+        :client="session.client"
+        :section="route.section"
+        :status="engine.status.value"
+        :stream-state="engine.streamState.value"
+        :refresh-status="engine.refreshStatus"
+        @open-side="drawer = 'side'"
+      />
+    </template>
+
+    <template #rail>
+      <RightRail
+        v-if="currentProject"
+        :client="session.client"
+        :board="currentBoardState?.board"
+        :project="currentProject"
+        :error="currentBoardState?.error"
+        :tab="railTab"
+        :has-detail="route.name === 'worker'"
+        :active-ticket-id="route.name === 'worker' ? route.tid : undefined"
+        :open-job-id="openJobId"
+        @update:tab="railTab = $event"
+        @update:open-job-id="openJobId = $event"
+        @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
+        @close-drawer="drawer = null"
+      />
+    </template>
+
+    <template #overlay>
+      <ProjectHoverCard
+        :visible="hoverState.visible"
+        :project="hoveredProject"
+        :state="hoveredProjectState"
+        :board-loaded="hoveredBoardState?.board !== undefined"
+        :top="hoverState.top"
+        :left="hoverState.left"
+      />
+      <NewProjectDialog
+        :open="newProjectOpen"
+        :client="session.client"
+        :on-created="onProjectCreated"
+        @close="newProjectOpen = false"
+      />
+      <CommandPalette
+        :open="paletteOpen"
+        :items="paletteItems"
+        :shortcut-label="paletteShortcut"
+        @close="paletteOpen = false"
+        @select="onPaletteSelect"
+      />
+      <Toasts />
+    </template>
+  </AppShell>
 </template>
-
-<style scoped>
-.frame {
-  display: grid;
-  grid-template-columns: var(--ev-sidebar-width) minmax(0, 1fr);
-  height: 100%;
-}
-
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 16px 10px;
-  background: var(--ev-bg-sidebar);
-  border-right: 1px solid var(--ev-border);
-  overflow-y: auto;
-}
-
-.brand {
-  font-weight: 600;
-  font-size: 16px;
-  padding: 0 8px 12px;
-}
-
-.section {
-  font-size: 12px;
-  padding: 8px 8px 4px;
-}
-
-.project {
-  text-align: left;
-  border: none;
-  background: transparent;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project.active {
-  background: var(--ev-bg-hover);
-  font-weight: 600;
-}
-
-.hint {
-  padding: 0 8px;
-  font-size: 12px;
-}
-
-@media (max-width: 768px) {
-  .frame {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .sidebar {
-    display: none;
-  }
-}
-</style>

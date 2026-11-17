@@ -19,6 +19,7 @@ Node.js 26 直接运行 `.ts` 源码，开发时不需要先编译。
 | `npm run dev -- <参数>` | 直接从源码运行命令行，如 `npm run dev -- status` |
 | `npm run engine` | 在前台运行 Engine，日志直接输出到终端 |
 | `npm run web:dev` | 启动面板的 Vite 开发服务器 |
+| `npm run dev:scenario` | 启动一个带模拟数据的 Engine，供面板开发使用，见下文 |
 | `npm run build` | 编译到 `dist/`，并构建面板 |
 | `npm run typecheck` | 检查后端和面板的类型 |
 | `npm run lint` / `npm run lint:fix` | 用 Biome 检查代码风格 / 自动修复 |
@@ -41,6 +42,17 @@ EEVEE_HOME=<同一个目录> npm run dev -- project create 测试 --workspace /t
 ```
 
 同一个数据目录同时只能运行一个 Engine。
+
+## 面板开发
+
+`npm run dev:scenario` 用 faux 模型启动一个 Engine，并预先造好几个项目，覆盖待回答的问题、执行中、后台作业、受阻、失败和 Router 失败等状态，不需要凭据，也不调用付费模型。没有设置 `EEVEE_HOME` 时它使用临时目录，退出时删除；`EEVEE_PORT` 可以指定端口。启动后终端里打印两个带授权码的地址，分别用于内置界面和 Vite 开发服务器：
+
+```bash
+EEVEE_PORT=19391 npm run dev:scenario
+EEVEE_ENGINE=http://127.0.0.1:19391 npm run web:dev
+```
+
+授权码只能用一次。`npm run dev:scenario -- --check` 只造数据并自检，然后退出。
 
 ## 测试
 

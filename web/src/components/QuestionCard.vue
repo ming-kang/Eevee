@@ -1,23 +1,135 @@
 <script setup lang="ts">
+import type { TicketView } from "@shared/api/contract.ts";
 import type { Question, QuestionId } from "@shared/contracts/index.ts";
-import { computed, ref } from "vue";
-import { formatAnswer, initialDraft, isComplete } from "../questions.ts";
+import { computed, nextTick, ref, watch } from "vue";
+import { onRovingKeydown } from "../focus.ts";
+import {
+  formatAnswer,
+  initialDraft,
+  initialOtherFlags,
+  isComplete,
+  type QuestionItemView,
+} from "../questions.ts";
 import { useSubmit } from "../submit.ts";
+import Icon from "./Icon.vue";
+import TicketRef from "./TicketRef.vue";
 
 const props = defineProps<{
-  question: Question;
+  questions: readonly Question[];
+  tickets?: readonly TicketView[];
   answer: (id: QuestionId, text: string) => Promise<void>;
 }>();
-const draft = ref(initialDraft(props.question));
-const complete = computed(() => isComplete(draft.value));
+
+defineEmits<{
+  later: [];
+  "open-ticket": [ticketId: string];
+}>();
+
+const index = ref(0);
+const drafts = ref<Record<string, string[]>>({});
+const others = ref<Record<string, boolean[]>>({});
 const { busy, error, run } = useSubmit();
 
-async function submit(): Promise<void> {
-  if (!complete.value) return;
-  await run(() => props.answer(props.question.id, formatAnswer(props.question, draft.value)));
+function ensureState(q: Question): void {
+  if (!drafts.value[q.id]) {
+    const initial = initialDraft(q);
+    drafts.value[q.id] = initial;
+    others.value[q.id] = initialOtherFlags(q, initial);
+  }
 }
 
-function onKeydown(event: KeyboardEvent): void {
+watch(
+  () => props.questions,
+  (list) => {
+    if (list.length === 0) {
+      index.value = 0;
+      return;
+    }
+    if (index.value >= list.length) index.value = 0;
+    for (const q of list) ensureState(q);
+  },
+  { immediate: true },
+);
+
+const current = computed<Question | undefined>(() => props.questions[index.value]);
+const currentItems = computed<readonly QuestionItemView[]>(
+  () => (current.value?.items ?? []) as readonly QuestionItemView[],
+);
+const currentDraft = computed<string[]>(() =>
+  current.value ? (drafts.value[current.value.id] ?? []) : [],
+);
+const currentOther = computed<boolean[]>(() =>
+  current.value ? (others.value[current.value.id] ?? []) : [],
+);
+const complete = computed(() => currentDraft.value.length > 0 && isComplete(currentDraft.value));
+
+function selectOption(itemIndex: number, option: string): void {
+  const q = current.value;
+  if (!q) return;
+  ensureState(q);
+  const d = drafts.value[q.id];
+  const o = others.value[q.id];
+  if (!d || !o) return;
+  d[itemIndex] = option;
+  o[itemIndex] = false;
+}
+
+async function openOther(itemIndex: number): Promise<void> {
+  const q = current.value;
+  if (!q) return;
+  ensureState(q);
+  const d = drafts.value[q.id];
+  const o = others.value[q.id];
+  if (!d || !o) return;
+  o[itemIndex] = true;
+  if (q.items[itemIndex]?.options.includes(d[itemIndex] ?? "")) {
+    d[itemIndex] = "";
+  }
+  await nextTick();
+  const input = document.querySelector<HTMLInputElement>(
+    `[data-q-other="${q.id}"][data-i="${itemIndex}"]`,
+  );
+  input?.focus();
+}
+
+/** The option that takes Tab focus in a radio group: the checked one, else the first. */
+function rovingIndex(itemIndex: number, options: readonly string[]): number {
+  if (currentOther.value[itemIndex]) return 0;
+  return Math.max(0, options.indexOf(currentDraft.value[itemIndex] ?? ""));
+}
+
+function updateOther(itemIndex: number, value: string): void {
+  const q = current.value;
+  if (!q) return;
+  ensureState(q);
+  const d = drafts.value[q.id];
+  if (d) d[itemIndex] = value;
+}
+
+function prev(): void {
+  const total = props.questions.length;
+  if (total <= 1) return;
+  index.value = (index.value + total - 1) % total;
+}
+
+function next(): void {
+  const total = props.questions.length;
+  if (total <= 1) return;
+  index.value = (index.value + 1) % total;
+}
+
+async function submit(): Promise<void> {
+  const q = current.value;
+  if (!q || !complete.value) return;
+  const formatted = formatAnswer(q, currentDraft.value);
+  const ok = await run(() => props.answer(q.id, formatted));
+  if (ok) {
+    delete drafts.value[q.id];
+    delete others.value[q.id];
+  }
+}
+
+function onInputKeydown(event: KeyboardEvent): void {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     void submit();
@@ -26,76 +138,103 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <form class="card" @submit.prevent="submit">
-    <div class="head muted">
-      {{ question.ticketId ? `${question.ticketId} 想问你` : "Router 想问你" }} · {{ question.id }}
-    </div>
-    <div v-for="(item, i) in question.items" :key="i" class="item">
-      <div class="text">{{ item.text }}</div>
-      <div v-if="item.options.length > 0" class="options">
-        <button
-          v-for="option in item.options"
-          :key="option"
-          type="button"
-          :class="{ chosen: draft[i] === option }"
-          @click="draft[i] = option"
-        >
-          {{ option }}<span v-if="option === item.recommended" class="muted">（推荐）</span>
+  <form v-if="current" class="qcard" @submit.prevent="submit">
+    <div class="qcard-h">
+      <span class="dot user" />
+      <span>
+        <template v-if="current.ticketId">
+          <TicketRef
+            :ticket-id="current.ticketId"
+            :tickets="tickets"
+            @open-ticket="$emit('open-ticket', $event)"
+          />
+          想问你
+        </template>
+        <template v-else>Router 想问你</template>
+      </span>
+      <span class="spacer" />
+      <span v-if="questions.length > 1" class="pager">
+        <button type="button" title="上一个" aria-label="上一个问题" @click="prev">
+          <Icon name="chevL" size="xs" />
         </button>
-      </div>
-      <textarea v-model="draft[i]" rows="1" placeholder="或者直接写答案…" @keydown="onKeydown" />
+        <span>{{ index + 1 }}/{{ questions.length }}</span>
+        <button type="button" title="下一个" aria-label="下一个问题" @click="next">
+          <Icon name="chevR" size="xs" />
+        </button>
+      </span>
     </div>
-    <div class="actions">
-      <span v-if="error" class="error">{{ error }}</span>
-      <button class="primary" type="submit" :disabled="busy || !complete">回答</button>
+    <div class="qbody">
+      <div v-for="(item, i) in currentItems" :key="i" class="qitem">
+        <div :id="`q-${current.id}-${i}`" class="qitem-t">
+          <span v-if="currentItems.length > 1" class="n">{{ i + 1 }}.</span>
+          <span>{{ item.text }}</span>
+        </div>
+        <div class="opts">
+          <div
+            v-if="item.options.length > 0"
+            class="opts-group"
+            role="radiogroup"
+            :aria-labelledby="`q-${current.id}-${i}`"
+            @keydown="
+              onRovingKeydown($event, item.options, currentDraft[i] ?? '', (o) => selectOption(i, o))
+            "
+          >
+            <button
+              v-for="(option, oi) in item.options"
+              :key="option"
+              type="button"
+              class="opt"
+              role="radio"
+              :aria-checked="!currentOther[i] && currentDraft[i] === option"
+              :tabindex="rovingIndex(i, item.options) === oi ? 0 : -1"
+              :class="{ on: !currentOther[i] && currentDraft[i] === option }"
+              @click="selectOption(i, option)"
+            >
+            <span class="radio" />
+            <span>{{ option }}</span>
+              <span v-if="option === item.recommended" class="rec">推荐</span>
+            </button>
+          </div>
+          <input
+            v-if="currentOther[i]"
+            :value="currentDraft[i] ?? ''"
+            class="opt-input"
+            :data-q-other="current.id"
+            :data-i="i"
+            placeholder="写下你的回答"
+            :aria-label="item.options.length > 0 ? '其他回答' : item.text"
+            @input="updateOther(i, ($event.target as HTMLInputElement).value)"
+            @keydown="onInputKeydown"
+          />
+          <button
+            v-else
+            type="button"
+            class="opt-more"
+            @click="openOther(i)"
+          >
+            其他…
+          </button>
+        </div>
+        <div
+          v-if="item.why && !currentOther[i] && currentDraft[i] === item.recommended"
+          class="why"
+        >
+          {{ item.why }}
+        </div>
+      </div>
+    </div>
+    <div class="qfoot">
+      <span v-if="error" class="error" role="alert" style="font-size: 12px">{{ error }}</span>
+      <span class="spacer" />
+      <button
+        type="button"
+        class="btn ghost sm"
+        :title="current.ticketId ? '先收起，给 Worker 发消息' : '先收起，给 Router 发消息'"
+        @click="$emit('later')"
+      >
+        稍后
+      </button>
+      <button type="submit" class="btn primary sm" :disabled="busy || !complete">提交</button>
     </div>
   </form>
 </template>
-
-<style scoped>
-.card {
-  border: 1px solid var(--ev-accent);
-  border-radius: var(--ev-radius);
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.head {
-  font-size: 12px;
-}
-
-.text {
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-
-.options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.options .chosen {
-  border-color: var(--ev-accent);
-  color: var(--ev-accent);
-}
-
-textarea {
-  width: 100%;
-  border: 1px solid var(--ev-border);
-  border-radius: 8px;
-  padding: 6px 10px;
-  background: transparent;
-  resize: vertical;
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 12px;
-}
-</style>

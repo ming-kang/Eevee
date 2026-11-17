@@ -28,6 +28,10 @@
               "path": "usage.md"
             },
             {
+              "title": "使用面板",
+              "path": "web.md"
+            },
+            {
               "title": "工单与报告",
               "path": "tickets.md"
             },

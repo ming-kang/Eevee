@@ -116,11 +116,16 @@ const APIS: Record<string, () => ProviderStreams> = {
  * Applies the config to `models`. A provider whose entry is broken keeps its built-in form (or is not added)
  * and its problem is returned, so one mistake does not take every model away.
  */
-export function applyModelsConfig(models: MutableModels, config: ModelsConfig): string[] {
+export function applyModelsConfig(
+  models: MutableModels,
+  config: ModelsConfig,
+  applied?: Set<string>,
+): string[] {
   const problems: string[] = [];
   for (const [id, entry] of Object.entries(config.providers ?? {})) {
     try {
       models.setProvider(composeProvider(id, models.getProvider(id), entry));
+      applied?.add(id);
     } catch (error) {
       problems.push(
         `models.json 的 provider ${id}：${error instanceof Error ? error.message : error}`,

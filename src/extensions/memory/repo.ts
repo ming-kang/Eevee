@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
-import { mkdir } from "node:fs/promises";
-import { relative } from "node:path";
+import type { Dirent } from "node:fs";
+import { mkdir, readdir, stat } from "node:fs/promises";
+import { join, relative } from "node:path";
 import { promisify } from "node:util";
-import { readText, writeFileAtomic } from "../../shared/fs.ts";
+import { isNotFound, readText, writeFileAtomic } from "../../shared/fs.ts";
 import { resolveInside } from "../../shared/paths.ts";
 
 const run = promisify(execFile);
@@ -23,6 +24,7 @@ export class MemoryHistoryError extends Error {
 }
 
 export type MemoryCommit = { commit: string; at: string; subject: string };
+export type MemoryFileInfo = { path: string; size: number };
 
 const COMMIT = /^[0-9a-f]{4,40}$/i;
 
@@ -59,6 +61,41 @@ export class MemoryRepo {
 
   async read(file: string): Promise<string | undefined> {
     return readText(resolveInside(this.dir, file));
+  }
+
+  /** Lists all files in the repository (excluding `.git`), with `MEMORY.md` first then alphabetical. */
+  async listFiles(): Promise<MemoryFileInfo[]> {
+    const out: MemoryFileInfo[] = [];
+    const walk = async (dir: string): Promise<void> => {
+      let entries: Dirent[];
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch (error) {
+        if (isNotFound(error)) return;
+        throw error;
+      }
+      for (const entry of entries) {
+        if (entry.name === ".git") continue;
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(full);
+        } else if (entry.isFile()) {
+          const info = await stat(full).catch(() => undefined);
+          if (info === undefined) continue;
+          out.push({
+            path: relative(this.dir, full).replaceAll("\\", "/"),
+            size: info.size,
+          });
+        }
+      }
+    };
+    await walk(this.dir);
+    out.sort((a, b) => {
+      if (a.path === "MEMORY.md") return -1;
+      if (b.path === "MEMORY.md") return 1;
+      return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+    });
+    return out;
   }
 
   edit(file: string, oldText: string, newText: string, round: string): Promise<void> {

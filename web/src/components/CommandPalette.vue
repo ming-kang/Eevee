@@ -1,0 +1,156 @@
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUpdate, ref, watch } from "vue";
+import { trapTab, useFocusReturn } from "../focus.ts";
+import { filterPaletteItems, type PaletteItem } from "../projects.ts";
+import Icon from "./Icon.vue";
+import StageGlyph from "./StageGlyph.vue";
+
+const props = defineProps<{
+  open: boolean;
+  items: readonly PaletteItem[];
+  shortcutLabel: string;
+}>();
+
+const emit = defineEmits<{
+  close: [];
+  select: [item: PaletteItem];
+}>();
+
+const query = ref("");
+const selected = ref(0);
+const inputEl = ref<HTMLInputElement>();
+const dialogEl = ref<HTMLElement>();
+const rowEls = ref<HTMLButtonElement[]>([]);
+
+onBeforeUpdate(() => {
+  rowEls.value = [];
+});
+
+const filtered = computed(() => filterPaletteItems(props.items, query.value));
+
+useFocusReturn(
+  () => props.open,
+  () => {
+    inputEl.value?.focus();
+    return dialogEl.value;
+  },
+);
+
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (!isOpen) return;
+    query.value = "";
+    selected.value = 0;
+  },
+);
+
+watch(
+  () => filtered.value.length,
+  (len) => {
+    if (selected.value >= len) selected.value = Math.max(0, len - 1);
+  },
+);
+
+watch(selected, async (idx) => {
+  await nextTick();
+  rowEls.value[idx]?.scrollIntoView({ block: "nearest" });
+});
+
+function choose(item: PaletteItem | undefined): void {
+  if (!item) return;
+  emit("select", item);
+  emit("close");
+}
+
+function onKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    emit("close");
+    return;
+  }
+  trapTab(event, dialogEl.value);
+  const len = filtered.value.length;
+  if (len === 0) return;
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    selected.value = (selected.value + 1) % len;
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    selected.value = (selected.value + len - 1) % len;
+  } else if (event.key === "Enter" && !event.isComposing) {
+    event.preventDefault();
+    choose(filtered.value[selected.value]);
+  }
+}
+</script>
+
+<template>
+  <div v-if="open" class="overlay" style="padding-top: 10vh" @click.self="$emit('close')">
+    <div
+      ref="dialogEl"
+      class="palette"
+      role="dialog"
+      aria-modal="true"
+      aria-label="命令面板"
+      @keydown="onKeydown"
+    >
+      <div class="palette-in">
+        <Icon name="search" />
+        <input
+          id="palette-input"
+          ref="inputEl"
+          v-model="query"
+          placeholder="搜索工单、项目、页面或操作…"
+          autocomplete="off"
+          role="combobox"
+          aria-label="搜索或跳转"
+          aria-expanded="true"
+          aria-controls="palette-list"
+          aria-autocomplete="list"
+          :aria-activedescendant="filtered.length > 0 ? `palette-opt-${selected}` : undefined"
+        />
+        <span class="kbd" aria-hidden="true">Esc</span>
+      </div>
+      <div id="palette-list" class="palette-list" role="listbox" aria-label="结果">
+        <template v-if="filtered.length > 0">
+          <template v-for="(item, index) in filtered" :key="item.id">
+            <div
+              v-if="index === 0 || filtered[index - 1]?.group !== item.group"
+              class="palette-g"
+              role="presentation"
+            >
+              {{ item.group }}
+            </div>
+            <button
+              :ref="(el) => { if (el) rowEls[index] = el as HTMLButtonElement; }"
+              :id="`palette-opt-${index}`"
+              type="button"
+              class="pop-row"
+              role="option"
+              tabindex="-1"
+              :aria-selected="index === selected"
+              :class="{ sel: index === selected }"
+              @mouseenter="selected = index"
+              @click="choose(item)"
+            >
+              <StageGlyph v-if="item.kind === 'route' && item.stage" :stage="item.stage" />
+              <span v-else-if="item.kind === 'route' && item.projectTile" class="proj-glyph">
+                {{ item.projectTile }}
+              </span>
+              <Icon v-else-if="item.icon" :name="item.icon" size="sm" />
+              <span class="ellipsis" style="flex: 1">{{ item.label }}</span>
+              <span v-if="item.meta" class="dim" style="font-size: 12px">{{ item.meta }}</span>
+            </button>
+          </template>
+        </template>
+        <div v-else class="hint" style="padding: 16px; text-align: center">没有匹配的结果</div>
+      </div>
+      <div class="palette-foot" aria-hidden="true">
+        <span><span class="kbd">↑↓</span>选择</span>
+        <span><span class="kbd">↵</span>打开</span>
+        <span><span class="kbd">{{ shortcutLabel }}</span>随时唤起</span>
+      </div>
+    </div>
+  </div>
+</template>

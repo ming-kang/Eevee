@@ -15,6 +15,7 @@
   ],
   "scripts": {
     "dev": "node src/cli/index.ts",
+    "dev:scenario": "node scripts/dev-scenario.ts",
     "engine": "node src/engine/main.ts",
     "web:dev": "vite --config web/vite.config.ts",
     "build": "node scripts/build.mjs",

@@ -76,3 +76,18 @@ test("不是 commit 编号或撤销不了时给出明确错误，不改动仓库
   await assert.rejects(repo.revert("deadbeef"), MemoryHistoryError);
   assert.equal(log().length, before);
 });
+
+test("listFiles 列出所有记忆文件，MEMORY.md 排第一并排除 .git", async () => {
+  await repo.create("topics/optics.md", "- 光学经验\n", "r2");
+  const files = await repo.listFiles();
+  assert.equal(files[0]?.path, "MEMORY.md");
+  assert.equal(
+    files.some((f) => f.path === "topics/optics.md" && f.size > 0),
+    true,
+  );
+  assert.equal(
+    files.some((f) => f.path.startsWith(".git")),
+    false,
+  );
+  assert.equal(await repo.read("topics/optics.md"), "- 光学经验\n");
+});

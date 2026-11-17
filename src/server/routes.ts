@@ -1,5 +1,6 @@
 import { MEMORY_SCOPES } from "../api/contract.ts";
 import {
+  type JobId,
   type MemoryScope,
   type QuestionId,
   ROLE_NAMES,
@@ -71,7 +72,7 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
       },
     },
     "POST /api/session/code": { cliOnly: true, handle: async () => ({ code: auth.issueCode() }) },
-    "GET /api/models": { handle: async () => ({ catalog: await engine.catalog() }) },
+    "GET /api/models": { handle: async () => engine.catalog() },
     "POST /api/settings/models": {
       handle: async ({ body }) => {
         const target =
@@ -136,6 +137,15 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
         commits: await project(params.project).memoryLog(scope(params.scope)),
       }),
     },
+    "GET /api/projects/:project/memory/:scope/files": {
+      handle: async ({ params }) => ({
+        files: await project(params.project).memoryFiles(scope(params.scope)),
+      }),
+    },
+    "GET /api/projects/:project/memory/:scope/files/:file": {
+      handle: async ({ params }) =>
+        project(params.project).memoryFile(scope(params.scope), params.file),
+    },
     "GET /api/projects/:project/memory/:scope/commits/:commit": {
       handle: async ({ params }) => ({
         diff: await project(params.project).memoryDiff(scope(params.scope), params.commit),
@@ -152,6 +162,15 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
           scope(params.scope),
           text(body?.commit, "commit"),
         );
+        return { ok: true };
+      },
+    },
+    "GET /api/projects/:project/jobs/:job/log": {
+      handle: async ({ params }) => project(params.project).jobLog(params.job as JobId),
+    },
+    "POST /api/projects/:project/jobs/:job/kill": {
+      handle: async ({ params }) => {
+        await project(params.project).killJob(params.job as JobId);
         return { ok: true };
       },
     },

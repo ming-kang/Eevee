@@ -1,13 +1,12 @@
 import type { Context } from "@earendil-works/chord/context";
-import {
-  defineDoc,
-  LiveDoc,
-  type RunFailure,
-  type RunFailureReason,
-  type TaskId,
-} from "@earendil-works/pi-durable";
+import { defineDoc, LiveDoc, type TaskId } from "@earendil-works/pi-durable";
 import { Board } from "../../contracts/docs.ts";
-import { REPORT_SUMMARY_LIMIT, type Report } from "../../contracts/index.ts";
+import {
+  describeRunFailure,
+  isDeliberateEnd,
+  REPORT_SUMMARY_LIMIT,
+  type Report,
+} from "../../contracts/index.ts";
 import { appendReport, conversationOf, nextSeq, readReports, readTicket } from "./board.ts";
 import { type DeliveryContext, deliver } from "./deliver.ts";
 import { route } from "./delivery.ts";
@@ -22,31 +21,6 @@ const ReportedFailure = defineDoc<{ taskId: TaskId | null }>({
   initial: () => ({ taskId: null }),
   checkpointWhen: () => false,
 });
-
-/** Ends that are someone's decision, not a failure: an interrupt, a reset, a continue with nothing to do. */
-const DELIBERATE: ReadonlySet<RunFailureReason> = new Set([
-  "aborted",
-  "reset",
-  "nothing_to_answer",
-]);
-
-const FAILURE_LABEL: Record<RunFailureReason, string> = {
-  model_error: "模型调用失败",
-  no_model: "没有配置模型",
-  aborted: "已中止",
-  reset: "上下文被重置",
-  faulted: "运行出错",
-  orphaned: "运行无法继续",
-  interrupted: "运行被中断",
-  restart_limit: "多次重启后放弃",
-  nothing_to_answer: "没有需要回答的内容",
-  turn_limit: "超出轮次上限",
-};
-
-export function describeRunFailure(failure: Pick<RunFailure, "reason" | "detail">): string {
-  const label = FAILURE_LABEL[failure.reason] ?? failure.reason;
-  return failure.detail === undefined ? label : `${label}：${failure.detail}`;
-}
 
 /**
  * Records a `failed` report for every open ticket whose last run ended in a failure (retries used up, its
@@ -64,7 +38,7 @@ export async function reportRunFailures(
     const conversationId = conversationOf(ticket);
     const live = await host.snapshot(LiveDoc, conversationId, context);
     const failure = live?.run === undefined ? live?.runFailure : undefined;
-    if (failure === undefined || DELIBERATE.has(failure.reason)) continue;
+    if (failure === undefined || isDeliberateEnd(failure.reason)) continue;
     const marked = await host.snapshot(ReportedFailure, conversationId, context);
     if (marked?.taskId === failure.taskId) continue;
 

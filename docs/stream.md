@@ -15,7 +15,7 @@ const ws = new WebSocket(`ws://127.0.0.1:${port}/api/stream`, ["eevee.v1", `toke
 握手被拒绝时，Engine 直接返回 HTTP 状态并关闭连接：
 
 | 状态 | 原因 |
-|---|---|
+|:-:|:-:|
 | `400` | 子协议里没有 `eevee.v1` |
 | `401` | token 缺失或无效 |
 | `403` | 不是回环地址 |
@@ -34,7 +34,7 @@ const ws = new WebSocket(`ws://127.0.0.1:${port}/api/stream`, ["eevee.v1", `toke
 ### 客户端发送
 
 | `type` | 字段 | 作用 |
-|---|---|---|
+|:-:|---|:-:|
 | `watch` | `id`、`topic`、可选 `window` | 订阅一个对话或看板 |
 | `unwatch` | `id` | 取消订阅 |
 | `entries` | `id`、`topic`、`query`、`limit` | 读取一段对话条目，用于补齐缺口 |
@@ -42,7 +42,7 @@ const ws = new WebSocket(`ws://127.0.0.1:${port}/api/stream`, ["eevee.v1", `toke
 `topic` 有三种写法：
 
 | `topic` | 含义 |
-|---|---|
+|:-:|:-:|
 | `{ "kind": "conversation", "project": "p3f9a1c2e" }` | Router 的对话 |
 | `{ "kind": "conversation", "project": "p3f9a1c2e", "ticket": "t3" }` | 工单 `t3` 的 Worker 对话 |
 | `{ "kind": "board", "project": "p3f9a1c2e" }` | 项目的看板 |
@@ -52,7 +52,7 @@ const ws = new WebSocket(`ws://127.0.0.1:${port}/api/stream`, ["eevee.v1", `toke
 ### Engine 发送
 
 | `type` | 字段 | 含义 |
-|---|---|---|
+|:-:|:-:|:-:|
 | `hello` | `bootId` | 连接建立 |
 | `value` | `id`、`value` | 对话订阅的第一个值 |
 | `ops` | `id`、`ops` | 把上一个值变成下一个值的增量操作 |

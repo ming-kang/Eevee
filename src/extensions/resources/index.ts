@@ -73,6 +73,9 @@ export function createResources(deps: ResourceDeps) {
     description:
       "按地址读取：文件路径，或 ticket:// report:// transcript:// memory:// job:// models://。一律分页。",
     parameters: Parameters,
+    ...(fileRead.structuredOutputSchema === undefined
+      ? {}
+      : { structuredOutputSchema: fileRead.structuredOutputSchema }),
     replay: "safe",
     async execute(args, api, context) {
       let address: Address;
@@ -226,5 +229,5 @@ function grep(body: string, query: string): string {
 
 const text = (value: string, isError = false) => ({
   output: [{ type: "text" as const, text: value }],
-  ...(isError ? { isError: true } : {}),
+  ...(isError ? { isError: true } : { structuredOutput: value }),
 });

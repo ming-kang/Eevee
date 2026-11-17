@@ -21,7 +21,7 @@
 按路径或[资源地址](addresses.md)读取，所有角色共用。
 
 | 参数 | 说明 |
-|---|---|
+|:-:|:-:|
 | `path` | 文件路径或资源地址，如 `draft.tex`、`ticket://t3`、`report://t3#2`、`memory://project/MEMORY.md` |
 | `offset` | 从哪里开始读：文件为行号，`ticket://` 为第几项，`transcript://` 为条目编号，其余为字符位置 |
 | `limit` | 读多少 |
@@ -34,7 +34,7 @@
 Router 管理工单。`action` 决定做什么，其他参数按动作填写。除 `create` 外都需要 `ticketId`，且只能用于未结的工单。
 
 | `action` | 参数 | 作用 |
-|---|---|---|
+|:-:|:-:|---|
 | `create` | `title`、`goal`、`acceptance`；可选 `inputs`、`output`、`deliverTo`、`provider` 和 `modelId`（要么都填，要么都不填）、`modelReason` | 建单并启动 Worker。不指定模型时用 Worker 的默认模型；`deliverTo` 里的工单必须未结 |
 | `message` | `text`；可选 `mode` | 给 Worker 追加指令。`mode` 为 `followUp`（默认，排队）或 `steer`（引导） |
 | `interrupt` | — | 打断 Worker 当前这一轮，工单仍保持打开 |
@@ -43,7 +43,7 @@ Router 管理工单。`action` 决定做什么，其他参数按动作填写。�
 | `model` | `provider`、`modelId`；可选 `modelReason` | 给 Worker 换模型，从下一次模型请求起生效 |
 
 | 参数 | 说明 |
-|---|---|
+|:-:|:-:|
 | `ticketId` | 目标工单，如 `t3` |
 | `title`、`goal` | 标题、要达成什么 |
 | `inputs` | 输入文件路径或资源地址的数组 |
@@ -57,7 +57,7 @@ Router 管理工单。`action` 决定做什么，其他参数按动作填写。�
 Router 向你提一轮结构化问题。工具立即返回，不等待回答；你回答后，答案作为一条新消息送达。
 
 | 参数 | 说明 |
-|---|---|
+|:-:|:-:|
 | `items` | 问题数组，至少一题。每题有 `text`、`options`（可选答案，开放问题留空）和可选的 `recommended`（推荐答案） |
 | `ticketId` | 可选。问题来自哪张工单的疑问；填写后答案直接投给那个 Worker |
 
@@ -66,7 +66,7 @@ Router 向你提一轮结构化问题。工具立即返回，不等待回答；�
 写记忆并管理它的 Git 历史。改动在本轮结束时自动提交，见 [管理记忆](memory.md)。
 
 | `action` | 参数 | 作用 |
-|---|---|---|
+|:-:|:-:|---|
 | `edit` | `scope`、`file`、`oldText`、`newText` | 用原文替换。`oldText` 必须在文件里唯一匹配；找不到时失败并返回文件的最新内容 |
 | `create` | `scope`、`file`、`content` | 新建文件；文件已存在时失败 |
 | `log` | `scope` | 查看提交历史 |
@@ -80,7 +80,7 @@ Router 向你提一轮结构化问题。工具立即返回，不等待回答；�
 Router 交接并重置自己的上下文。新的上下文是新开篇、交接小结和最近几轮原文，完整记录不受影响。
 
 | 参数 | 说明 |
-|---|---|
+|:-:|:-:|
 | `summary` | 交接小结：正在做什么、做了哪些决定、接下来要做什么 |
 
 ## write
@@ -88,7 +88,7 @@ Router 交接并重置自己的上下文。新的上下文是新开篇、交接�
 在工作目录里写文件：文件不存在时新建，存在时覆盖，自动创建上级目录。
 
 | 参数 | 说明 |
-|---|---|
+|:-:|:-:|
 | `path` | 文件路径，相对于工作目录，也可以是绝对路径 |
 | `content` | 文件内容 |
 
@@ -97,7 +97,7 @@ Router 交接并重置自己的上下文。新的上下文是新开篇、交接�
 用原文替换修改一个文件。
 
 | 参数 | 说明 |
-|---|---|
+|:-:|:-:|
 | `path` | 文件路径，相对于工作目录，也可以是绝对路径 |
 | `edits` | 替换数组，每项有 `oldText` 和 `newText`。每个 `oldText` 都按原文件匹配，必须唯一且互不重叠 |
 
@@ -106,7 +106,7 @@ Router 交接并重置自己的上下文。新的上下文是新开篇、交接�
 在工作目录里执行 bash 命令，返回合并的 stdout 和 stderr。
 
 | 参数 | 说明 |
-|---|---|
+|:-:|:-:|
 | `command` | 要执行的命令 |
 | `timeout` | 可选，超时秒数，超时后终止命令；转入后台后同样有效 |
 | `background` | 可选，`true` 时直接转入后台，不等待前台输出 |
@@ -120,7 +120,7 @@ Windows 上使用 Git for Windows 自带的 bash。
 Worker 向 Router 提交报告。`progress` 以外的状态都会结束本轮，所以收尾报告要单独调用、放在最后。
 
 | 参数 | 说明 |
-|---|---|
+|:-:|:-:|
 | `status` | `progress`、`waiting`、`ready`、`blocked`、`failed` 或 `dropped`，见 [工单与报告](tickets.md#报告) |
 | `summary` | 给 Router 的摘要，最多 600 字 |
 | `artifacts` | 产物数组，每项有 `path` 和一句 `note` |

@@ -5,10 +5,10 @@ Eevee 在 [`@earendil-works/pi-ai`](https://github.com/earendil-works/pi) 之上
 ## 选择接入方式
 
 | 你有什么 | 推荐做法 |
-|---|---|
-| 内置 provider 的 API key | `eevee model login <provider>`，或设置它的环境变量 |
-| Ollama、LM Studio、vLLM 等本地服务 | 在 `models.json` 里[添加兼容端点](#接入兼容端点) |
-| 走代理的内置 provider | 在 `models.json` 里只改它的 `baseUrl` |
+|:-:|:-:|
+| 内置 Provider 的 API Key | `eevee model login <provider>`，或设置环境变量 |
+| 其他本地或云端网关 | 在 `models.json` 里[添加兼容端点](#接入兼容端点) |
+
 
 ## 认证
 

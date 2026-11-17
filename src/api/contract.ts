@@ -1,10 +1,12 @@
 import type {
   Job,
   MemoryScope,
+  ModelChoice,
   ModelDefaults,
   Question,
   Report,
   RoleName,
+  RunSummary,
   Ticket,
   TicketId,
   TicketStage,
@@ -15,6 +17,7 @@ export type ProjectSummary = {
   title: string;
   workspace: string;
   createdAt: number;
+  activeAt?: number;
   models?: ModelDefaults;
 };
 
@@ -33,9 +36,13 @@ export type TicketView = {
   jobs: Job[];
 };
 
+/** Whether the Router runs, and how its last run failed unless it was interrupted or reset on purpose. */
+export type BoardRouterView = RunSummary;
+
 export type BoardView = {
   tickets: TicketView[];
   openQuestions: Question[];
+  router: BoardRouterView;
 };
 
 export type ChatLine = {
@@ -69,6 +76,58 @@ export type UsageView = {
 };
 
 export type MemoryCommitView = { commit: string; at: string; subject: string };
+
+export type MemoryFileEntry = {
+  path: string;
+  size: number;
+};
+
+export type MemoryFileView = {
+  path: string;
+  content: string;
+};
+
+export type JobLogView = {
+  job: Job;
+  content: string;
+  truncated: boolean;
+};
+
+export type ModelSpecView = {
+  provider: string;
+  modelId: string;
+  name: string;
+  contextWindow: number;
+  maxTokens: number;
+  reasoning: boolean;
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+  };
+  cacheShortSeconds?: number;
+};
+
+export type ModelProviderView = {
+  id: string;
+  name: string;
+  configured: boolean;
+  authType?: "api_key" | "oauth";
+  source?: string;
+  custom: boolean;
+  modelCount: number;
+};
+
+export type ModelsView = {
+  catalog: string;
+  defaults: ModelDefaults;
+  routerModel?: ModelChoice;
+  providers: ModelProviderView[];
+  available: ModelSpecView[];
+  profiles: string;
+  problems: readonly string[];
+};
 
 export type McpServerView = {
   name: string;
@@ -108,7 +167,7 @@ export type ApiRoutes = {
   "POST /api/shutdown": { response: Ok };
   "POST /api/session": { body: { code: string }; response: { token: string } };
   "POST /api/session/code": { response: { code: string } };
-  "GET /api/models": { response: { catalog: string } };
+  "GET /api/models": { response: ModelsView };
   "POST /api/settings/models": {
     body: { role?: RoleName | "default"; provider: string; modelId: string };
     response: Ok;
@@ -125,12 +184,16 @@ export type ApiRoutes = {
   "GET /api/projects/:project/conversation": { response: ConversationView };
   "GET /api/projects/:project/usage": { response: UsageView };
   "GET /api/projects/:project/memory/:scope/log": { response: { commits: MemoryCommitView[] } };
+  "GET /api/projects/:project/memory/:scope/files": { response: { files: MemoryFileEntry[] } };
+  "GET /api/projects/:project/memory/:scope/files/:file": { response: MemoryFileView };
   "GET /api/projects/:project/memory/:scope/commits/:commit": { response: { diff: string } };
   "GET /api/projects/:project/memory/:scope/diff": { response: { diff: string } };
   "POST /api/projects/:project/memory/:scope/revert": {
     body: { commit: string };
     response: Ok;
   };
+  "GET /api/projects/:project/jobs/:job/log": { response: JobLogView };
+  "POST /api/projects/:project/jobs/:job/kill": { response: Ok };
   "POST /api/projects/:project/conversation/retry": { response: Ok };
   "POST /api/projects/:project/messages": { body: { text: string }; response: Ok };
   "GET /api/projects/:project/tickets/:ticket/conversation": { response: ConversationView };

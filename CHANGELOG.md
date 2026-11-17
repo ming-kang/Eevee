@@ -26,9 +26,16 @@
 - 实时流：`/api/stream` WebSocket，转发对话 watch 的值与 ops、推送看板变化、补齐记录缺口；token 走子协议
 - `models.json`：新增或修改 provider、追加模型、`modelOverrides`，`apiKey` / `headers` 可引用环境变量；配错的 provider 只影响自己
 - `read transcript://<对话>` 按条目分页，给出前后翻页的位置；`read` 文件时可带 `query` 搜索
+- 面板改版：左栏项目列表（单一状态位、悬停卡片、可收起）、主区域对话、右栏“工单 / 作业 / 详情”标签，窄屏变抽屉；工具调用、调度、报告、文件改动、命令和作业通知折叠成一行；提问卡片支持推荐理由、“其他…”、翻页和“稍后”；命令面板（`Ctrl K`）；面板里新建项目，查看和管理记忆、花费、模型、角色能力与 MCP；深色模式；键盘操作与读屏支持
+- `GET /api/projects/:project/jobs/:job/log` 读取后台作业的日志尾部，`POST /api/projects/:project/jobs/:job/kill` 终止单个作业，所属 Worker 会收到作业已终止的通知
+- `GET /api/projects/:project/memory/:scope/files` 与 `…/files/:file`：列出和读取记忆文件
+- 项目摘要带 `activeAt`（最近活动时间），看板带 `router`（Router 是否在运行、上一轮的失败原因）
+- `npm run dev:scenario`：用 faux 模型启动带模拟数据的 Engine，供面板开发使用
 
 ### Changed
 
+- 面板改用实时流接收对话和看板，不再轮询；断线时左栏提示并自动重连
+- `GET /api/models` 返回结构化的模型视图（默认模型、Router 实际使用的模型、provider 凭据状态、可用模型），原来的文本仍在 `catalog` 字段
 - 建单时 `output`、模型与理由改为可选，缺省使用默认模型
 - 用户消息以普通用户条目写入对话，不再显示为通知
 - `settings.json` 读写都按结构校验，格式不对时指出字段

@@ -1,18 +1,55 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { nextTick, onMounted, ref, watch } from "vue";
 import { useSubmit } from "../submit.ts";
+import Icon from "./Icon.vue";
 
 const props = withDefaults(
-  defineProps<{ send: (text: string) => Promise<void>; placeholder?: string }>(),
-  { placeholder: "告诉 Router 你想做什么…" },
+  defineProps<{
+    send: (text: string) => Promise<void>;
+    placeholder?: string;
+    draftKey?: string;
+    disabled?: boolean;
+  }>(),
+  { placeholder: "告诉 Router 你想做什么…", draftKey: "", disabled: false },
 );
-const text = ref("");
+
+const draftStore = new Map<string, string>();
+const text = ref(props.draftKey ? (draftStore.get(props.draftKey) ?? "") : "");
+const textarea = ref<HTMLTextAreaElement>();
 const { busy, error, run } = useSubmit();
+
+function autosize(): void {
+  const el = textarea.value;
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${Math.min(200, el.scrollHeight)}px`;
+}
+
+watch(
+  () => props.draftKey,
+  async (nextKey) => {
+    text.value = nextKey ? (draftStore.get(nextKey) ?? "") : "";
+    await nextTick();
+    autosize();
+  },
+);
+
+watch(text, (val) => {
+  if (props.draftKey) draftStore.set(props.draftKey, val);
+  void nextTick(autosize);
+});
+
+onMounted(autosize);
 
 async function submit(): Promise<void> {
   const value = text.value.trim();
-  if (value === "") return;
-  if (await run(() => props.send(value))) text.value = "";
+  if (value === "" || props.disabled) return;
+  if (await run(() => props.send(value))) {
+    text.value = "";
+    if (props.draftKey) draftStore.delete(props.draftKey);
+    await nextTick();
+    autosize();
+  }
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -26,44 +63,27 @@ function onKeydown(event: KeyboardEvent): void {
 <template>
   <form class="composer" @submit.prevent="submit">
     <textarea
+      ref="textarea"
       v-model="text"
-      rows="3"
+      rows="1"
       :placeholder="placeholder"
-      :disabled="busy"
+      :disabled="busy || disabled"
       @keydown="onKeydown"
     />
-    <div class="actions">
-      <slot />
-      <span class="spacer" />
-      <span v-if="error" class="error">{{ error }}</span>
-      <button class="primary" type="submit" :disabled="busy || text.trim() === ''">发送</button>
+    <div class="c-actions">
+      <slot name="actions" />
+      <button
+        class="send"
+        type="submit"
+        :disabled="busy || disabled || text.trim() === ''"
+        title="发送（Enter）"
+        aria-label="发送"
+      >
+        <Icon name="arrowUp" size="sm" />
+      </button>
     </div>
   </form>
+  <p v-if="error" class="error" role="alert" style="margin: 2px 6px 0; font-size: 12px">
+    {{ error }}
+  </p>
 </template>
-
-<style scoped>
-.composer {
-  border: 1px solid var(--ev-border);
-  border-radius: var(--ev-radius);
-  padding: 10px 12px;
-  background: var(--ev-bg);
-}
-
-textarea {
-  width: 100%;
-  border: none;
-  outline: none;
-  resize: none;
-  background: transparent;
-}
-
-.spacer {
-  flex: 1;
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-</style>

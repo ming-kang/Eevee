@@ -8,6 +8,8 @@ import { applyModelsConfig, loadModelsConfig } from "./models-config.ts";
 export type ModelRuntime = {
   models: () => Models;
   credentials: FileCredentialStore;
+  /** Providers successfully added or customized by models.json at the last load. */
+  customProviders: () => ReadonlySet<string>;
   /** Problems found in models.json at the last load; the affected providers keep their built-in form. */
   problems: () => readonly string[];
   reload(): Promise<void>;
@@ -18,19 +20,21 @@ export async function createModelRuntime(paths: EeveePaths): Promise<ModelRuntim
   const build = async () => {
     const models = builtinModels({ credentials });
     const problems: string[] = [];
+    const custom = new Set<string>();
     try {
-      problems.push(...applyModelsConfig(models, await loadModelsConfig(paths.models)));
+      problems.push(...applyModelsConfig(models, await loadModelsConfig(paths.models), custom));
     } catch (error) {
       if (!(error instanceof ConfigError)) throw error;
       problems.push(error.message);
     }
     for (const problem of problems) console.error(problem);
-    return { models, problems };
+    return { models, custom, problems };
   };
   let current = await build();
   return {
     models: () => current.models,
     credentials,
+    customProviders: () => current.custom,
     problems: () => current.problems,
     async reload() {
       current = await build();

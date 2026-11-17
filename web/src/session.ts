@@ -1,4 +1,6 @@
-import { type Client, createClient } from "@shared/api/client.ts";
+import { ApiRequestError, type Client, createClient } from "../../src/api/client.ts";
+import type { EngineStatus } from "../../src/api/contract.ts";
+import { extractAuthCode } from "./router.ts";
 
 const STORAGE_KEY = "eevee.token";
 
@@ -6,22 +8,80 @@ export class Unauthorized extends Error {
   override name = "Unauthorized";
 }
 
-export async function openSession(): Promise<Client> {
-  const code = new URLSearchParams(location.hash.slice(1)).get("code");
-  if (code) {
-    history.replaceState(null, "", location.pathname + location.search);
-    const { token } = await createClient({ baseUrl: location.origin }).call("POST /api/session", {
-      code,
-    });
-    sessionStorage.setItem(STORAGE_KEY, token);
+export type SessionInfo = {
+  client: Client;
+  token: string;
+  status: EngineStatus;
+};
+
+export type SessionStorageLike = {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+};
+
+export type SessionEnv = {
+  origin: string;
+  pathname: string;
+  search: string;
+  hash: string;
+  clearHash: () => void;
+  storage: SessionStorageLike;
+  createClient?: typeof createClient;
+};
+
+export async function openSessionWith(env: SessionEnv): Promise<SessionInfo> {
+  const makeClient = env.createClient ?? createClient;
+  const code = extractAuthCode(env.hash);
+  if (code !== undefined) {
+    env.clearHash();
+    try {
+      const { token } = await makeClient({ baseUrl: env.origin }).call("POST /api/session", {
+        code,
+      });
+      env.storage.setItem(STORAGE_KEY, token);
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 401) {
+        throw new Unauthorized(error.message);
+      }
+      throw error;
+    }
   }
-  const token = sessionStorage.getItem(STORAGE_KEY);
+  const token = env.storage.getItem(STORAGE_KEY);
   if (!token) throw new Unauthorized("还没有授权：在终端运行 eevee web 打开面板。");
-  const client = createClient({ baseUrl: location.origin, token });
-  await client.call("GET /api/status");
-  return client;
+  const client = makeClient({ baseUrl: env.origin, token });
+  try {
+    const status = await client.call("GET /api/status");
+    return { client, token, status };
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 401) {
+      env.storage.removeItem(STORAGE_KEY);
+      throw new Unauthorized("会话已过期或无效，请重新运行 eevee web。");
+    }
+    throw error;
+  }
 }
 
-export function forgetSession(): void {
-  sessionStorage.removeItem(STORAGE_KEY);
+type BrowserGlobals = {
+  location: { origin: string; pathname: string; search: string; hash: string };
+  history: { replaceState(data: unknown, unused: string, url: string): void };
+  sessionStorage: SessionStorageLike;
+};
+
+function browserEnv(): SessionEnv {
+  const g = globalThis as unknown as BrowserGlobals;
+  return {
+    origin: g.location.origin,
+    pathname: g.location.pathname,
+    search: g.location.search,
+    hash: g.location.hash,
+    clearHash: () => {
+      g.history.replaceState(null, "", g.location.pathname + g.location.search);
+    },
+    storage: g.sessionStorage,
+  };
+}
+
+export function openSession(): Promise<SessionInfo> {
+  return openSessionWith(browserEnv());
 }

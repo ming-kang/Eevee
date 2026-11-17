@@ -17,11 +17,17 @@ import type {
   UsageView,
 } from "../api/contract.ts";
 import { Board, QuestionDoc, ReportLog, TicketDoc } from "../contracts/docs.ts";
-import { deriveStage, type Job, type Question, type TicketId } from "../contracts/index.ts";
+import {
+  deriveStage,
+  describeRunFailure,
+  type Job,
+  type Question,
+  summarizeRun,
+  type TicketId,
+} from "../contracts/index.ts";
 import {
   conversationOf,
   type DocReader,
-  describeRunFailure,
   queuedTickets,
 } from "../extensions/orchestration/index.ts";
 import { recentLines } from "./transcript.ts";
@@ -57,7 +63,8 @@ export async function boardView(
     });
     tickets.push({ ticket, stage, reports, jobs });
   }
-  return { tickets, openQuestions };
+  const router = summarizeRun(await reader.snapshot(LiveDoc, ROOT_CONVERSATION_ID, context));
+  return { tickets, openQuestions, router };
 }
 
 /** The newest lines of a conversation, whether it runs, and how its last run failed, if it did. */

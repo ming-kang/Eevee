@@ -1,8 +1,8 @@
 import type { Context } from "@earendil-works/chord/context";
-import type { CapabilitiesView, ProjectSummary } from "../api/contract.ts";
+import type { CapabilitiesView, ModelsView, ProjectSummary } from "../api/contract.ts";
 import { type ModelChoice, ROLE_NAMES, type RoleName } from "../contracts/index.ts";
 import { MemoryRepo } from "../extensions/memory/index.ts";
-import { renderCatalog } from "../models/catalog.ts";
+import { buildModelsView } from "../models/catalog.ts";
 import type { ModelRuntime } from "../models/index.ts";
 import { roleExtensions } from "../roles/index.ts";
 import { readText } from "../shared/fs.ts";
@@ -62,7 +62,7 @@ export class Engine {
   }
 
   projects(): ProjectSummary[] {
-    return [...this.#projects.values()].map((host) => host.meta);
+    return [...this.#projects.values()].map((host) => host.summary());
   }
 
   project(id: string): ProjectHost | undefined {
@@ -71,17 +71,20 @@ export class Engine {
 
   async createProject(input: { title: string; workspace: string }): Promise<ProjectSummary> {
     const meta = await createProjectMeta(this.#options.paths, input);
-    this.#projects.set(meta.id, await this.#openHost(meta));
-    return meta;
+    const host = await this.#openHost(meta);
+    this.#projects.set(meta.id, host);
+    return host.summary();
   }
 
   // ── Models ─────────────────────────────────────────────────────────────────
 
-  async catalog(): Promise<string> {
-    return renderCatalog({
+  async catalog(): Promise<ModelsView> {
+    return buildModelsView({
       models: this.#options.models.models(),
       defaults: this.#options.settings.current.models,
       profiles: await readText(this.#options.paths.modelProfiles),
+      customProviders: this.#options.models.customProviders(),
+      problems: this.#options.models.problems(),
     });
   }
 

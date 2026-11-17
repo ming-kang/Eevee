@@ -36,7 +36,7 @@
 用内置 provider 的名字（如 `anthropic`、`openai`、`deepseek`）是修改它，其他名字是新增 provider。
 
 | 字段 | 类型 | 说明 |
-|---|---|---|
+|:-:|:-:|---|
 | `name` | 字符串 | 显示名称 |
 | `baseUrl` | 字符串 | API 地址。新增 provider 必填；修改内置 provider 时，它的全部模型改走这个地址 |
 | `api` | 字符串 | 模型使用的 API，见 [API](#api)。新增 provider 时必须在这里或每个模型上指定 |
@@ -81,7 +81,7 @@
 `models` 里的每一项新增一个模型。编号与已有模型相同时整个替换它：没写的字段取下表的默认值，不继承原来的模型。只想改几个字段时用 [模型覆盖](#模型覆盖)。
 
 | 字段 | 类型 | 默认值 | 说明 |
-|---|---|---|---|
+|:-:|:-:|:-:|---|
 | `id` | 字符串 | 必填 | 模型编号，也是请求里发送的模型名 |
 | `name` | 字符串 | 同 `id` | 显示名称 |
 | `api` | 字符串 | provider 的 `api` | 这个模型使用的 API |
@@ -121,7 +121,7 @@
 `api` 可以是：
 
 | 值 | 适用于 |
-|---|---|
+|:-:|:-:|
 | `openai-completions` | OpenAI Chat Completions 兼容的服务：Ollama、LM Studio、vLLM、SGLang 和大多数代理 |
 | `openai-responses` | OpenAI Responses API |
 | `azure-openai-responses` | Azure OpenAI Responses API |
