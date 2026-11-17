@@ -15,6 +15,10 @@ npm run build
 node dist/cli/index.js start
 ```
 
+## 文档
+
+从 [快速开始](docs/quickstart.md) 开始，完整目录见 [文档概览](docs/index.md)。
+
 ## License
 
 [MIT License](./LICENSE)

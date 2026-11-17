@@ -1,0 +1,100 @@
+# 管理记忆
+
+Eevee 的记忆是跨会话长期有用的合作经验，不是对话摘要。记忆存在 Git 仓库里的 Markdown 文件中，可读、可改、可追溯、可撤销。
+
+## 两个记忆库
+
+| 记忆库 | 位置 | 内容 | 谁写入 |
+|---|---|---|---|
+| 项目记忆库 | `~/.eevee/projects/<项目>/memory/` | `MEMORY.md` 索引和若干主题笔记 | Router、Dreaming、你 |
+| 全局记忆库 | `~/.eevee/memory/` | 只有一个 `MEMORY.md`，保持极短 | 你明确要求“记住”时由 Router 写入；你自己 |
+
+两个都是 Git 仓库，所有角色都能用 `read` 读取。
+
+## 该记什么
+
+| 应当记录 | 不要记录 |
+|---|---|
+| 你的偏好、写作和代码风格 | 任务进度与状态（属于工单和报告） |
+| 你的纠正，附上原因 | 交接小结（属于 Router 的开篇） |
+| 带理由的架构或实验决策 | 随时能从文件里重新查到的事实 |
+| 踩过的坑、验证过的规则 | 密钥和其他敏感凭据 |
+
+## 记忆的格式
+
+- **`MEMORY.md`**：常驻索引，控制在 200 行以内。写每个对话都需要知道的核心约定，以及指向主题笔记的索引（如 `[[optics-sim]]`）和一句话说明。
+- **主题笔记**（如 `optics-sim.md`）：按主题存放经验条目，每条附上来源地址和日期，比如 `ticket://t12`、`transcript://1`。
+
+## 记忆怎样进入上下文
+
+全局和项目的 `MEMORY.md` 放在每个对话开篇的最前面，运行中途不变。主题笔记由模型根据索引用 `read memory://project/<文件>` 按需读取。
+
+所以新写入的记忆从之后创建或重置的对话起生效，不影响正在进行的对话。
+
+## Eevee 怎样写入记忆
+
+Worker 只读不写记忆，它发现的经验写进报告的 `lessons`，由 Router 或 Dreaming 提炼。
+
+Router 用 `memory` 工具写入：`edit` 用原文替换，原文在磁盘上找不到就失败并返回最新内容，所以不会覆盖别人的改动；`create` 只用于新建文件。`memory` 工具只改工作树，每轮结束时，这一轮的全部改动提交为一个 commit。
+
+## 手动编辑
+
+你可以随时用自己的编辑器修改记忆文件。下一次提交前，Eevee 会发现这些不是它改的文件，先把它们单独提交为一个 `user edit` commit，历史里分得清是谁改的。
+
+你的修改和 Eevee 写入的记忆一样，从之后创建或重置的对话起生效。
+
+## 查看历史和撤销
+
+```bash
+eevee memory log <项目>             # 项目记忆库最近 20 次提交
+eevee memory show <项目> <commit>   # 一次提交的改动
+eevee memory show <项目>            # 还没提交的改动（不含新建的文件）
+eevee memory revert <项目> <commit> # 撤销一次提交
+```
+
+加 `-g` 或 `--global` 操作全局记忆库。例如：
+
+```text
+$ eevee memory log p3f9a1c2e
+a1b2c3d  2026-11-17 09:12  dreaming t9: edit MEMORY.md; edit optics-sim.md
+e4f5a6b  2026-11-16 21:40  memory: create figures.md; edit MEMORY.md
+9c8d7e6  2026-11-16 18:03  user edit
+```
+
+Router 的提交以 `memory` 开头，整理工单的提交以 `dreaming <工单>` 开头，后面列出这一轮改了哪些文件。
+
+`revert` 生成一个新的反向提交，不改写历史。撤销与之后的改动冲突时会放弃，仓库保持原样，命令报错。
+
+Router 也能用 `memory` 工具的 `log`、`diff` 和 `revert` 查看和撤销历史，你可以直接让它“撤销刚才那条记忆”。
+
+## Dreaming
+
+Dreaming 是后台记忆整理，默认开启：只要 `dreamer` 角色有可用的模型（没有单独设置时用 `default`），Engine 就会定期开一张标题为“整理记忆”的工单，由 `dreamer` 回顾这段时间的记录，整理项目记忆库：
+
+- 合并重叠的笔记；
+- 删掉只对单次调试有效的细节，订正被后来的执行结果推翻的旧笔记并注明来源；
+- 清理失效的条目；
+- 补录漏记的经验，维护 `MEMORY.md` 索引。
+
+Dreaming 只整理项目记忆库，不碰全局记忆库。
+
+### 什么时候整理
+
+- 间隔由 [`dreamIntervalMs`](settings.md) 决定，默认 24 小时。第一次整理在开启后一个间隔才发生，不会在启动时立刻开单。
+- 到期时，如果这段时间里有对话出现了新的发言（你或模型说的话），或者有工单结单，才会开单；否则跳过这一次。工单结单通知、整理工单自己的报告不算新记录，所以整理不会自我触发。
+- 整理工单的输入列出各条新记录的地址和起读位置，比如 `transcript://1（Router，从 offset 42 读起）`。
+- 同一时间最多一张整理工单。
+
+### 结果
+
+整理工单像普通工单一样出现在看板上，可以随时查看和打断，花费单独统计。它交的 `ready` 报告自动验收，不打扰 Router。整次整理的改动提交为一个 `dreaming tN: …` commit，可以用 `eevee memory show` 查看、用 `eevee memory revert` 撤销。
+
+### 关闭 Dreaming
+
+在 `settings.json` 里把 `dreamIntervalMs` 设为 `0`，然后重启 Engine。没有可用于 `dreamer` 角色的模型时，Dreaming 也视为关闭。给它单独设置一个轻量模型：
+
+```bash
+eevee model default <provider>/<轻量模型> --role dreamer
+```
+
+对话记录和记忆文件对整理工单来说都是数据，不是指令。

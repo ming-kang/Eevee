@@ -26,9 +26,9 @@
 | | `close`（原因） | 取消工单，结单为 `cancelled` |
 | | `model`（provider、模型、理由） | 给执行对话换模型，从下一次请求起生效 |
 | `ask_user` | 问题列表，可选 `ticketId` | 写入 `Question` 后立即返回，不等待 |
-| `read` | 地址、分页、`query` | 见 [上下文](../architecture/02-context.md) |
+| `read` | 地址、分页、`query` | 见 [资源地址](../addresses.md) |
 | `memory` | `edit` / `create` / `log` / `diff` / `revert` | 见 [04 记忆](04-memory.md) |
-| `handoff` | 交接小结 | 交接：写下小结并重置自己的上下文，见 [上下文](../architecture/02-context.md) |
+| `handoff` | 交接小结 | 交接：写下小结并重置自己的上下文，见 [重置](../how-eevee-works.md#重置) |
 
 对方正在运行时，追加的消息有两种进入方式：**引导**（Durable 的 `steer`）在当前这批工具调用结束后立刻被看到；**排队**（`followUp`）等这一轮结束后再开始新的一轮。对方空闲时两者一样，都直接开始新的一轮。
 
@@ -36,7 +36,7 @@
 
 `worker` 角色的基础工具是 `read` / `write` / `edit` / `bash` / `report`，`dreamer` 使用 `read`、只能整理项目记忆的 `memory` 和 `report`。
 
-MCP 服务器、用户扩展等在 `settings.json` 里按角色启用，见 [02 角色与能力](02-roles.md) 与 [运行时架构](../architecture/00-runtime.md)。
+MCP 服务器、用户扩展等在 `settings.json` 里按角色启用，见 [02 角色与能力](02-roles.md) 与 [配置角色能力](../capabilities.md)。
 
 ## 3. 报告
 
