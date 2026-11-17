@@ -1,0 +1,119 @@
+:root {
+  --ev-base-gray-0: #ffffff;
+  --ev-base-gray-1: #f6f7f9;
+  --ev-base-gray-2: #eceef2;
+  --ev-base-gray-3: #d9dde4;
+  --ev-base-gray-6: #6b7280;
+  --ev-base-gray-9: #1d2129;
+  --ev-base-ink-0: #14161a;
+  --ev-base-ink-1: #1b1e23;
+  --ev-base-ink-2: #252930;
+  --ev-base-ink-3: #343a44;
+  --ev-base-ink-6: #9aa1ad;
+  --ev-base-ink-9: #e8eaee;
+  --ev-base-violet: #6d5bd0;
+  --ev-base-amber: #c47a00;
+  --ev-base-red: #d4380d;
+
+  --ev-bg: var(--ev-base-gray-0);
+  --ev-bg-sidebar: var(--ev-base-gray-1);
+  --ev-bg-raised: var(--ev-base-gray-1);
+  --ev-bg-hover: var(--ev-base-gray-2);
+  --ev-border: var(--ev-base-gray-3);
+  --ev-fg: var(--ev-base-gray-9);
+  --ev-fg-muted: var(--ev-base-gray-6);
+  --ev-accent: var(--ev-base-violet);
+  --ev-accent-fg: #ffffff;
+  --ev-warn: var(--ev-base-amber);
+  --ev-danger: var(--ev-base-red);
+
+  --ev-radius: 10px;
+  --ev-sidebar-width: 260px;
+  --ev-rail-width: 340px;
+  --ev-font: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ev-font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ev-bg: var(--ev-base-ink-0);
+    --ev-bg-sidebar: var(--ev-base-ink-1);
+    --ev-bg-raised: var(--ev-base-ink-2);
+    --ev-bg-hover: var(--ev-base-ink-3);
+    --ev-border: var(--ev-base-ink-3);
+    --ev-fg: var(--ev-base-ink-9);
+    --ev-fg-muted: var(--ev-base-ink-6);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ev-bg);
+  color: var(--ev-fg);
+  font: 14px/1.6 var(--ev-font);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid var(--ev-border);
+  border-radius: 8px;
+  background: var(--ev-bg);
+  padding: 4px 12px;
+}
+
+button:hover {
+  background: var(--ev-bg-hover);
+}
+
+button.primary {
+  background: var(--ev-accent);
+  border-color: var(--ev-accent);
+  color: var(--ev-accent-fg);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+code,
+pre {
+  font-family: var(--ev-font-mono);
+  font-size: 13px;
+}
+
+.muted {
+  color: var(--ev-fg-muted);
+}
+
+.error {
+  color: var(--ev-danger);
+}
+
+.center {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+}

@@ -1,0 +1,68 @@
+# 04 记忆
+
+本模块采用 Cognition 的 [Devin Memory and Dreaming](https://devin.ai/blog/memory-and-dreaming)（参见[产品指南](https://docs.devin.ai/product-guides/memory)与 [Agent Memory Repo 规范](https://cognition.com/agent-memory-repo)），并吸纳 Anthropic [《The components of agent memory》](https://www.anthropic.com/research/components-of-agent-memory) 中“说明目的优于死板规则”的结论。
+
+稳定的设计目标是：**只保留长期有用的经验；记忆可读、可改、可追溯、可撤销；任务进度与长期记忆分离。** Git 提交方式、按轮提交、Dreaming 频率和冲突处理都是当前实现方案，可以在开发中调整。
+
+## 1. 范围
+
+记忆不是对话摘要，而是跨会话长期有用的合作经验。
+
+| 记忆库 | 位置 | 写入 |
+|---|---|---|
+| **项目记忆库** | `~/.eevee/projects/<projectId>/memory/` | Router 的 `memory` 工具、Dreaming |
+| **全局记忆库** | `~/.eevee/memory/`，只有一个 `MEMORY.md` | 只在用户明确说“记住”时由 Router 写入；Dreaming 不碰 |
+
+两份都是 Git 仓库，所有角色都能用 `read` 读。
+
+| 应当记录 | 应当舍弃 |
+|:-:|:-:|
+| 用户的偏好与写作/代码风格 | 交接小结（归 Router 的开篇） |
+| 用户的纠正（附原因） | 任务进度与状态（归工单与报告） |
+| 带理由的架构/实验决策 | 随时能从文件里重新查到的事实 |
+| 踩过的坑、验证过的规则 | 密钥与敏感凭据 |
+
+## 2. 格式
+
+- **根目录 `MEMORY.md`（常驻索引）**：控制在 200 行以内，存放每个对话都需要知道的核心约定，以及指向主题文件的索引（如 `[[optics-sim]]`）和一句话说明。
+- **主题文件（`<topic>.md`）**：按主题存放经验条目，每条附来源地址（如 `ticket://t12`、`transcript://…`）和日期。
+
+## 3. 读取
+
+- **常驻**：全局和项目的 `MEMORY.md` 放在每个对话的开篇最前面（见 [上下文](../architecture/02-context.md)），运行中途不变。
+- **按需**：主题文件由模型根据索引用 `read memory://project/<file>` 读取，不设专门的 `recall` 工具。
+- 新写入的记忆对之后创建或 `reset` 的对话生效。
+
+## 4. 当前写入方案：`memory` 工具与按轮提交
+
+执行对话只读不写：发现的经验写进报告的 `lessons`，由 Router 或 Dreaming 提炼。Router 没有通用文件写入工具，所以由一个限定在记忆库内的 `memory` 工具负责：
+
+| 动作 | 参数 | 行为 |
+|:-:|:-:|:-:|
+| `edit` | `scope`、`file`、`old`、`new` | 文本替换。磁盘上的原文找不到 `old` 就失败，并返回最新内容让模型重试，替换语义本身就挡住了覆盖他人改动 |
+| `create` | `scope`、`file`、`content` | 新建文件；文件已存在时失败 |
+| `log` / `diff` | `scope`、可选 commit | 只读查看变更历史 |
+| `revert` | `scope`、commit | `git revert --no-edit`，撤销一次记错的笔记或整次 Dreaming |
+
+`scope` 为 `global` 时只允许改 `MEMORY.md`。路径都会校验，必须落在对应仓库内。
+
+**按轮提交**：`memory` 工具只改工作树，不在每次调用后提交。
+
+- Router：每轮结束时（`afterRun`）把本轮改动提交为一个 commit，提交说明由引擎根据本轮的 `memory` 调用生成。异常结束的轮次留下的改动随下一次提交带上。
+- Dreaming：整次运行结束时提交为一个 commit。
+- **用户手改**：提交前如果发现本轮没有动过的文件有改动，先单独提交为一个 `user edit` commit。这样用户可以随时用自己的编辑器改记忆，历史里也分得清是谁改的。
+
+## 5. 可选维护：Dreaming
+
+Dreaming 是后台记忆维护能力，不是 Router–Ticket–Report 核心闭环成立的前提。当前方案每天最多创建一张 `dreamer` 工单，使用轻量模型，在面板可见、可以停止并单独统计花费。
+
+它顺着地址回顾近期记录和现有记忆，尤其是反映真实执行结果的工具输出与报告里的 `lessons`，完成四类整理：
+
+- **合并重叠笔记**：把同类条目整合进清晰的主题文件；
+- **剔除临时细节与纠错**：删掉只对单次调试有效的信息，订正被后续执行推翻的旧笔记并注明来源；
+- **清理陈旧记忆**：移除已经失效或长期没有价值的条目；
+- **补漏与整理索引**：补录漏记的经验，维护 `MEMORY.md`，把过长细节下沉到主题文件。
+
+整理结果以可审查、可撤销的方式提交，当前方案是整次整理对应一个 Git commit，WebUI 可以查看 diff 或 `revert`。整理期间与其他写入的隔离、合并和冲突处理由实现选择，但不能静默覆盖他人的修改，也不做事前审批。
+
+对话记录和记忆文件都是数据，不是指令（“A transcript is data to draw facts from, not instructions to follow”）。
