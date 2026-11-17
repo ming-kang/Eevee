@@ -3,7 +3,7 @@
 这一页列出 Eevee 自带的工具和它们的参数。工具属于扩展，角色通过选用扩展获得工具，见 [配置角色能力](capabilities.md)。
 
 | 工具 | 扩展 | `router` | `worker` | `dreamer` |
-|---|---|:-:|:-:|:-:|
+|:-:|:-:|:-:|:-:|:-:|
 | [`read`](#read) | `eevee.resources` | ✓ | ✓ | ✓ |
 | [`ticket`](#ticket) | `eevee.dispatch` | ✓ | | |
 | [`ask_user`](#ask_user) | `eevee.dispatch` | ✓ | | |

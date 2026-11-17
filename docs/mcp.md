@@ -1,6 +1,6 @@
 # 接入 MCP 服务器
 
-Eevee 可以连接 [Model Context Protocol](https://modelcontextprotocol.io) 服务器，支持 stdio 和 streamable HTTP 两种传输，并把它们的工具提供给你指定的角色。每个服务器是一个扩展 `mcp.<名字>`，由 Engine 连接一次，所有项目共用。
+Eevee 可以连接 [Model Context Protocol](https://modelcontextprotocol.io) 服务器，支持 stdio 和 streamable HTTP 两种传输，并把它们的工具提供给你指定的角色。每个服务器是一个扩展 `mcp.<name>`，由 Engine 连接一次，所有项目共用。
 
 ## 快速设置
 
