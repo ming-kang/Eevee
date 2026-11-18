@@ -14,10 +14,10 @@
 
 ## 错误
 
-失败时返回对应的状态码和 `error`：`code` 说明是什么问题，同一层里的其他字段是它的参数，`message` 是 Engine 的中文措辞。只想打印的客户端用 `message`；要用自己的语言或界面表达的，按 `code` 和参数措辞。
+失败时返回对应的状态码和 `error`：`code` 说明是什么问题，同一层里的其他字段是它的参数，`message` 是 Engine 的英文措辞。只想打印的客户端用 `message`；要用自己的语言或界面表达的，按 `code` 和参数措辞。
 
 ```json
-{ "error": { "code": "ticket_closed", "ticketId": "t3", "message": "t3 已经结单" } }
+{ "error": { "code": "ticket_closed", "ticketId": "t3", "message": "t3 is already closed" } }
 ```
 
 | 状态 | `code` | 参数 | 含义 |

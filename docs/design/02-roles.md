@@ -6,7 +6,7 @@
 |:-:|---|---|---|
 | `router` | 全局规划、工单协调、报告处理、验收与记忆 | `ticket`、`ask_user`、`read`、`memory`、`handoff`，以及为 Router 启用的扩展 | 记忆 + 项目概况 + 工单一览 + 交接信息 |
 | `worker` | 在 Ticket 目标内自主完成工作，管理自己的执行过程，并通过 Report 协同 | `read`、`write`、`edit`、`bash`、`report`，以及为 Worker 启用的扩展 | 记忆 + 工单 + 最新报告 |
-| `dreamer` | 内部记忆维护配置，不是独立的产品角色 | `read`、`memory`、`report` 等维护能力 | 记忆 + 待整理记录 |
+| `dreamer` | 内部记忆维护配置，不构成独立的产品角色 | `read`、`memory`、`report` 等维护能力 | 记忆 + 待整理记录 |
 
 Ticket 只写明做什么（目标、输入、验收标准），怎么做由 Worker 自己决定。
 
@@ -28,7 +28,7 @@ Extension 可以提供工具、提示词段落、Hook、包装器和后台任务
 2. **按角色启用**：每个角色从已安装的 Extension 中各自选择，同一个 Extension 可以只给一个角色，也可以给多个角色。所有 Worker 共用 `worker` 角色的配置，无需为每张 Ticket 单独配置。
 3. **向模型呈现**：已启用 Extension 的工具可以直接提供，也可以通过 `deferred + tool_search` 或 `codemode` 按需暴露。`modelTools` 控制模型看到和调用工具的方式，不等于角色是否安装了能力。
 
-角色启用能力用于组织能力与上下文，不是逐次审批或安全权限系统。工具按照本地 YOLO 方式执行，不因为某个 Extension 被启用就增加确认流程。
+角色启用能力用于组织能力与上下文，与逐次审批或安全权限系统无关。工具按照本地 YOLO 方式执行，不因为某个 Extension 被启用就增加确认流程。
 
 ## 4. 配置原则
 

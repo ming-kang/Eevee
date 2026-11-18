@@ -61,4 +61,4 @@ LANG  LC_ALL  TERM  SHELL  USER  USERNAME
 
 provider 的 API key 等其他变量不会传给它们。MCP 服务器需要的变量在 `mcp.json` 的 `env` 里显式写明；Worker 的命令需要的变量，可以让它在命令里设置，或写进工作目录里的配置文件。
 
-这只用来减少意外泄漏，不是隔离边界，见 [安全运行](security.md#子进程的环境变量)。
+这只用来减少意外泄漏，不构成隔离边界，见 [安全运行](security.md#子进程的环境变量)。

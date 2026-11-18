@@ -6,7 +6,7 @@ Eevee 在 [`@earendil-works/pi-ai`](https://github.com/earendil-works/pi) 之上
 
 | 你有什么 | 推荐做法 |
 |:-:|:-:|
-| 内置 Provider 的 API Key | 在面板的“设置 · 模型”里填写，或设置环境变量 |
+| 内置 provider 的 API Key | 在面板的“设置 · 模型”里填写，或设置环境变量 |
 | 其他本地或云端网关 | 在“设置 · 模型”里[添加 provider](#接入兼容端点)，或写进 `models.json` |
 
 

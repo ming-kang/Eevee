@@ -18,7 +18,7 @@ Engine 把实际端口写在 `~/.eevee/runtime/engine.json` 里：
 { "pid": 41236, "port": 19190, "bootId": "8f0c…", "startedAt": 1763366400000 }
 ```
 
-默认端口 `19190` 被占用时，Engine 会换一个空闲端口，所以客户端应当读这个文件，而不是写死端口。`GET /api/health` 不需要鉴权，可以用来确认 Engine 在运行。
+默认端口 `19190` 被占用时，Engine 会换一个空闲端口，所以客户端应当读这个文件，不要写死端口。`GET /api/health` 不需要鉴权，可以用来确认 Engine 在运行。
 
 ## 鉴权
 
@@ -43,7 +43,7 @@ curl -s -X POST -H "x-eevee-token: $TOKEN" -H "content-type: application/json" \
   "http://127.0.0.1:$PORT/api/projects/p3f9a1c2e/messages"
 ```
 
-成功时返回 JSON；失败时返回对应的 HTTP 状态码和 `{"error":{"code":"…",…,"message":"…"}}`：`code` 和它的参数说明是什么问题，`message` 是可以直接打印的中文。错误码见 [HTTP 接口](http-api.md#错误)。
+成功时返回 JSON；失败时返回对应的 HTTP 状态码和 `{"error":{"code":"…",…,"message":"…"}}`：`code` 和它的参数说明是什么问题，`message` 是可以直接打印的英文。错误码见 [HTTP 接口](http-api.md#错误)。
 
 在本仓库里写 TypeScript 时，可以用 `src/api/client.ts` 的 `createClient`，它按 `src/api/contract.ts` 推导每个接口的参数和返回类型：
 
@@ -75,4 +75,4 @@ ws.onmessage = (message) => {
 
 ## 处理 Engine 重启
 
-`GET /api/status` 和实时流的第一个事件 `hello` 都带有 `bootId`，Engine 每次启动都会生成新的值。客户端重连后发现 `bootId` 变了，应当丢弃旧状态、重新订阅全部数据，而不是把新进程的增量拼到旧进程的状态上。
+`GET /api/status` 和实时流的第一个事件 `hello` 都带有 `bootId`，Engine 每次启动都会生成新的值。客户端重连后发现 `bootId` 变了，应当丢弃旧状态、重新订阅全部数据，不要把新进程的增量拼到旧进程的状态上。

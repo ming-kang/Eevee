@@ -43,7 +43,7 @@ stdio 服务器：
 
 | 字段 | 说明 |
 |:-:|:-:|
-| `command` | 可执行文件，不是 shell 命令字符串 |
+| `command` | 可执行文件，不经 shell 解析 |
 | `args` | 参数数组 |
 | `env` | 额外的环境变量 |
 | `cwd` | 工作目录，建议写绝对路径 |
@@ -64,7 +64,7 @@ HTTP 服务器：
 | `description` | 无 | 一句话说明服务器提供什么。代码模式按它介绍这组工具；不写时使用服务器自己提供的说明的第一行 |
 | `timeout` | 无 | 单次请求的超时秒数 |
 
-`type` 可以省略：有 `command` 是 stdio，有 `url` 是 HTTP。旧的 SSE 传输不受支持；提供 SSE 端点的服务器通常也提供 streamable HTTP，地址多半是 `/mcp` 而不是 `/sse`。
+`type` 可以省略：有 `command` 是 stdio，有 `url` 是 HTTP。旧的 SSE 传输不受支持；提供 SSE 端点的服务器通常也提供 streamable HTTP，地址多半是 `/mcp`。
 
 ### 引用环境变量
 

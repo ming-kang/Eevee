@@ -54,7 +54,7 @@ Worker 对话的编号写在 `ticket://t3` 的 `conversationId` 字段里。
 - `read results/log.txt`，`query: "ERROR"`：只看出错的行；
 - `read transcript://1`，`query: "配色"`：在 Router 对话最新的一页里找提到配色的条目。
 
-对 `transcript://` 使用 `query` 时，只在当前这一页（默认最新 20 个条目）里过滤；要找更早的内容，配合 `offset` 翻页。文件加 `query` 时，结果按字符分页，`offset` 是字符位置而不是行号。
+对 `transcript://` 使用 `query` 时，只在当前这一页（默认最新 20 个条目）里过滤；要找更早的内容，配合 `offset` 翻页。文件加 `query` 时，结果按字符分页，`offset` 指字符位置。
 
 ## 在报告和记忆里使用地址
 

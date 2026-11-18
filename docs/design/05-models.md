@@ -4,7 +4,7 @@
 
 模型接入在 `@earendil-works/pi-ai` 之上自己实现，沿用其配置习惯（细节见 [research/pi-models-auth.md](../research/pi-models-auth.md)）：
 
-- **`~/.eevee/auth.json`**：凭据存储，实现 pi-ai 的 `CredentialStore` 接口。只有引擎单进程写入，用进程内串行队列即可，不需要文件锁。
+- **`~/.eevee/auth.json`**：凭据存储，实现 pi-ai 的 `CredentialStore` 接口。只有 Engine 单进程写入，用进程内串行队列即可，不需要文件锁。
 - **`~/.eevee/models.json`**：自定义 provider、模型覆盖和其他参数，如 `contextWindow`、`promptCache`。格式沿用 pi coding agent 的 `models.json` 的一个子集：
 
   ```json
@@ -29,9 +29,9 @@
 1. **默认配置**：项目和角色可以有默认模型，Router 建单时不必每次重复选择。
 2. **按对话覆盖**：某项工作确有需要时，Router 可以为 Worker 指定模型，运行中也可以按需要调整。Durable 把模型选择保存在各对话的 `pi.agent` 中。
 
-一次模型选择是 provider、模型编号和可选的思考档位（`off` 到 `max`，不设为 `off`）。档位跟着模型走：换模型时面板把档位换成新模型最接近的一档，Durable 收到的是 `pi.agent` 的 `model` 与 `thinkingLevel`，不支持的档位由 provider 收拢。用户在面板里给项目的 Router 选模型时，写的是这个项目的默认配置（`project.json`），不是只改 Router 这一个对话，所以重启和交接后仍然有效。
+一次模型选择是 provider、模型编号和可选的思考档位（`off` 到 `max`，不设为 `off`）。档位跟着模型走：换模型时面板把档位换成新模型最接近的一档，Durable 收到的是 `pi.agent` 的 `model` 与 `thinkingLevel`，不支持的档位由 provider 收拢。用户在面板里给项目的 Router 选模型时，写的是这个项目的默认配置（`project.json`），作用于这个项目的全部后续对话，所以重启和交接后仍然有效。
 
-项目的模型配置只有 `project.json` 一个来源，读写都经过它的单写入者：按角色串行地应用一次改动，再据此重新派生 Router 和未结工单的 `pi.agent`。`pi.agent` 是派生结果，不是第二份配置——没有有效选择时明确清空（`model: null`），下一次请求报 `model_unset`，而不是继续用已经被删掉的旧模型。
+项目的模型配置只有 `project.json` 一个来源，读写都经过它的单写入者：按角色串行地应用一次改动，再据此重新派生 Router 和未结工单的 `pi.agent`。`pi.agent` 只是派生结果——没有有效选择时明确清空（`model: null`），下一次请求报 `model_unset`，不会继续用已经被删掉的旧模型。
 
 ## 2. 模型画像
 

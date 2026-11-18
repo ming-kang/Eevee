@@ -4,7 +4,7 @@
 
 ## 工单包含什么
 
-Router 用 `ticket` 工具的 `create` 动作建单（下文简写为 `ticket create`，其他动作同理；它们是 Router 的工具，不是命令行命令），写明：
+Router 用 `ticket` 工具的 `create` 动作建单（下文简写为 `ticket create`，其他动作同理；它们是 Router 的工具，与命令行命令无关），写明：
 
 | 字段 | 含义 |
 |:-:|:-:|
@@ -105,7 +105,9 @@ Router 对工单采取相关的 `ticket` 动作、为它提问，或者新建一
 
 ## 并发
 
-[`maxActiveWorkers`](settings.md)（默认 3）限制同时运行的 Worker 数量，超出的工单显示为 `queued`，等有空位时再开始。Router 不占槽位，整理工单和普通工单一样占槽位。Worker 结束本轮、只剩后台作业在跑时，会释放槽位。槽位按唤醒计算：除了你直接发给 Worker 的消息，唤醒空闲 Worker 的投递都要等槽位，包括新工单的开篇、`ticket message`、返工、`deliverTo` 投递、问题的答案和后台作业结束的通知；Worker 正在运行时，这些消息不另占槽位，按上表引导或排队。所以你回答了工单的问题之后，它也可能先显示为 `queued`。你直接发给 Worker 的消息不等槽位，不受这个上限限制。
+[`maxActiveWorkers`](settings.md)（默认 3）限制同时运行的 Worker 数量，超出的工单显示为 `queued`，等有空位时再开始。Router 不占槽位，整理工单和普通工单一样占槽位。Worker 结束本轮、只剩后台作业在跑时，会释放槽位。
+
+槽位按唤醒计算：除了你直接发给 Worker 的消息，唤醒空闲 Worker 的投递都要等槽位，包括新工单的开篇、`ticket message`、返工、`deliverTo` 投递、问题的答案和后台作业结束的通知；Worker 正在运行时，这些消息不另占槽位，按上表引导或排队。所以你回答了工单的问题之后，它也可能先显示为 `queued`。你直接发给 Worker 的消息不等槽位，不受这个上限限制。
 
 ## 后台作业
 

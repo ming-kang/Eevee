@@ -2,7 +2,7 @@
 
 Eevee 以后台进程的形式运行在电脑上，可以通过 `eevee` 命令和浏览器面板使用它。
 
-开始之前，你需要一个可用的模型：内置 Provider 的 API Key/Oauth，或者一个兼容 OpenAI、Anthropic 格式的端点。
+开始之前，你需要一个可用的模型：内置 provider 的 API Key，或者一个兼容 OpenAI、Anthropic 格式的端点。
 
 ## 1. 安装 Eevee
 
