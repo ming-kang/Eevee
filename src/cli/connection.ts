@@ -12,7 +12,7 @@ export type Connection = {
 export class NotRunning extends Error {
   override name = "NotRunning";
   constructor() {
-    super("Eevee 没有在运行：运行 eevee 启动并打开面板。");
+    super("Eevee is not running: run eevee to start it and open the panel.");
   }
 }
 

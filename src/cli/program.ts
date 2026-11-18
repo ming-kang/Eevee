@@ -12,31 +12,31 @@ export type CliActions = {
 export function createProgram(actions: CliActions): Command {
   const program = new Command()
     .name("eevee")
-    .description("主动型智能体。不带命令时启动 Engine 并打开面板")
+    .description("A proactive agent. With no command it starts the Engine and opens the panel")
     .version(version)
     .allowExcessArguments()
     .action(async (_options: unknown, command: Command) => {
       const [unknown] = command.args;
-      if (unknown !== undefined) command.error(`没有命令 ${unknown}，见 eevee --help`);
+      if (unknown !== undefined) command.error(`No command ${unknown}; see eevee --help`);
       await actions.start();
       await actions.web();
     });
 
   program
     .command("start")
-    .description("在后台启动 Engine")
+    .description("Start the Engine in the background")
     .action(() => actions.start());
   program
     .command("stop")
-    .description("停止 Engine")
+    .description("Stop the Engine")
     .action(() => actions.stop());
   program
     .command("status")
-    .description("查看运行状态与项目")
+    .description("Show the run status and the projects")
     .action(() => actions.status());
   program
     .command("web")
-    .description("在浏览器中打开并授权面板")
+    .description("Open and authorize the panel in a browser")
     .action(() => actions.web());
 
   return program;

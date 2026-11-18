@@ -13,7 +13,7 @@ const paths = eeveePaths();
 const program = createProgram({
   async start() {
     const running = await findEngine(paths);
-    if (running) return console.log(`已经在运行：${running.baseUrl}/ui/`);
+    if (running) return console.log(`Already running: ${running.baseUrl}/ui/`);
     await mkdir(paths.runtime.dir, { recursive: true });
     const log = await open(join(paths.runtime.dir, "engine.log"), "a");
     const child = spawn(process.execPath, [engineEntry], {
@@ -27,21 +27,21 @@ const program = createProgram({
     for (let i = 0; i < 60; i++) {
       await sleep(250);
       const connection = await findEngine(paths);
-      if (connection) return console.log(`已启动：${connection.baseUrl}/ui/`);
+      if (connection) return console.log(`Started: ${connection.baseUrl}/ui/`);
     }
-    throw new Error(`启动超时，查看日志：${join(paths.runtime.dir, "engine.log")}`);
+    throw new Error(`Timed out starting; see the log: ${join(paths.runtime.dir, "engine.log")}`);
   },
 
   async stop() {
     const running = await findEngine(paths);
-    if (!running) return console.log("没有在运行。");
+    if (!running) return console.log("Not running.");
     await running.client.call("POST /api/shutdown");
-    console.log("已停止。");
+    console.log("Stopped.");
   },
 
   async status() {
     const running = await findEngine(paths);
-    if (!running) return console.log("没有在运行。");
+    if (!running) return console.log("Not running.");
     const status = await running.client.call("GET /api/status");
     console.log(`Eevee ${status.version} · ${running.baseUrl}/ui/ · pid ${running.record.pid}`);
     for (const p of status.projects) console.log(`  ${p.id}  ${p.title}  ${p.workspace}`);
@@ -52,7 +52,7 @@ const program = createProgram({
     const { code } = await client.call("POST /api/session/code");
     const url = `${baseUrl}/ui/#code=${encodeURIComponent(code)}`;
     openBrowser(url);
-    console.log(`已在浏览器中打开（授权码 90 秒内有效）：${url}`);
+    console.log(`Opened in the browser (the authorization code is valid for 90 seconds): ${url}`);
   },
 });
 

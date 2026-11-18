@@ -21,17 +21,17 @@ async function run(args: string[]): Promise<string[]> {
   return calls;
 }
 
-test("不带命令时先启动 Engine，再打开面板", async () => {
+test("a bare invocation starts the Engine, then opens the panel", async () => {
   assert.deepEqual(await run([]), ["start", "web"]);
 });
 
-test("每个命令只做自己的事", async () => {
+test("each command does only its own thing", async () => {
   assert.deepEqual(await run(["start"]), ["start"]);
   assert.deepEqual(await run(["stop"]), ["stop"]);
   assert.deepEqual(await run(["status"]), ["status"]);
   assert.deepEqual(await run(["web"]), ["web"]);
 });
 
-test("不认识的命令报错，不会当成不带命令", async () => {
-  await assert.rejects(run(["project", "list"]), /没有命令 project/);
+test("an unknown command errors instead of counting as a bare invocation", async () => {
+  await assert.rejects(run(["project", "list"]), /No command project/);
 });
