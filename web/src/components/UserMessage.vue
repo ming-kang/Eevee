@@ -5,18 +5,15 @@ import { formatClockTime } from "../time.ts";
 const props = defineProps<{
   text: string;
   at?: number;
-  via?: "direct";
+  pending?: boolean;
 }>();
 
 const timeText = computed(() => (props.at === undefined ? "" : formatClockTime(props.at)));
 </script>
 
 <template>
-  <div class="u-wrap">
-    <div class="msg-user">
-      <div v-if="via === 'direct'" class="via">直接介入</div>
-      {{ text }}
-    </div>
-    <span v-if="timeText" class="msg-time">{{ timeText }}</span>
+  <div class="u-wrap" :class="{ pending }">
+    <div v-if="pending || timeText" class="msg-meta">{{ pending ? "待送达" : timeText }}</div>
+    <div class="msg-user">{{ text }}</div>
   </div>
 </template>

@@ -41,10 +41,7 @@ function questionLine(view: TicketView): string | undefined {
 
 <template>
   <template v-if="board && board.tickets.length === 0">
-    <div class="empty" style="padding-top: 64px">
-      <h3>还没有工单</h3>
-      <p>Router 会把需要动手的事拆成工单，交给 Worker 在后台完成。</p>
-    </div>
+    <p class="rail-empty">没有工单</p>
   </template>
   <template v-else-if="board">
     <template v-if="groups.answer.length > 0">

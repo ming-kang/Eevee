@@ -473,9 +473,16 @@ const brain: FauxResponseFactory = (context) => {
   return say("收到。");
 };
 
-const factory: FauxResponseFactory = (context, streamOptions, state, model) => {
+// Once seeded, every answer takes a moment as a real model's would, so the panel's running state
+// (the thinking line, steer / queue, stop) can be seen and tried. Stopping cuts the wait short.
+const THINK_MS = checkOnly ? 0 : 5_000;
+
+const factory: FauxResponseFactory = async (context, streamOptions, state, model) => {
   if (faux.getPendingResponseCount() < 16) {
     faux.appendResponses(Array.from({ length: 32 }, () => factory));
+  }
+  if (seeded && THINK_MS > 0) {
+    await sleep(THINK_MS, undefined, { signal: streamOptions?.signal }).catch(() => {});
   }
   return brain(context, streamOptions, state, model);
 };

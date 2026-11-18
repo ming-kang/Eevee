@@ -3,6 +3,7 @@ import type { Client } from "@shared/api/client.ts";
 import type { ProjectSummary, UsageSummary, UsageView } from "@shared/api/contract.ts";
 import { computed, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import Skeleton from "./Skeleton.vue";
 
 const props = defineProps<{
   client: Client;
@@ -99,26 +100,23 @@ function barWidth(summary: UsageSummary): string {
 <template>
   <section class="page-wrap">
     <header class="header">
-      <button type="button" class="btn ghost icon menu-btn" title="菜单" aria-label="菜单" @click="$emit('open-side')">
-        <Icon name="menu" />
+      <button type="button" class="btn ghost sm icon menu-btn" aria-label="菜单" @click="$emit('open-side')">
+        <Icon name="menu" size="sm" />
       </button>
       <h1>花费</h1>
-      <span class="muted ellipsis hide-sm" style="font-size: 12px">{{ project.title }}</span>
+      <span class="sub ellipsis hide-sm">{{ project.title }}</span>
       <span class="spacer" />
-      <span class="hint hide-sm">按 provider 账单计，缺失时按目录价估算</span>
-      <button type="button" class="btn ghost sm" :disabled="loading" @click="loadUsage">
-        <Icon name="refresh" size="xs" :spin="loading" />
-        <span>刷新</span>
+      <button type="button" class="btn ghost sm icon" :disabled="loading" aria-label="刷新" title="刷新" @click="loadUsage">
+        <Icon name="refresh" size="sm" :spin="loading" />
       </button>
     </header>
-
     <div class="page">
-      <div class="page-inner" style="max-width: 820px">
+      <div class="page-inner">
         <p v-if="error" class="error hint">{{ error }}</p>
-        <p v-else-if="loading && !usage" class="hint">正在加载花费统计…</p>
+        <Skeleton v-else-if="loading && !usage" />
         <template v-else-if="usage">
           <div class="panel stats">
-            <div>
+            <div title="按 provider 账单计，缺失时按目录价估算">
               <span class="k">总花费</span>
               <span class="v">{{ formatCost(usage.total.cost) }}</span>
             </div>
@@ -138,20 +136,18 @@ function barWidth(summary: UsageSummary): string {
 
           <div class="section-h">按模型</div>
           <div class="rows">
-            <div v-if="modelRows.length === 0" class="row" style="min-height: 44px">
-              <span class="hint">还没有模型调用记录。</span>
+            <div v-if="modelRows.length === 0" class="row usage-row">
+              <span class="muted">没有调用记录</span>
             </div>
-            <div v-for="item in modelRows" :key="item.model" class="row" style="min-height: 44px">
-              <span class="mono ellipsis" style="flex: 1; font-size: 12px">{{ item.model }}</span>
-              <span class="dim hide-sm num" style="font-size: 12px">
+            <div v-for="item in modelRows" :key="item.model" class="row usage-row">
+              <span class="mono">{{ item.model }}</span>
+              <span class="tokens hide-sm">
                 入 {{ formatTokens(item.summary.input) }} · 出 {{ formatTokens(item.summary.output) }}
                 <template v-if="item.summary.cacheRead > 0">
                   · 缓存 {{ formatTokens(item.summary.cacheRead) }}
                 </template>
               </span>
-              <span class="num" style="width: 72px; text-align: right">
-                {{ formatCost(item.summary.cost) }}
-              </span>
+              <span class="cost">{{ formatCost(item.summary.cost) }}</span>
             </div>
           </div>
 
@@ -166,17 +162,15 @@ function barWidth(summary: UsageSummary): string {
                   @click="row.id && $emit('open-ticket', row.id)"
                 >
                   <td>
-                    <span style="display: inline-flex; gap: 8px; align-items: baseline; min-width: 0">
-                      <span v-if="row.id" class="mono dim" style="font-size: 12px">{{ row.id }}</span>
+                    <span class="conv-title">
+                      <span v-if="row.id" class="mono">{{ row.id }}</span>
                       <span class="ellipsis">{{ row.title }}</span>
                     </span>
                   </td>
-                  <td class="hide-sm" style="width: 30%">
-                    <div class="inbar">
-                      <i :style="{ width: barWidth(row.summary) }" />
-                    </div>
+                  <td class="hide-sm bar-cell">
+                    <div class="inbar"><i :style="{ width: barWidth(row.summary) }" /></div>
                   </td>
-                  <td class="r" style="width: 88px">{{ formatCost(row.summary.cost) }}</td>
+                  <td class="r cost-cell">{{ formatCost(row.summary.cost) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -186,13 +180,3 @@ function barWidth(summary: UsageSummary): string {
     </div>
   </section>
 </template>
-
-<style scoped>
-.page-wrap {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-}
-</style>

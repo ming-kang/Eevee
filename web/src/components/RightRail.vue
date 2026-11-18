@@ -10,6 +10,7 @@ import {
   resolveRailTab,
 } from "../board.ts";
 import { onRovingKeydown } from "../focus.ts";
+import { vSeg } from "../dom.ts";
 import DetailTab from "./DetailTab.vue";
 import Icon from "./Icon.vue";
 import JobsTab from "./JobsTab.vue";
@@ -68,7 +69,8 @@ const tabs = computed(() => {
 <template>
   <div class="rail-head">
     <div
-      class="rtabs"
+      v-seg
+      class="seg sm rtabs"
       role="tablist"
       aria-label="工单栏标签"
       @keydown="
@@ -98,11 +100,9 @@ const tabs = computed(() => {
         <span v-if="item.dot" class="sr">（有待回答问题）</span>
       </button>
     </div>
-    <span class="spacer" />
     <button
       type="button"
       class="btn ghost sm icon rail-close"
-      title="关闭"
       aria-label="关闭工单栏"
       @click="emit('close-drawer')"
     >
@@ -115,7 +115,7 @@ const tabs = computed(() => {
     role="tabpanel"
     :aria-labelledby="`rail-tab-${effectiveTab}`"
   >
-    <p v-if="error" class="error hint" style="padding: 8px">{{ error }}</p>
+    <p v-if="error" class="error hint rail-note">{{ error }}</p>
     <TicketsTab
       v-if="effectiveTab === 'tickets'"
       :board="board"

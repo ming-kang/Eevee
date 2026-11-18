@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Icon from "./Icon.vue";
+
 defineProps<{ count: number }>();
 defineEmits<{ expand: [] }>();
 </script>
@@ -8,6 +10,6 @@ defineEmits<{ expand: [] }>();
     <span class="dot user" />
     <span>{{ count }} 个问题等你回答</span>
     <span class="spacer" />
-    <span class="dim">展开</span>
+    <Icon name="chevU" size="sm" />
   </button>
 </template>

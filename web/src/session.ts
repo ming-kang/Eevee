@@ -48,7 +48,7 @@ export async function openSessionWith(env: SessionEnv): Promise<SessionInfo> {
     }
   }
   const token = env.storage.getItem(STORAGE_KEY);
-  if (!token) throw new Unauthorized("还没有授权：在终端运行 eevee web 打开面板。");
+  if (!token) throw new Unauthorized("还没有授权");
   const client = makeClient({ baseUrl: env.origin, token });
   try {
     const status = await client.call("GET /api/status");
@@ -56,7 +56,7 @@ export async function openSessionWith(env: SessionEnv): Promise<SessionInfo> {
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 401) {
       env.storage.removeItem(STORAGE_KEY);
-      throw new Unauthorized("会话已过期或无效，请重新运行 eevee web。");
+      throw new Unauthorized("会话已过期");
     }
     throw error;
   }

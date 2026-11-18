@@ -9,11 +9,13 @@ import type { MemoryScope } from "@shared/contracts/index.ts";
 import { computed, onUnmounted, ref, watch } from "vue";
 import { focusFirst, onRovingKeydown, trapTab, useFocusReturn } from "../focus.ts";
 import { classifyCommitAuthor, type MemoryAuthor, parseGitDiff } from "../memory.ts";
+import { vSeg } from "../dom.ts";
 import { useSubmit } from "../submit.ts";
 import { formatRelativeTime } from "../time.ts";
 import { showToast } from "../toasts.ts";
 import FileDiffs from "./FileDiffs.vue";
 import Icon from "./Icon.vue";
+import Skeleton from "./Skeleton.vue";
 
 const props = defineProps<{
   client: Client;
@@ -284,6 +286,8 @@ function formatCommitAt(iso: string): { relative: string; title: string } {
   };
 }
 
+const authorOf = (commit: MemoryCommitView) => AUTHOR_META[classifyCommitAuthor(commit.subject)];
+
 function canRevert(commit: MemoryCommitView): boolean {
   return commit.subject.trim() !== "memory: init";
 }
@@ -313,39 +317,36 @@ async function performRevert(): Promise<void> {
 <template>
   <section class="page-wrap">
     <header class="header">
-      <button type="button" class="btn ghost icon menu-btn" title="菜单" aria-label="菜单" @click="$emit('open-side')">
-        <Icon name="menu" />
+      <button type="button" class="btn ghost sm icon menu-btn" aria-label="菜单" @click="$emit('open-side')">
+        <Icon name="menu" size="sm" />
       </button>
       <h1>记忆</h1>
-      <span class="muted ellipsis hide-sm" style="font-size: 12px">{{ project.title }}</span>
+      <span class="sub ellipsis hide-sm">{{ project.title }}</span>
     </header>
-
     <div class="split" :class="{ 'has-detail': mobileDetail }">
       <div class="split-list">
         <div class="list-head">
-          <div class="seg" style="width: 100%" role="group" aria-label="记忆范围">
+          <div v-seg class="seg sm stretch" role="group" aria-label="记忆范围">
             <button
               type="button"
-              style="flex: 1"
               :class="{ on: scope === 'project' }"
               :aria-pressed="scope === 'project'"
               @click="scope = 'project'"
             >
-              项目记忆
+              项目
             </button>
             <button
               type="button"
-              style="flex: 1"
               :class="{ on: scope === 'global' }"
               :aria-pressed="scope === 'global'"
               @click="scope = 'global'"
             >
-              全局记忆
+              全局
             </button>
           </div>
           <div
-            class="seg"
-            style="width: 100%"
+            v-seg
+            class="seg sm stretch"
             role="tablist"
             aria-label="记忆视图"
             @keydown="onRovingKeydown($event, MEMORY_TABS, tab, (key) => (tab = key))"
@@ -355,7 +356,6 @@ async function performRevert(): Promise<void> {
               role="tab"
               :aria-selected="tab === 'history'"
               :tabindex="tab === 'history' ? 0 : -1"
-              style="flex: 1"
               :class="{ on: tab === 'history' }"
               @click="tab = 'history'"
             >
@@ -366,7 +366,6 @@ async function performRevert(): Promise<void> {
               role="tab"
               :aria-selected="tab === 'files'"
               :tabindex="tab === 'files' ? 0 : -1"
-              style="flex: 1"
               :class="{ on: tab === 'files' }"
               @click="tab = 'files'"
             >
@@ -376,28 +375,21 @@ async function performRevert(): Promise<void> {
         </div>
 
         <template v-if="tab === 'history'">
-          <p v-if="listError" class="error hint" style="padding: 8px 14px">{{ listError }}</p>
-          <p v-else-if="loadingList && commits.length === 0" class="hint" style="padding: 8px 14px">
-            正在加载记忆历史…
-          </p>
-          <div v-else style="padding: 0 6px 16px; display: flex; flex-direction: column; gap: 1px">
+          <p v-if="listError" class="error hint">{{ listError }}</p>
+          <Skeleton v-else-if="loadingList && commits.length === 0" />
+          <div v-else class="list">
             <button
               v-if="hasUncommitted"
               type="button"
               class="commit"
               :class="{ on: selected === 'uncommitted' }"
+              title="下次提交时记为 user edit"
               @click="selectItem('uncommitted')"
             >
               <span class="who pending"><Icon name="pencil" size="xs" /></span>
               <span class="subj">未提交的改动</span>
-              <span class="meta">
-                <template v-if="uncommittedDiffs.length > 0">
-                  {{ uncommittedDiffs.map((d) => d.file).join("、") }} ·
-                </template>
-                下次提交时记为 user edit
-              </span>
+              <span class="meta ellipsis">{{ uncommittedDiffs.map((d) => d.file).join("、") }}</span>
             </button>
-
             <button
               v-for="commit in commits"
               :key="commit.commit"
@@ -406,33 +398,25 @@ async function performRevert(): Promise<void> {
               :class="{ on: selected === commit.commit }"
               @click="selectItem(commit.commit)"
             >
-              <span class="who" :class="AUTHOR_META[classifyCommitAuthor(commit.subject)].badgeClass">
-                <Icon :name="AUTHOR_META[classifyCommitAuthor(commit.subject)].icon" size="xs" />
+              <span class="who" :class="authorOf(commit).badgeClass">
+                <Icon :name="authorOf(commit).icon" size="xs" />
               </span>
               <span class="subj ellipsis">{{ commit.subject }}</span>
               <span class="meta">
+                <span>{{ authorOf(commit).label }}</span>
+                <span>·</span>
+                <span :title="formatCommitAt(commit.at).title">{{ formatCommitAt(commit.at).relative }}</span>
+                <span>·</span>
                 <span class="mono">{{ commit.commit }}</span>
-                <span>·</span>
-                <span>{{ AUTHOR_META[classifyCommitAuthor(commit.subject)].label }}</span>
-                <span>·</span>
-                <span :title="formatCommitAt(commit.at).title">
-                  {{ formatCommitAt(commit.at).relative }}
-                </span>
               </span>
             </button>
-
-            <p v-if="!hasUncommitted && commits.length === 0" class="hint" style="padding: 8px 8px">
-              还没有记忆提交记录。
-            </p>
+            <p v-if="!hasUncommitted && commits.length === 0" class="hint">没有记录</p>
           </div>
         </template>
-
         <template v-else>
-          <p v-if="filesError" class="error hint" style="padding: 8px 14px">{{ filesError }}</p>
-          <p v-else-if="loadingFiles && files.length === 0" class="hint" style="padding: 8px 14px">
-            正在加载记忆文件…
-          </p>
-          <div v-else style="padding: 0 6px 16px; display: flex; flex-direction: column; gap: 1px">
+          <p v-if="filesError" class="error hint">{{ filesError }}</p>
+          <Skeleton v-else-if="loadingFiles && files.length === 0" />
+          <div v-else class="list">
             <button
               v-for="file in files"
               :key="file.path"
@@ -444,61 +428,33 @@ async function performRevert(): Promise<void> {
               <span class="who">
                 <Icon :name="file.path === 'MEMORY.md' ? 'book' : 'file'" size="xs" />
               </span>
-              <span class="subj ellipsis mono" style="font-size: 12px">{{ file.path }}</span>
-              <span class="meta">
-                <span v-if="file.path === 'MEMORY.md'">索引 ·</span>
-                <span>{{ formatBytes(file.size) }}</span>
-              </span>
+              <span class="subj ellipsis mono">{{ file.path }}</span>
+              <span class="meta">{{ formatBytes(file.size) }}</span>
             </button>
-            <p v-if="files.length === 0" class="hint" style="padding: 8px 8px">
-              当前范围内没有记忆文件。
-            </p>
+            <p v-if="files.length === 0" class="hint">没有文件</p>
           </div>
         </template>
       </div>
 
       <div class="split-detail">
-        <button
-          v-if="mobileDetail"
-          type="button"
-          class="btn ghost sm menu-btn"
-          style="margin: 10px 0 0 10px"
-          @click="mobileDetail = false"
-        >
+        <button v-if="mobileDetail" type="button" class="btn ghost sm split-back" @click="mobileDetail = false">
           <Icon name="chevL" size="xs" />
-          <span>返回列表</span>
+          <span>返回</span>
         </button>
-
         <template v-if="tab === 'files'">
-          <div v-if="selectedFile" class="detail-inner">
+          <div v-if="selectedFile" :key="`f:${selectedFile}`" class="detail-inner">
             <div class="detail-head">
-              <div style="flex: 1; min-width: 0">
-                <h2 class="mono" style="font-size: 15px">{{ selectedFile }}</h2>
-                <div class="hint" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+              <div class="spacer">
+                <h2 class="mono">{{ selectedFile }}</h2>
+                <div class="detail-meta">
                   <span v-if="selectedFileContent !== undefined">{{ selectedFileLines.length }} 行</span>
-                  <span v-if="activeFileEntry">· {{ formatBytes(activeFileEntry.size) }}</span>
-                  <span>· {{ scope === "project" ? "项目记忆" : "全局记忆" }}</span>
+                  <span v-if="activeFileEntry">{{ formatBytes(activeFileEntry.size) }}</span>
                 </div>
               </div>
-              <button
-                type="button"
-                class="btn sm"
-                @click="showToast('可直接用编辑器修改记忆目录中的文件，Eevee 下次提交前会单独记为 user edit')"
-              >
-                <Icon name="pencil" size="xs" />
-                <span>如何编辑</span>
-              </button>
             </div>
-
             <p v-if="fileError" class="error hint">{{ fileError }}</p>
-            <p v-else-if="loadingFile && selectedFileContent === undefined" class="hint">正在读取文件内容…</p>
+            <Skeleton v-else-if="loadingFile && selectedFileContent === undefined" :lines="6" />
             <div v-else-if="selectedFileContent !== undefined" class="card file-diff">
-              <div class="card-h">
-                <Icon name="file" size="sm" />
-                <span class="path">{{ selectedFile }}</span>
-                <span class="spacer" />
-                <span class="muted" style="font-size: 12px">{{ selectedFileLines.length }} 行</span>
-              </div>
               <div class="diff single">
                 <div v-for="(line, idx) in selectedFileLines" :key="idx" class="ln">
                   <span>{{ idx + 1 }}</span>
@@ -507,70 +463,50 @@ async function performRevert(): Promise<void> {
                 </div>
               </div>
             </div>
-
-            <p class="hint">新写入的记忆从之后创建或重置的对话起生效，不影响正在进行的对话。</p>
-          </div>
-          <div v-else class="empty" style="padding-top: 80px">
-            <p class="muted">从左侧选择一个记忆文件查看内容。</p>
           </div>
         </template>
-
         <template v-else>
-          <div v-if="selected === 'uncommitted'" class="detail-inner">
-          <div class="detail-head">
-            <div style="flex: 1">
-              <h2>未提交的改动</h2>
-              <div class="hint">
-                你在编辑器里改了这些文件。Eevee 下次提交前会先把它们单独提交为一个
-                <span class="mono">user edit</span>，历史里分得清是谁改的。
+          <div v-if="selected === 'uncommitted'" key="uncommitted" class="detail-inner">
+            <div class="detail-head">
+              <div class="spacer">
+                <h2>未提交的改动</h2>
+                <div class="detail-meta">下次提交时记为 <span class="mono">user edit</span></div>
               </div>
             </div>
+            <FileDiffs :diffs="uncommittedDiffs" empty-text="没有未提交的改动" />
           </div>
-          <FileDiffs :diffs="uncommittedDiffs" empty-text="当前工作区没有未提交改动。" />
-        </div>
-
-        <div v-else-if="selectedCommit" class="detail-inner">
-          <div class="detail-head">
-            <div style="flex: 1; min-width: 0">
-              <h2>{{ selectedCommit.subject }}</h2>
-              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap" class="hint">
-                <span class="chip mono">
-                  <Icon name="commit" size="xs" />
-                  <span>{{ selectedCommit.commit }}</span>
-                </span>
-                <span style="display: inline-flex; gap: 4px; align-items: center">
-                  <Icon :name="AUTHOR_META[classifyCommitAuthor(selectedCommit.subject)].icon" size="xs" />
-                  <span>{{ AUTHOR_META[classifyCommitAuthor(selectedCommit.subject)].label }}</span>
-                </span>
-                <span :title="formatCommitAt(selectedCommit.at).title">
-                  {{ formatCommitAt(selectedCommit.at).relative }}
-                </span>
+          <div v-else-if="selectedCommit" :key="selectedCommit.commit" class="detail-inner">
+            <div class="detail-head">
+              <div class="spacer">
+                <h2>{{ selectedCommit.subject }}</h2>
+                <div class="detail-meta">
+                  <span class="chip mono">
+                    <Icon name="commit" size="xs" />
+                    <span>{{ selectedCommit.commit }}</span>
+                  </span>
+                  <span>{{ authorOf(selectedCommit).label }}</span>
+                  <span :title="formatCommitAt(selectedCommit.at).title">
+                    {{ formatCommitAt(selectedCommit.at).relative }}
+                  </span>
+                </div>
               </div>
+              <button
+                v-if="canRevert(selectedCommit)"
+                type="button"
+                class="btn sm danger"
+                @click="
+                  reverting.error.value = undefined;
+                  confirmCommit = selectedCommit;
+                "
+              >
+                <Icon name="undo" size="xs" />
+                <span>撤销</span>
+              </button>
             </div>
-            <button
-              v-if="canRevert(selectedCommit)"
-              type="button"
-              class="btn sm danger"
-              @click="
-                reverting.error.value = undefined;
-                confirmCommit = selectedCommit;
-              "
-            >
-              <Icon name="undo" size="xs" />
-              <span>撤销此提交</span>
-            </button>
+            <p v-if="diffError" class="error hint">{{ diffError }}</p>
+            <Skeleton v-else-if="loadingDiff" :lines="6" />
+            <FileDiffs v-else :diffs="selectedCommitDiffs" empty-text="没有文本改动" />
           </div>
-
-          <p v-if="diffError" class="error hint">{{ diffError }}</p>
-          <p v-else-if="loadingDiff" class="hint">正在读取改动…</p>
-          <FileDiffs v-else :diffs="selectedCommitDiffs" empty-text="这个提交没有文本文件改动。" />
-
-          <p class="hint">新写入的记忆从之后创建或重置的对话起生效，不影响正在进行的对话。</p>
-        </div>
-
-        <div v-else class="empty" style="padding-top: 80px">
-          <p class="muted">从左侧选择一次记忆提交查看改动详情。</p>
-        </div>
         </template>
       </div>
     </div>
@@ -578,7 +514,6 @@ async function performRevert(): Promise<void> {
     <div
       v-if="confirmCommit"
       class="overlay"
-      style="position: fixed; z-index: 45"
       @click.self="confirmCommit = undefined"
       @keydown="onConfirmKeydown"
     >
@@ -588,66 +523,34 @@ async function performRevert(): Promise<void> {
         role="dialog"
         aria-modal="true"
         aria-labelledby="revert-title"
-        style="width: min(440px, calc(100% - 32px))"
       >
         <div class="modal-h">
-          <h2 id="revert-title">撤销这次记忆提交？</h2>
+          <h2 id="revert-title">撤销这次提交？</h2>
           <span class="spacer" />
-          <button
-            type="button"
-            class="btn ghost sm icon"
-            aria-label="关闭"
-            @click="confirmCommit = undefined"
-          >
+          <button type="button" class="btn ghost sm icon" aria-label="关闭" @click="confirmCommit = undefined">
             <Icon name="x" size="sm" />
           </button>
         </div>
         <div class="modal-b">
-          <p style="margin: 0; font-size: 13px" class="muted">
-            会新建一个 revert commit 抵消 <span class="mono">{{ confirmCommit.commit }}</span> 的改动，历史不会被改写，之后还能再撤销回来。
+          <p class="muted">
+            新建一个 revert commit 抵消 <span class="mono">{{ confirmCommit.commit }}</span>，历史不会被改写。
           </p>
           <div class="codeline">
             <code>{{ confirmCommit.subject }}</code>
           </div>
-          <p class="hint" style="margin: 0">从之后创建或重置的对话起生效。</p>
-          <p
-            v-if="reverting.error.value"
-            class="error"
-            role="alert"
-            style="margin: 0; font-size: 12px"
-          >
+          <p v-if="reverting.error.value" class="composer-error" role="alert">
             {{ reverting.error.value }}
           </p>
         </div>
         <div class="modal-f">
-          <button
-            type="button"
-            class="btn"
-            :disabled="reverting.busy.value"
-            @click="confirmCommit = undefined"
-          >
+          <button type="button" class="btn" :disabled="reverting.busy.value" @click="confirmCommit = undefined">
             取消
           </button>
-          <button
-            type="button"
-            class="btn primary"
-            :disabled="reverting.busy.value"
-            @click="performRevert"
-          >
-            {{ reverting.busy.value ? "正在撤销…" : "撤销提交" }}
+          <button type="button" class="btn primary" :disabled="reverting.busy.value" @click="performRevert">
+            {{ reverting.busy.value ? "正在撤销…" : "撤销" }}
           </button>
         </div>
       </div>
     </div>
   </section>
 </template>
-
-<style scoped>
-.page-wrap {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-}
-</style>

@@ -1,4 +1,4 @@
-import type { LiveState, TranscriptView } from "@earendil-works/pi-durable";
+import type { InboxState, LiveState, TranscriptView } from "@earendil-works/pi-durable";
 import {
   type ComputedRef,
   computed,
@@ -224,11 +224,13 @@ export function useConversationWatch(
 
   const live = computed(() => view.value?.docs["pi.live"] as LiveState | undefined);
   const running = computed(() => live.value?.run !== undefined);
+  const inbox = computed(() => view.value?.docs["pi.inbox"] as InboxState | undefined);
 
   return {
     view,
     live,
     running,
+    inbox,
     loadingEarlier,
     fillingGaps,
     error,

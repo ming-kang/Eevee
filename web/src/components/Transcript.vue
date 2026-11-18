@@ -81,7 +81,7 @@ watch(tailKey, async () => {
           :disabled="loadingEarlier"
           @click="loadEarlier?.()"
         >
-          {{ loadingEarlier ? "正在加载更早的消息…" : "加载更早的消息" }}
+          {{ loadingEarlier ? "正在加载…" : "更早的消息" }}
         </button>
         <button
           v-else-if="item.kind === 'gap'"
@@ -90,7 +90,7 @@ watch(tailKey, async () => {
           :disabled="fillingGaps"
           @click="fillGap?.(item.gap)"
         >
-          {{ fillingGaps ? "正在补全缺失记录…" : "加载缺失的记录" }}
+          {{ fillingGaps ? "正在补全…" : "补全缺失的记录" }}
         </button>
         <ResetMark
           v-else-if="item.kind === 'reset'"
@@ -101,23 +101,24 @@ watch(tailKey, async () => {
           v-else-if="item.kind === 'opening'"
           type="button"
           class="note link"
+          title="工单目标、输入、验收标准和项目记忆"
           @click="$emit('open-detail')"
         >
           <Icon name="flag" size="xs" />
-          <span>开篇：工单目标、输入、验收标准和项目记忆</span>
+          <span>开篇</span>
         </button>
         <UserMessage
           v-else-if="item.kind === 'user'"
           :text="item.text"
           :at="item.at"
-          :via="item.via"
+          :pending="item.pending"
         />
         <div v-else-if="item.kind === 'qa'" class="u-wrap">
+          <div v-if="item.at !== undefined" class="msg-meta">{{ formatClockTime(item.at) }}</div>
           <div class="msg-user">
             <div class="via">{{ item.question }}</div>
             {{ item.answer }}
           </div>
-          <span v-if="item.at !== undefined" class="msg-time">{{ formatClockTime(item.at) }}</span>
         </div>
         <AssistantMessage
           v-else-if="item.kind === 'assistant'"

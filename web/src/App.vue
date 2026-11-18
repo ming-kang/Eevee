@@ -3,6 +3,7 @@ import type { ProjectSummary } from "@shared/api/contract.ts";
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import type { RailTab } from "./board.ts";
 import AppShell from "./components/AppShell.vue";
+import BrandLogo from "./components/BrandLogo.vue";
 import CommandPalette from "./components/CommandPalette.vue";
 import ConnectPage from "./components/ConnectPage.vue";
 import Icon from "./components/Icon.vue";
@@ -68,6 +69,8 @@ function showHover(payload: { pid: string; top: number; left: number }): void {
 function onHashChange(): void {
   hash.value = location.hash;
   drawer.value = null;
+  paletteOpen.value = false;
+  newProjectOpen.value = false;
   hideHover();
 }
 
@@ -240,10 +243,8 @@ function onPaletteSelect(item: PaletteItem): void {
 </script>
 
 <template>
-  <div v-if="connecting" class="viewport">
-    <main class="empty">
-      <p class="muted">正在连接 Engine…</p>
-    </main>
+  <div v-if="connecting" class="viewport boot" aria-busy="true" aria-label="正在连接 Engine">
+    <BrandLogo />
     <Toasts />
   </div>
   <div v-else-if="!session || route.name === 'connect'" class="viewport">
@@ -303,28 +304,19 @@ function onPaletteSelect(item: PaletteItem): void {
 
     <template v-else-if="route.name === 'chat' || route.name === 'worker' || route.name === 'home'">
       <header class="header">
-        <button type="button" class="btn ghost icon menu-btn" title="菜单" aria-label="菜单" @click="drawer = 'side'">
-          <Icon name="menu" />
+        <button type="button" class="btn ghost sm icon menu-btn" aria-label="菜单" @click="drawer = 'side'">
+          <Icon name="menu" size="sm" />
         </button>
-        <h1>Eevee</h1>
       </header>
       <div class="empty">
-        <div class="e-ico"><Icon name="folder" size="lg" /></div>
         <h3>{{ projects.length === 0 ? "还没有项目" : "找不到这个项目" }}</h3>
-        <p>
-          {{
-            projects.length === 0
-              ? "点击左栏“+”创建项目，或从左侧导航查看设置。"
-              : "请从左侧选择一个现有项目。"
-          }}
-        </p>
         <button
           v-if="projects.length === 0"
           type="button"
-          class="btn primary sm"
+          class="btn primary"
           @click="openNewProject"
         >
-          <Icon name="plus" size="xs" />
+          <Icon name="plus" size="sm" />
           <span>新建项目</span>
         </button>
       </div>
@@ -350,15 +342,13 @@ function onPaletteSelect(item: PaletteItem): void {
 
     <template v-else-if="route.name === 'memory' || route.name === 'usage'">
       <header class="header">
-        <button type="button" class="btn ghost icon menu-btn" title="菜单" aria-label="菜单" @click="drawer = 'side'">
-          <Icon name="menu" />
+        <button type="button" class="btn ghost sm icon menu-btn" aria-label="菜单" @click="drawer = 'side'">
+          <Icon name="menu" size="sm" />
         </button>
         <h1>{{ route.name === "memory" ? "记忆" : "花费" }}</h1>
       </header>
       <div class="empty">
-        <div class="e-ico"><Icon name="folder" size="lg" /></div>
         <h3>找不到这个项目</h3>
-        <p>请从左侧选择一个现有项目。</p>
       </div>
     </template>
 
@@ -409,7 +399,6 @@ function onPaletteSelect(item: PaletteItem): void {
       <CommandPalette
         :open="paletteOpen"
         :items="paletteItems"
-        :shortcut-label="paletteShortcut"
         @close="paletteOpen = false"
         @select="onPaletteSelect"
       />

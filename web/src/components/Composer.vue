@@ -10,7 +10,7 @@ const props = withDefaults(
     draftKey?: string;
     disabled?: boolean;
   }>(),
-  { placeholder: "告诉 Router 你想做什么…", draftKey: "", disabled: false },
+  { placeholder: "告诉 Router 要做什么", draftKey: "", disabled: false },
 );
 
 const draftStore = new Map<string, string>();
@@ -22,7 +22,7 @@ function autosize(): void {
   const el = textarea.value;
   if (!el) return;
   el.style.height = "auto";
-  el.style.height = `${Math.min(200, el.scrollHeight)}px`;
+  el.style.height = `${Math.min(220, el.scrollHeight)}px`;
 }
 
 watch(
@@ -61,17 +61,20 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <form class="composer" @submit.prevent="submit">
+  <form class="composer" @submit.prevent="submit" @click.self="textarea?.focus()">
     <textarea
       ref="textarea"
       v-model="text"
       rows="1"
       :placeholder="placeholder"
+      :aria-label="placeholder"
       :disabled="busy || disabled"
       @keydown="onKeydown"
     />
     <div class="c-actions">
       <slot name="actions" />
+      <span class="spacer" />
+      <slot name="end" />
       <button
         class="send"
         type="submit"
@@ -83,7 +86,5 @@ function onKeydown(event: KeyboardEvent): void {
       </button>
     </div>
   </form>
-  <p v-if="error" class="error" role="alert" style="margin: 2px 6px 0; font-size: 12px">
-    {{ error }}
-  </p>
+  <p v-if="error" class="composer-error" role="alert">{{ error }}</p>
 </template>

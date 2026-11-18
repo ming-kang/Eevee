@@ -1,0 +1,894 @@
+/* The conversation: prose on the page, everything the agent did folded to one gray line, and the
+   composer as the one card at the bottom. */
+
+.chat-page,
+.worker,
+.page-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.chat {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-anchor: none;
+  /* Content dissolves under the header and into the composer instead of being cut by a line. */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
+}
+
+.chat-inner {
+  max-width: calc(var(--ev-chat-max) + 64px);
+  margin: 0 auto;
+  padding: 20px 32px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ——— Landing: an empty conversation centers its title over the composer ——— */
+.landing-hero {
+  margin-top: auto;
+  padding: 0 32px 20px;
+  text-align: center;
+  animation: ev-rise var(--ev-slow) var(--ev-ease);
+}
+
+.landing-hero h2 {
+  font-size: var(--ev-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.chat-page.landing .dock {
+  margin-bottom: auto;
+  padding-bottom: 12vh;
+}
+
+/* ——— Messages ——— */
+.u-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  margin: 20px 0 10px;
+}
+
+.u-wrap:first-child {
+  margin-top: 0;
+}
+
+.msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 16px;
+  padding: 0 4px;
+  font-size: var(--ev-footnote);
+  line-height: 1.333;
+  color: var(--ev-label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.msg-user {
+  max-width: min(80%, 560px);
+  padding: 10px 16px;
+  border-radius: var(--ev-r-lg);
+  corner-shape: squircle;
+  font-size: var(--ev-body);
+  line-height: 1.572;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ev-prose);
+  background: color-mix(in oklab, var(--ev-label) 5%, transparent);
+}
+
+/* Sent, not yet delivered: the message waits at the end, a step quieter, until the run takes it. */
+.u-wrap.pending {
+  animation: ev-rise var(--ev-regular) var(--ev-ease);
+}
+
+.u-wrap.pending .msg-user {
+  color: var(--ev-label-2);
+}
+
+.msg-user .via {
+  margin-bottom: 4px;
+  font-size: var(--ev-footnote);
+  line-height: 1.333;
+  color: var(--ev-label-2);
+  white-space: normal;
+}
+
+.msg-ai {
+  font-size: var(--ev-body);
+  line-height: var(--ev-reading);
+  color: var(--ev-prose);
+  overflow-wrap: anywhere;
+}
+
+.msg-ai > * + * {
+  margin-top: 10px;
+}
+
+.msg-ai p,
+.msg-ai ul,
+.msg-ai ol {
+  margin-block: 0;
+}
+
+.msg-ai ul,
+.msg-ai ol {
+  padding-left: 22px;
+}
+
+.msg-ai li + li {
+  margin-top: 2px;
+}
+
+.msg-ai li::marker {
+  color: var(--ev-label-3);
+}
+
+.msg-ai strong {
+  font-weight: 600;
+  color: var(--ev-strong);
+}
+
+.msg-ai code,
+.panel-b code,
+.rdetail code {
+  padding: 1px 5px;
+  border-radius: var(--ev-r-mini);
+  font-size: 0.86em;
+  background: var(--ev-code);
+}
+
+.msg-ai pre,
+.panel-b pre {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  overflow-x: auto;
+  font-size: var(--ev-footnote);
+  line-height: 1.65;
+  background: var(--ev-code);
+}
+
+.msg-ai pre code,
+.panel-b pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+
+/* A ticket reference reads as a reference rather than a link: a quiet chip. */
+.tref {
+  display: inline;
+  padding: 1px 4px;
+  margin: 0 1px;
+  border-radius: 4px;
+  font: 500 0.88em / inherit var(--ev-font-mono);
+  color: var(--ev-label);
+  background: color-mix(in oklab, var(--ev-label) 7%, transparent);
+  transition: background-color var(--ev-fast) var(--ev-ease);
+  box-decoration-break: clone;
+}
+
+.tref:hover {
+  background: color-mix(in oklab, var(--ev-label) 13%, transparent);
+}
+
+/* ——— Process lines: what the agent did, one gray line each ——— */
+.proc,
+.note {
+  font-size: var(--ev-control);
+  line-height: 1.385;
+  color: var(--ev-label-2);
+}
+
+.proc > summary,
+.note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 6px;
+  margin-left: -6px;
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+}
+
+.proc > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--ev-fast) var(--ev-ease);
+}
+
+.proc > summary::-webkit-details-marker {
+  display: none;
+}
+
+.proc > summary:hover,
+.proc[open] > summary {
+  color: var(--ev-label);
+}
+
+.proc > summary:focus-visible {
+  box-shadow: var(--ev-ring-in);
+}
+
+.proc .chev {
+  color: var(--ev-label-3);
+  transition: transform var(--ev-fast) var(--ev-ease);
+}
+
+.proc[open] > summary .chev {
+  transform: rotate(90deg);
+}
+
+.proc .num,
+.proc .dim {
+  color: var(--ev-label-3);
+}
+
+.proc summary .mono,
+.note .mono {
+  font-size: var(--ev-footnote);
+}
+
+.proc > :not(summary) {
+  animation: ev-fade var(--ev-regular) var(--ev-ease);
+}
+
+.note .glyph,
+.proc summary .glyph {
+  width: var(--ev-icon-xs);
+  height: var(--ev-icon-xs);
+}
+
+.note > .ico,
+.note > .glyph {
+  color: var(--ev-label-3);
+}
+
+.note.link {
+  cursor: pointer;
+  text-align: left;
+  transition: color var(--ev-fast) var(--ev-ease);
+}
+
+.note.link:hover {
+  color: var(--ev-label);
+}
+
+/* Consecutive gray lines read as one block. */
+:is(.proc, .note) + :is(.proc, .note) {
+  margin-top: -6px;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 6px 13px;
+  padding-left: 12px;
+  box-shadow: inset 1px 0 0 var(--ev-separator);
+}
+
+.step-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-2);
+}
+
+.step-row .tool {
+  flex: none;
+  font: 500 var(--ev-footnote) / 1 var(--ev-font-mono);
+  color: var(--ev-label);
+}
+
+.step-row .arg {
+  flex: 1;
+}
+
+.step-row .ms {
+  flex: none;
+  margin-left: auto;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.step-note {
+  padding: 0 0 4px;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+  white-space: pre-wrap;
+}
+
+.step-out {
+  margin: 2px 0 6px;
+  padding: 10px 12px;
+  max-height: 280px;
+  overflow: auto;
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+  font: var(--ev-footnote) / 1.6 var(--ev-font-mono);
+  color: var(--ev-label);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--ev-code);
+}
+
+.proc > .step-out,
+.proc > .diff {
+  margin-left: 13px;
+}
+
+/* A failed turn: an alert with the way out. */
+.failure {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 12px;
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  font-size: var(--ev-control);
+  background: color-mix(in oklab, var(--ev-card) 92%, var(--ev-bad));
+  box-shadow: var(--ev-shadow-card);
+}
+
+.failure > .ico {
+  color: var(--ev-bad);
+}
+
+/* A reset: one line across the column. */
+.reset {
+  margin: 10px 0;
+}
+
+.reset-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+}
+
+.reset-line::before,
+.reset-line::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--ev-separator);
+}
+
+.reset-line button {
+  padding: 2px 6px;
+  border-radius: var(--ev-r-mini);
+  color: inherit;
+  transition: color var(--ev-fast) var(--ev-ease);
+}
+
+.reset-line button:hover {
+  color: var(--ev-label);
+}
+
+.handoff {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  font-size: var(--ev-control);
+  line-height: 1.65;
+  color: var(--ev-label-2);
+  white-space: pre-wrap;
+  background: var(--ev-region);
+  animation: ev-fade var(--ev-regular) var(--ev-ease);
+}
+
+.idle-mark,
+.more-line {
+  align-self: center;
+  padding: 4px 8px;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+}
+
+.more-line {
+  border-radius: var(--ev-r-sm);
+  transition:
+    color var(--ev-fast) var(--ev-ease),
+    background-color var(--ev-fast) var(--ev-ease);
+}
+
+.more-line:hover:not(:disabled) {
+  color: var(--ev-label);
+  background: var(--ev-hover);
+}
+
+/* ——— Report ——— */
+.report {
+  padding: 12px 14px;
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  font-size: var(--ev-control);
+  background: var(--ev-card);
+  box-shadow: var(--ev-shadow-card);
+}
+
+.report-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-2);
+}
+
+.report-sum {
+  margin-top: 6px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 10px 0 0;
+  font-size: var(--ev-footnote);
+  line-height: 1.55;
+}
+
+.kv dt {
+  color: var(--ev-label-3);
+}
+
+.kv dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.report .proc {
+  margin-top: 6px;
+}
+
+/* ——— Diff ——— */
+.diff {
+  overflow-x: auto;
+  font: var(--ev-footnote) / 1.65 var(--ev-font-mono);
+}
+
+.proc > .diff {
+  margin-top: 2px;
+  margin-bottom: 6px;
+  max-height: 320px;
+  overflow: auto;
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+  background: var(--ev-code);
+}
+
+.diff .ln {
+  display: grid;
+  grid-template-columns: 40px 40px 18px minmax(0, 1fr);
+  white-space: pre;
+  min-width: max-content;
+}
+
+.diff.single .ln {
+  grid-template-columns: 40px 18px minmax(0, 1fr);
+}
+
+.diff .ln > span:not(:last-child) {
+  padding-right: 8px;
+  text-align: right;
+  color: var(--ev-label-3);
+  user-select: none;
+}
+
+.diff .ln > .mk {
+  padding: 0;
+  text-align: center;
+}
+
+.diff .ln > span:last-child {
+  padding-right: 14px;
+}
+
+.diff .add {
+  background: var(--ev-add);
+}
+
+.diff .del {
+  background: var(--ev-del);
+}
+
+.diff .add .mk {
+  color: var(--ev-ok);
+}
+
+.diff .del .mk {
+  color: var(--ev-bad);
+}
+
+.diff .hunk {
+  padding: 4px 14px;
+  color: var(--ev-label-3);
+  background: color-mix(in oklab, var(--ev-label) 3%, transparent);
+}
+
+.file-diff + .file-diff {
+  margin-top: 12px;
+}
+
+/* ——— Dock & composer ——— */
+.dock {
+  flex: none;
+  padding: 0 32px 16px;
+}
+
+.dock-inner {
+  max-width: var(--ev-chat-max);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dock-note {
+  padding: 6px 0;
+  text-align: center;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 10px 10px 16px;
+  border-radius: var(--ev-r-lg);
+  corner-shape: squircle;
+  background: var(--ev-card);
+  box-shadow: var(--ev-shadow-card);
+  transition: box-shadow var(--ev-regular) var(--ev-ease);
+  cursor: text;
+}
+
+.composer:focus-within {
+  box-shadow: var(--ev-shadow-float);
+}
+
+.composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  max-height: 220px;
+  padding: 0 6px 0 0;
+  border: 0;
+  resize: none;
+  background: transparent;
+  font-size: var(--ev-body);
+  line-height: 1.572;
+  color: var(--ev-label);
+}
+
+.composer textarea:focus,
+.composer textarea:focus-visible {
+  box-shadow: none;
+}
+
+.composer textarea:disabled {
+  opacity: 0.6;
+}
+
+.c-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--ev-h-sm);
+  cursor: default;
+}
+
+.send,
+.stop {
+  display: inline-grid;
+  place-items: center;
+  width: var(--ev-h-sm);
+  height: var(--ev-h-sm);
+  flex: none;
+  border-radius: 50%;
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    color var(--ev-fast) var(--ev-ease),
+    box-shadow var(--ev-fast) var(--ev-ease),
+    transform var(--ev-fast) var(--ev-ease);
+}
+
+.send {
+  color: var(--ev-on-ink);
+  background-color: var(--ev-ink);
+  background-image: var(--ev-sheen-ink);
+  box-shadow: var(--ev-shadow-ink);
+}
+
+.send:disabled {
+  color: var(--ev-label-3);
+  background-color: var(--ev-tray);
+  background-image: none;
+  box-shadow: none;
+}
+
+.stop {
+  color: var(--ev-label);
+  background-color: var(--ev-raised);
+  background-image: var(--ev-sheen-raised);
+  box-shadow: var(--ev-shadow-raised);
+}
+
+.stop .ico {
+  fill: currentColor;
+}
+
+:is(.send, .stop):active:not(:disabled) {
+  transform: translateY(1px);
+  background-image: none;
+}
+
+:is(.send, .stop):focus-visible {
+  box-shadow: var(--ev-ring);
+}
+
+.composer-error {
+  padding: 0 4px;
+  font-size: var(--ev-footnote);
+  color: var(--ev-bad-ink);
+}
+
+/* ——— A question waiting for you takes the composer's place ——— */
+.qcard {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--ev-r-lg);
+  corner-shape: squircle;
+  background: var(--ev-card);
+  box-shadow: var(--ev-shadow-float);
+  animation: ev-rise var(--ev-regular) var(--ev-ease);
+}
+
+.qcard-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 10px 0 20px;
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+  color: var(--ev-label-2);
+}
+
+.pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.pager button {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--ev-r-mini);
+  color: var(--ev-label-2);
+}
+
+.pager button:hover {
+  color: var(--ev-label);
+  background: var(--ev-hover);
+}
+
+.qbody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: min(52vh, 460px);
+  overflow-y: auto;
+  padding: 0 20px 4px;
+}
+
+.qitem {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qitem-t {
+  display: flex;
+  gap: 6px;
+  font-size: var(--ev-body);
+  font-weight: 500;
+  line-height: 1.43;
+}
+
+.qitem-t .n {
+  color: var(--ev-label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.opts,
+.opts-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.opt,
+.opt-more {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 6px 10px;
+  margin: 0 -10px;
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+  font-size: var(--ev-body);
+  line-height: 1.43;
+  text-align: left;
+  transition: background-color var(--ev-fast) var(--ev-ease);
+}
+
+.opt:hover,
+.opt-more:hover {
+  background: var(--ev-hover);
+}
+
+.opt.on {
+  background: var(--ev-selected);
+}
+
+.opt:focus-visible,
+.opt-more:focus-visible {
+  box-shadow: var(--ev-ring-in);
+}
+
+.radio {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ev-well);
+  box-shadow: var(--ev-shadow-well);
+  transition: background-color var(--ev-fast) var(--ev-ease);
+}
+
+.opt.on .radio {
+  background-color: var(--ev-accent);
+  background-image: var(--ev-sheen-ink);
+  box-shadow: var(--ev-shadow-ink);
+}
+
+.opt.on .radio::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--ev-page);
+}
+
+.rec {
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: var(--ev-r-mini);
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+  line-height: 1.17;
+  color: var(--ev-label-2);
+  background: color-mix(in oklab, var(--ev-label) 7%, transparent);
+}
+
+.opt-more {
+  color: var(--ev-label-2);
+  padding-left: 36px;
+}
+
+.opt-input {
+  width: 100%;
+  height: var(--ev-h-lg);
+  margin-top: 4px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  font-size: var(--ev-body);
+  background: var(--ev-well);
+  box-shadow: var(--ev-shadow-well);
+  animation: ev-fade var(--ev-regular) var(--ev-ease);
+}
+
+.opt-input:focus,
+.opt-input:focus-visible {
+  box-shadow: var(--ev-shadow-well), var(--ev-ring-field);
+}
+
+.why {
+  padding-left: 26px;
+  font-size: var(--ev-footnote);
+  line-height: 1.55;
+  color: var(--ev-label-2);
+  animation: ev-fade var(--ev-regular) var(--ev-ease);
+}
+
+.qfoot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 12px 12px 20px;
+}
+
+.qstrip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px 0 14px;
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  font-size: var(--ev-control);
+  font-weight: 500;
+  text-align: left;
+  color: var(--ev-user-ink);
+  background: color-mix(in oklab, var(--ev-card) 88%, var(--ev-user));
+  box-shadow: var(--ev-shadow-card);
+  animation: ev-rise var(--ev-regular) var(--ev-ease);
+  transition: background-color var(--ev-fast) var(--ev-ease);
+}
+
+.qstrip:hover {
+  background: color-mix(in oklab, var(--ev-card) 82%, var(--ev-user));
+}
+
+.qstrip .ico {
+  color: var(--ev-user-ink);
+}
+
+@container vp (max-width: 760px) {
+  .chat-inner {
+    padding: 16px 16px 32px;
+  }
+
+  .dock {
+    padding: 0 12px 12px;
+  }
+
+  .msg-user {
+    max-width: 88%;
+  }
+}
+
+.diffstat {
+  display: inline-flex;
+  gap: 5px;
+  font: var(--ev-footnote) / 1 var(--ev-font-mono);
+}
+
+.header > .back-btn {
+  margin-left: -10px;
+}

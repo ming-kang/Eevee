@@ -10,12 +10,15 @@ import type {
 import type { ModelDefaults, RoleName } from "@shared/contracts/index.ts";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { SettingsSection } from "../router.ts";
+import { vSeg } from "../dom.ts";
 import type { StreamState } from "../stream.ts";
 import { useSubmit } from "../submit.ts";
-import { useTheme } from "../theme.ts";
+import { TEXT_SIZES } from "../text-size.ts";
+import { type ThemePreference, useTextSize, useTheme } from "../theme.ts";
 import { showToast } from "../toasts.ts";
 import Icon from "./Icon.vue";
 import MarkdownText from "./MarkdownText.vue";
+import Skeleton from "./Skeleton.vue";
 
 const props = defineProps<{
   client: Client;
@@ -30,6 +33,7 @@ defineEmits<{
 }>();
 
 const { preference: themePref, setTheme } = useTheme();
+const { size: textSize, setTextSize } = useTextSize();
 
 const modelsView = ref<ModelsView>();
 const modelsError = ref<string>();
@@ -50,18 +54,28 @@ const turnDrafts = ref<Record<RoleName, string>>({
   dreamer: "",
 });
 
-const MODEL_ROLES: { key: "default" | RoleName; label: string; desc: string }[] = [
-  { key: "default", label: "全局默认", desc: "没有单独设置的角色都用它" },
-  { key: "router", label: "Router", desc: "规划与调度；快、缓存命中高的模型更合适" },
-  { key: "worker", label: "Worker", desc: "执行工单；Router 可以按工单另选模型" },
-  { key: "dreamer", label: "Dreamer", desc: "整理记忆；轻量模型即可" },
+const MODEL_ROLES: { key: "default" | RoleName; label: string }[] = [
+  { key: "default", label: "全局默认" },
+  { key: "router", label: "Router" },
+  { key: "worker", label: "Worker" },
+  { key: "dreamer", label: "Dreamer" },
 ];
 
-const ROLE_META: Record<RoleName, { label: string; desc: string }> = {
-  router: { label: "Router", desc: "主对话与调度" },
-  worker: { label: "Worker", desc: "工单执行" },
-  dreamer: { label: "Dreamer", desc: "记忆整理" },
+const ROLE_LABEL: Record<RoleName, string> = {
+  router: "Router",
+  worker: "Worker",
+  dreamer: "Dreamer",
 };
+
+const THEME_OPTIONS: { key: ThemePreference; label: string }[] = [
+  { key: "system", label: "跟随系统" },
+  { key: "light", label: "浅色" },
+  { key: "dark", label: "深色" },
+];
+
+const RESTART = "eevee stop && eevee start";
+
+const loginCommand = (provider: string) => `eevee model login ${provider}`;
 
 const MCP_STATE_LABEL: Record<McpServerView["state"], { dot: string; label: string }> = {
   connected: { dot: "ok", label: "已连接" },
@@ -198,6 +212,18 @@ function modelLabel(roleKey: keyof ModelDefaults): { text: string; inherited: bo
   return { text: "未设置", inherited: true };
 }
 
+/** Whether Router actually runs on a model other than the one its row shows. */
+const routerDiffers = computed(() => {
+  const effective = modelsView.value?.routerModel;
+  if (!effective) return false;
+  return !modelLabel("router").text.endsWith(`${effective.provider}/${effective.modelId}`);
+});
+
+function isPicked(roleKey: keyof ModelDefaults, entry: ModelSpecView): boolean {
+  const label = modelLabel(roleKey);
+  return !label.inherited && label.text === `${entry.provider}/${entry.modelId}`;
+}
+
 async function pickRoleModel(roleKey: "default" | RoleName, choice: ModelSpecView): Promise<void> {
   const fullId = `${choice.provider}/${choice.modelId}`;
   const ok = await savingModel.run(async () => {
@@ -254,7 +280,7 @@ async function commitMaxTurns(role: RoleName): Promise<void> {
   });
   if (ok && capabilities.value) {
     syncTurnDrafts(capabilities.value);
-    showToast(`已更新 ${ROLE_META[role].label} 轮次上限`);
+    showToast(`已更新 ${ROLE_LABEL[role]} 轮次上限`);
   }
 }
 
@@ -268,7 +294,7 @@ function mcpFailed(extName: string): boolean {
 function rolesUsingExtension(extName: string): string[] {
   return (capabilities.value?.roles ?? [])
     .filter((r) => r.enabled.includes(extName))
-    .map((r) => ROLE_META[r.role].label);
+    .map((r) => ROLE_LABEL[r.role]);
 }
 
 const builtInCount = computed(() => {
@@ -295,8 +321,8 @@ function copyText(text: string): void {
 }
 
 const streamBadge = computed(() => {
-  if (props.streamState === "connected") return { dot: "ok", label: "运行中 · 实时流已连接" };
-  if (props.streamState === "connecting") return { dot: "run", label: "运行中 · 正在连接实时流" };
+  if (props.streamState === "connected") return { dot: "ok", label: "运行中" };
+  if (props.streamState === "connecting") return { dot: "run", label: "正在连接实时流" };
   if (props.streamState === "reconnecting") return { dot: "run", label: "实时流重连中" };
   return { dot: "bad", label: "实时流已断开" };
 });
@@ -305,13 +331,11 @@ const streamBadge = computed(() => {
 <template>
   <section class="page-wrap">
     <header class="header">
-      <button type="button" class="btn ghost icon menu-btn" title="菜单" aria-label="菜单" @click="$emit('open-side')">
-        <Icon name="menu" />
+      <button type="button" class="btn ghost sm icon menu-btn" aria-label="菜单" @click="$emit('open-side')">
+        <Icon name="menu" size="sm" />
       </button>
       <h1>设置</h1>
-      <span class="muted hide-sm" style="font-size: 12px">对全部项目生效</span>
     </header>
-
     <div class="settings">
       <nav class="set-nav" aria-label="设置分类">
         <a
@@ -323,18 +347,13 @@ const streamBadge = computed(() => {
           :href="`#/settings/${item.key}`"
         >
           <Icon :name="item.icon" size="sm" />
-          <span>{{ item.label }}</span>
+          <span class="spacer">{{ item.label }}</span>
           <span
             v-if="item.key === 'mcp' && (capabilities?.problems.length ?? 0) > 0"
             class="dot bad"
-            style="margin-left: auto"
             title="存在连接或扩展加载问题"
-            aria-hidden="true"
           />
-          <span
-            v-if="item.key === 'mcp' && (capabilities?.problems.length ?? 0) > 0"
-            class="sr"
-          >
+          <span v-if="item.key === 'mcp' && (capabilities?.problems.length ?? 0) > 0" class="sr">
             （存在连接或扩展加载问题）
           </span>
         </a>
@@ -343,73 +362,52 @@ const streamBadge = computed(() => {
       <div class="set-body">
         <div class="set-inner">
           <template v-if="section === 'models'">
-            <header>
-              <h2>模型</h2>
-              <p>按角色选择默认模型。改动立即应用到全部项目的 Router 和没有指定模型的工单。</p>
-            </header>
-
+            <header class="set-head"><h2>模型</h2></header>
             <p v-if="modelsError" class="error hint">{{ modelsError }}</p>
-            <p v-else-if="loadingModels && modelsView === undefined" class="hint">
-              正在加载模型配置…
-            </p>
+            <Skeleton v-else-if="loadingModels && modelsView === undefined" />
             <template v-else-if="modelsView">
               <div v-if="modelsView.problems.length > 0" class="banner bad">
                 <Icon name="alert" size="sm" />
                 <div>
-                  <strong>models.json 存在配置问题（受影响的 provider 保持内置设置）：</strong>
+                  <strong>models.json 有问题，相关 provider 沿用内置设置</strong>
                   <ul>
                     <li v-for="(prob, idx) in modelsView.problems" :key="idx">{{ prob }}</li>
                   </ul>
                 </div>
               </div>
-
               <p v-if="savingModel.error.value" class="error hint">{{ savingModel.error.value }}</p>
               <div class="rows">
-                <div
-                  v-for="roleRow in MODEL_ROLES"
-                  :key="roleRow.key"
-                  class="row model-row-ctrl"
-                  style="position: relative"
-                >
+                <div v-for="roleRow in MODEL_ROLES" :key="roleRow.key" class="row model-row-ctrl">
                   <div class="r-main">
                     <span class="r-t">
                       {{ roleRow.label }}
                       <span
-                        v-if="roleRow.key === 'router' && modelsView.routerModel"
+                        v-if="roleRow.key === 'router' && routerDiffers"
                         class="chip mono"
-                        style="margin-left: 6px; font-weight: 400"
                         title="Router 当前实际使用的模型"
                       >
-                        生效 {{ modelsView.routerModel.provider }}/{{ modelsView.routerModel.modelId }}
+                        生效 {{ modelsView.routerModel?.provider }}/{{ modelsView.routerModel?.modelId }}
                       </span>
                     </span>
-                    <span class="r-d">{{ roleRow.desc }}</span>
                   </div>
                   <button
                     type="button"
                     class="model-pick"
                     :class="{ inherit: modelLabel(roleRow.key).inherited }"
                     :disabled="availableModels.length === 0 || savingModel.busy.value"
+                    :aria-expanded="popRole === roleRow.key"
                     @click="toggleModelPop(roleRow.key)"
                   >
-                    <Icon v-if="!modelLabel(roleRow.key).inherited" name="cpu" size="xs" />
-                    <span class="ellipsis" style="flex: 1; text-align: left">
-                      {{ modelLabel(roleRow.key).text }}
-                    </span>
+                    <span class="ellipsis spacer">{{ modelLabel(roleRow.key).text }}</span>
                     <Icon name="chevD" size="xs" />
                   </button>
-
-                  <div
-                    v-if="popRole === roleRow.key"
-                    class="pop"
-                    style="top: 50px; right: 16px; width: min(360px, calc(100vw - 40px)); max-height: 360px; overflow-y: auto"
-                  >
-                    <div class="palette-in" style="height: 40px; padding: 0 8px; margin: -6px -6px 6px">
+                  <div v-if="popRole === roleRow.key" class="pop model-pop">
+                    <div class="pop-search">
                       <Icon name="search" size="sm" />
                       <input
                         v-model="popSearch"
                         placeholder="搜索模型…"
-                        style="font-size: 13px"
+                        aria-label="搜索模型"
                         @keydown.esc.prevent="popRole = undefined"
                       />
                     </div>
@@ -421,35 +419,26 @@ const streamBadge = computed(() => {
                           :key="`${entry.provider}/${entry.modelId}`"
                           type="button"
                           class="pop-row"
-                          :class="{ sel: modelLabel(roleRow.key).text === `${entry.provider}/${entry.modelId}` }"
                           @click="pickRoleModel(roleRow.key, entry)"
                         >
-                          <span class="mono ellipsis" style="flex: 1; font-size: 12px">
-                            {{ entry.modelId }}
-                          </span>
-                          <span class="dim" style="font-size: 11px">
-                            {{ entry.name }} · {{ compactTokens(entry.contextWindow) }}
-                          </span>
+                          <span class="mono">{{ entry.modelId }}</span>
+                          <span class="meta">{{ compactTokens(entry.contextWindow) }}</span>
                           <Icon
-                            v-if="!modelLabel(roleRow.key).inherited && modelLabel(roleRow.key).text === `${entry.provider}/${entry.modelId}`"
+                            v-if="isPicked(roleRow.key, entry)"
                             name="check"
                             size="sm"
                           />
                         </button>
                       </template>
                     </template>
-                    <div v-else class="hint" style="padding: 12px; text-align: center">
-                      没有匹配的可用模型
-                    </div>
+                    <div v-else class="palette-empty">没有结果</div>
                   </div>
                 </div>
               </div>
 
               <div class="section-t">
-                <h3>凭据与 Provider</h3>
-                <span class="muted" style="font-size: 12px">
-                  已配置 {{ configuredProviders.length }} / {{ modelsView.providers.length }}
-                </span>
+                <h3>Provider</h3>
+                <span class="count">{{ configuredProviders.length }}/{{ modelsView.providers.length }}</span>
                 <span class="spacer" />
                 <button
                   v-if="configuredProviders.length > 0 && unconfiguredProviders.length > 0"
@@ -457,27 +446,21 @@ const streamBadge = computed(() => {
                   class="btn sm ghost"
                   @click="showAllProviders = !showAllProviders"
                 >
-                  {{ showAllProviders ? "仅看已配置" : `显示全部（含 ${unconfiguredProviders.length} 个未配置）` }}
+                  {{ showAllProviders ? "仅已配置" : "显示全部" }}
                 </button>
               </div>
-
               <div class="rows">
                 <div v-for="prov in visibleProviders" :key="prov.id" class="row">
+                  <span class="dot" :class="{ ok: prov.configured }" />
                   <div class="r-main">
-                    <span class="r-t" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
-                      <span class="dot" :class="{ ok: prov.configured }" />
+                    <span class="r-t">
                       <span>{{ prov.name }}</span>
-                      <span v-if="prov.name !== prov.id" class="mono muted" style="font-size: 11px">
-                        {{ prov.id }}
-                      </span>
                       <span v-if="prov.custom" class="chip">自定义</span>
                     </span>
                     <span class="r-d">
+                      <span v-if="prov.name !== prov.id" class="mono">{{ prov.id }} · </span>
                       {{ prov.modelCount }} 个模型
-                      <template v-if="prov.configured">
-                        · 凭据来源：{{ prov.source || (prov.authType === "oauth" ? "OAuth" : "已配置") }}
-                      </template>
-                      <template v-else> · 未配置凭据</template>
+                      <template v-if="prov.configured && prov.source"> · {{ prov.source }}</template>
                     </span>
                   </div>
                   <span v-if="prov.configured" class="chip">
@@ -488,55 +471,52 @@ const streamBadge = computed(() => {
                     v-else
                     type="button"
                     class="btn sm"
-                    :title="`eevee model login ${prov.id}`"
-                    @click="copyText(`eevee model login ${prov.id}`)"
+                    :title="loginCommand(prov.id)"
+                    @click="copyText(loginCommand(prov.id))"
                   >
                     <Icon name="copy" size="xs" />
-                    <span>复制登录命令</span>
+                    <span>登录命令</span>
                   </button>
                 </div>
               </div>
 
-              <div class="section-t">
-                <h3>可用模型目录</h3>
-                <span class="spacer" />
-                <span class="hint">登录请在终端运行 <span class="mono">eevee model login &lt;provider&gt;</span></span>
-              </div>
-
-              <div v-if="availableModels.length > 0" class="panel" style="overflow-x: auto">
+              <div class="section-t"><h3>可用模型</h3></div>
+              <div v-if="availableModels.length > 0" class="panel">
                 <table class="table">
                   <thead>
                     <tr>
                       <th>模型</th>
                       <th>名称</th>
                       <th>上下文</th>
-                      <th class="hide-sm">定价与特性</th>
+                      <th class="hide-sm">定价</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-for="entry in availableModels" :key="`${entry.provider}/${entry.modelId}`">
-                      <td class="mono" style="font-size: 12px">{{ entry.provider }}/{{ entry.modelId }}</td>
-                      <td>{{ entry.name }}</td>
+                      <td class="mono">{{ entry.provider }}/{{ entry.modelId }}</td>
+                      <td class="name">{{ entry.name }}</td>
                       <td class="num muted">{{ compactTokens(entry.contextWindow) }}</td>
                       <td class="hide-sm muted">{{ formatModelMeta(entry) }}</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
-              <div v-else class="banner info">
-                <Icon name="key" size="sm" />
-                <span>
-                  当前没有已配置凭据的模型 provider。请在终端运行
-                  <span class="mono">eevee model login &lt;provider&gt;</span>，或配置环境变量后重启 Engine。
-                </span>
+              <div v-else class="codeline">
+                <code>{{ loginCommand("<provider>") }}</code>
+                <button
+                  type="button"
+                  class="btn ghost sm icon"
+                  aria-label="复制登录命令"
+                  @click="copyText(loginCommand('<provider>'))"
+                >
+                  <Icon name="copy" size="xs" />
+                </button>
               </div>
 
               <template v-if="modelsView.profiles">
-                <div class="section-t">
-                  <h3>使用经验（~/.eevee/models.md）</h3>
-                </div>
+                <div class="section-t"><h3 title="~/.eevee/models.md">使用经验</h3></div>
                 <div class="panel">
-                  <div class="panel-b">
+                  <div class="panel-b msg-ai">
                     <MarkdownText :source="modelsView.profiles" />
                   </div>
                 </div>
@@ -545,209 +525,146 @@ const streamBadge = computed(() => {
           </template>
 
           <template v-else-if="section === 'roles'">
-            <header>
-              <h2>角色能力</h2>
-              <p>按角色启用扩展。Worker 工单共享 Worker 的配置；改动立即应用到 Router 和全部未结工单。</p>
-            </header>
-
+            <header class="set-head"><h2>角色能力</h2></header>
             <p v-if="capError || savingRole.error.value" class="error hint">
               {{ capError ?? savingRole.error.value }}
             </p>
-            <p v-else-if="loadingCap && !capabilities" class="hint">正在加载角色能力…</p>
-            <template v-else-if="capabilities">
-              <div class="panel" style="overflow-x: auto">
-                <table class="matrix">
-                  <thead>
-                    <tr>
-                      <th>扩展</th>
-                      <th v-for="roleItem in capabilities.roles" :key="roleItem.role">
-                        <span class="rl">{{ ROLE_META[roleItem.role].label }}</span>
-                        <span>{{ ROLE_META[roleItem.role].desc }}</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-if="capabilities.available.length === 0">
-                      <td colspan="4" class="muted" style="text-align: center; padding: 18px">
-                        还没有可选扩展（在 MCP 与扩展页面查看安装状态）。
-                      </td>
-                    </tr>
-                    <tr v-for="ext in capabilities.available" :key="ext.name">
-                      <td>
-                        <div class="ext">
-                          <b style="display: flex; gap: 6px; align-items: center">
-                            <Icon :name="ext.name.startsWith('mcp.') ? 'plug' : 'puzzle'" size="xs" />
-                            <span>{{ ext.name }}</span>
-                            <span
-                              v-if="mcpFailed(ext.name)"
-                              class="dot bad"
-                              title="MCP 服务器连接失败"
-                            />
-                          </b>
-                          <span>{{ ext.tools }} 个工具</span>
-                        </div>
-                      </td>
-                      <td v-for="roleItem in capabilities.roles" :key="roleItem.role">
-                        <button
-                          type="button"
-                          class="switch"
-                          :class="{ on: roleItem.enabled.includes(ext.name) }"
-                          :disabled="savingRole.busy.value"
-                          :title="`${ROLE_META[roleItem.role].label} · ${ext.name}`"
-                          :aria-label="`${ROLE_META[roleItem.role].label} 启用 ${ext.name}`"
-                          :aria-pressed="roleItem.enabled.includes(ext.name)"
-                          @click="toggleExtension(roleItem.role, ext.name)"
-                        />
-                      </td>
-                    </tr>
-
-                    <tr>
-                      <td>
-                        <div class="ext">
-                          <b>每轮轮次上限</b>
-                          <span>maxTurns · 留空用默认值</span>
-                        </div>
-                      </td>
-                      <td v-for="roleItem in capabilities.roles" :key="roleItem.role">
-                        <input
-                          v-model="turnDrafts[roleItem.role]"
-                          class="input mono"
-                          style="width: 72px; height: 28px; text-align: center"
-                          placeholder="默认"
-                          :disabled="savingRole.busy.value"
-                          @change="commitMaxTurns(roleItem.role)"
-                        />
-                      </td>
-                    </tr>
-
-                    <tr class="builtin">
-                      <td style="vertical-align: top">
-                        <div class="ext">
-                          <b style="display: flex; gap: 6px; align-items: center">
-                            <Icon name="lock" size="xs" />
-                            <span>自带扩展</span>
-                          </b>
-                          <span>角色的基础能力，始终启用（共 {{ builtInCount }} 个）</span>
-                        </div>
-                      </td>
-                      <td
-                        v-for="roleItem in capabilities.roles"
-                        :key="roleItem.role"
-                        style="vertical-align: top"
-                      >
-                        <div style="display: flex; flex-direction: column; gap: 3px; align-items: center">
-                          <span
-                            v-for="builtin in roleItem.builtIn"
-                            :key="builtin"
-                            class="mono dim"
-                            style="font-size: 11px"
-                          >
-                            {{ builtin.replace(/^eevee\./, "") }}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <p class="hint">
-                也可以在终端用 <span class="mono">eevee role enable worker &lt;扩展名&gt;</span>
-                修改，保存在 <span class="mono">settings.json</span>。
-              </p>
-            </template>
+            <Skeleton v-else-if="loadingCap && !capabilities" />
+            <div v-else-if="capabilities" class="panel">
+              <table class="matrix">
+                <thead>
+                  <tr>
+                    <th>扩展</th>
+                    <th v-for="roleItem in capabilities.roles" :key="roleItem.role">
+                      {{ ROLE_LABEL[roleItem.role] }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="capabilities.available.length === 0">
+                    <td colspan="4" class="muted">没有可选扩展</td>
+                  </tr>
+                  <tr v-for="ext in capabilities.available" :key="ext.name">
+                    <td>
+                      <div class="ext">
+                        <b>
+                          <Icon :name="ext.name.startsWith('mcp.') ? 'plug' : 'puzzle'" size="xs" />
+                          <span>{{ ext.name }}</span>
+                          <span v-if="mcpFailed(ext.name)" class="dot bad" title="MCP 服务器连接失败" />
+                        </b>
+                        <span>{{ ext.tools }} 个工具</span>
+                      </div>
+                    </td>
+                    <td v-for="roleItem in capabilities.roles" :key="roleItem.role">
+                      <button
+                        type="button"
+                        class="switch"
+                        :class="{ on: roleItem.enabled.includes(ext.name) }"
+                        :disabled="savingRole.busy.value"
+                        :aria-label="`${ROLE_LABEL[roleItem.role]} 启用 ${ext.name}`"
+                        :aria-pressed="roleItem.enabled.includes(ext.name)"
+                        @click="toggleExtension(roleItem.role, ext.name)"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div class="ext" title="settings.json 中的 roles.<角色>.maxTurns">
+                        <b>轮次上限</b>
+                      </div>
+                    </td>
+                    <td v-for="roleItem in capabilities.roles" :key="roleItem.role">
+                      <input
+                        v-model="turnDrafts[roleItem.role]"
+                        class="input mono"
+                        placeholder="默认"
+                        :aria-label="`${ROLE_LABEL[roleItem.role]} 轮次上限`"
+                        :disabled="savingRole.busy.value"
+                        @change="commitMaxTurns(roleItem.role)"
+                      />
+                    </td>
+                  </tr>
+                  <tr class="builtin">
+                    <td>
+                      <div class="ext" title="始终启用">
+                        <b>
+                          <Icon name="lock" size="xs" />
+                          <span>自带扩展</span>
+                        </b>
+                      </div>
+                    </td>
+                    <td v-for="roleItem in capabilities.roles" :key="roleItem.role">
+                      <div class="builtin-list">
+                        <span v-for="builtin in roleItem.builtIn" :key="builtin">
+                          {{ builtin.replace(/^eevee\./, "") }}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </template>
 
           <template v-else-if="section === 'mcp'">
-            <header style="display: flex; align-items: flex-end; gap: 12px">
-              <div style="flex: 1">
-                <h2>MCP 与扩展</h2>
-                <p>
-                  MCP 服务器来自 <span class="mono">~/.eevee/mcp.json</span>，用户扩展来自
-                  <span class="mono">~/.eevee/extensions/</span>。在“角色能力”里决定哪些角色启用它们。
-                </p>
-              </div>
-              <button
-                type="button"
-                class="btn sm"
-                :disabled="reloadingMcp.busy.value"
-                @click="reloadMcp"
-              >
+            <header class="set-head">
+              <h2>MCP 与扩展</h2>
+              <button type="button" class="btn sm" :disabled="reloadingMcp.busy.value" @click="reloadMcp">
                 <Icon name="refresh" size="xs" :spin="reloadingMcp.busy.value" />
                 <span>重新加载</span>
               </button>
             </header>
-
             <p v-if="capError || reloadingMcp.error.value" class="error hint">
               {{ capError ?? reloadingMcp.error.value }}
             </p>
-            <p v-else-if="loadingCap && !capabilities" class="hint">正在加载扩展信息…</p>
+            <Skeleton v-else-if="loadingCap && !capabilities" />
             <template v-else-if="capabilities">
               <div v-if="capabilities.problems.length > 0" class="banner bad">
                 <Icon name="alert" size="sm" />
                 <div>
-                  <b style="font-weight: 600">{{ capabilities.problems.length }} 个问题</b>
+                  <strong>{{ capabilities.problems.length }} 个问题</strong>
                   <ul>
                     <li v-for="(prob, idx) in capabilities.problems" :key="idx">{{ prob }}</li>
                   </ul>
                 </div>
               </div>
-
-              <div class="section-t"><h3>MCP 服务器</h3></div>
+              <div class="section-t"><h3 title="~/.eevee/mcp.json">MCP 服务器</h3></div>
               <div class="rows">
-                <div v-if="capabilities.mcp.length === 0" class="row" style="min-height: 48px">
-                  <span class="hint">还没有配置 MCP 服务器。</span>
+                <div v-if="capabilities.mcp.length === 0" class="row">
+                  <span class="muted">没有 MCP 服务器</span>
                 </div>
                 <div v-for="server in capabilities.mcp" :key="server.name" class="row">
                   <div class="r-main">
                     <span class="r-t">
-                      <Icon name="plug" size="xs" />
                       <span class="mono">mcp.{{ server.name }}</span>
-                      <span
-                        class="chip mono"
-                        style="height: 18px"
-                        title="工具呈现方式（在 mcp.json 中配置）"
-                      >
-                        {{ server.exposure }}
-                      </span>
+                      <span class="chip mono" title="工具呈现方式（在 mcp.json 中配置）">{{ server.exposure }}</span>
                     </span>
                     <span class="r-d">
-                      {{ server.tools }} 个工具 ·
-                      {{
-                        rolesUsingExtension(`mcp.${server.name}`).length > 0
-                          ? `已为 ${rolesUsingExtension(`mcp.${server.name}`).join("、")} 启用`
-                          : "没有角色启用"
-                      }}
+                      {{ server.tools }} 个工具
+                      <template v-if="rolesUsingExtension(`mcp.${server.name}`).length > 0">
+                        · {{ rolesUsingExtension(`mcp.${server.name}`).join("、") }}
+                      </template>
                     </span>
                     <span v-if="server.error" class="err">{{ server.error }}</span>
                   </div>
-                  <span style="display: inline-flex; gap: 6px; align-items: center; font-size: 12px">
+                  <span class="status-text">
                     <span class="dot" :class="MCP_STATE_LABEL[server.state].dot" />
                     <span>{{ MCP_STATE_LABEL[server.state].label }}</span>
                   </span>
                 </div>
               </div>
-
-              <div class="section-t"><h3>用户扩展</h3></div>
+              <div class="section-t"><h3 title="~/.eevee/extensions/">用户扩展</h3></div>
               <div class="rows">
-                <div
-                  v-if="capabilities.userExtensions.length === 0"
-                  class="row"
-                  style="min-height: 48px"
-                >
-                  <span class="hint">还没有用户扩展（可将 .mjs 放入 ~/.eevee/extensions/）。</span>
+                <div v-if="capabilities.userExtensions.length === 0" class="row">
+                  <span class="muted">没有用户扩展</span>
                 </div>
                 <div v-for="ext in capabilities.userExtensions" :key="ext.file" class="row">
                   <div class="r-main">
-                    <span class="r-t">
-                      <Icon name="puzzle" size="xs" />
-                      <span class="mono">{{ ext.file }}</span>
-                    </span>
-                    <span class="r-d">
-                      {{ ext.name ? `${ext.name} · ${ext.tools} 个工具` : "未加载" }}
-                    </span>
+                    <span class="r-t"><span class="mono">{{ ext.file }}</span></span>
+                    <span class="r-d">{{ ext.name ? `${ext.name} · ${ext.tools} 个工具` : "未加载" }}</span>
                     <span v-if="ext.error" class="err">{{ ext.error }}</span>
                   </div>
-                  <span style="display: inline-flex; gap: 6px; align-items: center; font-size: 12px">
+                  <span class="status-text">
                     <span class="dot" :class="ext.error ? 'bad' : 'ok'" />
                     <span>{{ ext.error ? "加载失败" : "已加载" }}</span>
                   </span>
@@ -757,115 +674,70 @@ const streamBadge = computed(() => {
           </template>
 
           <template v-else-if="section === 'engine'">
-            <header>
-              <h2>Engine</h2>
-              <p>常驻后台的进程，承载全部项目和这个面板。</p>
-            </header>
-
+            <header class="set-head"><h2>Engine</h2></header>
             <div class="rows">
               <div class="row">
-                <div class="r-main">
-                  <span class="r-t">界面主题</span>
-                  <span class="r-d">默认跟随系统配色，可单独固定浅色或深色</span>
+                <div class="r-main"><span class="r-t">主题</span></div>
+                <div v-seg class="seg sm" role="group" aria-label="界面主题">
+                  <button
+                    v-for="option in THEME_OPTIONS"
+                    :key="option.key"
+                    type="button"
+                    :class="{ on: themePref === option.key }"
+                    :aria-pressed="themePref === option.key"
+                    @click="setTheme(option.key)"
+                  >
+                    {{ option.label }}
+                  </button>
                 </div>
-                <div class="seg" role="group" aria-label="界面主题">
+              </div>
+              <div class="row">
+                <div class="r-main"><span class="r-t">字号</span></div>
+                <div v-seg class="seg sm" role="group" aria-label="界面字号">
                   <button
+                    v-for="option in TEXT_SIZES"
+                    :key="option"
                     type="button"
-                    :class="{ on: themePref === 'system' }"
-                    :aria-pressed="themePref === 'system'"
-                    @click="setTheme('system')"
+                    class="num"
+                    :class="{ on: textSize === option }"
+                    :aria-pressed="textSize === option"
+                    @click="setTextSize(option)"
                   >
-                    跟随系统
-                  </button>
-                  <button
-                    type="button"
-                    :class="{ on: themePref === 'light' }"
-                    :aria-pressed="themePref === 'light'"
-                    @click="setTheme('light')"
-                  >
-                    浅色
-                  </button>
-                  <button
-                    type="button"
-                    :class="{ on: themePref === 'dark' }"
-                    :aria-pressed="themePref === 'dark'"
-                    @click="setTheme('dark')"
-                  >
-                    深色
+                    {{ option }}
                   </button>
                 </div>
               </div>
               <div class="row">
                 <div class="r-main"><span class="r-t">状态</span></div>
-                <span style="display: inline-flex; gap: 6px; align-items: center; font-size: 13px">
+                <span class="status-text">
                   <span class="dot" :class="streamBadge.dot" />
                   <span>{{ streamBadge.label }}</span>
                 </span>
               </div>
               <div class="row">
                 <div class="r-main"><span class="r-t">版本</span></div>
-                <span class="mono muted">{{ status?.version ?? "—" }}</span>
+                <span class="value">{{ status?.version ?? "—" }}</span>
               </div>
               <div class="row">
-                <div class="r-main">
-                  <span class="r-t">地址</span>
-                  <span class="r-d">只监听本机</span>
-                </div>
-                <span class="mono muted">
-                  {{ status ? `http://127.0.0.1:${status.port}/` : "—" }}
-                </span>
+                <div class="r-main"><span class="r-t">地址</span></div>
+                <span class="value">{{ status ? `http://127.0.0.1:${status.port}/` : "—" }}</span>
               </div>
               <div class="row">
-                <div class="r-main">
-                  <span class="r-t">bootId</span>
-                  <span class="r-d">Engine 每次启动都会变化；面板发现变化时会重新订阅全部数据</span>
-                </div>
-                <span class="mono muted">{{ status?.bootId ?? "—" }}</span>
-              </div>
-              <div class="row">
-                <div class="r-main">
-                  <span class="r-t">数据目录</span>
-                  <span class="r-d">默认是 ~/.eevee/，设置了 EEVEE_HOME 时在那里</span>
-                </div>
+                <div class="r-main"><span class="r-t">bootId</span></div>
+                <span class="value">{{ status?.bootId ?? "—" }}</span>
               </div>
             </div>
-
-            <div class="section-t"><h3>停止或重启</h3></div>
-            <div class="rows">
-              <div class="row">
-                <div class="r-main">
-                  <span class="r-t">在终端运行</span>
-                  <span class="r-d">
-                    停止会终止正在运行的后台作业；重启后相关 Worker 会收到通知，自行决定是否重跑。
-                  </span>
-                  <div class="codeline" style="margin-top: 6px">
-                    <code>eevee stop && eevee start</code>
-                    <button
-                      type="button"
-                      class="btn ghost sm icon"
-                      title="复制命令"
-                      aria-label="复制重启命令"
-                      @click="copyText('eevee stop && eevee start')"
-                    >
-                      <Icon name="copy" size="xs" />
-                    </button>
-                  </div>
-                </div>
-              </div>
+            <div class="section-t"><h3>重启</h3></div>
+            <div class="codeline">
+              <code>{{ RESTART }}</code>
+              <button type="button" class="btn ghost sm icon" aria-label="复制重启命令" @click="copyText(RESTART)">
+                <Icon name="copy" size="xs" />
+              </button>
             </div>
+            <p class="hint">会终止正在运行的后台作业</p>
           </template>
         </div>
       </div>
     </div>
   </section>
 </template>
-
-<style scoped>
-.page-wrap {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-}
-</style>

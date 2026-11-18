@@ -6,6 +6,7 @@ import { computed, ref, type ShallowRef, watch } from "vue";
 import { effectiveStage, type RailTab } from "../board.ts";
 import { useConversationWatch } from "../engine-data.ts";
 import { STAGE_LABEL } from "../labels.ts";
+import { vSeg } from "../dom.ts";
 import type { StreamClient } from "../stream.ts";
 import { useSubmit } from "../submit.ts";
 import { mapTranscript } from "../transcript-map.ts";
@@ -45,6 +46,7 @@ const displayItems = computed(() =>
   mapTranscript(conversation.view.value?.items ?? [], {
     mode: "worker",
     live: conversation.live.value,
+    inbox: conversation.inbox.value,
     ticketId: props.ticketId as TicketId,
     reports: props.view?.reports,
     ticketStatus: props.view?.ticket.status,
@@ -112,13 +114,13 @@ async function answer(id: QuestionId, text: string): Promise<void> {
 <template>
   <section class="worker">
     <header class="header">
-      <button type="button" class="btn ghost icon menu-btn" title="菜单" aria-label="菜单" @click="$emit('open-side')">
-        <Icon name="menu" />
+      <button type="button" class="btn ghost sm icon menu-btn" aria-label="菜单" @click="$emit('open-side')">
+        <Icon name="menu" size="sm" />
       </button>
       <button
         type="button"
-        class="btn ghost sm icon"
-        title="回到 Router 主对话"
+        class="btn ghost sm icon back-btn"
+        title="回到 Router"
         aria-label="回到 Router 主对话"
         @click="$emit('close')"
       >
@@ -126,7 +128,7 @@ async function answer(id: QuestionId, text: string): Promise<void> {
       </button>
       <span class="t-id-h">{{ ticketId }}</span>
       <h1 class="ellipsis">
-        {{ view ? view.ticket.title : boardLoaded ? `找不到工单 ${ticketId}` : ticketId }}
+        {{ view ? view.ticket.title : boardLoaded ? `找不到工单 ${ticketId}` : "" }}
       </h1>
       <span
         v-if="view && stage"
@@ -144,18 +146,18 @@ async function answer(id: QuestionId, text: string): Promise<void> {
     </header>
 
     <div v-if="displayItems.length === 0" class="chat">
-      <div class="chat-inner" style="min-height: 100%">
-        <div class="empty">
-          <p class="muted">
-            {{
-              !view && boardLoaded
-                ? `找不到工单 ${ticketId}`
-                : view?.stage === "queued"
-                  ? "排队中 · 等待空闲的 Worker 槽位…"
-                  : "执行对话还没有开始。"
-            }}
-          </p>
-        </div>
+      <div class="empty">
+        <p>
+          {{
+            !view && boardLoaded
+              ? `找不到工单 ${ticketId}`
+              : view?.stage === "queued"
+                ? "排队中"
+                : conversation.view.value
+                  ? "尚未开始"
+                  : ""
+          }}
+        </p>
       </div>
     </div>
     <Transcript
@@ -173,16 +175,11 @@ async function answer(id: QuestionId, text: string): Promise<void> {
       @open-job="(jobId) => $emit('open-rail', 'jobs', jobId)"
     />
 
-    <p
-      v-if="conversation.error.value || interrupting.error.value"
-      class="error"
-      style="margin: 0; padding: 0 24px 6px; font-size: 12px"
-    >
-      {{ conversation.error.value ?? interrupting.error.value }}
-    </p>
-
     <div class="dock">
       <div class="dock-inner">
+        <p v-if="conversation.error.value || interrupting.error.value" class="composer-error" role="alert">
+          {{ conversation.error.value ?? interrupting.error.value }}
+        </p>
         <template v-if="open">
           <QuestionCard
             v-if="ticketQuestions.length > 0 && !later"
@@ -198,25 +195,19 @@ async function answer(id: QuestionId, text: string): Promise<void> {
               :count="ticketQuestions.length"
               @expand="later = false"
             />
-            <Composer
-              :draft-key="`w:${project}:${ticketId}`"
-              :send="send"
-              :placeholder="
-                conversation.running.value
-                  ? mode === 'steer'
-                    ? 'Worker 正在执行，引导消息将在本批工具结束后送达…'
-                    : 'Worker 正在执行，消息将排在本轮结束后送达…'
-                  : `给 ${ticketId} 的 Worker 发消息…`
-              "
-            >
+            <Composer :draft-key="`w:${project}:${ticketId}`" :send="send" :placeholder="`发消息给 ${ticketId}`">
               <template v-if="conversation.running.value" #actions>
                 <div
-                  class="seg"
+                  v-seg
+                  class="seg sm"
+                  role="group"
+                  aria-label="送达时机"
                   title="引导：本批工具调用结束后立刻看到&#10;排队：这一轮结束后再开始新的一轮"
                 >
                   <button
                     type="button"
                     :class="{ on: mode === 'steer' }"
+                    :aria-pressed="mode === 'steer'"
                     @click="mode = 'steer'"
                   >
                     引导
@@ -224,11 +215,14 @@ async function answer(id: QuestionId, text: string): Promise<void> {
                   <button
                     type="button"
                     :class="{ on: mode === 'followUp' }"
+                    :aria-pressed="mode === 'followUp'"
                     @click="mode = 'followUp'"
                   >
                     排队
                   </button>
                 </div>
+              </template>
+              <template v-if="conversation.running.value" #end>
                 <button
                   type="button"
                   class="stop"
@@ -237,27 +231,17 @@ async function answer(id: QuestionId, text: string): Promise<void> {
                   aria-label="打断这一轮"
                   @click="interrupting.run(interrupt)"
                 >
-                  <Icon name="stop" size="xs" />
+                  <Icon name="stop" size="sm" />
                 </button>
               </template>
             </Composer>
           </template>
         </template>
-        <p v-else-if="view" class="hint" style="margin: 4px 0; text-align: center">
-          工单{{ view.ticket.status === "done" ? "已结单" : "已取消"
-          }}{{ view.ticket.closeNote ? `：${view.ticket.closeNote}` : "" }}
+        <p v-else-if="view" class="dock-note">
+          {{ view.ticket.status === "done" ? "已结单" : "已取消"
+          }}{{ view.ticket.closeNote ? ` · ${view.ticket.closeNote}` : "" }}
         </p>
       </div>
     </div>
   </section>
 </template>
-
-<style scoped>
-.worker {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-}
-</style>

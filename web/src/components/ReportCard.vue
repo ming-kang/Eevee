@@ -65,7 +65,7 @@ const hasDetails = computed(
         <Icon name="chevR" size="xs" class="chev" />
         <span>详细说明</span>
       </summary>
-      <div class="step-out" style="white-space: pre-wrap">{{ report.detail }}</div>
+      <div class="step-out">{{ report.detail }}</div>
     </details>
   </div>
 </template>

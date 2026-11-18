@@ -1,4 +1,5 @@
 import { computed, onScopeDispose, ref } from "vue";
+import { parseTextSize, TEXT_SIZE_KEY, type TextSize } from "./text-size.ts";
 
 export type ThemePreference = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
@@ -53,4 +54,22 @@ export function useTheme() {
   }
 
   return { preference, resolved, setTheme, toggleTheme };
+}
+
+/** Sets the root interface size that every type role and icon scales from; `index.html` does the
+ * same before first paint. */
+function applyTextSize(size: TextSize): void {
+  document.documentElement.style.setProperty("--ev-ui", `${size}px`);
+}
+
+const textSize = ref<TextSize>(parseTextSize(localStorage.getItem(TEXT_SIZE_KEY)));
+
+export function useTextSize() {
+  function setTextSize(next: TextSize): void {
+    textSize.value = next;
+    localStorage.setItem(TEXT_SIZE_KEY, String(next));
+    applyTextSize(next);
+  }
+
+  return { size: textSize, setTextSize };
 }

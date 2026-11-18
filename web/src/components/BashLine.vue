@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
+import { vTail } from "../dom.ts";
 import { formatDurationMs, formatElapsedSeconds } from "../time.ts";
 import Icon from "./Icon.vue";
 import StageGlyph from "./StageGlyph.vue";
@@ -58,20 +59,19 @@ const isJobActive = computed(
 <template>
   <details class="proc" :open="status === 'run'">
     <summary>
-      <Icon v-if="status === 'run'" name="spinner" size="xs" />
-      <Icon v-else name="chevR" size="xs" class="chev" />
-      <span class="ellipsis">
-        运行 <span class="mono" style="font-size: 12px">{{ command }}</span>
+      <Icon name="chevR" size="xs" class="chev" />
+      <span class="ellipsis" :class="{ shimmer: status === 'run' }">
+        运行 <span class="mono">{{ command }}</span>
       </span>
-      <span v-if="status === 'run'" class="dim num">{{ elapsed }}</span>
+      <span v-if="status === 'run'" class="num">{{ elapsed }}</span>
       <span v-else-if="status === 'stopped'" class="dim">已打断</span>
       <span v-else-if="status === 'job'" class="dim">转入后台</span>
-      <span v-else class="dim num">
+      <span v-else class="num">
         <template v-if="exitCode && exitCode !== 0">exit {{ exitCode }}{{ ms !== undefined ? " · " : "" }}</template>
         <template v-if="ms !== undefined">{{ formatDurationMs(ms) }}</template>
       </span>
     </summary>
-    <pre v-if="output" class="step-out">{{ output }}</pre>
+    <pre v-if="output" v-tail class="step-out">{{ output }}</pre>
   </details>
   <button
     v-if="status === 'job' && jobId"
@@ -80,8 +80,7 @@ const isJobActive = computed(
     @click="$emit('open-job', jobId)"
   >
     <StageGlyph stage="jobs" />
-    <span>
-      后台作业 {{ jobId }} · {{ isJobActive ? "进行中 · 查看日志" : "已结束 · 查看日志" }}
-    </span>
+    <span>后台作业 <span class="mono">{{ jobId }}</span></span>
+    <span class="dim">{{ isJobActive ? "进行中" : "已结束" }}</span>
   </button>
 </template>

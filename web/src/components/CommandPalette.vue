@@ -8,7 +8,6 @@ import StageGlyph from "./StageGlyph.vue";
 const props = defineProps<{
   open: boolean;
   items: readonly PaletteItem[];
-  shortcutLabel: string;
 }>();
 
 const emit = defineEmits<{
@@ -86,7 +85,7 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <div v-if="open" class="overlay" style="padding-top: 10vh" @click.self="$emit('close')">
+  <div v-if="open" class="overlay" @click.self="$emit('close')">
     <div
       ref="dialogEl"
       class="palette"
@@ -101,7 +100,7 @@ function onKeydown(event: KeyboardEvent): void {
           id="palette-input"
           ref="inputEl"
           v-model="query"
-          placeholder="搜索工单、项目、页面或操作…"
+          placeholder="搜索或跳转…"
           autocomplete="off"
           role="combobox"
           aria-label="搜索或跳转"
@@ -110,7 +109,6 @@ function onKeydown(event: KeyboardEvent): void {
           aria-autocomplete="list"
           :aria-activedescendant="filtered.length > 0 ? `palette-opt-${selected}` : undefined"
         />
-        <span class="kbd" aria-hidden="true">Esc</span>
       </div>
       <div id="palette-list" class="palette-list" role="listbox" aria-label="结果">
         <template v-if="filtered.length > 0">
@@ -139,17 +137,12 @@ function onKeydown(event: KeyboardEvent): void {
                 {{ item.projectTile }}
               </span>
               <Icon v-else-if="item.icon" :name="item.icon" size="sm" />
-              <span class="ellipsis" style="flex: 1">{{ item.label }}</span>
-              <span v-if="item.meta" class="dim" style="font-size: 12px">{{ item.meta }}</span>
+              <span class="ellipsis spacer">{{ item.label }}</span>
+              <span v-if="item.meta" class="meta">{{ item.meta }}</span>
             </button>
           </template>
         </template>
-        <div v-else class="hint" style="padding: 16px; text-align: center">没有匹配的结果</div>
-      </div>
-      <div class="palette-foot" aria-hidden="true">
-        <span><span class="kbd">↑↓</span>选择</span>
-        <span><span class="kbd">↵</span>打开</span>
-        <span><span class="kbd">{{ shortcutLabel }}</span>随时唤起</span>
+        <div v-else class="palette-empty">没有结果</div>
       </div>
     </div>
   </div>

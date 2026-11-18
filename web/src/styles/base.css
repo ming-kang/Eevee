@@ -1,0 +1,252 @@
+/* Reset, type, focus, and the few utilities templates share. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font: var(--ev-body) / 1.5 var(--ev-font);
+  font-feature-settings: "cv11", "ss01";
+  color: var(--ev-label);
+  background: var(--ev-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+code,
+pre,
+.mono {
+  font-family: var(--ev-font-mono);
+  font-variant-ligatures: none;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--ev-accent-film);
+}
+
+/* A ring marks where keyboard navigation is: tight, no offset, no glow. Pointer focus draws none. */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ev-ring);
+}
+
+::placeholder {
+  color: var(--ev-label-3);
+  opacity: 1;
+}
+
+/* Thin scrollbars that only darken under the pointer. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover {
+  scrollbar-color: color-mix(in oklab, var(--ev-label) 18%, transparent) transparent;
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.ico {
+  width: var(--ev-icon);
+  height: var(--ev-icon);
+  flex: none;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ico.sm {
+  width: var(--ev-icon-sm);
+  height: var(--ev-icon-sm);
+}
+
+.ico.xs {
+  width: var(--ev-icon-xs);
+  height: var(--ev-icon-xs);
+  stroke-width: 1.9;
+}
+
+.ico.lg {
+  width: var(--ev-icon-lg);
+  height: var(--ev-icon-lg);
+  stroke-width: 1.6;
+}
+
+.ico.spin {
+  animation: ev-spin 0.9s linear infinite;
+}
+
+.muted {
+  color: var(--ev-label-2);
+}
+
+.dim {
+  color: var(--ev-label-3);
+}
+
+.error {
+  color: var(--ev-bad-ink);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--ev-footnote);
+  line-height: 1.333;
+  color: var(--ev-label-3);
+}
+
+.plus {
+  color: var(--ev-ok-ink);
+}
+
+.minus {
+  color: var(--ev-bad-ink);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.pre-wrap {
+  white-space: pre-wrap;
+}
+
+/* Motion. One easing; the distance a thing travels picks its duration. */
+@keyframes ev-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ev-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes ev-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes ev-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes ev-pop {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+}
+
+@keyframes ev-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes ev-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(167%);
+  }
+}
+
+@keyframes ev-breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* A spinner is the only thing saying work has not stopped, so it keeps turning. */
+  .ico.spin {
+    animation-duration: 0.9s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  .shimmer::after {
+    display: none;
+  }
+}

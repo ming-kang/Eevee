@@ -36,9 +36,8 @@ const hasRunning = computed(() => props.actions.some((a) => a.status === "run"))
 <template>
   <details class="proc">
     <summary>
-      <Icon v-if="hasRunning" name="spinner" size="xs" />
-      <Icon v-else name="chevR" size="xs" class="chev" />
-      <span>{{ summary }}</span>
+      <Icon name="chevR" size="xs" class="chev" />
+      <span class="ellipsis" :class="{ shimmer: hasRunning }">{{ summary }}</span>
       <span v-if="hasError" class="minus">· 失败</span>
     </summary>
     <div class="steps">
@@ -51,9 +50,7 @@ const hasRunning = computed(() => props.actions.some((a) => a.status === "run"))
             :tickets="tickets"
             @open-ticket="$emit('open-ticket', $event)"
           />
-          <span v-else-if="act.questionId" class="mono" style="font-size: 12px">
-            {{ act.questionId }}
-          </span>
+          <span v-else-if="act.questionId" class="mono">{{ act.questionId }}</span>
           <span class="ellipsis">{{ act.title }}</span>
           <span v-if="act.status === 'err'" class="ms minus">失败</span>
         </div>

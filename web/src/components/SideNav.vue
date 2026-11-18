@@ -136,39 +136,39 @@ onUnmounted(() => {
       :aria-label="sideCollapsed ? '展开侧栏' : '收起侧栏'"
       @click="$emit('toggle-side')"
     >
-      <Icon name="panel" size="sm" />
+      <Icon name="sidebar" size="sm" />
     </button>
   </div>
 
-  <button
-    type="button"
-    class="side-search"
-    :title="`搜索或跳转（${paletteShortcut}）`"
-    @click="
-      hideHoverImmediate();
-      $emit('open-palette');
-    "
-  >
-    <Icon name="search" size="sm" />
-    <span class="label">搜索或跳转</span>
-    <span class="kbd">{{ paletteShortcut }}</span>
-  </button>
-
-  <div class="side-h">
-    <span>项目</span>
+  <div class="side-actions">
     <button
       type="button"
-      class="btn ghost sm icon"
+      class="nav-row"
       title="新建项目"
-      aria-label="新建项目"
       @click="
         hideHoverImmediate();
         $emit('new-project');
       "
     >
-      <Icon name="plus" size="sm" />
+      <Icon name="compose" size="sm" />
+      <span class="label">新建项目</span>
+    </button>
+    <button
+      type="button"
+      class="nav-row"
+      :title="`搜索（${paletteShortcut}）`"
+      @click="
+        hideHoverImmediate();
+        $emit('open-palette');
+      "
+    >
+      <Icon name="search" size="sm" />
+      <span class="label">搜索</span>
+      <span class="kbd">{{ paletteShortcut }}</span>
     </button>
   </div>
+
+  <div v-if="projects.length > 0" class="side-h">项目</div>
 
   <div class="side-scroll" @scroll="hideHoverImmediate">
     <ProjectRow
@@ -187,11 +187,7 @@ onUnmounted(() => {
       @hover-enter="onHoverEnter(project.id, $event)"
       @hover-leave="onHoverLeave($event, $event.currentTarget)"
     />
-    <p v-if="projects.length === 0" class="hint" style="padding: 6px 10px">
-      还没有项目：点击上方“+”新建，或在终端运行
-      <code>eevee project create &lt;标题&gt; -w &lt;目录&gt;</code>
-    </p>
-    <p v-if="statusError" class="error hint" style="padding: 6px 10px">
+    <p v-if="statusError" class="error hint side-note">
       {{ statusError }}
     </p>
   </div>
@@ -200,10 +196,10 @@ onUnmounted(() => {
     v-if="streamState === 'reconnecting'"
     class="side-conn"
     role="status"
-    title="与 Engine 的实时连接断开了，正在自动重连；期间看到的可能不是最新状态"
+    title="与 Engine 的实时连接断开了，正在自动重连"
   >
     <span class="dot bad" aria-hidden="true" />
-    <span class="label">连接已断开，正在重连…</span>
+    <span class="label">正在重新连接…</span>
   </p>
 
   <ControlTiles

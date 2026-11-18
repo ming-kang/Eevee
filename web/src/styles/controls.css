@@ -1,0 +1,701 @@
+/* Controls: raised things you press, wells that hold a value, and the marks beside them. */
+
+/* ——— Buttons ———
+   .btn          raised: white with a hairline and a short lift (secondary)
+   .btn.primary  ink: the one action of a form
+   .btn.danger   raised, destructive word; fills only while confirming
+   .btn.ghost    no surface until the pointer arrives
+   Press is the same for all: down 1px, the lift and the sheen drop. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--ev-h-md);
+  padding: 0 12px;
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  font-size: var(--ev-control);
+  font-weight: 500;
+  letter-spacing: var(--ev-tracking);
+  white-space: nowrap;
+  color: var(--ev-label);
+  background-color: var(--ev-raised);
+  background-image: var(--ev-sheen-raised);
+  box-shadow: var(--ev-shadow-raised);
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    color var(--ev-fast) var(--ev-ease),
+    box-shadow var(--ev-fast) var(--ev-ease),
+    transform var(--ev-fast) var(--ev-ease),
+    opacity var(--ev-fast) var(--ev-ease);
+  user-select: none;
+  flex: none;
+}
+
+.btn:hover:not(:disabled) {
+  background-color: color-mix(in oklab, var(--ev-raised) 96%, var(--ev-label));
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+  background-image: none;
+  box-shadow:
+    0 0 0 0.5px color-mix(in oklab, var(--ev-label) 16%, transparent),
+    inset 0 1px 1px color-mix(in oklab, var(--ev-label) 6%, transparent);
+}
+
+.btn:focus-visible {
+  box-shadow: var(--ev-shadow-raised), var(--ev-ring);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+}
+
+.btn.sm {
+  height: var(--ev-h-sm);
+  padding: 0 10px;
+  border-radius: var(--ev-r-sm);
+  gap: 5px;
+}
+
+.btn.icon {
+  width: var(--ev-h-md);
+  padding: 0;
+}
+
+.btn.sm.icon {
+  width: var(--ev-h-sm);
+}
+
+.btn.primary {
+  color: var(--ev-on-ink);
+  background-color: var(--ev-ink);
+  background-image: var(--ev-sheen-ink);
+  box-shadow: var(--ev-shadow-ink);
+}
+
+.btn.primary:hover:not(:disabled) {
+  background-color: color-mix(in oklab, var(--ev-ink) 88%, var(--ev-page));
+}
+
+.btn.primary:active:not(:disabled) {
+  box-shadow: none;
+}
+
+.btn.primary:focus-visible {
+  box-shadow: var(--ev-shadow-ink), var(--ev-ring);
+}
+
+.btn.danger {
+  color: var(--ev-bad-ink);
+}
+
+.btn.danger:hover:not(:disabled) {
+  background-color: color-mix(in oklab, var(--ev-raised) 92%, var(--ev-bad));
+}
+
+.btn.ghost {
+  color: var(--ev-label-2);
+  background: transparent;
+  box-shadow: none;
+}
+
+.btn.ghost:hover:not(:disabled) {
+  color: var(--ev-label);
+  background: var(--ev-hover);
+}
+
+.btn.ghost:active:not(:disabled) {
+  background: var(--ev-selected);
+  box-shadow: none;
+}
+
+.btn.ghost:focus-visible {
+  box-shadow: var(--ev-ring);
+}
+
+.btn.ghost.danger {
+  color: var(--ev-bad-ink);
+}
+
+.btn.ghost.danger:hover:not(:disabled) {
+  background: var(--ev-bad-film);
+}
+
+/* ——— Fields: one recessed material for everything that holds a value ——— */
+.input {
+  width: 100%;
+  height: var(--ev-h-md);
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  font-size: var(--ev-body);
+  letter-spacing: var(--ev-tracking);
+  color: var(--ev-label);
+  background: var(--ev-well);
+  box-shadow: var(--ev-shadow-well);
+  transition: box-shadow var(--ev-fast) var(--ev-ease);
+}
+
+.input:focus,
+.input:focus-visible {
+  box-shadow: var(--ev-shadow-well), var(--ev-ring-field);
+}
+
+.input:disabled {
+  opacity: 0.45;
+}
+
+.input.mono {
+  font-size: var(--ev-footnote);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field > label {
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+  color: var(--ev-label-2);
+}
+
+/* A switch: off is the well, on is the accent fill. A raised thumb reads against both and slides
+   while the track cross-fades. */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 28px;
+  height: 16px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--ev-well);
+  box-shadow: var(--ev-shadow-well);
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    box-shadow var(--ev-fast) var(--ev-ease);
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: var(--ev-raised);
+  background-image: var(--ev-sheen-raised);
+  box-shadow: var(--ev-shadow-raised);
+  transition: transform var(--ev-regular) var(--ev-ease);
+}
+
+.switch.on {
+  background-color: var(--ev-accent);
+  background-image: var(--ev-sheen-ink);
+  box-shadow: var(--ev-shadow-ink);
+}
+
+.switch.on::after {
+  transform: translateX(12px);
+}
+
+.switch:focus-visible {
+  box-shadow: var(--ev-shadow-well), var(--ev-ring);
+}
+
+.switch:disabled {
+  opacity: 0.45;
+}
+
+/* ——— Segmented strip: a flat tray with one key standing on it ———
+   The key is one element that slides (see `dom.ts`); before it is measured, the chosen
+   button carries the same surface so the first frame is already right. */
+.seg {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  height: var(--ev-h-md);
+  padding: 2px;
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  background: var(--ev-tray);
+  flex: none;
+}
+
+.seg > button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0 12px;
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+  font-size: var(--ev-control);
+  font-weight: 500;
+  letter-spacing: var(--ev-tracking);
+  white-space: nowrap;
+  color: var(--ev-label-2);
+  transition: color var(--ev-fast) var(--ev-ease);
+}
+
+.seg > button:hover {
+  color: var(--ev-label);
+}
+
+.seg > button.on {
+  color: var(--ev-label);
+}
+
+.seg:not(.measured) > button.on,
+.seg-pill {
+  background-color: var(--ev-tray-raised);
+  background-image: var(--ev-sheen-raised);
+  box-shadow: var(--ev-shadow-raised);
+}
+
+.seg-pill {
+  position: absolute;
+  z-index: 0;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+  pointer-events: none;
+}
+
+.seg.measured .seg-pill {
+  transition:
+    transform var(--ev-regular) var(--ev-ease),
+    width var(--ev-regular) var(--ev-ease);
+}
+
+.seg.sm {
+  height: var(--ev-h-sm);
+  border-radius: var(--ev-r-sm);
+}
+
+.seg.sm > button,
+.seg.sm .seg-pill {
+  border-radius: 6px;
+  padding: 0 9px;
+}
+
+.seg.stretch {
+  display: flex;
+  width: 100%;
+}
+
+.seg.stretch > button {
+  flex: 1;
+}
+
+/* ——— Marks ——— */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--ev-r-mini);
+  corner-shape: squircle;
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--ev-label);
+  background: color-mix(in oklab, var(--ev-label) 7%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.chip.mono {
+  font-size: var(--ev-caption);
+}
+
+.kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: var(--ev-r-mini);
+  font: 500 var(--ev-caption) / 1 var(--ev-font);
+  color: var(--ev-label-3);
+  background: color-mix(in oklab, var(--ev-label) 7%, transparent);
+  user-select: none;
+}
+
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ev-label-3);
+}
+
+.dot.user {
+  background: var(--ev-user);
+}
+
+.dot.bad {
+  background: var(--ev-bad);
+}
+
+.dot.ok {
+  background: var(--ev-ok);
+}
+
+.dot.run {
+  background: var(--ev-label-3);
+  animation: ev-breathe 1.6s var(--ev-ease) infinite;
+}
+
+/* The count of questions waiting for you: the one place amber stands in a row. */
+.count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: var(--ev-caption);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ev-label-2);
+  background: color-mix(in oklab, var(--ev-label) 8%, transparent);
+}
+
+.count.user {
+  color: var(--ev-on-user);
+  background: var(--ev-user);
+}
+
+/* Stage glyphs: amber needs you, red is blocked, everything else is gray and told apart by shape. */
+.glyph {
+  width: var(--ev-icon-sm);
+  height: var(--ev-icon-sm);
+  flex: none;
+  color: var(--ev-label-3);
+}
+
+.glyph.g-answer {
+  color: var(--ev-user);
+}
+
+.glyph.g-blocked {
+  color: var(--ev-bad);
+}
+
+.glyph.g-working {
+  animation: ev-spin 1.4s linear infinite;
+}
+
+/* A live label: a soft band in the background color sweeps across the words. Only `transform`
+   moves, so a waiting turn repaints nothing. */
+.shimmer {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  vertical-align: top;
+}
+
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 60%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--ev-shimmer-bg, var(--ev-page)) 80%, transparent),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: ev-shimmer 2.2s linear infinite;
+  will-change: transform;
+}
+
+/* Content on its way: gray lines as tall as the text they stand in for. The block fades in only
+   after a blink, so a fast load goes straight from blank to content. */
+.skeleton {
+  display: grid;
+  gap: 12px;
+  padding-block: 4px;
+  animation: ev-fade var(--ev-regular) var(--ev-ease) 240ms both;
+}
+
+.sk {
+  height: calc(var(--ev-ui) * 20 / 14);
+  border-radius: var(--ev-r-mini);
+  background: var(--ev-skeleton);
+  animation: ev-breathe 1.6s var(--ev-ease) infinite;
+}
+
+.sk:nth-child(3n + 2) {
+  width: 82%;
+}
+
+.sk:nth-child(3n) {
+  width: 58%;
+}
+
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.16em;
+  border-radius: 1px;
+  background: var(--ev-label);
+  animation: ev-caret 1s steps(1) infinite;
+}
+
+/* A command to copy: a well holding one line of code. */
+.codeline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--ev-h-md);
+  padding: 2px 2px 2px 10px;
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  background: var(--ev-well);
+  box-shadow: var(--ev-shadow-well);
+}
+
+.codeline code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: var(--ev-footnote);
+}
+
+/* An alert: the card rung, tinted 8% toward its tone, with the tone's mark. */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  font-size: var(--ev-control);
+  line-height: 1.385;
+  background: color-mix(in oklab, var(--ev-card) 94%, var(--ev-label));
+  box-shadow: var(--ev-shadow-card);
+}
+
+.banner > .ico {
+  margin-top: 1px;
+  color: var(--ev-label-2);
+}
+
+.banner.bad {
+  background: color-mix(in oklab, var(--ev-card) 92%, var(--ev-bad));
+}
+
+.banner.bad > .ico {
+  color: var(--ev-bad);
+}
+
+.banner ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+/* ——— Surfaces ——— */
+.card,
+.panel {
+  border-radius: var(--ev-r-lg);
+  corner-shape: squircle;
+  background: var(--ev-card);
+  box-shadow: var(--ev-shadow-card);
+  overflow: hidden;
+}
+
+.card-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: var(--ev-control);
+  font-weight: 500;
+  color: var(--ev-label);
+  box-shadow: inset 0 -1px 0 var(--ev-separator);
+}
+
+.card-h .path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 var(--ev-footnote) / 1 var(--ev-font-mono);
+}
+
+.card-h .stat {
+  font: var(--ev-footnote) / 1 var(--ev-font-mono);
+}
+
+.panel-b {
+  padding: 14px 16px;
+}
+
+/* A list of records is one card with ruled rows. */
+.rows {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--ev-r-lg);
+  corner-shape: squircle;
+  background: var(--ev-card);
+  box-shadow: var(--ev-shadow-card);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 10px 16px;
+}
+
+.row + .row {
+  box-shadow: inset 0 1px 0 var(--ev-separator);
+}
+
+.r-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.r-t {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: var(--ev-body);
+  font-weight: 500;
+  letter-spacing: var(--ev-tracking);
+}
+
+.r-d {
+  font-size: var(--ev-footnote);
+  line-height: 1.333;
+  color: var(--ev-label-2);
+}
+
+.r-main .err {
+  font-size: var(--ev-footnote);
+  color: var(--ev-bad-ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--ev-control);
+}
+
+.table th {
+  height: 36px;
+  padding: 0 14px;
+  text-align: left;
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+  color: var(--ev-label-2);
+  white-space: nowrap;
+  box-shadow: inset 0 -1px 0 var(--ev-separator);
+}
+
+.table td {
+  height: 44px;
+  padding: 0 14px;
+  box-shadow: inset 0 -1px 0 var(--ev-separator);
+}
+
+.table tbody tr:last-child td {
+  box-shadow: none;
+}
+
+/* An identifier or a name reads as one token; the prose columns take the wrapping instead. */
+.table td.mono,
+.table td.name {
+  white-space: nowrap;
+}
+
+.table td.r {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table tr.row-link {
+  cursor: pointer;
+}
+
+.table tr.row-link:hover td {
+  background: var(--ev-hover);
+}
+
+.section-h {
+  margin: 28px 0 10px;
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+  color: var(--ev-label-2);
+}
+
+.section-h:first-child {
+  margin-top: 0;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex: 1;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--ev-label-2);
+}
+
+.empty h3 {
+  font-size: var(--ev-headline);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ev-label);
+}
+
+.empty p {
+  font-size: var(--ev-control);
+  color: var(--ev-label-3);
+}
+
+.empty .btn {
+  margin-top: 6px;
+}
+
+.card-note {
+  padding: 12px 14px;
+}

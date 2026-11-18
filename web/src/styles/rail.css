@@ -1,0 +1,322 @@
+/* The rail: tickets, jobs, and the open ticket's brief. */
+
+.rtabs {
+  min-width: 0;
+  margin-right: auto;
+}
+
+.rtabs > button .n {
+  font-size: var(--ev-caption);
+  color: var(--ev-label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.rtabs > button .dot {
+  width: 5px;
+  height: 5px;
+}
+
+.group-h {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 30px;
+  padding: 8px 10px 0;
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+  text-align: left;
+  color: var(--ev-label-3);
+}
+
+.group-h:first-child {
+  padding-top: 2px;
+  height: 24px;
+}
+
+.group-h.user {
+  color: var(--ev-user-ink);
+}
+
+button.group-h {
+  border-radius: var(--ev-r-sm);
+  transition: color var(--ev-fast) var(--ev-ease);
+}
+
+button.group-h:hover {
+  color: var(--ev-label);
+}
+
+button.group-h .chev {
+  transition: transform var(--ev-fast) var(--ev-ease);
+}
+
+button.group-h.closed .chev {
+  transform: rotate(-90deg);
+}
+
+/* A ticket row: glyph, id and title on one line; only a waiting question earns a second. */
+.strip {
+  display: grid;
+  grid-template-columns: var(--ev-icon-sm) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 9px;
+  row-gap: 1px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+  font-size: var(--ev-body);
+  letter-spacing: var(--ev-tracking);
+  text-align: left;
+  transition: background-color var(--ev-fast) var(--ev-ease);
+}
+
+.strip:hover {
+  background: var(--ev-hover);
+}
+
+.strip.on {
+  background: var(--ev-selected);
+}
+
+.strip:focus-visible {
+  box-shadow: var(--ev-ring-in);
+}
+
+.strip.closed {
+  color: var(--ev-label-2);
+}
+
+.t-title {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.t-id,
+.t-id-h {
+  flex: none;
+  font: 500 var(--ev-footnote) / 1 var(--ev-font-mono);
+  color: var(--ev-label-3);
+}
+
+.t-stage {
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+  white-space: nowrap;
+}
+
+.t-stage.s-answer {
+  color: var(--ev-user-ink);
+  font-weight: 500;
+}
+
+.t-stage.s-blocked {
+  color: var(--ev-bad-ink);
+}
+
+.t-line {
+  grid-column: 2 / 4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-2);
+}
+
+/* The stage beside a Worker conversation's title. */
+.stage-h {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+}
+
+.stage-h.s-answer {
+  color: var(--ev-user-ink);
+}
+
+.stage-h.s-blocked {
+  color: var(--ev-bad-ink);
+}
+
+/* ——— Jobs ——— */
+.jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.job {
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  transition:
+    background-color var(--ev-regular) var(--ev-ease),
+    box-shadow var(--ev-regular) var(--ev-ease);
+}
+
+.job.open {
+  background: var(--ev-card);
+  box-shadow: var(--ev-shadow-card);
+}
+
+.job-row {
+  display: grid;
+  grid-template-columns: var(--ev-icon-sm) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 9px;
+  row-gap: 3px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  text-align: left;
+  transition: background-color var(--ev-fast) var(--ev-ease);
+}
+
+.job:not(.open) .job-row:hover {
+  background: var(--ev-hover);
+}
+
+.job-row:focus-visible {
+  box-shadow: var(--ev-ring-in);
+}
+
+.job-cmd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 var(--ev-footnote) / 1.5 var(--ev-font-mono);
+}
+
+.job-sub {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+}
+
+.job-sub .num {
+  flex: none;
+}
+
+.job-log {
+  margin: 0 10px 8px;
+  padding: 10px 12px;
+  max-height: 240px;
+  overflow: auto;
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+  font: var(--ev-footnote) / 1.6 var(--ev-font-mono);
+  color: var(--ev-label);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--ev-code);
+  animation: ev-fade var(--ev-regular) var(--ev-ease);
+}
+
+.job-note {
+  padding: 0 12px 6px;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+}
+
+.job-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+
+/* ——— Detail ——— */
+.rdetail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 4px 6px 0;
+}
+
+.rd-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-2);
+}
+
+.brief {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+}
+
+.brief dt {
+  margin-bottom: 4px;
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+  color: var(--ev-label-3);
+}
+
+.brief dd {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  font-size: var(--ev-body);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.brief dd .mono {
+  font-size: var(--ev-footnote);
+}
+
+.brief ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.brief li {
+  display: flex;
+  gap: 8px;
+}
+
+.brief li .ico {
+  margin-top: 4px;
+  color: var(--ev-label-3);
+}
+
+.rlist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rdetail .section-h {
+  margin: 0 0 -10px;
+}
+
+.rail-empty {
+  padding: 40px 12px;
+  text-align: center;
+  font-size: var(--ev-control);
+  color: var(--ev-label-3);
+}
+
+.rail-note {
+  padding: 6px 10px;
+}

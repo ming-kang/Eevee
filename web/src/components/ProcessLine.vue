@@ -36,16 +36,13 @@ const summary = computed(() => {
 <template>
   <details class="proc">
     <summary>
-      <template v-if="runningStep">
-        <Icon name="spinner" size="xs" />
-        <span class="ellipsis">
-          正在{{ runningStep.tool === "read" ? "查阅" : runningStep.tool === "bash" ? "运行" : "执行" }}
-          {{ runningStep.label }}
-        </span>
-      </template>
+      <Icon name="chevR" size="xs" class="chev" />
+      <span v-if="runningStep" class="ellipsis shimmer">
+        正在{{ runningStep.tool === "read" ? "查阅" : runningStep.tool === "bash" ? "运行" : "执行" }}
+        {{ runningStep.label }}
+      </span>
       <template v-else>
-        <Icon name="chevR" size="xs" class="chev" />
-        <span>{{ summary }}</span>
+        <span class="ellipsis">{{ summary }}</span>
         <span v-if="hasError" class="minus">· 失败</span>
       </template>
     </summary>

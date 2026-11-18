@@ -6,12 +6,12 @@
       cy="12"
       r="7"
       fill="none"
-      stroke="var(--ev-ink-fg)"
+      stroke="var(--ev-on-ink)"
       stroke-opacity=".35"
       stroke-width="1.3"
     />
-    <circle cx="12" cy="12" r="3.1" fill="var(--ev-ink-fg)" />
-    <circle cx="18.06" cy="8.5" r="1.7" fill="var(--ev-ink-fg)" />
-    <circle cx="7.05" cy="16.95" r="1.25" fill="var(--ev-ink-fg)" opacity=".7" />
+    <circle cx="12" cy="12" r="3.1" fill="var(--ev-on-ink)" />
+    <circle cx="18.06" cy="8.5" r="1.7" fill="var(--ev-on-ink)" />
+    <circle cx="7.05" cy="16.95" r="1.25" fill="var(--ev-on-ink)" opacity=".7" />
   </svg>
 </template>

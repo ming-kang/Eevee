@@ -190,8 +190,8 @@ function onInputKeydown(event: KeyboardEvent): void {
               :class="{ on: !currentOther[i] && currentDraft[i] === option }"
               @click="selectOption(i, option)"
             >
-            <span class="radio" />
-            <span>{{ option }}</span>
+              <span class="radio" />
+              <span>{{ option }}</span>
               <span v-if="option === item.recommended" class="rec">推荐</span>
             </button>
           </div>
@@ -224,7 +224,7 @@ function onInputKeydown(event: KeyboardEvent): void {
       </div>
     </div>
     <div class="qfoot">
-      <span v-if="error" class="error" role="alert" style="font-size: 12px">{{ error }}</span>
+      <span v-if="error" class="composer-error" role="alert">{{ error }}</span>
       <span class="spacer" />
       <button
         type="button"

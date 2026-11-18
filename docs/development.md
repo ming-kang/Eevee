@@ -52,7 +52,28 @@ EEVEE_PORT=19391 npm run dev:scenario
 EEVEE_ENGINE=http://127.0.0.1:19391 npm run web:dev
 ```
 
-授权码只能用一次。`npm run dev:scenario -- --check` 只造数据并自检，然后退出。
+造完数据后，每次回答前模型会停顿 5 秒，可以在面板里看到运行中的状态，试用引导、排队和打断。授权码只能用一次。`npm run dev:scenario -- --check` 只造数据并自检，然后退出。
+
+### 面板样式
+
+样式是全局类，按区域拆在 `web/src/styles/` 里，由 `web/src/style.css` 依次引入：
+
+| 文件 | 内容 |
+|---|---|
+| `tokens.css` | 两个主题的全部语义 token：表面层级、文字层级、颜色、阴影、圆角、控件高度、动效时长；字号与图标尺寸都由 `--ev-ui` 按比例换算（`theme.ts` 的 `useTextSize` 设置它） |
+| `base.css` | 重置、焦点环、图标尺寸、关键帧、`prefers-reduced-motion` |
+| `controls.css` | 按钮、输入框、开关、分段控件、状态图形、卡片和列表行 |
+| `shell.css` | 左栏、主区域、右栏和三种宽度下的布局 |
+| `conversation.css` | 对话、过程行、diff、输入框、提问卡片 |
+| `rail.css` | 右栏的工单、作业、详情 |
+| `overlays.css` | 对话框、命令面板、浮层、悬停卡片、提示、连接页 |
+| `pages.css` | 设置、记忆、花费 |
+
+组件不写 scoped 样式，行内样式只用于运行时算出的位置和宽度，颜色只用 `tokens.css` 里的语义 token；层级和尺寸规则见 [WebUI 思路](design/06-ui.md#视觉与动效)。面板直接操作 DOM 的行为都在 `web/src/dom.ts`，其中的判断放在 `web/src/dom-rules.ts`，可以离线测试：
+
+- 分段控件写成 `<div v-seg class="seg">`，选中的按钮（`.on`、`aria-selected` 或 `aria-pressed`）下面有一块随选择滑动的底板；
+- 会持续增长的输出（作业日志、命令输出）加 `v-tail`，打开时停在最新一行并跟随新输出，读者往上翻时暂停；
+- `trackFocusModality()` 在 `<html>` 上标出 `data-modality`，用鼠标时焦点环宽度为 0，用 Tab 或方向键时才画。新写的焦点样式用 `--ev-ring` / `--ev-ring-in`，文本框用 `--ev-ring-field`。
 
 ## 测试
 

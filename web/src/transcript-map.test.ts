@@ -4,6 +4,7 @@ import {
   AssistantEntry,
   type EntryId,
   type EntryRecord,
+  type InboxState,
   type LiveState,
   ResetEntry,
   ToolResultEntry,
@@ -372,9 +373,6 @@ test("Worker 模式映射开篇、文件 diff、bash（运行与转入后台）�
     mapped.map((m) => m.kind),
     ["opening", "user", "edit", "bash", "report", "idle"],
   );
-  if (mapped[1]?.kind === "user") {
-    assert.equal(mapped[1].via, "direct");
-  }
   if (mapped[2]?.kind === "edit") {
     assert.equal(mapped[2].path, "sim/config.yaml");
     assert.equal(mapped[2].added, 1);
@@ -519,4 +517,25 @@ test("后端 route() 生成的通知都映射成一行，长内容折叠进 deta
       ["intervene", "t2", undefined],
     ],
   );
+});
+
+test("还没送达的消息排在对话末尾，标为待送达；系统写入的条目不显示", () => {
+  const live: LiveState = { run: { taskId: 5 as never, inputs: [], turns: 1 } };
+  const inbox: InboxState = {
+    items: [
+      { id: 7 as never, mode: "steer", content: "把收敛分析补进第 3 章" },
+      { id: 8 as never, mode: "followUp", content: [{ type: "text", text: "再检查公式编号" }] },
+      { id: 9 as never, mode: "write", entry: { kind: "eevee.notice" } },
+    ],
+  };
+  const out = mapTranscript([], { mode: "worker", live, inbox });
+  const pending = out.filter((item) => item.kind === "user");
+  assert.deepEqual(
+    pending.map((item) => (item.kind === "user" ? [item.key, item.text, item.pending] : [])),
+    [
+      ["q:7", "把收敛分析补进第 3 章", true],
+      ["q:8", "再检查公式编号", true],
+    ],
+  );
+  assert.equal(out.at(-1)?.kind, "user");
 });

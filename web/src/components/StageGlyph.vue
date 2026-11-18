@@ -13,12 +13,12 @@ defineProps<{ stage: VisualStage }>();
       <path
         d="M6.2 6.3a1.85 1.85 0 1 1 2.7 1.65c-.55.27-.9.7-.9 1.3v.25"
         fill="none"
-        stroke="var(--ev-surface)"
+        stroke="var(--ev-glyph-cut, var(--ev-page))"
         stroke-width="1.6"
         stroke-linecap="round"
         stroke-linejoin="round"
       />
-      <circle cx="8" cy="11.7" r=".9" fill="var(--ev-surface)" />
+      <circle cx="8" cy="11.7" r=".9" fill="var(--ev-glyph-cut, var(--ev-page))" />
     </template>
     <template v-else-if="stage === 'review'">
       <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5" />
@@ -36,7 +36,7 @@ defineProps<{ stage: VisualStage }>();
       <path
         d="M5 8h6"
         fill="none"
-        stroke="var(--ev-surface)"
+        stroke="var(--ev-glyph-cut, var(--ev-page))"
         stroke-width="1.8"
         stroke-linecap="round"
       />
@@ -101,7 +101,7 @@ defineProps<{ stage: VisualStage }>();
       <path
         d="m5.2 8.2 1.9 1.9 3.6-3.8"
         fill="none"
-        stroke="var(--ev-surface)"
+        stroke="var(--ev-glyph-cut, var(--ev-page))"
         stroke-width="1.6"
         stroke-linecap="round"
         stroke-linejoin="round"

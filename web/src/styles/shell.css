@@ -1,0 +1,531 @@
+/* The shell: sidebar | main | rail. The two side columns are region panels resting on the page;
+   the conversation sits on the page itself. */
+
+.viewport {
+  width: 100%;
+  height: 100%;
+  container: vp / inline-size;
+  position: relative;
+  background: var(--ev-page);
+  overflow: hidden;
+}
+
+.frame {
+  display: grid;
+  grid-template-columns: var(--ev-sidebar-w) minmax(0, 1fr);
+  height: 100%;
+  padding: var(--ev-inset);
+  transition: grid-template-columns var(--ev-slow) var(--ev-ease);
+}
+
+.frame.with-rail {
+  grid-template-columns: var(--ev-sidebar-w) minmax(0, 1fr) var(--ev-rail-w);
+}
+
+.frame.side-collapsed {
+  grid-template-columns: 52px minmax(0, 1fr);
+}
+
+.frame.with-rail.side-collapsed {
+  grid-template-columns: 52px minmax(0, 1fr) var(--ev-rail-w);
+}
+
+.sidebar,
+.rail {
+  --ev-glyph-cut: var(--ev-region);
+  --ev-shimmer-bg: var(--ev-region);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-radius: var(--ev-r-lg);
+  corner-shape: squircle;
+  background: var(--ev-region);
+  box-shadow: var(--ev-shadow-region);
+  overflow: hidden;
+}
+
+/* ——— Sidebar ——— */
+.side-top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 48px;
+  padding: 0 8px 0 14px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  border-radius: var(--ev-r-sm);
+}
+
+.brand svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.brand-name {
+  font-size: var(--ev-body);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.side-toggle {
+  color: var(--ev-label-3);
+}
+
+.side-actions {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 8px 6px;
+}
+
+/* A sidebar row: one line, a fill under the pointer, a deeper fill where you are. Text color
+   never changes on hover. */
+.nav-row,
+.p-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 32px;
+  flex: none;
+  padding: 0 8px 0 10px;
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+  font-size: var(--ev-control);
+  letter-spacing: var(--ev-tracking);
+  text-align: left;
+  color: var(--ev-side-ink);
+  transition: background-color var(--ev-fast) var(--ev-ease);
+}
+
+.nav-row:hover,
+.p-row:hover {
+  background: var(--ev-hover);
+}
+
+.nav-row.on,
+.p-row.on {
+  color: var(--ev-label);
+  background: var(--ev-selected);
+}
+
+.nav-row:focus-visible,
+.p-row:focus-visible {
+  box-shadow: var(--ev-ring-in);
+}
+
+.nav-row .ico,
+.p-lead {
+  display: inline-flex;
+  flex: none;
+  color: var(--ev-label-2);
+}
+
+.nav-row .label,
+.p-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-row .kbd {
+  opacity: 0;
+  transition: opacity var(--ev-fast) var(--ev-ease);
+}
+
+.nav-row:hover .kbd,
+.nav-row:focus-visible .kbd {
+  opacity: 1;
+}
+
+.side-h {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 8px 18px 0;
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+  color: var(--ev-label-3);
+}
+
+.side-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.p-row.cur:not(.on) .p-title {
+  font-weight: 500;
+}
+
+.p-tile {
+  display: none;
+}
+
+.p-end {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 18px;
+}
+
+.p-end .glyph {
+  width: var(--ev-icon-xs);
+  height: var(--ev-icon-xs);
+}
+
+.p-time {
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.side-conn {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 6px;
+  padding: 7px 10px;
+  border-radius: var(--ev-r-sm);
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-2);
+  background: var(--ev-bad-film);
+}
+
+.side-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px;
+}
+
+.foot-tile {
+  display: inline-grid;
+  place-items: center;
+  width: var(--ev-h-md);
+  height: var(--ev-h-md);
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+  color: var(--ev-label-2);
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    color var(--ev-fast) var(--ev-ease);
+}
+
+.foot-tile:hover {
+  color: var(--ev-label);
+  background: var(--ev-hover);
+}
+
+.foot-tile.on {
+  color: var(--ev-label);
+  background: var(--ev-selected);
+}
+
+.foot-tile.dim {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ——— Main ——— */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+
+.header {
+  height: var(--ev-header-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 20px;
+  min-width: 0;
+}
+
+.header h1 {
+  min-width: 0;
+  font-size: var(--ev-body);
+  font-weight: 600;
+  letter-spacing: var(--ev-tracking);
+}
+
+.header .sub {
+  min-width: 0;
+  font-size: var(--ev-body);
+  color: var(--ev-label-3);
+}
+
+.menu-btn,
+.rail-btn,
+.rail-close {
+  display: none;
+}
+
+/* ——— Rail ——— */
+.rail-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 48px;
+  padding: 0 8px;
+}
+
+.rail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 8px 24px;
+}
+
+.drawer-bg {
+  display: none;
+}
+
+/* ——— Collapsed sidebar: an icon column ——— */
+@container vp (min-width: 761px) {
+  .sidebar.collapsed {
+    align-items: center;
+  }
+
+  .sidebar.collapsed .side-top {
+    justify-content: center;
+    padding: 0;
+    width: 100%;
+  }
+
+  .sidebar.collapsed .brand-name,
+  .sidebar.collapsed .side-top .spacer,
+  .sidebar.collapsed .side-toggle,
+  .sidebar.collapsed .nav-row .label,
+  .sidebar.collapsed .nav-row .kbd,
+  .sidebar.collapsed .side-conn .label,
+  .sidebar.collapsed .side-h,
+  .sidebar.collapsed .p-lead,
+  .sidebar.collapsed .p-title,
+  .sidebar.collapsed .p-end:not(.s-user) {
+    display: none;
+  }
+
+  .sidebar.collapsed .side-top:hover .brand,
+  .sidebar.collapsed .side-top:focus-within .brand {
+    display: none;
+  }
+
+  .sidebar.collapsed .side-top:hover .side-toggle,
+  .sidebar.collapsed .side-top:focus-within .side-toggle {
+    display: inline-flex;
+  }
+
+  .sidebar.collapsed .side-actions {
+    padding: 0 0 6px;
+    align-items: center;
+  }
+
+  .sidebar.collapsed .nav-row {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .sidebar.collapsed .side-scroll {
+    width: 100%;
+    align-items: center;
+    padding: 6px 0;
+    gap: 4px;
+  }
+
+  .sidebar.collapsed .p-row {
+    position: relative;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .sidebar.collapsed .p-row.on {
+    background: transparent;
+  }
+
+  .sidebar.collapsed .p-tile {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: var(--ev-r-sm);
+    corner-shape: squircle;
+    font-size: var(--ev-footnote);
+    font-weight: 600;
+    color: var(--ev-label-2);
+    background-color: var(--ev-raised);
+    background-image: var(--ev-sheen-raised);
+    box-shadow: var(--ev-shadow-raised);
+  }
+
+  .sidebar.collapsed .p-row.on .p-tile {
+    color: var(--ev-on-ink);
+    background-color: var(--ev-ink);
+    background-image: var(--ev-sheen-ink);
+    box-shadow: var(--ev-shadow-ink);
+  }
+
+  .sidebar.collapsed .p-end {
+    position: absolute;
+    top: -2px;
+    right: -4px;
+    min-width: 0;
+  }
+
+  .sidebar.collapsed .p-end .count {
+    min-width: 16px;
+    height: 16px;
+    font-size: 10px;
+    padding: 0 4px;
+    box-shadow: 0 0 0 2px var(--ev-region);
+  }
+
+  .sidebar.collapsed .side-foot {
+    flex-direction: column;
+  }
+}
+
+/* ——— Narrow: the rail becomes a drawer ——— */
+@container vp (max-width: 1240px) {
+  .frame.with-rail {
+    grid-template-columns: var(--ev-sidebar-w) minmax(0, 1fr);
+  }
+
+  .frame.with-rail.side-collapsed {
+    grid-template-columns: 52px minmax(0, 1fr);
+  }
+
+  .rail {
+    position: absolute;
+    top: var(--ev-inset);
+    right: var(--ev-inset);
+    bottom: var(--ev-inset);
+    width: min(var(--ev-rail-w), calc(100% - 2 * var(--ev-inset)));
+    z-index: 20;
+    --ev-glyph-cut: var(--ev-raised);
+    --ev-shimmer-bg: var(--ev-raised);
+    background: var(--ev-raised);
+    box-shadow: var(--ev-shadow-modal);
+    transform: translateX(calc(100% + 2 * var(--ev-inset)));
+    /* Hidden once it has slid out, so a closed drawer leaves the tab order and the accessibility tree. */
+    visibility: hidden;
+    transition:
+      transform var(--ev-slow) var(--ev-ease),
+      visibility 0s linear var(--ev-slow);
+  }
+
+  .rail.open {
+    transform: none;
+    visibility: visible;
+    transition: transform var(--ev-slow) var(--ev-ease);
+  }
+
+  .rail-btn,
+  .rail-close {
+    display: inline-flex;
+  }
+
+  .drawer-bg {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    background: var(--ev-overlay);
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity var(--ev-slow) var(--ev-ease),
+      visibility 0s linear var(--ev-slow);
+  }
+
+  .drawer-bg.on {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity var(--ev-slow) var(--ev-ease);
+  }
+}
+
+/* ——— Narrower: the sidebar becomes a drawer too ——— */
+@container vp (max-width: 760px) {
+  .frame,
+  .frame.with-rail,
+  .frame.side-collapsed,
+  .frame.with-rail.side-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0;
+  }
+
+  .sidebar {
+    position: absolute;
+    top: var(--ev-inset);
+    left: var(--ev-inset);
+    bottom: var(--ev-inset);
+    width: min(280px, calc(100% - 2 * var(--ev-inset)));
+    z-index: 25;
+    --ev-glyph-cut: var(--ev-raised);
+    background: var(--ev-raised);
+    box-shadow: var(--ev-shadow-modal);
+    transform: translateX(calc(-100% - 2 * var(--ev-inset)));
+    visibility: hidden;
+    transition:
+      transform var(--ev-slow) var(--ev-ease),
+      visibility 0s linear var(--ev-slow);
+  }
+
+  .sidebar.open {
+    transform: none;
+    visibility: visible;
+    transition: transform var(--ev-slow) var(--ev-ease);
+  }
+
+  .menu-btn {
+    display: inline-flex;
+  }
+
+  .side-toggle,
+  .nav-row .kbd {
+    display: none;
+  }
+
+  .header {
+    padding: 0 8px;
+    gap: 6px;
+  }
+
+  .header .hide-sm,
+  .hide-sm {
+    display: none;
+  }
+}
+
+.side-note {
+  padding: 6px 10px;
+}

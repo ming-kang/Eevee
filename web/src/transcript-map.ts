@@ -2,6 +2,7 @@ import type { AssistantMessage, ToolCall, ToolResultMessage } from "@earendil-wo
 import {
   AssistantEntry,
   type EntryRecord,
+  type InboxState,
   type LiveState,
   ResetEntry,
   ToolResultEntry,
@@ -67,7 +68,8 @@ export type TranscriptDisplayItem =
       key: string;
       text: string;
       at?: number;
-      via?: "direct";
+      /** Sent but still in the inbox, waiting for the next boundary to place it. */
+      pending?: true;
     }
   | { kind: "assistant"; key: string; text: string; at?: number; streaming?: boolean }
   | { kind: "tools"; key: string; live: boolean; steps: ToolStepItem[] }
@@ -136,6 +138,7 @@ export type MapTranscriptOptions = {
   reports?: readonly Report[];
   ticketStatus?: TicketStatus;
   ticketStage?: TicketStage;
+  inbox?: InboxState;
 };
 
 export function mapTranscript(
@@ -220,7 +223,6 @@ export function mapTranscript(
           key: `e:${entry.id}`,
           text,
           ...(at === undefined ? {} : { at }),
-          ...(options.mode === "worker" ? { via: "direct" as const } : {}),
         });
       }
       continue;
@@ -380,6 +382,29 @@ export function mapTranscript(
     }
   }
 
+  out.push(...mapInbox(options.inbox));
+  return out;
+}
+
+/** What you sent that no boundary has placed yet; entries written by the system are not yours to see here. */
+function mapInbox(inbox: InboxState | undefined): TranscriptDisplayItem[] {
+  const out: TranscriptDisplayItem[] = [];
+  for (const item of inbox?.items ?? []) {
+    if (item.mode === "write" || item.entry !== undefined) continue;
+    const content = item.content;
+    const text = (
+      typeof content === "string"
+        ? content
+        : content.map((part) => (part.type === "text" ? part.text : "")).join("")
+    ).trim();
+    if (text === "") continue;
+    out.push({
+      kind: "user",
+      key: `q:${item.id}`,
+      text,
+      pending: true,
+    });
+  }
   return out;
 }
 

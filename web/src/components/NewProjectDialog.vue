@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Client } from "@shared/api/client.ts";
 import type { ProjectSummary } from "@shared/api/contract.ts";
-import { computed, ref, watch } from "vue";
+import { ref, watch } from "vue";
 import { trapTab, useFocusReturn } from "../focus.ts";
 import { useSubmit } from "../submit.ts";
 import { showToast } from "../toasts.ts";
@@ -43,8 +43,6 @@ watch(
   },
 );
 
-const cliTitle = computed(() => title.value.trim() || "<标题>");
-const cliWorkspace = computed(() => workspace.value.trim() || "<目录>");
 
 async function submit(): Promise<void> {
   const t = title.value.trim();
@@ -98,7 +96,6 @@ function onKeydown(event: KeyboardEvent): void {
         <button
           type="button"
           class="btn ghost sm icon"
-          title="关闭"
           aria-label="关闭"
           @click="$emit('close')"
         >
@@ -113,7 +110,6 @@ function onKeydown(event: KeyboardEvent): void {
             ref="titleInput"
             v-model="title"
             class="input"
-            placeholder="比如：光学论文《超表面偏振成像》"
             :disabled="busy"
           />
         </div>
@@ -123,20 +119,10 @@ function onKeydown(event: KeyboardEvent): void {
             id="new-proj-ws"
             v-model="workspace"
             class="input mono"
-            placeholder="D:/papers/metasurface"
             :disabled="busy"
           />
-          <span class="hint">
-            Worker 在这里读写文件和运行命令。项目的对话、工单和记忆存在 ~/.eevee/projects/ 下，不写进工作目录。
-          </span>
         </div>
-        <div class="field">
-          <label>等价命令</label>
-          <div class="codeline">
-            <code>eevee project create "{{ cliTitle }}" -w {{ cliWorkspace }}</code>
-          </div>
-        </div>
-        <p v-if="localError || error" class="error" role="alert" style="margin: 0; font-size: 12px">
+        <p v-if="localError || error" class="composer-error" role="alert">
           {{ localError ?? error }}
         </p>
       </div>

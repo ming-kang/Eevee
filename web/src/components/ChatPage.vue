@@ -32,10 +32,15 @@ const displayItems = computed(() =>
   mapTranscript(conversation.view.value?.items ?? [], {
     mode: "router",
     live: conversation.live.value,
+    inbox: conversation.inbox.value,
   }),
 );
 
 const questions = computed(() => props.board?.openQuestions ?? []);
+/** A loaded conversation with nothing in it: the title and the composer stand together in the middle. */
+const empty = computed(
+  () => conversation.view.value !== undefined && displayItems.value.length === 0,
+);
 const later = ref(false);
 
 watch(
@@ -63,12 +68,12 @@ async function answer(id: QuestionId, text: string): Promise<void> {
 </script>
 
 <template>
-  <section class="chat-page">
+  <section class="chat-page" :class="{ landing: empty }">
     <header class="header">
-      <button type="button" class="btn ghost icon menu-btn" title="菜单" aria-label="菜单" @click="$emit('open-side')">
-        <Icon name="menu" />
+      <button type="button" class="btn ghost sm icon menu-btn" aria-label="菜单" @click="$emit('open-side')">
+        <Icon name="menu" size="sm" />
       </button>
-      <h1 class="ellipsis" :title="project.workspace">{{ project.title }}</h1>
+      <h1 v-if="!empty" class="ellipsis" :title="project.workspace">{{ project.title }}</h1>
       <span class="spacer" />
       <button type="button" class="btn ghost sm rail-btn" @click="$emit('open-rail', 'tickets')">
         <span>工单</span>
@@ -76,14 +81,10 @@ async function answer(id: QuestionId, text: string): Promise<void> {
       </button>
     </header>
 
-    <div v-if="displayItems.length === 0" class="chat">
-      <div class="chat-inner" style="min-height: 100%">
-        <div class="empty">
-          <h3>{{ project.title }}</h3>
-          <p>告诉 Router 你想做什么。它会把工作拆成工单在后台完成，只在需要你决定时来问你。</p>
-        </div>
-      </div>
+    <div v-if="empty" class="landing-hero">
+      <h2 :title="project.workspace">{{ project.title }}</h2>
     </div>
+    <div v-else-if="displayItems.length === 0" class="chat" />
     <Transcript
       v-else
       :items="displayItems"
@@ -96,12 +97,11 @@ async function answer(id: QuestionId, text: string): Promise<void> {
       @open-ticket="$emit('open-ticket', $event)"
     />
 
-    <p v-if="conversation.error.value" class="error" style="margin: 0; padding: 0 24px 6px; font-size: 12px">
-      {{ conversation.error.value }}
-    </p>
-
     <div class="dock">
       <div class="dock-inner">
+        <p v-if="conversation.error.value" class="composer-error" role="alert">
+          {{ conversation.error.value }}
+        </p>
         <QuestionCard
           v-if="questions.length > 0 && !later"
           :questions="questions"
@@ -119,24 +119,10 @@ async function answer(id: QuestionId, text: string): Promise<void> {
           <Composer
             :draft-key="`r:${project.id}`"
             :send="send"
-            :placeholder="
-              conversation.running.value
-                ? 'Router 正在工作，消息会在本批工具调用结束后被看到…'
-                : '告诉 Router 你想做什么…'
-            "
+            :placeholder="conversation.running.value ? '补充消息' : '告诉 Router 要做什么'"
           />
         </template>
       </div>
     </div>
   </section>
 </template>
-
-<style scoped>
-.chat-page {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-}
-</style>

@@ -7,6 +7,7 @@ import { STAGE_LABEL } from "../labels.ts";
 import { formatRelativeTime } from "../time.ts";
 import Icon from "./Icon.vue";
 import ReportCard from "./ReportCard.vue";
+import Skeleton from "./Skeleton.vue";
 import StageGlyph from "./StageGlyph.vue";
 import TicketRef from "./TicketRef.vue";
 
@@ -65,10 +66,8 @@ const modelInfo = computed(() => {
 </script>
 
 <template>
-  <p v-if="!view && !loaded" class="hint" style="padding: 12px 8px">正在加载工单详情…</p>
-  <p v-else-if="!view" class="hint" style="padding: 12px 8px">
-    找不到工单 {{ ticketId ?? "" }}
-  </p>
+  <div v-if="!view && !loaded" class="rdetail"><Skeleton :lines="4" /></div>
+  <p v-else-if="!view" class="rail-empty">找不到工单 {{ ticketId ?? "" }}</p>
   <div v-else class="rdetail">
     <div v-if="stage" class="rd-meta">
       <StageGlyph :stage="stage" />
@@ -90,12 +89,7 @@ const modelInfo = computed(() => {
       <template v-if="view.ticket.inputs.length > 0">
         <dt>输入</dt>
         <dd>
-          <span
-            v-for="(input, index) in view.ticket.inputs"
-            :key="index"
-            class="mono"
-            style="font-size: 12px"
-          >
+          <span v-for="(input, index) in view.ticket.inputs" :key="index" class="mono">
             {{ input }}
           </span>
         </dd>
@@ -116,7 +110,7 @@ const modelInfo = computed(() => {
       <template v-if="view.ticket.output">
         <dt>产物</dt>
         <dd>
-          <span class="mono" style="font-size: 12px">{{ view.ticket.output }}</span>
+          <span class="mono">{{ view.ticket.output }}</span>
         </dd>
       </template>
 
@@ -133,13 +127,12 @@ const modelInfo = computed(() => {
               />
             </template>
           </span>
-          <span class="hint">验收后由引擎直接投递</span>
         </dd>
       </template>
 
       <dt>模型</dt>
       <dd>
-        <span v-if="modelInfo.name" class="mono" style="font-size: 12px">{{ modelInfo.name }}</span>
+        <span v-if="modelInfo.name" class="mono">{{ modelInfo.name }}</span>
         <span v-if="modelInfo.hint" class="hint">{{ modelInfo.hint }}</span>
       </dd>
 
@@ -161,8 +154,6 @@ const modelInfo = computed(() => {
         full
       />
     </div>
-    <p v-else class="hint" style="margin: 0">
-      还没有报告。Worker 做完或卡住时会交报告给 Router。
-    </p>
+    <p v-else class="hint">没有报告</p>
   </div>
 </template>

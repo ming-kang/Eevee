@@ -1,0 +1,216 @@
+/* Design tokens.
+ *
+ * Depth without lines: surfaces separate by a luminance step and a shadow, never a border.
+ * One rung per component fixes its background and shadow together:
+ *
+ *   well      --ev-well   + --ev-shadow-well     things that hold a value (input, switch off, tray)
+ *   page      --ev-page                          the app ground, the conversation
+ *   region    --ev-region                        sidebar, rail, a block inside a card
+ *   card      --ev-card   + --ev-shadow-card     composer, question card, settings group
+ *   floating  --ev-raised + --ev-shadow-float    menu, palette, hover card, toast
+ *   modal     --ev-card   + --ev-shadow-modal + --ev-overlay
+ *
+ * Raised things you can press take --ev-shadow-raised and --ev-sheen-raised; ink buttons take
+ * --ev-shadow-ink and --ev-sheen-ink. Components read only these semantic names; a theme only
+ * remaps them. Neutrals carry no hue (dark leans a breath cool), so color always means something:
+ *   --ev-user   amber, the one thing that needs you
+ *   --ev-bad    red, blocked and failed
+ *   --ev-accent focus ring, selection, a stored "on"; never a state
+ */
+
+:root,
+[data-theme="light"] {
+  --ev-page: hsl(0 0% 97.6%);
+  --ev-region: hsl(0 0% 94.1%);
+  --ev-card: hsl(0 0% 100%);
+  --ev-raised: hsl(0 0% 100%);
+  --ev-well: hsl(0 0% 11% / 0.05);
+  --ev-tray: hsl(0 0% 11% / 0.06);
+  --ev-tray-raised: hsl(0 0% 100%);
+
+  --ev-label: hsl(0 0% 11%);
+  --ev-side-ink: hsl(0 0% 11%);
+  --ev-prose: hsl(0 0% 13%);
+  --ev-label-2: hsl(0 0% 46%);
+  --ev-label-3: hsl(0 0% 62%);
+  --ev-strong: hsl(0 0% 5%);
+  --ev-separator: hsl(0 0% 11% / 0.09);
+  --ev-hover: hsl(0 0% 11% / 0.06);
+  --ev-selected: hsl(0 0% 11% / 0.1);
+  --ev-ink: hsl(225 7% 12%);
+  --ev-on-ink: hsl(0 0% 100%);
+  --ev-on-user: hsl(0 0% 100%);
+
+  --ev-accent: hsl(220 82% 65%);
+  --ev-link: hsl(212 72% 40%);
+  --ev-user: hsl(32 92% 46%);
+  --ev-bad: hsl(356 72% 48%);
+  --ev-ok: hsl(151 55% 36%);
+  --ev-overlay: hsl(0 0% 11% / 0.36);
+  --ev-code: hsl(0 0% 11% / 0.045);
+  --ev-skeleton: hsl(0 0% 91%);
+
+  --ev-shadow-well:
+    inset 0 1px 1.5px hsl(0 0% 11% / 0.08), inset 0 0 0 1px hsl(0 0% 11% / 0.06),
+    0 1px 0 hsl(0 0% 100% / 0.8);
+  --ev-shadow-raised:
+    0 0 0 0.5px hsl(0 0% 11% / 0.16), 0 1px 1px hsl(0 0% 11% / 0.06),
+    0 2px 4px -1px hsl(0 0% 11% / 0.07);
+  --ev-shadow-ink: inset 0 1px 0 hsl(0 0% 100% / 0.18), 0 1px 1.5px hsl(0 0% 11% / 0.2);
+  --ev-shadow-card:
+    0 0 0 0.5px hsl(0 0% 11% / 0.1), 0 1px 1.5px hsl(0 0% 11% / 0.04),
+    0 2px 6px -2px hsl(0 0% 11% / 0.05);
+  --ev-shadow-region: 0 0 0 0.5px hsl(0 0% 11% / 0.09), 0 1px 2px hsl(0 0% 11% / 0.03);
+  --ev-shadow-float:
+    0 0 0 0.5px hsl(0 0% 11% / 0.11), 0 2px 4px -1px hsl(0 0% 11% / 0.06),
+    0 12px 32px -6px hsl(0 0% 11% / 0.16);
+  --ev-shadow-modal:
+    0 0 0 0.5px hsl(0 0% 11% / 0.08), 0 2px 6px -2px hsl(0 0% 11% / 0.08),
+    0 24px 56px -12px hsl(0 0% 11% / 0.28);
+  --ev-sheen-raised: linear-gradient(hsl(0 0% 11% / 0), hsl(0 0% 11% / 0.03));
+  --ev-sheen-ink: linear-gradient(hsl(0 0% 100% / 0.1), hsl(0 0% 100% / 0));
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --ev-page: hsl(220 7% 8%);
+  --ev-region: hsl(225 7% 10.6%);
+  --ev-card: hsl(216 8% 12.7%);
+  --ev-raised: hsl(216 7% 13.5%);
+  --ev-well: hsl(220 30% 2% / 0.3);
+  --ev-tray: hsl(220 20% 96% / 0.06);
+  --ev-tray-raised: hsl(220 6% 21%);
+
+  /* Dark text sits under a brightness ceiling instead of pure white, which halates in long
+     reading: interface text at 13:1 against the page, prose a step above, bold above that.
+     Sidebar rows sit a step below, so the list you scan past stays quieter than what you read. */
+  --ev-label: hsl(220 4% 85%);
+  --ev-side-ink: hsl(220 4% 75%);
+  --ev-prose: hsl(220 5% 90%);
+  --ev-label-2: hsl(220 4% 62%);
+  --ev-label-3: hsl(220 4% 44%);
+  --ev-strong: hsl(220 5% 94%);
+  --ev-separator: hsl(220 20% 96% / 0.08);
+  --ev-hover: hsl(220 20% 96% / 0.05);
+  --ev-selected: hsl(220 20% 96% / 0.08);
+  --ev-ink: hsl(210 3% 82%);
+  --ev-on-ink: hsl(220 7% 8%);
+  --ev-on-user: hsl(30 60% 8%);
+
+  --ev-accent: hsl(200 70% 70%);
+  --ev-link: hsl(205 70% 72%);
+  --ev-user: hsl(41 96% 58%);
+  --ev-bad: hsl(0 92% 72%);
+  --ev-ok: hsl(151 58% 52%);
+  --ev-overlay: hsl(0 0% 0% / 0.56);
+  --ev-code: hsl(0 0% 100% / 0.05);
+  --ev-skeleton: hsl(220 6% 16%);
+
+  --ev-shadow-well:
+    inset 0 1px 2px hsl(0 0% 0% / 0.4), inset 0 0 0 1px hsl(0 0% 100% / 0.09),
+    0 1px 0 hsl(0 0% 100% / 0.04);
+  --ev-shadow-raised:
+    inset 0 1px 0 hsl(0 0% 100% / 0.08), 0 0 0 0.5px hsl(0 0% 0% / 0.7),
+    0 1px 2px hsl(0 0% 0% / 0.5);
+  --ev-shadow-ink: inset 0 1px 0 hsl(0 0% 100% / 0.55), 0 1px 2px hsl(0 0% 0% / 0.5);
+  --ev-shadow-card:
+    inset 0 1px 0 hsl(0 0% 100% / 0.04), 0 0 0 0.5px hsl(0 0% 100% / 0.08),
+    0 1px 2px hsl(0 0% 0% / 0.35);
+  --ev-shadow-region: inset 0 1px 0 hsl(0 0% 100% / 0.03), 0 0 0 0.5px hsl(0 0% 100% / 0.07);
+  --ev-shadow-float:
+    inset 0 1px 0 hsl(0 0% 100% / 0.07), 0 0 0 0.5px hsl(0 0% 100% / 0.09),
+    0 12px 32px -4px hsl(0 0% 0% / 0.6);
+  --ev-shadow-modal:
+    inset 0 1px 0 hsl(0 0% 100% / 0.06), 0 0 0 0.5px hsl(0 0% 100% / 0.09),
+    0 24px 56px -8px hsl(0 0% 0% / 0.7);
+  --ev-sheen-raised: linear-gradient(hsl(0 0% 100% / 0.04), hsl(0 0% 100% / 0));
+  --ev-sheen-ink: linear-gradient(hsl(0 0% 0% / 0), hsl(0 0% 0% / 0.08));
+  color-scheme: dark;
+}
+
+/* The values above are applied by `theme.ts` before first paint; this keeps a page that has not
+   run it yet (or a print) on the system palette. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+  }
+}
+
+/* Derived tints: a tone mixed into whatever is underneath, so one declaration reads on every rung. */
+:root,
+[data-theme] {
+  --ev-user-film: color-mix(in oklab, var(--ev-user) 14%, transparent);
+  --ev-user-ink: color-mix(in oklab, var(--ev-user) 55%, var(--ev-label));
+  --ev-bad-film: color-mix(in oklab, var(--ev-bad) 10%, transparent);
+  --ev-bad-ink: color-mix(in oklab, var(--ev-bad) 60%, var(--ev-label));
+  --ev-ok-ink: color-mix(in oklab, var(--ev-ok) 70%, var(--ev-label));
+  --ev-accent-film: color-mix(in oklab, var(--ev-accent) 22%, transparent);
+  --ev-add: color-mix(in oklab, var(--ev-ok) 11%, transparent);
+  --ev-del: color-mix(in oklab, var(--ev-bad) 9%, transparent);
+  /* Rings are for keyboard navigation: `dom.ts` zeroes the width while a pointer is in use, so
+     focus handed back after a click (a closed dialog, an opened drawer) draws nothing. Text fields
+     keep `--ev-ring-field`: whoever is typing needs to see where. */
+  --ev-ring: 0 0 0 var(--ev-ring-w) var(--ev-accent);
+  --ev-ring-in: inset 0 0 0 var(--ev-ring-w) var(--ev-accent);
+  --ev-ring-field: 0 0 0 2px var(--ev-accent);
+}
+
+:root {
+  --ev-ring-w: 2px;
+}
+
+:root[data-modality="pointer"] {
+  --ev-ring-w: 0px;
+}
+
+/* Scales. Every type role and icon size is a ratio of one interface size, `--ev-ui` (14px unless
+   the reader picked another in settings; `text-size.ts` sets it on the root before first paint).
+   Control geometry stays fixed, so a larger size reads larger without loosening the layout. */
+:root {
+  --ev-ui: 14px;
+}
+
+:root {
+  /* Latin always comes from the bundled Inter; Chinese names its fonts before the system face so
+     every platform picks a real CJK sans instead of whatever system-ui falls back to. */
+  --ev-font:
+    "Inter Variable", "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
+    "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ev-font-mono:
+    "JetBrains Mono Variable", "JetBrains Mono", "Cascadia Code", ui-monospace, "SF Mono",
+    Consolas, monospace;
+  /* caption is for digits, key caps and mono ids; words start at footnote. */
+  --ev-caption: calc(var(--ev-ui) * 11 / 14);
+  --ev-footnote: calc(var(--ev-ui) * 12 / 14);
+  --ev-control: calc(var(--ev-ui) * 13 / 14);
+  --ev-body: var(--ev-ui);
+  --ev-headline: calc(var(--ev-ui) * 16 / 14);
+  --ev-title: calc(var(--ev-ui) * 18 / 14);
+  --ev-display: calc(var(--ev-ui) * 22 / 14);
+
+  --ev-icon-xs: var(--ev-ui);
+  --ev-icon-sm: calc(var(--ev-ui) * 16 / 14);
+  --ev-icon: calc(var(--ev-ui) * 18 / 14);
+  --ev-icon-lg: calc(var(--ev-ui) * 22 / 14);
+  --ev-tracking: -0.01em;
+  --ev-reading: 1.72;
+
+  --ev-r-mini: 5px;
+  --ev-r-sm: 8px;
+  --ev-r-md: 10px;
+  --ev-r-lg: 14px;
+  --ev-h-sm: 28px;
+  --ev-h-md: 32px;
+  --ev-h-lg: 36px;
+
+  --ev-inset: 8px;
+  --ev-sidebar-w: 256px;
+  --ev-rail-w: 336px;
+  --ev-header-h: 48px;
+  --ev-chat-max: 720px;
+
+  --ev-fast: 120ms;
+  --ev-regular: 180ms;
+  --ev-slow: 320ms;
+  --ev-ease: cubic-bezier(0.2, 0, 0, 1);
+}

@@ -4,9 +4,11 @@ import type { JobLogView } from "@shared/api/contract.ts";
 import type { JobId, JobStatus } from "@shared/contracts/index.ts";
 import { computed, onUnmounted, ref, watch } from "vue";
 import type { RunningJobItem } from "../board.ts";
+import { vTail } from "../dom.ts";
 import { useSubmit } from "../submit.ts";
 import { formatElapsedSeconds } from "../time.ts";
 import { showToast } from "../toasts.ts";
+import Skeleton from "./Skeleton.vue";
 import StageGlyph from "./StageGlyph.vue";
 
 const props = defineProps<{
@@ -153,7 +155,7 @@ async function killJob(jobId: JobId): Promise<void> {
 </script>
 
 <template>
-  <div v-if="openJobId && !openInRunning" class="jobs" style="padding-bottom: 8px">
+  <div v-if="openJobId && !openInRunning" class="jobs">
     <div class="job open">
       <button
         type="button"
@@ -172,13 +174,11 @@ async function killJob(jobId: JobId): Promise<void> {
         </span>
       </button>
 
-      <p v-if="logError" class="error hint" style="padding: 4px 8px">{{ logError }}</p>
-      <p v-else-if="logLoading && !logView" class="hint" style="padding: 4px 8px">正在读取日志…</p>
+      <p v-if="logError" class="error job-note">{{ logError }}</p>
+      <div v-else-if="logLoading && !logView" class="job-note"><Skeleton /></div>
       <template v-else-if="logView">
-        <pre class="job-log">{{ logView.content || "（暂无输出）" }}</pre>
-        <p v-if="logView.truncated" class="hint" style="padding: 0 8px 4px; margin: 0">
-          仅显示最近 200 行（最多 64 KB）
-        </p>
+        <pre v-tail class="job-log">{{ logView.content || "（暂无输出）" }}</pre>
+        <p v-if="logView.truncated" class="job-note">仅最近 200 行</p>
       </template>
 
       <div class="job-actions">
@@ -189,14 +189,6 @@ async function killJob(jobId: JobId): Promise<void> {
           @click="$emit('open-ticket', logView.job.ticketId)"
         >
           打开 {{ logView.job.ticketId }}
-        </button>
-        <button
-          v-if="projectId && openJobId"
-          type="button"
-          class="btn sm ghost"
-          @click="fetchLog(openJobId, projectId)"
-        >
-          刷新
         </button>
         <span class="spacer" />
         <button
@@ -210,10 +202,7 @@ async function killJob(jobId: JobId): Promise<void> {
     </div>
   </div>
 
-  <div v-if="jobs.length === 0 && (!openJobId || openInRunning)" class="empty" style="padding-top: 64px">
-    <h3>没有后台作业</h3>
-    <p>Worker 跑耗时很长的命令时会把它转入后台，自己先结束这一轮；作业结束后再唤醒它。</p>
-  </div>
+  <p v-if="jobs.length === 0 && (!openJobId || openInRunning)" class="rail-empty">没有后台作业</p>
 
   <template v-else-if="jobs.length > 0">
     <div class="jobs">
@@ -240,17 +229,13 @@ async function killJob(jobId: JobId): Promise<void> {
           </span>
         </button>
         <template v-if="openJobId === item.job.id">
-          <p v-if="logError" class="error hint" style="padding: 4px 8px">{{ logError }}</p>
-          <p v-else-if="logLoading && !logView" class="hint" style="padding: 4px 8px">正在读取日志…</p>
+          <p v-if="logError" class="error job-note">{{ logError }}</p>
+          <div v-else-if="logLoading && !logView" class="job-note"><Skeleton /></div>
           <template v-else-if="logView">
-            <pre class="job-log">{{ logView.content || "（暂无输出）" }}</pre>
-            <p v-if="logView.truncated" class="hint" style="padding: 0 8px 4px; margin: 0">
-              仅显示最近 200 行（最多 64 KB）
-            </p>
+            <pre v-tail class="job-log">{{ logView.content || "（暂无输出）" }}</pre>
+            <p v-if="logView.truncated" class="job-note">仅最近 200 行</p>
           </template>
-          <p v-if="killing.error.value" class="error hint" style="padding: 0 8px 4px">
-            {{ killing.error.value }}
-          </p>
+          <p v-if="killing.error.value" class="error job-note">{{ killing.error.value }}</p>
           <div class="job-actions">
             <button
               type="button"
@@ -258,14 +243,6 @@ async function killJob(jobId: JobId): Promise<void> {
               @click="$emit('open-ticket', item.ticket.id)"
             >
               打开 {{ item.ticket.id }}
-            </button>
-            <button
-              v-if="projectId"
-              type="button"
-              class="btn sm ghost"
-              @click="fetchLog(item.job.id, projectId)"
-            >
-              刷新
             </button>
             <span class="spacer" />
             <template v-if="confirmKillId === item.job.id">
@@ -302,21 +279,5 @@ async function killJob(jobId: JobId): Promise<void> {
         </template>
       </div>
     </div>
-    <p class="hint rail-hint">作业结束后会唤醒所属工单的 Worker。</p>
   </template>
 </template>
-
-<style scoped>
-.job-log {
-  margin: 4px 8px 6px;
-  padding: 8px 10px;
-  border-radius: var(--ev-r-sm);
-  background: var(--ev-code-bg);
-  font: var(--ev-fs-12) / 1.55 var(--ev-font-mono);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 220px;
-  overflow: auto;
-  box-shadow: inset 0 0 0 1px var(--ev-border);
-}
-</style>

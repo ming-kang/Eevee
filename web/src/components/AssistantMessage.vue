@@ -14,7 +14,8 @@ defineEmits<{
 </script>
 
 <template>
-  <div class="turn msg-ai">
+  <p v-if="streaming && text === ''" class="note"><span class="shimmer">思考中</span></p>
+  <div v-else class="turn msg-ai">
     <MarkdownText
       :source="text"
       :streaming="streaming"
