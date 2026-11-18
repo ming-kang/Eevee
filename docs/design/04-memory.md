@@ -1,8 +1,4 @@
-# 04 记忆
-
-本模块采用 Cognition 的 [Devin Memory and Dreaming](https://devin.ai/blog/memory-and-dreaming)（参见[产品指南](https://docs.devin.ai/product-guides/memory)与 [Agent Memory Repo 规范](https://cognition.com/agent-memory-repo)），并吸纳 Anthropic [《The components of agent memory》](https://www.anthropic.com/research/components-of-agent-memory) 中“说明目的优于死板规则”的结论。
-
-稳定的设计目标是：**只保留长期有用的经验；记忆可读、可改、可追溯、可撤销；任务进度与长期记忆分离。** Git 提交方式、按轮提交、Dreaming 频率和冲突处理都是当前实现方案，可以在开发中调整。
+# 记忆
 
 ## 1. 范围
 
