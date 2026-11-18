@@ -38,7 +38,7 @@ npm run engine
 在另一个终端里用同一个 `EEVEE_HOME` 运行命令行，打开面板：
 
 ```bash
-EEVEE_HOME=<同一个目录> npm run dev -- web
+EEVEE_HOME=<same dir> npm run dev -- web
 ```
 
 同一个数据目录同时只能运行一个 Engine。
@@ -83,16 +83,15 @@ EEVEE_ENGINE=http://127.0.0.1:19391 npm run web:dev
 
 ### 面板文字
 
-面板有简体中文和英文两种语言。界面文字一律写成中文原文并包进 `t()`（`web/src/i18n.ts`），中文原文就是键，英文在 `web/src/locales/en.ts`：
+面板有英文和简体中文两种语言，**英文是源语言，也是键**：界面文字一律写成英文并包进 `t()`（`web/src/i18n.ts`），中文翻译在 `web/src/locales/zh-CN.ts`。缺一条翻译时退回英文，不会显示键名。
 
-- 带参数写成 `t("{n} 张未结", { n })`；英文可以写成 `"{n} job|{n} jobs"`，按 `n` 是否为 1 挑单复数；
-- 同一个中文在英文里意思不同时，在键后加 `::名字`（`t("模型::list")` 显示“模型”，英文是 “Models”）；
-- 产品和技术名词保留英文：Router、Worker、Dreamer、Engine、MCP、Provider、commit 和思考档位的取值；工单、记忆、报告这类一般名词写中文；
-- 语言在页面载入时定下，切换后重新载入，所以模块顶层的常量也可以用 `t()`；
+- 带参数写成 `t("{n} open", { n })`；需要单复数时键写成 `"{n} job|{n} jobs"`，按 `n` 是否为 1 挑一个，两种形式在中文表里各占一行；
+- 英文相同但中文要分开时，在键后加 `::名字`（`t("Interrupted::job")` 显示 “Interrupted”，中文是 “被打断”），后缀从不显示；
+- 语言在页面载入时定下：先看存过的选择，否则看浏览器，`zh` 开头用中文，其余用英文；切换后重新载入，所以模块顶层的常量也可以用 `t()`；
 - Engine 给面板的是数据而不是句子：通知的 `data.notice`、工具结果的 `details`、运行失败的 `{ reason, detail }`（见 [实时流](stream.md)），以及请求被拒和配置问题的 `code` 与参数（见 [HTTP 接口](http-api.md#错误)）。面板按数据用读者的语言措辞（`web/src/errors.ts`），不解析 Engine 写给模型的文字；只有别人的原话（`detail`）原样显示。
-- 新的错误加进 `src/contracts/problem.ts`：请求被拒加到 `Problem`，在 `src/server/http.ts` 的 `STATUS` 里给它一个状态码；配置文件或加载出的问题加到 `ConfigIssue`。两处的 `describe…` 写 Engine 的中文措辞，`web/src/errors.ts` 写面板的措辞，漏写一处类型检查就不通过。
+- 新的错误加进 `src/contracts/problem.ts`：请求被拒加到 `Problem`，在 `src/server/http.ts` 的 `STATUS` 里给它一个状态码；配置文件或加载出的问题加到 `ConfigIssue`。两处的 `describe…` 写 Engine 的英文措辞，`web/src/errors.ts` 写面板的措辞，漏写一处类型检查就不通过。
 
-`web/src/i18n.test.ts` 扫描全部组件：`t()` 之外出现中文（注释和匹配 Engine 原文的正则除外）、用到的键没有英文、英文表里有没人用的键，都会失败。
+`web/src/i18n.test.ts` 扫描全部组件：`t()` 之外出现中文（注释和匹配 Engine 原文的正则除外）、用到的键没有中文、中文表里有没人用的键，都会失败。
 
 ## 测试
 
@@ -101,6 +100,8 @@ EEVEE_ENGINE=http://127.0.0.1:19391 npm run web:dev
 端到端测试不调用真实模型：`src/engine/testing.ts` 用 pi-ai 的 faux provider 搭起一个完整的项目，测试按角色写出模型每一轮的回答和工具调用，再检查工单、报告、投递和记忆的结果。MCP 相关测试用 `src/extensions/mcp/testing.ts` 里的内存 MCP 服务器。
 
 新功能应当配一个说明行为的测试；修复问题时先写一个能复现它的测试。
+
+`src/shared/language.test.ts` 看守“代码用英文写”这条规则：扫描 `src/`、`web/src/` 和 `scripts/`，注释和正则字面量除外，出现中文就失败。唯一的豁免是 `web/src/locales/zh-CN.ts`（中文翻译表）和 `LOCALE_NAME`（语言自己的名字）。
 
 ## 代码结构
 
@@ -136,6 +137,7 @@ contracts ──► orchestration ─┐
 - **状态写进存储**：任何重置后还需要的信息（工单、依赖、待回答的问题）都必须是持久状态，不能只留在模型的上下文里。
 - **每个存储只有一条写入路径**：`session.sqlite` 只由 Engine 写；记忆库只经由 `memory` 模块提交；`settings.json`、`auth.json`、`models.json`（`ModelRuntime.setProviderConfig`）、`mcp.json`（`McpHub.save`）各有一个串行的写入者。
 - **能力优先于缓存**：同一角色尽量保持稳定的配置以复用缓存，但不为了缓存前缀限制角色需要的能力。
+- **代码用英文写**：源码、注释、测试名称、CLI 输出和运维日志一律英文，给模型看的文字（提示词、工具描述、通知）同样英文。例外只有三处：`web/src/locales/zh-CN.ts` 的翻译值、`LOCALE_NAME` 里语言自己的名字，以及匹配这些中文的测试断言和正则。文档和 `README.md` 是中文的用户文档，不在此列；这条规则由 `src/shared/language.test.ts` 看守。
 - **依赖的 Pi 包锁定版本**：按 `node_modules` 里安装的类型编写代码。
 
 ## 文档

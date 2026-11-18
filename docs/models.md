@@ -28,7 +28,7 @@ Eevee 在 [`@earendil-works/pi-ai`](https://github.com/earendil-works/pi) 之上
 
 ## 设置默认模型
 
-“设置 · 模型”页顶部有四行：全局默认、Router、Worker、Dreamer。点一行右边的模型按钮，从已配置凭据的 provider 的模型里选一个。没有单独设置的角色跟随全局默认，按钮上显示“跟随默认 · <模型>”。Dreaming 用一个轻量模型就够了。
+“设置 · 模型”页顶部有四行：全局默认、Router、Worker、Dreamer。点一行右边的模型按钮，从已配置凭据的 provider 的模型里选一个。没有单独设置的角色跟随全局默认，按钮上显示“跟随默认 · <model>”。Dreaming 用一个轻量模型就够了。
 
 同一页下方的“可用模型”列出所有已配置凭据的 provider 的模型及其上下文窗口、价格和缓存时长，“使用经验”显示你在 `models.md` 里记录的内容。
 
