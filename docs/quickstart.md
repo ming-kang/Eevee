@@ -111,7 +111,7 @@ eevee stop
 ## 下一步
 
 - [日常使用](usage.md)：回答问题、观察和引导 Worker、查看花费。
-- [工单与报告](tickets.md)：理解工单的阶段和什么时候需要你。
+- [工单与报告](tickets.md)：理解工单的阶段，以及什么时候会向你提问。
 - [配置角色能力](capabilities.md)：给 Worker 接上 MCP 服务器或你自己的扩展。
 
 ## 卸载

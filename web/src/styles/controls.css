@@ -405,7 +405,7 @@
   background: var(--ev-user);
 }
 
-/* Stage glyphs: amber needs you, red is blocked, everything else is gray and told apart by shape. */
+/* Stage glyphs: amber marks a question waiting for the user, red is blocked, everything else is gray and told apart by shape. */
 .glyph {
   width: var(--ev-icon-sm);
   height: var(--ev-icon-sm);

@@ -46,7 +46,7 @@ function questionLine(view: TicketView): string | undefined {
   </template>
   <template v-else-if="board">
     <template v-if="groups.answer.length > 0">
-      <div class="group-h user">{{ t("需要你") }}</div>
+      <div class="group-h user">{{ t("待回答") }}</div>
       <button
         v-for="view in groups.answer"
         :key="view.ticket.id"
@@ -61,7 +61,6 @@ function questionLine(view: TicketView): string | undefined {
           <span class="t-id">{{ view.ticket.id }}</span>
           <span class="ellipsis">{{ view.ticket.title }}</span>
         </span>
-        <span class="t-stage s-answer">{{ STAGE_LABEL.answer }}</span>
         <span v-if="questionLine(view)" class="t-line">{{ questionLine(view) }}</span>
       </button>
     </template>

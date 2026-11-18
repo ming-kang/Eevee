@@ -343,7 +343,7 @@ const brain: FauxResponseFactory = (context) => {
     if (seeded && last?.role === "user") {
       return say(`收到：${lastText.slice(0, 120)}。我可以继续调整工单、验收报告或补充问题。`);
     }
-    return say("好的，已将任务拆成工单并在后台并行推进，有需要你拍板的地方再通知你。");
+    return say("好的，已将任务拆成工单并在后台并行推进，有要你拍板的地方再通知你。");
   }
 
   // Worker / Dreamer turns

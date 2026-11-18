@@ -45,7 +45,7 @@ Router 用 `ticket` 工具的 `create` 动作建单（下文简写为 `ticket cr
 
 投给 Router 的是状态、600 字以内的摘要、`need`、需要决定的问题、产物、经验和报告地址。`detail` 不投递，Router 需要时用 `read report://t3#2` 读取。
 
-报告是结构化的：需要你决定的问题写进 `questions`，值得长期记住的经验写进 `lessons`。Router 能自己回答就直接 `ticket message`，否则带上工单编号向你提问；Router 和 Dreaming 会从 `lessons` 里提炼记忆。
+报告是结构化的：要你决定的问题写进 `questions`，值得长期记住的经验写进 `lessons`。Router 能自己回答就直接 `ticket message`，否则带上工单编号向你提问；Router 和 Dreaming 会从 `lessons` 里提炼记忆。
 
 ### Engine 补交报告
 

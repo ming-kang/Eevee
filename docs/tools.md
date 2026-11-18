@@ -126,7 +126,7 @@ Worker 向 Router 提交报告。`progress` 以外的状态都会结束本轮，
 | `artifacts` | 产物数组，每项有 `path` 和一句 `note` |
 | `detail` | 可选，完整内容，Router 需要时再读 |
 | `need` | 可选，`waiting` 时写明缺什么 |
-| `questions` | 可选，需要你决定的问题，格式同 `ask_user` 的 `items` |
+| `questions` | 可选，要用户决定的问题，格式同 `ask_user` 的 `items` |
 | `lessons` | 可选，值得长期记住的经验 |
 
 报告编号在同一张工单内从 1 递增，地址为 `report://t3#2`。

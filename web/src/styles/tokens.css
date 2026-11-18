@@ -13,7 +13,7 @@
  * Raised things you can press take --ev-shadow-raised and --ev-sheen-raised; ink buttons take
  * --ev-shadow-ink and --ev-sheen-ink. Components read only these semantic names; a theme only
  * remaps them. Neutrals carry no hue (dark leans a breath cool), so color always means something:
- *   --ev-user   amber, the one thing that needs you
+ *   --ev-user   amber, a question waiting for the user
  *   --ev-bad    red, blocked and failed
  *   --ev-accent focus ring, selection, a stored "on"; never a state
  */

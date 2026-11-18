@@ -202,7 +202,6 @@ export const en: Record<string, string> = {
   "正在重新连接…": "Reconnecting…",
   正在加载: "Loading",
   没有工单: "No tickets",
-  需要你: "Needs you",
   进行中: "In progress",
   "已结单 {n}": "Done {n}",
   "正在加载…": "Loading…",

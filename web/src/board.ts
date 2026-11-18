@@ -44,7 +44,7 @@ export type TicketGroups = {
   openCount: number;
 };
 
-/** Partition board tickets into `需要你`, `进行中`, and `已结单`, sorting within each group by stage order. */
+/** Partition board tickets into `待回答`, `进行中`, and `已结单`, sorting within each group by stage order. */
 export function groupTickets(tickets: readonly TicketView[]): TicketGroups {
   const answer: TicketView[] = [];
   const active: TicketView[] = [];
