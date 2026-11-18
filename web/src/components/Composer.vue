@@ -11,7 +11,7 @@ const props = withDefaults(
     draftKey?: string;
     disabled?: boolean;
   }>(),
-  { placeholder: t("告诉 Router 要做什么"), draftKey: "", disabled: false },
+  { placeholder: t("Tell the Router what to do"), draftKey: "", disabled: false },
 );
 
 const draftStore = new Map<string, string>();
@@ -80,8 +80,8 @@ function onKeydown(event: KeyboardEvent): void {
         class="send"
         type="submit"
         :disabled="busy || disabled || text.trim() === ''"
-        :title="t('发送（Enter）')"
-        :aria-label="t('发送')"
+        :title="t('Send (Enter)')"
+        :aria-label="t('Send')"
       >
         <Icon name="arrowUp" size="sm" />
       </button>

@@ -62,11 +62,11 @@ const isJobActive = computed(
     <summary>
       <Icon name="chevR" size="xs" class="chev" />
       <span class="ellipsis" :class="{ shimmer: status === 'run' }">
-        {{ t("运行") }} <span class="mono">{{ command }}</span>
+        {{ t("Run") }} <span class="mono">{{ command }}</span>
       </span>
       <span v-if="status === 'run'" class="num">{{ elapsed }}</span>
-      <span v-else-if="status === 'stopped'" class="dim">{{ t("已打断") }}</span>
-      <span v-else-if="status === 'job'" class="dim">{{ t("转入后台") }}</span>
+      <span v-else-if="status === 'stopped'" class="dim">{{ t("Interrupted") }}</span>
+      <span v-else-if="status === 'job'" class="dim">{{ t("Moved to background") }}</span>
       <span v-else class="num">
         <template v-if="exitCode && exitCode !== 0">exit {{ exitCode }}{{ ms !== undefined ? " · " : "" }}</template>
         <template v-if="ms !== undefined">{{ formatDurationMs(ms) }}</template>
@@ -82,6 +82,6 @@ const isJobActive = computed(
   >
     <StageGlyph stage="jobs" />
     <span class="mono">{{ jobId }}</span>
-    <span class="dim">{{ isJobActive ? t("后台运行中") : t("已结束") }}</span>
+    <span class="dim">{{ isJobActive ? t("Running in background") : t("Finished") }}</span>
   </button>
 </template>

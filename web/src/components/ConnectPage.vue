@@ -18,9 +18,9 @@ const COMMAND = "eevee";
 async function copy(text: string): Promise<void> {
   try {
     await navigator.clipboard?.writeText(text);
-    showToast(t("已复制 {text}", { text }));
+    showToast(t("Copied {text}", { text }));
   } catch {
-    showToast(t("复制失败，请手动复制"), "error");
+    showToast(t("Couldn't copy; copy it by hand"), "error");
   }
 }
 </script>
@@ -29,7 +29,7 @@ async function copy(text: string): Promise<void> {
   <div class="connect">
     <div class="connect-card">
       <span class="brand"><BrandLogo /></span>
-      <h1>{{ t("连接到 Engine") }}</h1>
+      <h1>{{ t("Connect to the Engine") }}</h1>
       <div v-if="networkError" class="banner bad" role="alert">
         <Icon name="alert" size="sm" />
         <div>{{ networkError }}</div>
@@ -44,7 +44,7 @@ async function copy(text: string): Promise<void> {
           <button
             type="button"
             class="btn ghost sm icon"
-            :aria-label="t('复制 {command}', { command: COMMAND })"
+            :aria-label="t('Copy {command}', { command: COMMAND })"
             @click="copy(COMMAND)"
           >
             <Icon name="copy" size="xs" />
@@ -53,7 +53,7 @@ async function copy(text: string): Promise<void> {
       </div>
       <button v-if="networkError" type="button" class="btn" @click="$emit('retry')">
         <Icon name="refresh" size="sm" />
-        <span>{{ t("重试") }}</span>
+        <span>{{ t("Retry") }}</span>
       </button>
     </div>
   </div>

@@ -11,13 +11,13 @@ const props = defineProps<{
 }>();
 
 const VERB: Record<string, (n: number) => string> = {
-  read: (n) => t("查阅 {n} 项", { n }),
-  bash: (n) => t("运行 {n} 条命令", { n }),
-  edit: (n) => t("修改 {n} 个文件", { n }),
-  write: (n) => t("写入 {n} 个文件", { n }),
-  memory: (n) => t("记忆 {n} 次", { n }),
-  tool_search: (n) => t("查找工具 {n} 次", { n }),
-  codemode: (n) => t("执行脚本 {n} 次", { n }),
+  read: (n) => t("Read {n} item|Read {n} items", { n }),
+  bash: (n) => t("Ran {n} command|Ran {n} commands", { n }),
+  edit: (n) => t("Edited {n} file|Edited {n} files", { n }),
+  write: (n) => t("Wrote {n} file|Wrote {n} files", { n }),
+  memory: (n) => t("Used memory once|Used memory {n} times", { n }),
+  tool_search: (n) => t("Searched tools once|Searched tools {n} times", { n }),
+  codemode: (n) => t("Ran a script|Ran {n} scripts", { n }),
 };
 
 const runningStep = computed(() => props.steps.find((s) => s.status === "run"));
@@ -41,16 +41,16 @@ const summary = computed(() => {
       <span v-if="runningStep" class="ellipsis shimmer">
         {{
           runningStep.tool === "read"
-            ? t("正在查阅")
+            ? t("Reading")
             : runningStep.tool === "bash"
-              ? t("正在运行")
-              : t("正在执行")
+              ? t("Running::command")
+              : t("Executing")
         }}
         {{ runningStep.label }}
       </span>
       <template v-else>
         <span class="ellipsis">{{ summary }}</span>
-        <span v-if="hasError" class="minus">· {{ t("失败") }}</span>
+        <span v-if="hasError" class="minus">· {{ t("Failed") }}</span>
       </template>
     </summary>
     <div class="steps">

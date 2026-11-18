@@ -3,32 +3,35 @@ import { test } from "node:test";
 import { formatAnswer, initialDraft, initialOtherFlags, isComplete } from "./questions.ts";
 
 const single = {
-  items: [{ text: "用哪个数据库？", options: ["SQLite", "Postgres"], recommended: "SQLite" }],
+  items: [{ text: "Which database?", options: ["SQLite", "Postgres"], recommended: "SQLite" }],
 };
 const double = {
   items: [
-    { text: "语言？", options: ["TS", "Go"] },
-    { text: "部署？", options: [], recommended: "本机" },
+    { text: "Which language?", options: ["TS", "Go"] },
+    { text: "Where to deploy?", options: [], recommended: "Local" },
   ],
 };
 
-test("推荐选项预先选中", () => {
+test("a recommended option is preselected", () => {
   assert.deepEqual(initialDraft(single), ["SQLite"]);
-  assert.deepEqual(initialDraft(double), ["", "本机"]);
+  assert.deepEqual(initialDraft(double), ["", "Local"]);
 });
 
-test("初始“其他”状态在开放题或非预置选项时打开", () => {
+test("the initial 'other' state opens on an open question or a non-preset option", () => {
   assert.deepEqual(initialOtherFlags(single, ["SQLite"]), [false]);
   assert.deepEqual(initialOtherFlags(single, ["DuckDB"]), [true]);
-  assert.deepEqual(initialOtherFlags(double, ["TS", "本机"]), [false, true]);
+  assert.deepEqual(initialOtherFlags(double, ["TS", "Local"]), [false, true]);
 });
 
-test("每一问都有答案才算完成", () => {
+test("it is complete only when every question has an answer", () => {
   assert.equal(isComplete(initialDraft(double)), false);
-  assert.equal(isComplete(["TS", "本机"]), true);
+  assert.equal(isComplete(["TS", "Local"]), true);
 });
 
-test("单问直接给答案，多问逐条编号", () => {
+test("a single question answers directly; several are numbered one by one", () => {
   assert.equal(formatAnswer(single, [" Postgres "]), "Postgres");
-  assert.equal(formatAnswer(double, ["TS", "本机"]), "1. 语言？\n   TS\n2. 部署？\n   本机");
+  assert.equal(
+    formatAnswer(double, ["TS", "Local"]),
+    "1. Which language?\n   TS\n2. Where to deploy?\n   Local",
+  );
 });

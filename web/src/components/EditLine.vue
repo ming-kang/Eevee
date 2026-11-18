@@ -22,15 +22,15 @@ defineProps<{
         {{
           status === "run"
             ? action === "write"
-              ? t("正在写入")
-              : t("正在修改")
+              ? t("Writing")
+              : t("Editing")
             : action === "write"
-              ? t("写入")
-              : t("修改")
+              ? t("Wrote")
+              : t("Edited")
         }}
         {{ " " }}<span class="mono">{{ path }}</span>
       </span>
-      <span v-if="status === 'err'" class="minus">· {{ t("失败") }}</span>
+      <span v-if="status === 'err'" class="minus">· {{ t("Failed") }}</span>
       <span v-else-if="status === 'ok' && (added > 0 || removed > 0)" class="diffstat">
         <span v-if="added > 0" class="plus">+{{ added }}</span>
         <span v-if="removed > 0" class="minus">−{{ removed }}</span>

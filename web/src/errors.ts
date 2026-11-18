@@ -4,78 +4,81 @@ import { t } from "./i18n.ts";
 import { ROLE_LABEL } from "./labels.ts";
 import { StreamError } from "./stream.ts";
 
-const list = (items: readonly string[]): string => items.join(t("、"));
+const list = (items: readonly string[]): string => items.join(t(", "));
 
 /** Why the Engine refused, in the reader's words. Only an unforeseen error shows its own text. */
 export function problemText(problem: Problem): string {
   switch (problem.code) {
     case "unauthorized":
-      return t("需要授权，请运行 eevee 打开面板");
+      return t("Not signed in; run eevee to open the panel");
     case "bad_code":
-      return t("授权码无效或已过期，请重新运行 eevee");
+      return t("This sign-in code is invalid or expired; run eevee again");
     case "forbidden_host":
-      return t("只接受本机请求");
+      return t("Only requests from this machine are accepted");
     case "no_route":
-      return t("没有接口 {method} {path}", problem);
+      return t("No endpoint {method} {path}", problem);
     case "no_file":
-      return t("没有这个文件");
+      return t("No such file");
     case "bad_json":
-      return t("请求体不是合法的 JSON");
+      return t("The request body isn't valid JSON");
     case "too_large":
-      return t("请求体过大");
+      return t("The request is too large");
     case "required":
-      return t("{field} 不能为空", problem);
+      return t("{field} can't be empty", problem);
     case "invalid":
       return problem.allowed === undefined
-        ? t("{field} 不合法", { field: problem.field })
-        : t("{field} 只能是 {allowed}", {
+        ? t("{field} is invalid", { field: problem.field })
+        : t("{field} must be one of {allowed}", {
             field: problem.field,
             allowed: problem.allowed.join(" / "),
           });
     case "no_project":
-      return t("找不到这个项目");
+      return t("Project not found");
     case "no_ticket":
-      return t("没有工单 {ticketId}", problem);
+      return t("No ticket {ticketId}", problem);
     case "no_worker":
-      return t("找不到 {ticketId} 的执行对话", problem);
+      return t("{ticketId} has no Worker conversation", problem);
     case "no_question":
-      return t("没有问题 {questionId}", problem);
+      return t("No question {questionId}", problem);
     case "no_job":
-      return t("没有作业 {jobId}", problem);
+      return t("No job {jobId}", problem);
     case "no_memory_file":
-      return t("没有记忆文件 {file}", problem);
+      return t("No memory file {file}", problem);
     case "no_commit":
-      return t("没有 commit {commit}", problem);
+      return t("No commit {commit}", problem);
     case "no_model":
-      return t("没有模型 {provider}/{modelId}", problem);
+      return t("No model {provider}/{modelId}", problem);
     case "no_provider":
-      return t("没有 Provider {provider}", problem);
+      return t("No provider {provider}", problem);
     case "no_extension":
-      return t("没有安装扩展：{names}", { names: list(problem.names) });
+      return t("Not installed: {names}", { names: list(problem.names) });
     case "model_unset":
-      return t("{role} 没有可用的模型", { role: ROLE_LABEL[problem.role] });
+      return t("{role} has no model", { role: ROLE_LABEL[problem.role] });
     case "ticket_closed":
-      return t("{ticketId} 已经结单", problem);
+      return t("{ticketId} is already closed", problem);
     case "report_changed":
-      return t("{ticketId} 待验收的报告已经变了，请先看最新一报", problem);
+      return t("The report waiting on {ticketId} changed; read the latest one first", problem);
     case "answered":
-      return t("{questionId} 已经回答过了", problem);
+      return t("{questionId} is already answered", problem);
     case "job_ended":
-      return t("作业 {jobId} 已经结束", problem);
+      return t("Job {jobId} has already ended", problem);
     case "running":
-      return t("对话正在运行");
+      return t("The conversation is running");
     case "not_failed":
-      return t("上一轮没有失败，不需要重试");
+      return t("The last turn didn't fail; there's nothing to retry");
     case "revert_failed":
-      return t("撤销 {commit} 失败：没有这个 commit，或与后来的改动冲突", problem);
+      return t(
+        "Couldn't revert {commit}: no such commit, or it conflicts with later changes",
+        problem,
+      );
     case "bad_config":
       return problem.problems.map(configProblemText).join("\n");
     case "model_in_use":
-      return t("{model} 正被默认模型使用，先换掉再改", {
+      return t("{model} is a default model; change the default first", {
         model: `${problem.provider}/${problem.modelId}`,
       });
     case "probe_failed":
-      return t("获取模型列表失败：{detail}", problem);
+      return t("Could not fetch the model list: {detail}", problem);
     case "internal":
       return problem.detail;
   }
@@ -85,33 +88,36 @@ export function problemText(problem: Problem): string {
 export function configIssueText(issue: ConfigIssue): string {
   switch (issue.code) {
     case "schema":
-      return t("{label}：{detail}", { label: issue.path, detail: issue.detail });
+      return t("{label}: {detail}", { label: issue.path, detail: issue.detail });
     case "shape":
-      return t("格式应为 {expected}", issue);
+      return t("Should be {expected}", issue);
     case "invalid":
       return issue.allowed === undefined
-        ? t("{field} 不合法", { field: issue.field })
-        : t("{field} 只能是 {allowed}", { field: issue.field, allowed: issue.allowed.join(" / ") });
+        ? t("{field} is invalid", { field: issue.field })
+        : t("{field} must be one of {allowed}", {
+            field: issue.field,
+            allowed: issue.allowed.join(" / "),
+          });
     case "needs_models":
-      return t("新增的 Provider 需要 models");
+      return t("A new provider needs models");
     case "unsupported_api":
-      return t("模型 {model} 的 api「{api}」不受支持", issue);
+      return t("Model {model}: api “{api}” isn't supported", issue);
     case "needs_api":
-      return t("模型 {model} 没有指定 api", issue);
+      return t("Model {model} has no api", issue);
     case "needs_base_url":
-      return t("模型 {model} 没有 baseUrl", issue);
+      return t("Model {model} has no baseUrl", issue);
     case "no_auth":
-      return t("没有可用的认证方式");
+      return t("No way to authenticate");
     case "env_unset":
-      return t("{name} 引用的环境变量没有设置", issue);
+      return t("{name} refers to an environment variable that isn't set", issue);
     case "name_taken":
-      return t("扩展名 {name} 已被另一个文件使用", issue);
+      return t("Another file already uses the extension name {name}", issue);
     case "name_reserved":
-      return t("扩展名 {name} 是 Eevee 保留的", issue);
+      return t("The extension name {name} is reserved by Eevee", issue);
     case "bad_export":
-      return t("默认导出应为 extension，或返回 extension 的函数");
+      return t("The default export should be an extension, or a function returning one");
     case "disconnected":
-      return t("连接已断开");
+      return t("Disconnected");
     case "failed":
       return issue.detail;
   }
@@ -122,7 +128,7 @@ export function configProblemText(problem: ConfigProblem): string {
   const issue = configIssueText(problem);
   return problem.entry === undefined
     ? issue
-    : t("{label}：{detail}", { label: problem.entry, detail: issue });
+    : t("{label}: {detail}", { label: problem.entry, detail: issue });
 }
 
 /** What to show for anything a call threw: a refusal in the reader's words, else the error's text. */

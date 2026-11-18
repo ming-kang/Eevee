@@ -144,7 +144,7 @@ async function killJob(jobId: JobId): Promise<void> {
   });
   if (ok) {
     confirmKillId.value = undefined;
-    showToast(t("已终止后台作业 {job}", { job: jobId }));
+    showToast(t("Stopped background job {job}", { job: jobId }));
     await fetchLog(jobId, pid, true);
   }
 }
@@ -161,7 +161,7 @@ async function killJob(jobId: JobId): Promise<void> {
         @click="$emit('update:openJobId', undefined)"
       >
         <StageGlyph :stage="logView?.job.status === 'killed' || logView?.job.status === 'interrupted' ? 'blocked' : 'done'" />
-        <span class="job-cmd">{{ logView?.job.command ?? t("作业 {id}", { id: openJobId ?? "" }) }}</span>
+        <span class="job-cmd">{{ logView?.job.command ?? t("Job {id}", { id: openJobId ?? "" }) }}</span>
         <span class="job-sub">
           <span v-if="logView" class="t-id">{{ logView.job.ticketId }}</span>
           <span>{{ logView ? jobStatusText(logView.job) : openJobId }}</span>
@@ -173,8 +173,8 @@ async function killJob(jobId: JobId): Promise<void> {
       <p v-if="logError" class="error job-note">{{ logError }}</p>
       <div v-else-if="logLoading && !logView" class="job-note"><Skeleton /></div>
       <template v-else-if="logView">
-        <pre v-tail class="job-log">{{ logView.content || t("（暂无输出）") }}</pre>
-        <p v-if="logView.truncated" class="job-note">{{ t("仅最近 200 行") }}</p>
+        <pre v-tail class="job-log">{{ logView.content || t("(no output yet)") }}</pre>
+        <p v-if="logView.truncated" class="job-note">{{ t("Last 200 lines only") }}</p>
       </template>
 
       <div class="job-actions">
@@ -184,7 +184,7 @@ async function killJob(jobId: JobId): Promise<void> {
           class="btn sm"
           @click="$emit('open-ticket', logView.job.ticketId)"
         >
-          {{ t("打开 {ticket}", { ticket: logView.job.ticketId }) }}
+          {{ t("Open {ticket}", { ticket: logView.job.ticketId }) }}
         </button>
         <span class="spacer" />
         <button
@@ -192,13 +192,13 @@ async function killJob(jobId: JobId): Promise<void> {
           class="btn sm ghost"
           @click="$emit('update:openJobId', undefined)"
         >
-          {{ t("收起") }}
+          {{ t("Hide") }}
         </button>
       </div>
     </div>
   </div>
 
-  <p v-if="jobs.length === 0 && (!openJobId || openInRunning)" class="rail-empty">{{ t("没有后台作业") }}</p>
+  <p v-if="jobs.length === 0 && (!openJobId || openInRunning)" class="rail-empty">{{ t("No background jobs") }}</p>
 
   <template v-else-if="jobs.length > 0">
     <div class="jobs">
@@ -228,8 +228,8 @@ async function killJob(jobId: JobId): Promise<void> {
           <p v-if="logError" class="error job-note">{{ logError }}</p>
           <div v-else-if="logLoading && !logView" class="job-note"><Skeleton /></div>
           <template v-else-if="logView">
-            <pre v-tail class="job-log">{{ logView.content || t("（暂无输出）") }}</pre>
-            <p v-if="logView.truncated" class="job-note">{{ t("仅最近 200 行") }}</p>
+            <pre v-tail class="job-log">{{ logView.content || t("(no output yet)") }}</pre>
+            <p v-if="logView.truncated" class="job-note">{{ t("Last 200 lines only") }}</p>
           </template>
           <p v-if="killing.error.value" class="error job-note">{{ killing.error.value }}</p>
           <div class="job-actions">
@@ -238,7 +238,7 @@ async function killJob(jobId: JobId): Promise<void> {
               class="btn sm"
               @click="$emit('open-ticket', item.ticket.id)"
             >
-              {{ t("打开 {ticket}", { ticket: item.ticket.id }) }}
+              {{ t("Open {ticket}", { ticket: item.ticket.id }) }}
             </button>
             <span class="spacer" />
             <template v-if="confirmKillId === item.job.id">
@@ -248,7 +248,7 @@ async function killJob(jobId: JobId): Promise<void> {
                 :disabled="killing.busy.value"
                 @click="confirmKillId = undefined"
               >
-                {{ t("取消") }}
+                {{ t("Cancel") }}
               </button>
               <button
                 type="button"
@@ -256,7 +256,7 @@ async function killJob(jobId: JobId): Promise<void> {
                 :disabled="killing.busy.value"
                 @click="killJob(item.job.id)"
               >
-                {{ killing.busy.value ? t("正在终止…") : t("确认终止") }}
+                {{ killing.busy.value ? t("Stopping…") : t("Stop it") }}
               </button>
             </template>
             <button
@@ -269,7 +269,7 @@ async function killJob(jobId: JobId): Promise<void> {
                 confirmKillId = item.job.id;
               "
             >
-              {{ t("终止") }}
+              {{ t("Stop") }}
             </button>
           </div>
         </template>

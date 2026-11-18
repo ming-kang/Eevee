@@ -86,7 +86,7 @@ const apiChoices = computed(() =>
     : [...API_TYPES],
 );
 const title = computed(() =>
-  isNew.value ? t("添加 Provider") : (provider.value?.name ?? props.id),
+  isNew.value ? t("Add provider") : (provider.value?.name ?? props.id),
 );
 const keySaved = computed(() => provider.value?.source === "auth.json");
 
@@ -130,16 +130,16 @@ watch(
 function draftErrorText(error: DraftError): string {
   switch (error.code) {
     case "model_id":
-      return t("第 {n} 个模型没有 ID", { n: error.index + 1 });
+      return t("Model {n} has no ID", { n: error.index + 1 });
     case "duplicate_model":
-      return t("模型 {model} 重复了", { model: error.id });
+      return t("Model {model} is listed twice", { model: error.id });
     case "tokens":
-      return t("{model} 的{field}应为正整数，可以写成 128k", {
+      return t("{field} of {model} must be a positive whole number, such as 128k", {
         model: error.model,
-        field: error.field === "contextWindow" ? t("上下文窗口") : t("最大输出"),
+        field: error.field === "contextWindow" ? t("Context window") : t("Max output"),
       });
     case "price":
-      return t("{model} 的价格应为不小于 0 的数", { model: error.model });
+      return t("Prices of {model} must be numbers of 0 or more", { model: error.model });
   }
 }
 
@@ -147,16 +147,16 @@ function draftErrorText(error: DraftError): string {
 function blocker(): string | undefined {
   if (isNew.value) {
     if (!isProviderId(providerId.value)) {
-      return t("ID 只能包含字母、数字、.、_ 和 -，并以字母或数字开头");
+      return t("IDs may contain only letters, digits, ., _ and -, and start with a letter or digit");
     }
     if (props.view.providers.some((p) => p.id === providerId.value) || configs.value?.[providerId.value]) {
-      return t("已经有 Provider {provider}", { provider: providerId.value });
+      return t("There is already a provider named {provider}", { provider: providerId.value });
     }
   }
   if (!builtIn.value) {
-    if (draft.api.trim() === "") return t("请选择 API 类型");
-    if (draft.baseUrl.trim() === "") return t("请填写 Base URL");
-    if (draft.models.length === 0) return t("至少要有一个模型");
+    if (draft.api.trim() === "") return t("Choose an API type");
+    if (draft.baseUrl.trim() === "") return t("Enter a base URL");
+    if (draft.models.length === 0) return t("Add at least one model");
   }
   return undefined;
 }
@@ -183,7 +183,7 @@ async function save(): Promise<void> {
     if (key !== "") await props.client.call("POST /api/auth/:provider", { provider: id }, { key });
   });
   if (!ok) return;
-  showToast(t("已保存 {provider}", { provider: id }));
+  showToast(t("Saved {provider}", { provider: id }));
   await props.reloadView();
   if (isNew.value) {
     location.hash = formatRoute({ name: "settings", section: "models", item: id });
@@ -203,7 +203,7 @@ async function remove(): Promise<void> {
     await props.client.call("DELETE /api/models/providers/:provider", { provider: props.id });
   });
   if (!ok) return;
-  showToast(builtIn.value ? t("已恢复 {provider} 的内置设置", { provider: props.id }) : t("已删除 {provider}", { provider: props.id }));
+  showToast(builtIn.value ? t("Restored the built-in settings of {provider}", { provider: props.id }) : t("Deleted {provider}", { provider: props.id }));
   await props.reloadView();
   if (builtIn.value) {
     await loadConfigs();
@@ -218,7 +218,7 @@ async function removeKey(): Promise<void> {
     await props.client.call("DELETE /api/auth/:provider", { provider: props.id });
   });
   if (!ok) return;
-  showToast(t("已移除 {provider} 保存的 API Key", { provider: props.id }));
+  showToast(t("Removed the saved {provider} API key", { provider: props.id }));
   await props.reloadView();
 }
 
@@ -247,9 +247,9 @@ function modelSummary(model: ModelDraft): string {
   const parts: string[] = [];
   if (model.name.trim()) parts.push(model.name.trim());
   const ctx = Number(model.contextWindow);
-  if (model.contextWindow && Number.isFinite(ctx)) parts.push(t("上下文 {tokens}", { tokens: formatTokens(ctx) }));
-  if (model.reasoning) parts.push(t("推理"));
-  if (model.image) parts.push(t("图片"));
+  if (model.contextWindow && Number.isFinite(ctx)) parts.push(t("{tokens} context", { tokens: formatTokens(ctx) }));
+  if (model.reasoning) parts.push(t("Reasoning"));
+  if (model.image) parts.push(t("Images"));
   return parts.join(" · ");
 }
 
@@ -305,7 +305,7 @@ function importPicked(): void {
   const models = (probed.value?.models ?? []).filter((m) => picked.value.has(m.id));
   const added = addProbed(draft, models);
   probed.value = undefined;
-  showToast(t("已加入 {n} 个模型，保存后生效", { n: added }));
+  showToast(t("Added {n} model; save to apply|Added {n} models; save to apply", { n: added }));
 }
 
 // ── Built-in data ────────────────────────────────────────────────────────────
@@ -392,7 +392,7 @@ function applyPicked(): void {
   const fields = refToApply.value;
   applyReference(model, reference, fields);
   showToast(
-    t("已从 {model} 复制 {n} 项，保存后生效", {
+    t("Copied {n} field from {model}; save to apply|Copied {n} fields from {model}; save to apply", {
       model: `${reference.provider}/${reference.id}`,
       n: fields.length,
     }),
@@ -402,26 +402,26 @@ function applyPicked(): void {
 
 function candidateMeta(reference: BuiltinModelView, model: ModelDraft): string {
   const parts = [
-    t("上下文 {tokens}", { tokens: formatTokens(reference.contextWindow) }),
-    t("输出 {tokens}", { tokens: formatTokens(reference.maxTokens) }),
+    t("{tokens} context", { tokens: formatTokens(reference.contextWindow) }),
+    t("{tokens} output", { tokens: formatTokens(reference.maxTokens) }),
   ];
-  if (reference.input.includes("image")) parts.push(t("图片"));
-  if (reference.reasoning) parts.push(t("推理"));
+  if (reference.input.includes("image")) parts.push(t("Images"));
+  if (reference.reasoning) parts.push(t("Reasoning"));
   const api = modelApi(model);
   if (api !== undefined && reference.api !== api) parts.push(reference.api);
   return parts.join(" · ");
 }
 
 const FIELD_LABEL: Record<ReferenceField, () => string> = {
-  name: () => t("名称"),
-  reasoning: () => t("推理"),
-  image: () => t("图片输入"),
-  contextWindow: () => t("上下文窗口"),
-  maxTokens: () => t("最大输出"),
-  cost: () => t("价格（美元 / 百万 token）"),
+  name: () => t("Name"),
+  reasoning: () => t("Reasoning"),
+  image: () => t("Image input"),
+  contextWindow: () => t("Context window"),
+  maxTokens: () => t("Max output"),
+  cost: () => t("Price (USD per million tokens)"),
 };
 
-const yesNo = (on: boolean) => (on ? t("是") : t("否"));
+const yesNo = (on: boolean) => (on ? t("Yes") : t("No"));
 const rates = (cost: Record<"input" | "output" | "cacheRead" | "cacheWrite", string | number>) =>
   [cost.input, cost.output, cost.cacheRead, cost.cacheWrite]
     .map((v) => (v === "" ? "0" : String(v)))
@@ -430,17 +430,17 @@ const rates = (cost: Record<"input" | "output" | "cacheRead" | "cacheWrite", str
 function currentText(model: ModelDraft, field: ReferenceField): string {
   switch (field) {
     case "name":
-      return model.name.trim() || t("未设置，用 ID");
+      return model.name.trim() || t("Not set; uses the ID");
     case "reasoning":
       return yesNo(model.reasoning);
     case "image":
       return yesNo(model.image);
     case "contextWindow":
-      return model.contextWindow.trim() || t("未设置，默认 {tokens}", { tokens: "128k" });
+      return model.contextWindow.trim() || t("Not set; defaults to {tokens}", { tokens: "128k" });
     case "maxTokens":
-      return model.maxTokens.trim() || t("未设置，默认 {tokens}", { tokens: "16k" });
+      return model.maxTokens.trim() || t("Not set; defaults to {tokens}", { tokens: "16k" });
     case "cost":
-      return Object.values(model.cost).every((v) => v.trim() === "") ? t("未设置") : rates(model.cost);
+      return Object.values(model.cost).every((v) => v.trim() === "") ? t("Not set") : rates(model.cost);
   }
 }
 
@@ -464,33 +464,33 @@ function referenceText(reference: BuiltinModelView, field: ReferenceField): stri
 function probedMeta(model: ProbedModelView): string {
   const parts: string[] = [];
   if (model.name) parts.push(model.name);
-  if (model.contextWindow) parts.push(t("上下文 {tokens}", { tokens: formatTokens(model.contextWindow) }));
-  if (model.maxTokens) parts.push(t("输出 {tokens}", { tokens: formatTokens(model.maxTokens) }));
-  if (model.input?.includes("image")) parts.push(t("图片"));
-  if (model.reasoning) parts.push(t("推理"));
+  if (model.contextWindow) parts.push(t("{tokens} context", { tokens: formatTokens(model.contextWindow) }));
+  if (model.maxTokens) parts.push(t("{tokens} output", { tokens: formatTokens(model.maxTokens) }));
+  if (model.input?.includes("image")) parts.push(t("Images"));
+  if (model.reasoning) parts.push(t("Reasoning"));
   return parts.join(" · ");
 }
 </script>
 
 <template>
   <header class="set-head">
-    <a class="btn ghost sm icon" :href="LIST" :aria-label="t('返回 Provider 列表')">
+    <a class="btn ghost sm icon" :href="LIST" :aria-label="t('Back to providers')">
       <Icon name="chevL" size="sm" />
     </a>
     <h2 class="ellipsis">{{ title }}</h2>
     <template v-if="!isNew && !missing && configs !== undefined">
-      <span class="chip">{{ builtIn ? t("内置") : t("自定义") }}</span>
+      <span class="chip">{{ builtIn ? t("Built-in") : t("Custom") }}</span>
     </template>
     <template v-if="!isNew && !missing && configs !== undefined && (original || !builtIn)">
       <template v-if="confirmRemove">
         <button type="button" class="btn sm danger" :disabled="removing.busy.value" @click="remove">
-          {{ builtIn ? t("确认恢复") : t("确认删除") }}
+          {{ builtIn ? t("Confirm restore") : t("Confirm delete") }}
         </button>
-        <button type="button" class="btn ghost sm" @click="confirmRemove = false">{{ t("取消") }}</button>
+        <button type="button" class="btn ghost sm" @click="confirmRemove = false">{{ t("Cancel") }}</button>
       </template>
       <button v-else type="button" class="btn ghost sm danger" @click="confirmRemove = true">
         <Icon :name="builtIn ? 'undo' : 'x'" size="xs" />
-        <span>{{ builtIn ? t("恢复内置设置") : t("删除") }}</span>
+        <span>{{ builtIn ? t("Restore built-in settings") : t("Delete") }}</span>
       </button>
     </template>
   </header>
@@ -499,11 +499,11 @@ function probedMeta(model: ProbedModelView): string {
   <p v-else-if="removing.error.value" class="error hint">{{ removing.error.value }}</p>
   <Skeleton v-if="configs === undefined && !loadError" />
   <div v-else-if="missing" class="empty">
-    <h3>{{ t("找不到 Provider {provider}", { provider: id }) }}</h3>
-    <a class="btn sm" :href="LIST">{{ t("返回 Provider 列表") }}</a>
+    <h3>{{ t("No provider named {provider}", { provider: id }) }}</h3>
+    <a class="btn sm" :href="LIST">{{ t("Back to providers") }}</a>
   </div>
   <form v-else-if="configs" class="pv-form" @submit.prevent="save">
-    <div class="section-t"><h3>{{ t("连接") }}</h3></div>
+    <div class="section-t"><h3>{{ t("Connection") }}</h3></div>
     <div class="rows">
       <div v-if="isNew" class="f-row">
         <label for="pv-id">ID</label>
@@ -519,10 +519,10 @@ function probedMeta(model: ProbedModelView): string {
         </div>
       </div>
       <div v-if="!builtIn" class="f-row">
-        <label for="pv-api">{{ t("API 类型") }}</label>
+        <label for="pv-api">{{ t("API type") }}</label>
         <div class="f-ctrl">
           <select id="pv-api" v-model="draft.api" class="input mono">
-            <option value="" disabled>{{ t("选择接口协议") }}</option>
+            <option value="" disabled>{{ t("Choose a protocol") }}</option>
             <option v-for="api in apiChoices" :key="api" :value="api">
               {{ API_ENDPOINT[api] ? `${api} · ${API_ENDPOINT[api]}` : api }}
             </option>
@@ -543,15 +543,15 @@ function probedMeta(model: ProbedModelView): string {
           <span v-if="target" class="f-note mono" :class="{ warn: target.doubled }">
             {{
               target.doubled
-                ? t("请求发往 {url}，/v1 重复了，从 Base URL 去掉", { url: target.url })
-                : t("请求发往 {url}", { url: target.url })
+                ? t("Requests go to {url}; /v1 is doubled, remove it from the base URL", { url: target.url })
+                : t("Requests go to {url}", { url: target.url })
             }}
           </span>
           <span v-else-if="!builtIn && baseUrlShape(draft.api || undefined) === 'origin'" class="f-note">
-            {{ t("只写域名，客户端会加上 /v1") }}
+            {{ t("Just the origin; the client adds /v1") }}
           </span>
           <span v-else-if="!builtIn && baseUrlShape(draft.api || undefined)" class="f-note">
-            {{ t("包含版本路径，比如 /v1") }}
+            {{ t("Include the version path, such as /v1") }}
           </span>
         </div>
       </div>
@@ -566,7 +566,7 @@ function probedMeta(model: ProbedModelView): string {
               type="password"
               spellcheck="false"
               autocomplete="off"
-              :placeholder="keySaved ? t('已保存，输入新的 Key 替换') : t('粘贴 API Key')"
+              :placeholder="keySaved ? t('Saved; type a new key to replace it') : t('Paste an API key')"
             />
             <button
               v-if="keySaved && !isNew"
@@ -575,12 +575,12 @@ function probedMeta(model: ProbedModelView): string {
               :disabled="removingKey.busy.value"
               @click="removeKey"
             >
-              {{ t("移除") }}
+              {{ t("Remove") }}
             </button>
           </div>
-          <span v-if="provider?.authType === 'oauth'" class="f-note">{{ t("已通过 OAuth 登录") }}</span>
+          <span v-if="provider?.authType === 'oauth'" class="f-note">{{ t("Signed in with OAuth") }}</span>
           <span v-else-if="provider?.configured && !keySaved && provider.source" class="f-note">
-            {{ t("当前凭据来自 {source}", { source: provider.source }) }}
+            {{ t("Credentials come from {source}", { source: provider.source }) }}
           </span>
           <span v-if="removingKey.error.value" class="f-note warn">{{ removingKey.error.value }}</span>
         </div>
@@ -588,16 +588,16 @@ function probedMeta(model: ProbedModelView): string {
     </div>
 
     <div class="section-t">
-      <h3>{{ builtIn ? t("追加的模型") : t("模型::list") }}</h3>
+      <h3>{{ builtIn ? t("Added models") : t("Models") }}</h3>
       <span class="count">{{ draft.models.length }}</span>
       <span class="spacer" />
       <button v-if="!builtIn" type="button" class="btn sm" :disabled="!canProbe || probing.busy.value" @click="probe">
         <Icon name="refresh" size="xs" :spin="probing.busy.value" />
-        <span>{{ t("从端点获取") }}</span>
+        <span>{{ t("Fetch from endpoint") }}</span>
       </button>
       <button type="button" class="btn sm" @click="addModel">
         <Icon name="plus" size="xs" />
-        <span>{{ t("添加模型") }}</span>
+        <span>{{ t("Add model") }}</span>
       </button>
     </div>
     <p v-if="probing.error.value" class="error hint">{{ probing.error.value }}</p>
@@ -608,18 +608,18 @@ function probedMeta(model: ProbedModelView): string {
           v-if="probed.models.length > 8"
           v-model="probeFilter"
           class="input pref"
-          :placeholder="t('筛选')"
-          :aria-label="t('筛选端点列出的模型')"
+          :placeholder="t('Filter')"
+          :aria-label="t('Filter the endpoint\'s models')"
         />
-        <span v-else class="r-d spacer">{{ t("端点列出 {n} 个模型", { n: probed.models.length }) }}</span>
+        <span v-else class="r-d spacer">{{ t("The endpoint lists {n} model|The endpoint lists {n} models", { n: probed.models.length }) }}</span>
         <span class="spacer" />
         <button type="button" class="btn ghost sm" :disabled="probeList.length === 0" @click="pickAll">
-          {{ t("全选") }}
+          {{ t("Select all") }}
         </button>
         <button type="button" class="btn sm primary" :disabled="picked.size === 0" @click="importPicked">
-          {{ t("加入 {n} 个", { n: picked.size }) }}
+          {{ t("Add {n}", { n: picked.size }) }}
         </button>
-        <button type="button" class="btn ghost sm icon" :aria-label="t('关闭')" @click="probed = undefined">
+        <button type="button" class="btn ghost sm icon" :aria-label="t('Close')" @click="probed = undefined">
           <Icon name="x" size="xs" />
         </button>
       </div>
@@ -640,11 +640,11 @@ function probedMeta(model: ProbedModelView): string {
             <span class="r-t mono">{{ model.id }}</span>
             <span v-if="probedMeta(model)" class="r-d">{{ probedMeta(model) }}</span>
           </span>
-          <span v-if="have.has(model.id)" class="r-d">{{ t("已添加") }}</span>
+          <span v-if="have.has(model.id)" class="r-d">{{ t("Added") }}</span>
         </label>
-        <div v-if="probeList.length === 0" class="row"><span class="muted">{{ t("没有匹配的模型") }}</span></div>
+        <div v-if="probeList.length === 0" class="row"><span class="muted">{{ t("No models match") }}</span></div>
       </div>
-      <div v-if="probed.truncated" class="row"><span class="r-d">{{ t("端点还有更多模型没有列出") }}</span></div>
+      <div v-if="probed.truncated" class="row"><span class="r-d">{{ t("The endpoint has more models than it listed") }}</span></div>
     </div>
 
     <div v-if="draft.models.length > 0" class="rows">
@@ -657,13 +657,13 @@ function probedMeta(model: ProbedModelView): string {
             @click="toggleModel(model)"
           >
             <Icon :name="expanded.has(model.key) ? 'chevD' : 'chevR'" size="xs" />
-            <span class="mono ellipsis">{{ model.id || t("新模型") }}</span>
+            <span class="mono ellipsis">{{ model.id || t("New model") }}</span>
             <span class="r-d ellipsis">{{ modelSummary(model) }}</span>
           </button>
           <button
             type="button"
             class="btn ghost sm icon"
-            :aria-label="t('删除模型 {model}', { model: model.id || t('新模型') })"
+            :aria-label="t('Remove model {model}', { model: model.id || t('New model') })"
             @click="removeModel(index)"
           >
             <Icon name="x" size="xs" />
@@ -673,9 +673,9 @@ function probedMeta(model: ProbedModelView): string {
           <div v-if="refKey !== model.key" class="m-ref-bar">
             <button type="button" class="btn sm" :disabled="model.id.trim() === ''" @click="openReference(model)">
               <Icon name="copy" size="xs" />
-              <span>{{ t("使用内置数据") }}</span>
+              <span>{{ t("Use built-in data") }}</span>
             </button>
-            <span class="f-note">{{ t("从内置模型复制名称、上下文、价格等，不用手动填写") }}</span>
+            <span class="f-note">{{ t("Copy the name, context, prices and more from a built-in model") }}</span>
           </div>
           <div v-else class="rows m-ref">
             <template v-if="refPicked === undefined">
@@ -685,11 +685,11 @@ function probedMeta(model: ProbedModelView): string {
                   class="input mono"
                   spellcheck="false"
                   autocomplete="off"
-                  :placeholder="t('搜索内置模型')"
-                  :aria-label="t('搜索内置模型')"
+                  :placeholder="t('Search built-in models')"
+                  :aria-label="t('Search built-in models')"
                   @input="onRefQuery"
                 />
-                <button type="button" class="btn ghost sm icon" :aria-label="t('关闭')" @click="closeReference">
+                <button type="button" class="btn ghost sm icon" :aria-label="t('Close')" @click="closeReference">
                   <Icon name="x" size="xs" />
                 </button>
               </div>
@@ -708,17 +708,17 @@ function probedMeta(model: ProbedModelView): string {
                 <Icon name="chevR" size="xs" class="go" />
               </button>
               <div v-if="refMatches?.length === 0" class="row">
-                <span class="muted">{{ t("没有相近的内置模型，继续手动填写") }}</span>
+                <span class="muted">{{ t("No similar built-in model; keep filling it in by hand") }}</span>
               </div>
             </template>
             <template v-else>
               <div class="row m-ref-head">
-                <button type="button" class="btn ghost sm icon" :aria-label="t('返回候选列表')" @click="refPicked = undefined">
+                <button type="button" class="btn ghost sm icon" :aria-label="t('Back to candidates')" @click="refPicked = undefined">
                   <Icon name="chevL" size="xs" />
                 </button>
                 <span class="r-main">
                   <span class="r-t mono ellipsis">{{ refPicked.provider }} / {{ refPicked.id }}</span>
-                  <span class="r-d">{{ t("勾选要复制的字段，模型 ID 和接口保持不变") }}</span>
+                  <span class="r-d">{{ t("Check the fields to copy; the model's ID and API stay") }}</span>
                 </span>
               </div>
               <label
@@ -735,20 +735,20 @@ function probedMeta(model: ProbedModelView): string {
                 />
                 <span class="r-main">
                   <span class="r-t">{{ FIELD_LABEL[change.field]() }}</span>
-                  <span v-if="change.same" class="r-d">{{ referenceText(refPicked, change.field) }} · {{ t("已一致") }}</span>
+                  <span v-if="change.same" class="r-d">{{ referenceText(refPicked, change.field) }} · {{ t("already the same") }}</span>
                   <span v-else class="r-d">
                     {{ currentText(model, change.field) }} → <span class="m-ref-new">{{ referenceText(refPicked, change.field) }}</span>
                   </span>
                   <span v-if="change.field === 'cost' && refPicked.costTiers" class="r-d">
-                    {{ t("它还按输入长度分档计价，分档不会复制") }}
+                    {{ t("It also prices by input length; those tiers are not copied") }}
                   </span>
                 </span>
               </label>
               <div class="row m-ref-foot">
                 <span class="spacer" />
-                <button type="button" class="btn ghost sm" @click="closeReference">{{ t("取消") }}</button>
+                <button type="button" class="btn ghost sm" @click="closeReference">{{ t("Cancel") }}</button>
                 <button type="button" class="btn sm primary" :disabled="refToApply.length === 0" @click="applyPicked">
-                  {{ t("复制 {n} 项", { n: refToApply.length }) }}
+                  {{ t("Copy {n} field|Copy {n} fields", { n: refToApply.length }) }}
                 </button>
               </div>
             </template>
@@ -758,15 +758,15 @@ function probedMeta(model: ProbedModelView): string {
             <input :id="`pv-model-${model.key}`" v-model="model.id" class="input mono" spellcheck="false" autocomplete="off" />
           </div>
           <div class="field">
-            <label :for="`pv-mname-${model.key}`">{{ t("名称") }}</label>
+            <label :for="`pv-mname-${model.key}`">{{ t("Name") }}</label>
             <input :id="`pv-mname-${model.key}`" v-model="model.name" class="input" autocomplete="off" :placeholder="model.id" />
           </div>
           <div class="field">
-            <label :for="`pv-ctx-${model.key}`">{{ t("上下文窗口") }}</label>
+            <label :for="`pv-ctx-${model.key}`">{{ t("Context window") }}</label>
             <input :id="`pv-ctx-${model.key}`" v-model="model.contextWindow" class="input mono" placeholder="128k" />
           </div>
           <div class="field">
-            <label :for="`pv-max-${model.key}`">{{ t("最大输出") }}</label>
+            <label :for="`pv-max-${model.key}`">{{ t("Max output") }}</label>
             <input :id="`pv-max-${model.key}`" v-model="model.maxTokens" class="input mono" placeholder="16k" />
           </div>
           <div class="field toggles">
@@ -778,7 +778,7 @@ function probedMeta(model: ProbedModelView): string {
                 :aria-pressed="model.reasoning"
                 @click="model.reasoning = !model.reasoning"
               />
-              <span>{{ t("推理") }}</span>
+              <span>{{ t("Reasoning") }}</span>
             </label>
             <label class="toggle">
               <button
@@ -788,33 +788,33 @@ function probedMeta(model: ProbedModelView): string {
                 :aria-pressed="model.image"
                 @click="model.image = !model.image"
               />
-              <span>{{ t("图片输入") }}</span>
+              <span>{{ t("Image input") }}</span>
             </label>
           </div>
           <fieldset class="field prices">
-            <legend>{{ t("价格（美元 / 百万 token）") }}</legend>
-            <input v-model="model.cost.input" class="input mono" inputmode="decimal" :placeholder="t('输入')" :aria-label="t('输入价格')" />
-            <input v-model="model.cost.output" class="input mono" inputmode="decimal" :placeholder="t('输出')" :aria-label="t('输出价格')" />
-            <input v-model="model.cost.cacheRead" class="input mono" inputmode="decimal" :placeholder="t('缓存读')" :aria-label="t('缓存读价格')" />
-            <input v-model="model.cost.cacheWrite" class="input mono" inputmode="decimal" :placeholder="t('缓存写')" :aria-label="t('缓存写价格')" />
+            <legend>{{ t("Price (USD per million tokens)") }}</legend>
+            <input v-model="model.cost.input" class="input mono" inputmode="decimal" :placeholder="t('Input')" :aria-label="t('Input price')" />
+            <input v-model="model.cost.output" class="input mono" inputmode="decimal" :placeholder="t('Output')" :aria-label="t('Output price')" />
+            <input v-model="model.cost.cacheRead" class="input mono" inputmode="decimal" :placeholder="t('Cache read')" :aria-label="t('Cache read price')" />
+            <input v-model="model.cost.cacheWrite" class="input mono" inputmode="decimal" :placeholder="t('Cache write')" :aria-label="t('Cache write price')" />
           </fieldset>
         </div>
       </div>
     </div>
 
     <details class="f-adv">
-      <summary>{{ t("高级") }}</summary>
+      <summary>{{ t("Advanced") }}</summary>
       <div class="rows">
         <div class="f-row">
-          <label for="pv-name">{{ t("显示名称") }}</label>
+          <label for="pv-name">{{ t("Display name") }}</label>
           <div class="f-ctrl">
             <input id="pv-name" v-model="draft.name" class="input" autocomplete="off" :placeholder="providerId" />
-            <span class="f-note">{{ t("只用于显示，留空时显示 ID") }}</span>
+            <span class="f-note">{{ t("Only for display; the ID shows when it is empty") }}</span>
           </div>
         </div>
         <div class="f-row top">
-          <span class="f-label">{{ t("请求头") }}</span>
-          <KeyValueRows :rows="draft.headers" :label="t('请求头')" key-placeholder="X-Header" value-placeholder="$ENV_NAME" />
+          <span class="f-label">{{ t("Headers") }}</span>
+          <KeyValueRows :rows="draft.headers" :label="t('Headers')" key-placeholder="X-Header" value-placeholder="$ENV_NAME" />
         </div>
         <div class="f-row">
           <span class="f-label">authHeader</span>
@@ -826,7 +826,7 @@ function probedMeta(model: ProbedModelView): string {
               :aria-pressed="draft.authHeader"
               @click="draft.authHeader = !draft.authHeader"
             />
-            <span>{{ t("另以 Authorization: Bearer 发送 Key") }}</span>
+            <span>{{ t("Also send the key as Authorization: Bearer") }}</span>
           </label>
         </div>
         <div class="f-row">
@@ -841,7 +841,7 @@ function probedMeta(model: ProbedModelView): string {
               autocomplete="off"
               placeholder="$ENV_NAME"
             />
-            <span class="f-note">{{ t("写进 models.json，可以引用环境变量；上面保存的 Key 优先") }}</span>
+            <span class="f-note">{{ t("Written to models.json and may reference environment variables; a key saved above wins") }}</span>
           </div>
         </div>
       </div>
@@ -851,10 +851,10 @@ function probedMeta(model: ProbedModelView): string {
       <span v-if="formError || saving.error.value" class="error" role="alert">{{ formError ?? saving.error.value }}</span>
       <span class="spacer" />
       <button type="button" class="btn ghost sm" :disabled="!dirty && !isNew" @click="discard">
-        {{ isNew ? t("取消") : t("放弃更改") }}
+        {{ isNew ? t("Cancel") : t("Discard changes") }}
       </button>
       <button type="submit" class="btn sm primary" :disabled="(!dirty && !isNew) || saving.busy.value">
-        {{ isNew ? t("添加") : t("保存") }}
+        {{ isNew ? t("Add") : t("Save") }}
       </button>
     </footer>
   </form>

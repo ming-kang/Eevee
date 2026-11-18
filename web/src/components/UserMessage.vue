@@ -14,7 +14,7 @@ const timeText = computed(() => (props.at === undefined ? "" : formatClockTime(p
 
 <template>
   <div class="u-wrap" :class="{ pending }">
-    <div v-if="pending || timeText" class="msg-meta">{{ pending ? t("待送达") : timeText }}</div>
+    <div v-if="pending || timeText" class="msg-meta">{{ pending ? t("Sending") : timeText }}</div>
     <div class="msg-user">{{ text }}</div>
   </div>
 </template>

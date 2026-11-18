@@ -2,30 +2,31 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import test from "node:test";
-import { fill, pickLocale, t } from "./i18n.ts";
-import { en } from "./locales/en.ts";
+import { fill, pickForm, pickLocale, t } from "./i18n.ts";
+import { zhCN } from "./locales/zh-CN.ts";
 
-test("pickLocale 先用保存的语言，否则看浏览器：zh 开头是中文，其余英文", () => {
-  assert.equal(pickLocale("en", "zh-CN"), "en");
+test("pickLocale uses the stored choice, else the browser: zh means Chinese, otherwise English", () => {
   assert.equal(pickLocale("zh-CN", "en-US"), "zh-CN");
+  assert.equal(pickLocale("en", "zh-CN"), "en");
   assert.equal(pickLocale(null, "zh-TW"), "zh-CN");
   assert.equal(pickLocale("fr", "en-GB"), "en");
-  assert.equal(pickLocale(null, undefined), "zh-CN");
+  assert.equal(pickLocale(null, undefined), "en");
 });
 
-test("fill 替换 {名字}，缺的参数原样留下；Node 下 t 返回中文原文", () => {
-  assert.equal(fill("{n} 张未结", { n: 3 }), "3 张未结");
-  assert.equal(fill("{a} 和 {b}", { a: 1 }), "1 和 {b}");
-  assert.equal(t("{n} 张未结", { n: 2 }), "2 张未结");
-  assert.equal(t("模型::list"), "模型");
+test("fill replaces {name} and leaves a missing parameter alone; under Node t returns the English source", () => {
+  assert.equal(fill("{n} open", { n: 3 }), "3 open");
+  assert.equal(fill("{a} and {b}", { a: 1 }), "1 and {b}");
+  assert.equal(t("{n} open", { n: 2 }), "2 open");
+  assert.equal(t("Models::list"), "Models");
 });
 
-test("英文写成 单数|复数 时按 n 挑一个", () => {
-  assert.equal(fill("{n} file|{n} files", { n: 1 }), "1 file");
-  assert.equal(fill("{n} file|{n} files", { n: 3 }), "3 files");
-  assert.equal(fill("a|b", { name: "x" }), "a|b");
+test("a form written one|many is picked by n", () => {
+  assert.equal(pickForm("{n} file|{n} files", { n: 1 }), "{n} file");
+  assert.equal(pickForm("{n} file|{n} files", { n: 3 }), "{n} files");
+  assert.equal(pickForm("a|b", { name: "x" }), "a|b");
+  assert.equal(t("{n} file|{n} files", { n: 1 }), "1 file");
+  assert.equal(t("{n} file|{n} files", { n: 3 }), "3 files");
 });
-
 const root = new URL(".", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const CJK = /[　-〿一-鿿＀-￯]/;
 
@@ -49,12 +50,21 @@ function code(text: string): string {
 
 const KEY = /\bt\(\s*(["'])((?:\\.|(?!\1).)*)\1/g;
 
-test("界面文字都经过 t()，每个都有英文，英文表里没有多余的", () => {
+/** The strings `t()` looks up: each plural form of a `one|many` key, the key itself otherwise. */
+function lookups(key: string): string[] {
+  const forms = key.split("|");
+  return forms.length === 2 ? forms : [key];
+}
+
+test("every interface string goes through t(), each has Chinese, and the table has no extras", () => {
   const used = new Set<string>();
   const leftovers: string[] = [];
   for (const file of sources(root)) {
     const text = code(readFileSync(file, "utf8"));
-    for (const match of text.matchAll(KEY)) used.add((match[2] ?? "").replace(/\\(.)/g, "$1"));
+    for (const match of text.matchAll(KEY)) {
+      const key = (match[2] ?? "").replace(/\\(.)/g, "$1");
+      for (const lookup of lookups(key)) used.add(lookup);
+    }
     text
       .replace(KEY, "t(")
       .split("\n")
@@ -62,15 +72,15 @@ test("界面文字都经过 t()，每个都有英文，英文表里没有多余�
         if (CJK.test(line)) leftovers.push(`${relative(root, file)}:${index + 1}: ${line.trim()}`);
       });
   }
-  assert.deepEqual(leftovers, [], "没有经过 t() 的中文");
+  assert.deepEqual(leftovers, [], "Chinese outside t()");
   assert.deepEqual(
-    [...used].filter((key) => !(key in en)),
+    [...used].filter((key) => !(key in zhCN)),
     [],
-    "缺英文",
+    "Missing Chinese",
   );
   assert.deepEqual(
-    Object.keys(en).filter((key) => !used.has(key)),
+    Object.keys(zhCN).filter((key) => !used.has(key)),
     [],
-    "没人用的英文",
+    "Unused Chinese",
   );
 });

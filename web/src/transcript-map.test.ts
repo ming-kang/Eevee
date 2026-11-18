@@ -63,16 +63,16 @@ const reportOf = (
   at: 0,
 });
 
-test("折叠连续工具调用，合并连续的 ticket / ask_user 为调度行", () => {
+test("consecutive tool calls fold together, and consecutive ticket / ask_user merge into dispatch lines", () => {
   const items: TranscriptItem[] = [
     entry(1, ResetEntry.kind, [
       {
         role: "user",
-        content: "<project>\n光学论文\n工作目录：/tmp\n</project>",
+        content: "<project>\nOptics paper\nWorkspace: /tmp\n</project>",
         timestamp: 100,
       },
     ]),
-    entry(2, UserEntry.kind, [{ role: "user", content: "安排一下", timestamp: 200 }]),
+    entry(2, UserEntry.kind, [{ role: "user", content: "arrange it", timestamp: 200 }]),
     entry(3, AssistantEntry.kind, [
       {
         role: "assistant",
@@ -118,13 +118,13 @@ test("折叠连续工具调用，合并连续的 ticket / ask_user 为调度行"
             type: "toolCall",
             id: "c3",
             name: "ticket",
-            arguments: { action: "create", title: "跑仿真", deliverTo: ["t1"] },
+            arguments: { action: "create", title: "run the simulation", deliverTo: ["t1"] },
           },
           {
             type: "toolCall",
             id: "c4",
             name: "ask_user",
-            arguments: { items: [{ text: "选哪个样式？", options: ["A", "B"] }] },
+            arguments: { items: [{ text: "which style?", options: ["A", "B"] }] },
           },
         ],
         api: "faux",
@@ -140,7 +140,12 @@ test("折叠连续工具调用，合并连续的 ticket / ask_user 为调度行"
         role: "toolResult",
         toolCallId: "c3",
         toolName: "ticket",
-        content: [{ type: "text", text: "已建单 t2，执行对话会在有空闲槽位时开始工作。" }],
+        content: [
+          {
+            type: "text",
+            text: "Created ticket t2; its Worker conversation starts when a slot is free.",
+          },
+        ],
         details: { ticketId: "t2", conversationId: 3 },
         isError: false,
         timestamp: 410,
@@ -151,7 +156,9 @@ test("折叠连续工具调用，合并连续的 ticket / ask_user 为调度行"
         role: "toolResult",
         toolCallId: "c4",
         toolName: "ask_user",
-        content: [{ type: "text", text: "已提问 q1，用户回答后会作为新消息送达。" }],
+        content: [
+          { type: "text", text: "Asked q1; your answer will be delivered as a new message." },
+        ],
         details: { questionId: "q1" },
         isError: false,
         timestamp: 420,
@@ -160,7 +167,7 @@ test("折叠连续工具调用，合并连续的 ticket / ask_user 为调度行"
     entry(9, AssistantEntry.kind, [
       {
         role: "assistant",
-        content: [{ type: "text", text: "已经建单 **t2** 并向你提问。" }],
+        content: [{ type: "text", text: "Created ticket **t2** and asked you." }],
         api: "faux",
         provider: "faux",
         model: "m1",
@@ -190,32 +197,32 @@ test("折叠连续工具调用，合并连续的 ticket / ask_user 为调度行"
   }
 });
 
-test("报告事件过滤 progress、保留终态报告，并识别 handoff reset 与失败状态", () => {
+test("report events filter out progress, keep the final ones, and recognize handoff reset and failure", () => {
   const items: TranscriptItem[] = [
     { kind: "earlier" },
-    noticeEntry(10, "（给模型的文字）", {
+    noticeEntry(10, "(model text)", {
       type: "report",
       ticketId: "t2",
-      title: "仿真",
-      report: reportOf("t2", 1, "progress", "正在跑 3/13"),
+      title: "simulation",
+      report: reportOf("t2", 1, "progress", "running 3/13"),
     }),
-    noticeEntry(11, "（给模型的文字）", {
+    noticeEntry(11, "(model text)", {
       type: "report",
       ticketId: "t3",
-      title: "文献",
-      report: reportOf("t3", 1, "blocked", "缺少 data.csv"),
+      title: "Literature",
+      report: reportOf("t3", 1, "blocked", "missing data.csv"),
     }),
-    noticeEntry(12, "（给模型的文字）", {
+    noticeEntry(12, "(model text)", {
       type: "answer",
       questionId: "q2",
-      answer: "对数坐标",
+      answer: "log axis",
       forwardedTo: "t4",
     }),
     entry(13, ResetEntry.kind, [
       {
         role: "user",
         content:
-          "<project>\n项目\n</project>\n\n<handoff-summary>\n进行中：t2 跑仿真。\n</handoff-summary>",
+          "<project>\nProject\n</project>\n\n<handoff-summary>\nIn progress: t2 run the simulation.\n</handoff-summary>",
         timestamp: 400,
       },
     ]),
@@ -239,7 +246,7 @@ test("报告事件过滤 progress、保留终态报告，并识别 handoff reset
     assert.equal(mapped[1].eventKind, "report");
     assert.equal(mapped[1].status, "blocked");
     assert.equal(mapped[1].ticketId, "t3");
-    assert.equal(mapped[1].text, "缺少 data.csv");
+    assert.equal(mapped[1].text, "missing data.csv");
   }
   if (mapped[2]?.kind === "event") {
     assert.equal(mapped[2].eventKind, "answer");
@@ -247,14 +254,14 @@ test("报告事件过滤 progress、保留终态报告，并识别 handoff reset
     assert.equal(mapped[2].ticketId, "t4");
   }
   if (mapped[3]?.kind === "reset") {
-    assert.equal(mapped[3].summary, "进行中：t2 跑仿真。");
+    assert.equal(mapped[3].summary, "In progress: t2 run the simulation.");
   }
   if (mapped[4]?.kind === "failure") {
     assert.match(mapped[4].text, /429 Too Many Requests/);
   }
 });
 
-test("实时运行中显示工具运行槽位与流式回复", () => {
+test("a live run shows tool slots and the streaming reply", () => {
   const items: TranscriptItem[] = [
     entry(1, AssistantEntry.kind, [
       {
@@ -288,7 +295,7 @@ test("实时运行中显示工具运行槽位与流式回复", () => {
       attempt: 1,
       message: {
         role: "assistant",
-        content: [{ type: "text", text: "正在核对" }],
+        content: [{ type: "text", text: "verifying" }],
         api: "faux",
         provider: "faux",
         model: "m1",
@@ -303,14 +310,14 @@ test("实时运行中显示工具运行槽位与流式回复", () => {
   assert.equal(last?.kind, "assistant");
   if (last?.kind === "assistant") {
     assert.equal(last.streaming, true);
-    assert.equal(last.text, "正在核对");
+    assert.equal(last.text, "verifying");
   }
 });
 
-test("Worker 模式映射开篇、文件 diff、bash（运行与转入后台）及报告卡片", () => {
+test("worker mode maps the opening, file diffs, bash (running and backgrounded) and report cards", () => {
   const items: TranscriptItem[] = [
-    noticeEntry(1, "<ticket>t2: 运行仿真</ticket>", { type: "opening", ticketId: "t2" }),
-    entry(2, UserEntry.kind, [{ role: "user", content: "网格用 λ/20", timestamp: 150 }]),
+    noticeEntry(1, "<ticket>t2: run the simulation</ticket>", { type: "opening", ticketId: "t2" }),
+    entry(2, UserEntry.kind, [{ role: "user", content: "use a λ/20 mesh", timestamp: 150 }]),
     entry(3, AssistantEntry.kind, [
       {
         role: "assistant",
@@ -333,9 +340,9 @@ test("Worker 模式映射开篇、文件 diff、bash（运行与转入后台）�
             name: "report",
             arguments: {
               status: "ready",
-              summary: "配置已更新，等待验收",
-              artifacts: [{ path: "sim/config.yaml", note: "网格配置" }],
-              lessons: ["45 度以上加厚 PML"],
+              summary: "config updated, awaiting acceptance",
+              artifacts: [{ path: "sim/config.yaml", note: "mesh config" }],
+              lessons: ["thicken the PML above 45 degrees"],
             },
           },
         ],
@@ -369,7 +376,7 @@ test("Worker 模式映射开篇、文件 diff、bash（运行与转入后台）�
         content: [
           {
             type: "text",
-            text: "命令仍在运行，已转入后台作业 job://j3。完整输出写入日志，可用 read job://j3 查看。",
+            text: "The command is still running and was moved to background job job://j3; the full output is in the log, viewable with read job://j3.",
           },
         ],
         details: { jobId: "j3" },
@@ -382,7 +389,7 @@ test("Worker 模式映射开篇、文件 diff、bash（运行与转入后台）�
         role: "toolResult",
         toolCallId: "r1",
         toolName: "report",
-        content: [{ type: "text", text: "已提交 report://t2#4，本轮结束。" }],
+        content: [{ type: "text", text: "Submitted report://t2#4; this turn is done." }],
         isError: false,
         timestamp: 230,
       },
@@ -399,9 +406,9 @@ test("Worker 模式映射开篇、文件 diff、bash（运行与转入后台）�
         ticketId: "t2",
         seq: 4,
         status: "ready",
-        summary: "配置已更新，等待验收",
-        artifacts: [{ path: "sim/config.yaml", note: "网格配置" }],
-        lessons: ["45 度以上加厚 PML"],
+        summary: "config updated, awaiting acceptance",
+        artifacts: [{ path: "sim/config.yaml", note: "mesh config" }],
+        lessons: ["thicken the PML above 45 degrees"],
         handled: false,
         reminded: false,
         at: 230,
@@ -430,11 +437,11 @@ test("Worker 模式映射开篇、文件 diff、bash（运行与转入后台）�
     assert.equal(mapped[4].report.handled, false);
   }
   if (mapped[5]?.kind === "idle") {
-    assert.match(mapped[5].text, /验收/);
+    assert.match(mapped[5].text, /Router to review/);
   }
 });
 
-test("Worker 模式实时运行 bash 与失败退出码映射", () => {
+test("worker mode maps a live bash run and a failing exit code", () => {
   const runningItems: TranscriptItem[] = [
     entry(1, AssistantEntry.kind, [
       {
@@ -471,7 +478,7 @@ test("Worker 模式实时运行 bash 与失败退出码映射", () => {
         role: "toolResult",
         toolCallId: "b1",
         toolName: "bash",
-        content: [{ type: "text", text: "error line\n退出码 2" }],
+        content: [{ type: "text", text: "error line\nexit code 2" }],
         details: { exitCode: 2 },
         isError: true,
         durationMs: 1200,
@@ -488,7 +495,7 @@ test("Worker 模式实时运行 bash 与失败退出码映射", () => {
   }
 });
 
-test("后端 route() 生成的通知都映射成一行，长内容折叠进 detail", () => {
+test("notices from the backend route() each map to one line, long content folding into detail", () => {
   // What the Engine actually persists for a delivery: the panel must read it without its prose.
   const notice = (id: number, delivery: Delivery | undefined): TranscriptItem => {
     const submission = delivery === undefined ? undefined : toSubmission(delivery);
@@ -496,13 +503,18 @@ test("后端 route() 生成的通知都映射成一行，长内容折叠进 deta
     const text = delivery?.text ?? "";
     return entry(id, "eevee.notice", [{ role: "user", content: text, timestamp: id }], data);
   };
-  const t2 = { id: "t2" as TicketId, role: "worker" as const, title: "跑仿真", deliverTo: [] };
+  const t2 = {
+    id: "t2" as TicketId,
+    role: "worker" as const,
+    title: "run the simulation",
+    deliverTo: [],
+  };
   const report: Report = {
     ticketId: t2.id,
     seq: 1,
     status: "ready",
-    summary: "13 个角度完成",
-    artifacts: [{ path: "sim/out/", note: "输出" }],
+    summary: "13 angles done",
+    artifacts: [{ path: "sim/out/", note: "output" }],
     handled: false,
     reminded: false,
     at: 1,
@@ -510,7 +522,7 @@ test("后端 route() 生成的通知都映射成一行，长内容折叠进 deta
   const question: Question = {
     id: "q3" as QuestionId,
     ticketId: t2.id,
-    items: [{ text: "网格多密？", options: ["λ/20", "λ/40"] }],
+    items: [{ text: "how dense should the mesh be?", options: ["λ/20", "λ/40"] }],
     answer: "λ/40",
     askedAt: 1,
   };
@@ -532,13 +544,13 @@ test("后端 route() 生成的通知都映射成一行，长内容折叠进 deta
   assert.deepEqual(
     worker.map((item) => item.kind === "event" && [item.eventKind, item.text]),
     [
-      ["job", "后台作业 j1 已结束（退出码 0）"],
-      ["deliver", "你等待的 t2「跑仿真」已验收"],
+      ["job", "Background job j1 finished (Exit 0)"],
+      ["deliver", "t2 “run the simulation”, which this waits on, was accepted"],
     ],
   );
   const [jobItem, handoverItem] = worker;
   assert.ok(jobItem?.kind === "event" && jobItem.detail?.endsWith("[fdtd] step 90/90"));
-  assert.ok(handoverItem?.kind === "event" && handoverItem.detail?.includes("13 个角度完成"));
+  assert.ok(handoverItem?.kind === "event" && handoverItem.detail?.includes("13 angles done"));
 
   const [, answered] = route({ type: "question-answered", question });
   const [reportWake] = route({ type: "report", ticket: t2, report });
@@ -546,7 +558,7 @@ test("后端 route() 生成的通知都映射成一行，长内容折叠进 deta
     type: "panel-message",
     id: "m1",
     ticketId: t2.id,
-    text: "先跑 45°",
+    text: "run 45° first",
     whenBusy: "steer",
   });
   const [interrupt] = route({ type: "panel-interrupt", id: "i1", ticketId: t2.id });
@@ -565,12 +577,16 @@ test("后端 route() 生成的通知都映射成一行，长内容折叠进 deta
   );
 });
 
-test("还没送达的消息排在对话末尾，标为待送达；系统写入的条目不显示", () => {
+test("undelivered messages sit at the end of the conversation marked pending; system entries do not show", () => {
   const live: LiveState = { run: { taskId: 5 as never, inputs: [], turns: 1 } };
   const inbox: InboxState = {
     items: [
-      { id: 7 as never, mode: "steer", content: "把收敛分析补进第 3 章" },
-      { id: 8 as never, mode: "followUp", content: [{ type: "text", text: "再检查公式编号" }] },
+      { id: 7 as never, mode: "steer", content: "add the convergence analysis to chapter 3" },
+      {
+        id: 8 as never,
+        mode: "followUp",
+        content: [{ type: "text", text: "recheck the equation numbers" }],
+      },
       { id: 9 as never, mode: "write", entry: { kind: "eevee.notice" } },
     ],
   };
@@ -579,29 +595,29 @@ test("还没送达的消息排在对话末尾，标为待送达；系统写入�
   assert.deepEqual(
     pending.map((item) => (item.kind === "user" ? [item.key, item.text, item.pending] : [])),
     [
-      ["q:7", "把收敛分析补进第 3 章", true],
-      ["q:8", "再检查公式编号", true],
+      ["q:7", "add the convergence analysis to chapter 3", true],
+      ["q:8", "recheck the equation numbers", true],
     ],
   );
   assert.equal(out.at(-1)?.kind, "user");
 });
 
-test("Engine 代写的报告按 origin 措辞，不显示 Engine 写给模型的摘要", () => {
+test("a report the Engine wrote for the model is worded by origin, not by its model-facing summary", () => {
   const failed: Report = {
-    ...reportOf("t7", 2, "failed", "执行对话运行失败：模型调用失败：403（给模型的文字）"),
+    ...reportOf("t7", 2, "failed", "the worker run failed: model call failed: 403 (model text)"),
     origin: { type: "run-failed", failure: { reason: "model_error", detail: "403 forbidden" } },
   };
   const [item] = mapTranscript(
     [
-      noticeEntry(1, "（给模型的文字）", {
+      noticeEntry(1, "(model text)", {
         type: "report",
         ticketId: "t7",
-        title: "插图",
+        title: "figure",
         report: failed,
       }),
     ],
     { mode: "router" },
   );
   assert.ok(item?.kind === "event");
-  assert.equal(item.text, "执行对话运行失败：模型调用失败：403 forbidden");
+  assert.equal(item.text, "The Worker's run failed: Model call failed: 403 forbidden");
 });

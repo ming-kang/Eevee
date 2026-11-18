@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fromMcpDraft, isServerName, parsePastedServer, toMcpDraft } from "./mcp-draft.ts";
 
-test("stdio 条目往返：参数一行一个，默认值不写进文件，表单外的字段保留", () => {
+test("a stdio entry round-trips: one arg per line, defaults left out, extra fields kept", () => {
   const original = {
     command: "npx",
     args: ["-y", "server-filesystem", "/home/me/My Papers"],
@@ -33,7 +33,7 @@ test("stdio 条目往返：参数一行一个，默认值不写进文件，表�
   });
 });
 
-test("换成 HTTP 时去掉 stdio 的字段，HTTP 条目的 oauth 保留", () => {
+test("switching to HTTP drops the stdio fields and keeps an HTTP entry's oauth", () => {
   const draft = toMcpDraft({ command: "x", args: ["a"], cwd: "/tmp" });
   draft.transport = "http";
   draft.url = "https://docs.example/mcp";
@@ -47,7 +47,7 @@ test("换成 HTTP 时去掉 stdio 的字段，HTTP 条目的 oauth 保留", () =
   assert.deepEqual(fromMcpDraft(toMcpDraft(http), http), { config: http });
 });
 
-test("缺命令、缺地址或超时不是正数时指明是哪一项", () => {
+test("a missing command, missing URL or non-positive timeout names which one", () => {
   assert.deepEqual(fromMcpDraft(toMcpDraft(undefined), undefined), {
     error: { code: "required", field: "command" },
   });
@@ -59,7 +59,7 @@ test("缺命令、缺地址或超时不是正数时指明是哪一项", () => {
   assert.deepEqual(fromMcpDraft(draft, undefined), { error: { code: "timeout" } });
 });
 
-test("粘贴别的客户端的配置：整份文件、一个具名条目或一个裸条目都认", () => {
+test("pasting another client's config: a whole file, a named entry or a bare entry all parse", () => {
   assert.deepEqual(
     parsePastedServer(
       '{ "mcpServers": { "github": { "command": "gh-mcp" }, "b": { "url": "u" } } }',
@@ -75,7 +75,7 @@ test("粘贴别的客户端的配置：整份文件、一个具名条目或一�
   assert.equal(parsePastedServer('{ "a": 1 }'), undefined);
 });
 
-test("服务器名只能有字母、数字、_ 和 -", () => {
+test("a server name may only have letters, digits, _ and -", () => {
   assert.ok(isServerName("git_hub-2"));
   assert.ok(!isServerName("git hub"));
   assert.ok(!isServerName("a.b"));

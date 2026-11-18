@@ -30,27 +30,27 @@ const hasDetails = computed(
 <template>
   <div v-if="report.status === 'progress' && !full" class="note">
     <Icon name="flag" size="xs" />
-    <span>{{ t("进展：{summary}", { summary }) }}</span>
+    <span>{{ t("Progress: {summary}", { summary }) }}</span>
   </div>
   <div v-else class="report">
     <div class="report-h">
       <StageGlyph :stage="stage" />
-      <span>{{ t("报告 #{seq} · {status}", { seq: report.seq, status: REPORT_LABEL[report.status] }) }}</span>
-      <span v-if="final && !report.handled">· {{ t("等 Router 处理") }}</span>
+      <span>{{ t("Report #{seq} · {status}", { seq: report.seq, status: REPORT_LABEL[report.status] }) }}</span>
+      <span v-if="final && !report.handled">· {{ t("waiting for the Router") }}</span>
       <span class="spacer" />
       <span class="dim">{{ when }}</span>
     </div>
     <div class="report-sum">{{ summary }}</div>
     <dl v-if="hasDetails" class="kv">
       <template v-if="need">
-        <dt>{{ t("需要") }}</dt>
+        <dt>{{ t("Needs") }}</dt>
         <dd>{{ need }}</dd>
       </template>
       <template v-if="report.artifacts.length > 0">
-        <dt>{{ t("产物") }}</dt>
+        <dt>{{ t("Artifacts") }}</dt>
         <dd>
           <template v-for="(artifact, index) in report.artifacts" :key="artifact.path + index">
-            <template v-if="index > 0">{{ t("；") }}</template>
+            <template v-if="index > 0">{{ t("; ") }}</template>
             <span class="mono">{{ artifact.path }}</span>
             <template v-if="artifact.note">
               {{ " " }}<span class="dim">{{ artifact.note }}</span>
@@ -59,14 +59,14 @@ const hasDetails = computed(
         </dd>
       </template>
       <template v-if="report.lessons && report.lessons.length > 0">
-        <dt>{{ t("经验") }}</dt>
-        <dd>{{ report.lessons.join(t("；")) }}</dd>
+        <dt>{{ t("Lessons") }}</dt>
+        <dd>{{ report.lessons.join(t("; ")) }}</dd>
       </template>
     </dl>
     <details v-if="full && report.detail" class="proc">
       <summary>
         <Icon name="chevR" size="xs" class="chev" />
-        <span>{{ t("详细说明") }}</span>
+        <span>{{ t("Details::full") }}</span>
       </summary>
       <div class="step-out">{{ report.detail }}</div>
     </details>

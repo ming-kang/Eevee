@@ -48,11 +48,11 @@ async function submit(): Promise<void> {
   const name = title.value.trim();
   const dir = workspace.value.trim();
   if (!name) {
-    localError.value = t("请填写项目标题");
+    localError.value = t("Enter a project title");
     return;
   }
   if (!dir) {
-    localError.value = t("请填写工作目录");
+    localError.value = t("Enter a working directory");
     return;
   }
   localError.value = undefined;
@@ -64,7 +64,7 @@ async function submit(): Promise<void> {
     });
   });
   if (ok && created) {
-    showToast(t("已创建项目 · {title}", { title: created.title }));
+    showToast(t("Created project · {title}", { title: created.title }));
     await props.onCreated(created);
     emit("close");
   }
@@ -91,12 +91,12 @@ function onKeydown(event: KeyboardEvent): void {
       @submit.prevent="submit"
     >
       <div class="modal-h">
-        <h2 id="new-proj-title">{{ t("新建项目") }}</h2>
+        <h2 id="new-proj-title">{{ t("New project") }}</h2>
         <span class="spacer" />
         <button
           type="button"
           class="btn ghost sm icon"
-          :aria-label="t('关闭')"
+          :aria-label="t('Close')"
           @click="$emit('close')"
         >
           <Icon name="x" size="sm" />
@@ -104,7 +104,7 @@ function onKeydown(event: KeyboardEvent): void {
       </div>
       <div class="modal-b">
         <div class="field">
-          <label for="new-proj-name">{{ t("标题") }}</label>
+          <label for="new-proj-name">{{ t("Title") }}</label>
           <input
             id="new-proj-name"
             ref="titleInput"
@@ -114,7 +114,7 @@ function onKeydown(event: KeyboardEvent): void {
           />
         </div>
         <div class="field">
-          <label for="new-proj-ws">{{ t("工作目录") }}</label>
+          <label for="new-proj-ws">{{ t("Working directory") }}</label>
           <input
             id="new-proj-ws"
             v-model="workspace"
@@ -127,13 +127,13 @@ function onKeydown(event: KeyboardEvent): void {
         </p>
       </div>
       <div class="modal-f">
-        <button type="button" class="btn" :disabled="busy" @click="$emit('close')">{{ t("取消") }}</button>
+        <button type="button" class="btn" :disabled="busy" @click="$emit('close')">{{ t("Cancel") }}</button>
         <button
           type="submit"
           class="btn primary"
           :disabled="busy || !title.trim() || !workspace.trim()"
         >
-          {{ busy ? t("正在创建…") : t("创建项目") }}
+          {{ busy ? t("Creating…") : t("Create project") }}
         </button>
       </div>
     </form>

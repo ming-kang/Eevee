@@ -85,16 +85,16 @@ const turnDrafts = ref<Record<RoleName, string>>({
 });
 
 const MODEL_ROLES: { key: "default" | RoleName; label: string }[] = [
-  { key: "default", label: t("全局默认") },
+  { key: "default", label: t("Global default") },
   { key: "router", label: "Router" },
   { key: "worker", label: "Worker" },
   { key: "dreamer", label: "Dreamer" },
 ];
 
 const THEME_OPTIONS: { key: ThemePreference; label: string }[] = [
-  { key: "system", label: t("跟随系统") },
-  { key: "light", label: t("浅色") },
-  { key: "dark", label: t("深色") },
+  { key: "system", label: t("System") },
+  { key: "light", label: t("Light") },
+  { key: "dark", label: t("Dark") },
 ];
 
 const RESTART = "eevee stop && eevee start";
@@ -105,17 +105,17 @@ const providerHref = (id: string) => formatRoute({ name: "settings", section: "m
 const serverHref = (name: string) => formatRoute({ name: "settings", section: "mcp", item: name });
 
 const MCP_STATE_LABEL: Record<McpServerView["state"], { dot: string; label: string }> = {
-  connected: { dot: "ok", label: t("已连接") },
-  connecting: { dot: "run", label: t("连接中") },
-  failed: { dot: "bad", label: t("失败") },
-  disabled: { dot: "", label: t("已停用") },
+  connected: { dot: "ok", label: t("Connected") },
+  connecting: { dot: "run", label: t("Connecting") },
+  failed: { dot: "bad", label: t("Failed") },
+  disabled: { dot: "", label: t("Disabled") },
 };
 
 const SECTIONS: { key: SettingsSection; label: string; icon: IconName }[] = [
-  { key: "general", label: t("通用"), icon: "sliders" },
-  { key: "models", label: t("模型::list"), icon: "cpu" },
-  { key: "roles", label: t("角色能力"), icon: "puzzle" },
-  { key: "mcp", label: t("MCP 与扩展"), icon: "plug" },
+  { key: "general", label: t("General"), icon: "sliders" },
+  { key: "models", label: t("Models"), icon: "cpu" },
+  { key: "roles", label: t("Roles"), icon: "puzzle" },
+  { key: "mcp", label: t("MCP & extensions"), icon: "plug" },
   { key: "engine", label: "Engine", icon: "server" },
 ];
 
@@ -226,23 +226,23 @@ function compactTokens(tokens: number): string {
 
 function formatCacheDuration(seconds: number): string {
   return seconds >= 3600
-    ? t("{n} 小时", { n: +(seconds / 3600).toFixed(1) })
-    : t("{n} 分钟", { n: Math.round(seconds / 60) });
+    ? t("{n} h", { n: +(seconds / 3600).toFixed(1) })
+    : t("{n} min", { n: Math.round(seconds / 60) });
 }
 
 function formatModelMeta(model: ModelSpecView): string {
   const parts: string[] = [];
   if (model.cost.input || model.cost.output) {
     parts.push(
-      t("输入 {price}/M", { price: `$${model.cost.input}` }),
-      t("输出 {price}/M", { price: `$${model.cost.output}` }),
+      t("In {price}/M", { price: `$${model.cost.input}` }),
+      t("Out {price}/M", { price: `$${model.cost.output}` }),
     );
   }
-  if (model.cost.cacheRead) parts.push(t("缓存读 {price}/M", { price: `$${model.cost.cacheRead}` }));
+  if (model.cost.cacheRead) parts.push(t("Cache read {price}/M", { price: `$${model.cost.cacheRead}` }));
   if (model.cacheShortSeconds) {
-    parts.push(t("缓存 {tokens}", { tokens: formatCacheDuration(model.cacheShortSeconds) }));
+    parts.push(t("Cache {tokens}", { tokens: formatCacheDuration(model.cacheShortSeconds) }));
   }
-  if (model.reasoning) parts.push(t("推理"));
+  if (model.reasoning) parts.push(t("Reasoning"));
   return parts.join(" · ") || "—";
 }
 
@@ -271,9 +271,9 @@ function modelLabel(roleKey: keyof ModelDefaults): { text: string; inherited: bo
   if (own) return { text: `${own.provider}/${own.modelId}`, inherited: false };
   const effective = roleKey === "router" ? modelsView.value?.routerModel : defaults?.default;
   if (roleKey !== "default" && effective) {
-    return { text: t("跟随默认 · {model}", { model: `${effective.provider}/${effective.modelId}` }), inherited: true };
+    return { text: t("Default · {model}", { model: `${effective.provider}/${effective.modelId}` }), inherited: true };
   }
-  return { text: t("未设置"), inherited: true };
+  return { text: t("Not set"), inherited: true };
 }
 
 /** Whether Router actually runs on a model other than the one its row shows. */
@@ -303,7 +303,7 @@ async function pickRoleModel(roleKey: "default" | RoleName, spec: ModelSpecView 
   const choice = switchModel(effectiveModel(roleKey), spec);
   if (await saveRoleModel(roleKey, choice)) {
     const label = MODEL_ROLES.find((r) => r.key === roleKey)?.label ?? roleKey;
-    showToast(t("已将 {role} 模型设为 {model}", { role: label, model: `${choice.provider}/${choice.modelId}` }));
+    showToast(t("{role} now runs on {model}", { role: label, model: `${choice.provider}/${choice.modelId}` }));
   }
 }
 
@@ -342,7 +342,7 @@ async function commitMaxTurns(role: RoleName): Promise<void> {
   const raw = (turnDrafts.value[role] ?? "").trim();
   const nextValue = raw === "" ? null : Number(raw);
   if (nextValue !== null && (!Number.isInteger(nextValue) || nextValue < 1)) {
-    showToast(t("轮次上限应为正整数，或留空恢复默认"), "error");
+    showToast(t("Turn limit must be a positive whole number, or empty for the default"), "error");
     turnDrafts.value[role] = currentRole.maxTurns !== undefined ? String(currentRole.maxTurns) : "";
     return;
   }
@@ -356,7 +356,7 @@ async function commitMaxTurns(role: RoleName): Promise<void> {
   });
   if (ok && capabilities.value) {
     syncTurnDrafts(capabilities.value);
-    showToast(t("已更新 {role} 轮次上限", { role: ROLE_LABEL[role] }));
+    showToast(t("Updated the {role} turn limit", { role: ROLE_LABEL[role] }));
   }
 }
 
@@ -395,33 +395,33 @@ async function reloadMcp(): Promise<void> {
   });
   if (ok && capabilities.value) {
     syncTurnDrafts(capabilities.value);
-    showToast(t("已重新加载 MCP 与用户扩展"));
+    showToast(t("Reloaded MCP and user extensions"));
   }
 }
 
 function copyText(text: string): void {
   navigator.clipboard?.writeText(text).catch(() => undefined);
-  showToast(t("已复制 {text}", { text }));
+  showToast(t("Copied {text}", { text }));
 }
 
 const streamBadge = computed(() => {
-  if (props.streamState === "connected") return { dot: "ok", label: t("运行中") };
-  if (props.streamState === "connecting") return { dot: "run", label: t("正在连接实时流") };
-  if (props.streamState === "reconnecting") return { dot: "run", label: t("实时流重连中") };
-  return { dot: "bad", label: t("实时流已断开") };
+  if (props.streamState === "connected") return { dot: "ok", label: t("Running") };
+  if (props.streamState === "connecting") return { dot: "run", label: t("Connecting the live stream") };
+  if (props.streamState === "reconnecting") return { dot: "run", label: t("Reconnecting the live stream::status") };
+  return { dot: "bad", label: t("Live stream disconnected") };
 });
 </script>
 
 <template>
   <section class="page-wrap">
     <header class="header">
-      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('菜单')" @click="$emit('open-side')">
+      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('Menu')" @click="$emit('open-side')">
         <Icon name="menu" size="sm" />
       </button>
-      <h1>{{ t("设置") }}</h1>
+      <h1>{{ t("Settings") }}</h1>
     </header>
     <div class="settings">
-      <nav class="set-nav" :aria-label="t('设置分类')">
+      <nav class="set-nav" :aria-label="t('Settings sections')">
         <a
           v-for="item in SECTIONS"
           :key="item.key"
@@ -435,10 +435,10 @@ const streamBadge = computed(() => {
           <span
             v-if="item.key === 'mcp' && (capabilities?.problems.length ?? 0) > 0"
             class="dot bad"
-            :title="t('存在连接或扩展加载问题')"
+            :title="t('Some servers or extensions failed to load')"
           />
           <span v-if="item.key === 'mcp' && (capabilities?.problems.length ?? 0) > 0" class="sr">
-            {{ t("（存在连接或扩展加载问题）") }}
+            {{ t("(some servers or extensions failed to load)") }}
           </span>
         </a>
       </nav>
@@ -446,11 +446,11 @@ const streamBadge = computed(() => {
       <div class="set-body">
         <div class="set-inner">
           <template v-if="section === 'general'">
-            <header class="set-head"><h2>{{ t("通用") }}</h2></header>
+            <header class="set-head"><h2>{{ t("General") }}</h2></header>
             <div class="rows">
               <div class="row">
-                <div class="r-main"><span class="r-t">{{ t("语言") }}</span></div>
-                <div v-seg class="seg sm" role="group" :aria-label="t('语言')">
+                <div class="r-main"><span class="r-t">{{ t("Language") }}</span></div>
+                <div v-seg class="seg sm" role="group" :aria-label="t('Language')">
                   <button
                     v-for="option in LOCALES"
                     :key="option"
@@ -465,8 +465,8 @@ const streamBadge = computed(() => {
                 </div>
               </div>
               <div class="row">
-                <div class="r-main"><span class="r-t">{{ t("主题") }}</span></div>
-                <div v-seg class="seg sm" role="group" :aria-label="t('主题')">
+                <div class="r-main"><span class="r-t">{{ t("Theme") }}</span></div>
+                <div v-seg class="seg sm" role="group" :aria-label="t('Theme')">
                   <button
                     v-for="option in THEME_OPTIONS"
                     :key="option.key"
@@ -480,7 +480,7 @@ const streamBadge = computed(() => {
                 </div>
               </div>
               <div class="row">
-                <label class="r-main" for="set-font"><span class="r-t">{{ t("字体") }}</span></label>
+                <label class="r-main" for="set-font"><span class="r-t">{{ t("Font") }}</span></label>
                 <input
                   id="set-font"
                   class="input pref"
@@ -492,7 +492,7 @@ const streamBadge = computed(() => {
                 />
               </div>
               <div class="row">
-                <label class="r-main" for="set-size"><span class="r-t">{{ t("字号") }}</span></label>
+                <label class="r-main" for="set-size"><span class="r-t">{{ t("Font size") }}</span></label>
                 <input
                   id="set-size"
                   class="input pref size num"
@@ -516,14 +516,14 @@ const streamBadge = computed(() => {
           </template>
 
           <template v-else-if="section === 'models'">
-            <header class="set-head"><h2>{{ t("模型::list") }}</h2></header>
+            <header class="set-head"><h2>{{ t("Models") }}</h2></header>
             <p v-if="modelsError" class="error hint">{{ modelsError }}</p>
             <Skeleton v-else-if="loadingModels && modelsView === undefined" />
             <template v-else-if="modelsView">
               <div v-if="modelsView.problems.length > 0" class="banner bad">
                 <Icon name="alert" size="sm" />
                 <div>
-                  <strong>{{ t("models.json 有问题，相关 Provider 沿用内置设置") }}</strong>
+                  <strong>{{ t("models.json has problems; those providers use built-in settings") }}</strong>
                   <ul>
                     <li v-for="(prob, idx) in modelsView.problems" :key="idx">{{ configProblemText(prob) }}</li>
                   </ul>
@@ -538,10 +538,10 @@ const streamBadge = computed(() => {
                       <span
                         v-if="roleRow.key === 'router' && routerDiffers"
                         class="chip mono"
-                        :title="t('Router 当前实际使用的模型')"
+                        :title="t('The model the Router runs on right now')"
                       >
                         {{
-                          t("生效 {model}", {
+                          t("Running {model}", {
                             model: `${modelsView.routerModel?.provider}/${modelsView.routerModel?.modelId}`,
                           })
                         }}
@@ -554,7 +554,7 @@ const streamBadge = computed(() => {
                       class="model-pick level"
                       :aria-expanded="pop?.role === roleRow.key && pop.menu === 'level'"
                       :disabled="savingModel.busy.value"
-                      :aria-label="t('{role} 的思考档位', { role: roleRow.label })"
+                      :aria-label="t('{role} thinking level', { role: roleRow.label })"
                       @click="togglePop(roleRow.key, 'level')"
                     >
                       <Icon name="bulb" size="xs" />
@@ -591,7 +591,7 @@ const streamBadge = computed(() => {
               </div>
 
               <div class="section-t">
-                <h3>{{ t("Provider::list") }}</h3>
+                <h3>{{ t("Providers") }}</h3>
                 <span class="count">{{ configuredProviders.length }}/{{ modelsView.providers.length }}</span>
                 <span class="spacer" />
                 <button
@@ -600,11 +600,11 @@ const streamBadge = computed(() => {
                   class="btn sm ghost"
                   @click="showAllProviders = !showAllProviders"
                 >
-                  {{ showAllProviders ? t("仅已配置") : t("显示全部") }}
+                  {{ showAllProviders ? t("Configured only") : t("Show all") }}
                 </button>
                 <a class="btn sm" :href="NEW_PROVIDER">
                   <Icon name="plus" size="xs" />
-                  <span>{{ t("添加") }}</span>
+                  <span>{{ t("Add") }}</span>
                 </a>
               </div>
               <div class="rows">
@@ -613,11 +613,11 @@ const streamBadge = computed(() => {
                   <div class="r-main">
                     <span class="r-t">
                       <span>{{ prov.name }}</span>
-                      <span v-if="prov.custom" class="chip">{{ prov.builtIn ? t("已修改") : t("自定义") }}</span>
+                      <span v-if="prov.custom" class="chip">{{ prov.builtIn ? t("Modified") : t("Custom") }}</span>
                     </span>
                     <span class="r-d">
                       <span v-if="prov.name !== prov.id" class="mono">{{ prov.id }} · </span>
-                      {{ t("{n} 个模型", { n: prov.modelCount }) }}
+                      {{ t("{n} model|{n} models", { n: prov.modelCount }) }}
                       <template v-if="prov.configured && prov.source"> · {{ prov.source }}</template>
                     </span>
                   </div>
@@ -630,15 +630,15 @@ const streamBadge = computed(() => {
               </div>
 
               <template v-if="availableModels.length > 0">
-                <div class="section-t"><h3>{{ t("可用模型") }}</h3></div>
+                <div class="section-t"><h3>{{ t("Available models") }}</h3></div>
                 <div class="panel">
                   <table class="table">
                     <thead>
                       <tr>
-                        <th>{{ t("模型") }}</th>
-                        <th>{{ t("名称") }}</th>
-                        <th>{{ t("上下文") }}</th>
-                        <th class="hide-sm">{{ t("定价") }}</th>
+                        <th>{{ t("Model") }}</th>
+                        <th>{{ t("Name") }}</th>
+                        <th>{{ t("Context") }}</th>
+                        <th class="hide-sm">{{ t("Pricing") }}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -654,7 +654,7 @@ const streamBadge = computed(() => {
               </template>
 
               <template v-if="modelsView.profiles">
-                <div class="section-t"><h3 title="~/.eevee/models.md">{{ t("使用经验") }}</h3></div>
+                <div class="section-t"><h3 title="~/.eevee/models.md">{{ t("Field notes") }}</h3></div>
                 <div class="panel">
                   <div class="panel-b msg-ai">
                     <MarkdownText :source="modelsView.profiles" />
@@ -665,7 +665,7 @@ const streamBadge = computed(() => {
           </template>
 
           <template v-else-if="section === 'roles'">
-            <header class="set-head"><h2>{{ t("角色能力") }}</h2></header>
+            <header class="set-head"><h2>{{ t("Roles") }}</h2></header>
             <p v-if="capError || savingRole.error.value" class="error hint">
               {{ capError ?? savingRole.error.value }}
             </p>
@@ -674,7 +674,7 @@ const streamBadge = computed(() => {
               <table class="matrix">
                 <thead>
                   <tr>
-                    <th>{{ t("扩展") }}</th>
+                    <th>{{ t("Extension") }}</th>
                     <th v-for="roleItem in capabilities.roles" :key="roleItem.role">
                       {{ ROLE_LABEL[roleItem.role] }}
                     </th>
@@ -682,7 +682,7 @@ const streamBadge = computed(() => {
                 </thead>
                 <tbody>
                   <tr v-if="capabilities.available.length === 0">
-                    <td colspan="4" class="muted">{{ t("没有可选扩展") }}</td>
+                    <td colspan="4" class="muted">{{ t("No optional extensions") }}</td>
                   </tr>
                   <tr v-for="ext in capabilities.available" :key="ext.name">
                     <td>
@@ -690,9 +690,9 @@ const streamBadge = computed(() => {
                         <b>
                           <Icon :name="ext.name.startsWith('mcp.') ? 'plug' : 'puzzle'" size="xs" />
                           <span>{{ ext.name }}</span>
-                          <span v-if="mcpFailed(ext.name)" class="dot bad" :title="t('MCP 服务器连接失败')" />
+                          <span v-if="mcpFailed(ext.name)" class="dot bad" :title="t('The MCP server failed to connect')" />
                         </b>
-                        <span>{{ t("{n} 个工具", { n: ext.tools }) }}</span>
+                        <span>{{ t("{n} tool|{n} tools", { n: ext.tools }) }}</span>
                       </div>
                     </td>
                     <td v-for="roleItem in capabilities.roles" :key="roleItem.role">
@@ -701,7 +701,7 @@ const streamBadge = computed(() => {
                         class="switch"
                         :class="{ on: roleItem.enabled.includes(ext.name) }"
                         :disabled="savingRole.busy.value"
-                        :aria-label="t('{role} 启用 {extension}', { role: ROLE_LABEL[roleItem.role], extension: ext.name })"
+                        :aria-label="t('{role} uses {extension}', { role: ROLE_LABEL[roleItem.role], extension: ext.name })"
                         :aria-pressed="roleItem.enabled.includes(ext.name)"
                         @click="toggleExtension(roleItem.role, ext.name)"
                       />
@@ -715,7 +715,7 @@ const streamBadge = computed(() => {
                           <span>{{ name }}</span>
                           <span class="dot bad" />
                         </b>
-                        <span>{{ t("未安装") }}</span>
+                        <span>{{ t("Not installed") }}</span>
                       </div>
                     </td>
                     <td v-for="roleItem in capabilities.roles" :key="roleItem.role">
@@ -724,7 +724,7 @@ const streamBadge = computed(() => {
                         type="button"
                         class="switch on"
                         :disabled="savingRole.busy.value"
-                        :aria-label="t('{role} 启用 {extension}', { role: ROLE_LABEL[roleItem.role], extension: name })"
+                        :aria-label="t('{role} uses {extension}', { role: ROLE_LABEL[roleItem.role], extension: name })"
                         aria-pressed="true"
                         @click="toggleExtension(roleItem.role, name)"
                       />
@@ -732,16 +732,16 @@ const streamBadge = computed(() => {
                   </tr>
                   <tr>
                     <td>
-                      <div class="ext" :title="t('settings.json 中的 roles.<role>.maxTurns')">
-                        <b>{{ t("轮次上限") }}</b>
+                      <div class="ext" :title="t('roles.<role>.maxTurns in settings.json')">
+                        <b>{{ t("Turn limit") }}</b>
                       </div>
                     </td>
                     <td v-for="roleItem in capabilities.roles" :key="roleItem.role">
                       <input
                         v-model="turnDrafts[roleItem.role]"
                         class="input mono"
-                        :placeholder="t('默认')"
-                        :aria-label="t('{role} 轮次上限', { role: ROLE_LABEL[roleItem.role] })"
+                        :placeholder="t('Default')"
+                        :aria-label="t('{role} turn limit', { role: ROLE_LABEL[roleItem.role] })"
                         :disabled="savingRole.busy.value"
                         @change="commitMaxTurns(roleItem.role)"
                       />
@@ -749,10 +749,10 @@ const streamBadge = computed(() => {
                   </tr>
                   <tr class="builtin">
                     <td>
-                      <div class="ext" :title="t('始终启用')">
+                      <div class="ext" :title="t('Always on')">
                         <b>
                           <Icon name="lock" size="xs" />
-                          <span>{{ t("自带扩展") }}</span>
+                          <span>{{ t("Built-in extensions") }}</span>
                         </b>
                       </div>
                     </td>
@@ -783,10 +783,10 @@ const streamBadge = computed(() => {
 
           <template v-else-if="section === 'mcp'">
             <header class="set-head">
-              <h2>{{ t("MCP 与扩展") }}</h2>
+              <h2>{{ t("MCP & extensions") }}</h2>
               <button type="button" class="btn sm" :disabled="reloadingMcp.busy.value" @click="reloadMcp">
                 <Icon name="refresh" size="xs" :spin="reloadingMcp.busy.value" />
-                <span>{{ t("重新加载") }}</span>
+                <span>{{ t("Reload") }}</span>
               </button>
             </header>
             <p v-if="capError || reloadingMcp.error.value" class="error hint">
@@ -797,7 +797,7 @@ const streamBadge = computed(() => {
               <div v-if="capabilities.problems.length > 0" class="banner bad">
                 <Icon name="alert" size="sm" />
                 <div>
-                  <strong>{{ t("{n} 个问题", { n: capabilities.problems.length }) }}</strong>
+                  <strong>{{ t("{n} problem|{n} problems", { n: capabilities.problems.length }) }}</strong>
                   <ul>
                     <li v-for="(prob, idx) in capabilities.problems" :key="idx">
                       <a v-if="problemServer(prob)" :href="serverHref(problemServer(prob) ?? '')">
@@ -809,28 +809,28 @@ const streamBadge = computed(() => {
                 </div>
               </div>
               <div class="section-t">
-                <h3 title="~/.eevee/mcp.json">{{ t("MCP 服务器") }}</h3>
+                <h3 title="~/.eevee/mcp.json">{{ t("MCP servers") }}</h3>
                 <span class="spacer" />
                 <a class="btn sm" :href="NEW_SERVER">
                   <Icon name="plus" size="xs" />
-                  <span>{{ t("添加") }}</span>
+                  <span>{{ t("Add") }}</span>
                 </a>
               </div>
               <p v-if="togglingServer.error.value" class="error hint">{{ togglingServer.error.value }}</p>
               <div class="rows">
                 <div v-if="capabilities.mcp.length === 0" class="row">
-                  <span class="muted">{{ t("没有 MCP 服务器") }}</span>
+                  <span class="muted">{{ t("No MCP servers") }}</span>
                 </div>
                 <div v-for="server in capabilities.mcp" :key="server.name" class="row has-link">
                   <a class="r-main row-link" :href="serverHref(server.name)">
                     <span class="r-t">
                       <span class="mono">mcp.{{ server.name }}</span>
-                      <span class="chip mono" :title="t('工具提供方式')">{{ server.exposure }}</span>
+                      <span class="chip mono" :title="t('How its tools are offered')">{{ server.exposure }}</span>
                     </span>
                     <span class="r-d">
-                      {{ t("{n} 个工具", { n: server.tools }) }}
+                      {{ t("{n} tool|{n} tools", { n: server.tools }) }}
                       <template v-if="rolesUsingExtension(`mcp.${server.name}`).length > 0">
-                        · {{ rolesUsingExtension(`mcp.${server.name}`).join(t("、")) }}
+                        · {{ rolesUsingExtension(`mcp.${server.name}`).join(t(", ")) }}
                       </template>
                     </span>
                     <span v-if="server.error" class="err">{{ configIssueText(server.error) }}</span>
@@ -845,25 +845,25 @@ const streamBadge = computed(() => {
                     :class="{ on: server.state !== 'disabled' }"
                     :disabled="togglingServer.busy.value || mcpEntries?.[server.name] === undefined"
                     :aria-pressed="server.state !== 'disabled'"
-                    :aria-label="t('启用 {name}', { name: server.name })"
+                    :aria-label="t('Enable {name}', { name: server.name })"
                     @click="toggleServer(server.name)"
                   />
                 </div>
               </div>
-              <div class="section-t"><h3 title="~/.eevee/extensions/">{{ t("用户扩展") }}</h3></div>
+              <div class="section-t"><h3 title="~/.eevee/extensions/">{{ t("User extensions") }}</h3></div>
               <div class="rows">
                 <div v-if="capabilities.userExtensions.length === 0" class="row">
-                  <span class="muted">{{ t("没有用户扩展") }}</span>
+                  <span class="muted">{{ t("No user extensions") }}</span>
                 </div>
                 <div v-for="ext in capabilities.userExtensions" :key="ext.file" class="row">
                   <div class="r-main">
                     <span class="r-t"><span class="mono">{{ ext.file }}</span></span>
-                    <span class="r-d">{{ ext.name ? `${ext.name} · ${t("{n} 个工具", { n: ext.tools })}` : t("未加载") }}</span>
+                    <span class="r-d">{{ ext.name ? `${ext.name} · ${t("{n} tool|{n} tools", { n: ext.tools })}` : t("Not loaded") }}</span>
                     <span v-if="ext.error" class="err">{{ configIssueText(ext.error) }}</span>
                   </div>
                   <span class="status-text">
                     <span class="dot" :class="ext.error ? 'bad' : 'ok'" />
-                    <span>{{ ext.error ? t("加载失败") : t("已加载") }}</span>
+                    <span>{{ ext.error ? t("Failed to load") : t("Loaded") }}</span>
                   </span>
                 </div>
               </div>
@@ -874,18 +874,18 @@ const streamBadge = computed(() => {
             <header class="set-head"><h2>Engine</h2></header>
             <div class="rows">
               <div class="row">
-                <div class="r-main"><span class="r-t">{{ t("状态") }}</span></div>
+                <div class="r-main"><span class="r-t">{{ t("Status") }}</span></div>
                 <span class="status-text">
                   <span class="dot" :class="streamBadge.dot" />
                   <span>{{ streamBadge.label }}</span>
                 </span>
               </div>
               <div class="row">
-                <div class="r-main"><span class="r-t">{{ t("版本") }}</span></div>
+                <div class="r-main"><span class="r-t">{{ t("Version") }}</span></div>
                 <span class="value">{{ status?.version ?? "—" }}</span>
               </div>
               <div class="row">
-                <div class="r-main"><span class="r-t">{{ t("地址") }}</span></div>
+                <div class="r-main"><span class="r-t">{{ t("Address") }}</span></div>
                 <span class="value">{{ status ? `http://127.0.0.1:${status.port}/` : "—" }}</span>
               </div>
               <div class="row">
@@ -893,14 +893,14 @@ const streamBadge = computed(() => {
                 <span class="value">{{ status?.bootId ?? "—" }}</span>
               </div>
             </div>
-            <div class="section-t"><h3>{{ t("重启") }}</h3></div>
+            <div class="section-t"><h3>{{ t("Restart") }}</h3></div>
             <div class="codeline">
               <code>{{ RESTART }}</code>
-              <button type="button" class="btn ghost sm icon" :aria-label="t('复制重启命令')" @click="copyText(RESTART)">
+              <button type="button" class="btn ghost sm icon" :aria-label="t('Copy the restart command')" @click="copyText(RESTART)">
                 <Icon name="copy" size="xs" />
               </button>
             </div>
-            <p class="hint">{{ t("会终止正在运行的后台作业") }}</p>
+            <p class="hint">{{ t("Stops any running background jobs") }}</p>
           </template>
         </div>
       </div>

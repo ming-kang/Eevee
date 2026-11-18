@@ -5,84 +5,90 @@ import { type Block, markdownParser, parseMarkdown } from "./markdown.ts";
 const text = (value: string) => ({ type: "text" as const, text: value });
 const ticket = (id: string, label = id) => ({ type: "ticket" as const, ticketId: id, label });
 
-test("标题按标题渲染，而不是带井号的段落", () => {
-  assert.deepEqual(parseMarkdown("# 模型目录说明\n\n正文\n\n### 细节"), [
-    { type: "heading", level: 1, children: [text("模型目录说明")] },
-    { type: "paragraph", children: [text("正文")] },
-    { type: "heading", level: 3, children: [text("细节")] },
+test("headings render as headings, not as paragraphs with hashes", () => {
+  assert.deepEqual(parseMarkdown("# Model catalog overview\n\nBody text\n\n### Details"), [
+    { type: "heading", level: 1, children: [text("Model catalog overview")] },
+    { type: "paragraph", children: [text("Body text")] },
+    { type: "heading", level: 3, children: [text("Details")] },
   ]);
 });
 
-test("工单编号变成引用，代码和链接里的除外", () => {
+test("ticket ids become references, except in code and links", () => {
   assert.deepEqual(
     parseMarkdown(
-      "已经安排好 **t2** 和 ticket://t4：`t5` [t6](https://x.dev) [运行仿真](ticket://t7)\n第二行",
+      "already arranged **t2** and ticket://t4; `t5` [t6](https://x.dev) [run the sim](ticket://t7)\nsecond line",
     ),
     [
       {
         type: "paragraph",
         children: [
-          text("已经安排好 "),
+          text("already arranged "),
           ticket("t2"),
-          text(" 和 "),
+          text(" and "),
           ticket("t4"),
-          text("："),
+          text("; "),
           { type: "code", text: "t5" },
           text(" "),
           { type: "link", href: "https://x.dev", children: [text("t6")] },
           text(" "),
-          ticket("t7", "运行仿真"),
+          ticket("t7", "run the sim"),
           { type: "break" },
-          text("第二行"),
+          text("second line"),
         ],
       },
     ],
   );
 });
 
-test("其他地址和单词里的编号保持原样", () => {
-  assert.deepEqual(parseMarkdown("完整报告：report://t2#1，作业 job://j3，模型 gpt4，见 t5。"), [
-    {
-      type: "paragraph",
-      children: [
-        text("完整报告：report://t2#1，作业 job://j3，模型 gpt4，见 "),
-        ticket("t5"),
-        text("。"),
-      ],
-    },
-  ]);
+test("ids inside other addresses and words are left alone", () => {
+  assert.deepEqual(
+    parseMarkdown("Full report: report://t2#1, job job://j3, model gpt4, see t5 for details"),
+    [
+      {
+        type: "paragraph",
+        children: [
+          text("Full report: report://t2#1, job job://j3, model gpt4, see "),
+          ticket("t5"),
+          text(" for details"),
+        ],
+      },
+    ],
+  );
 });
 
-test("只保留网页链接，HTML 原样显示为文字", () => {
-  assert.deepEqual(parseMarkdown("见 https://a.dev 与 [本地](file:///etc/passwd) <b>x</b>"), [
-    {
-      type: "paragraph",
-      children: [
-        text("见 "),
-        { type: "link", href: "https://a.dev", children: [text("https://a.dev")] },
-        text(" 与 本地 <b>x</b>"),
-      ],
-    },
-  ]);
+test("only web links are kept; HTML shows as literal text", () => {
+  assert.deepEqual(
+    parseMarkdown("See https://a.dev and [local file](file:///etc/passwd) <b>x</b>"),
+    [
+      {
+        type: "paragraph",
+        children: [
+          text("See "),
+          { type: "link", href: "https://a.dev", children: [text("https://a.dev")] },
+          text(" and local file <b>x</b>"),
+        ],
+      },
+    ],
+  );
 });
 
-test("列表、任务、引用、表格、分割线和行内样式", () => {
+test("lists, tasks, quotes, tables, rules and inline styles", () => {
   const blocks = parseMarkdown(
     [
-      "- [ ] 待办",
-      "- [x] *已* ~~完成~~",
-      "  1. 子项",
+      "- [ ] todo",
+      "- [x] *done* ~~finished~~",
+      "  1. subitem",
       "",
-      "> 引用",
+      "> quote",
       "",
-      "3. 第三步",
+      "3. step three",
       "",
-      "| 名称 | 数量 |",
+      "| Name | Count |",
       "|:-|-:|",
       "| a | `2` |",
       "",
       "---",
-      "说明**「A」**。",
+      "Note **'A'**.",
       "",
       "```ts",
       "const x = 1;",
@@ -94,39 +100,39 @@ test("列表、任务、引用、表格、分割线和行内样式", () => {
       type: "list",
       ordered: false,
       items: [
-        { checked: false, children: [{ type: "paragraph", children: [text("待办")] }] },
+        { checked: false, children: [{ type: "paragraph", children: [text("todo")] }] },
         {
           checked: true,
           children: [
             {
               type: "paragraph",
               children: [
-                { type: "em", children: [text("已")] },
+                { type: "em", children: [text("done")] },
                 text(" "),
-                { type: "del", children: [text("完成")] },
+                { type: "del", children: [text("finished")] },
               ],
             },
             {
               type: "list",
               ordered: true,
-              items: [{ children: [{ type: "paragraph", children: [text("子项")] }] }],
+              items: [{ children: [{ type: "paragraph", children: [text("subitem")] }] }],
             },
           ],
         },
       ],
     },
-    { type: "quote", children: [{ type: "paragraph", children: [text("引用")] }] },
+    { type: "quote", children: [{ type: "paragraph", children: [text("quote")] }] },
     {
       type: "list",
       ordered: true,
       start: 3,
-      items: [{ children: [{ type: "paragraph", children: [text("第三步")] }] }],
+      items: [{ children: [{ type: "paragraph", children: [text("step three")] }] }],
     },
     {
       type: "table",
       head: [
-        { align: "left", children: [text("名称")] },
-        { align: "right", children: [text("数量")] },
+        { align: "left", children: [text("Name")] },
+        { align: "right", children: [text("Count")] },
       ],
       rows: [
         [
@@ -138,26 +144,26 @@ test("列表、任务、引用、表格、分割线和行内样式", () => {
     { type: "rule" },
     {
       type: "paragraph",
-      children: [text("说明"), { type: "strong", children: [text("「A」")] }, text("。")],
+      children: [text("Note "), { type: "strong", children: [text("'A'")] }, text(".")],
     },
     { type: "code", language: "ts", code: "const x = 1;" },
   ] satisfies Block[]);
 });
 
-test("流式输出时补全未闭合的语法，并在末尾显示光标", () => {
+test("streaming output completes unclosed syntax and shows a caret at the end", () => {
   const parse = markdownParser();
   const caret = { type: "caret" };
-  assert.deepEqual(parse("看 **重点", true), [
+  assert.deepEqual(parse("Note **key", true), [
     {
       type: "paragraph",
-      children: [text("看 "), { type: "strong", children: [text("重点")] }, caret],
+      children: [text("Note "), { type: "strong", children: [text("key")] }, caret],
     },
   ]);
-  assert.deepEqual(parse("看 **重点**\n\n```ts\nconst a", true), [
-    { type: "paragraph", children: [text("看 "), { type: "strong", children: [text("重点")] }] },
+  assert.deepEqual(parse("Note **key**\n\n```ts\nconst a", true), [
+    { type: "paragraph", children: [text("Note "), { type: "strong", children: [text("key")] }] },
     { type: "code", language: "ts", code: "const a" },
     { type: "paragraph", children: [caret] },
   ]);
   assert.deepEqual(parse("", true), [{ type: "paragraph", children: [caret] }]);
-  assert.deepEqual(parse("看 **重点"), [{ type: "paragraph", children: [text("看 **重点")] }]);
+  assert.deepEqual(parse("Note **key"), [{ type: "paragraph", children: [text("Note **key")] }]);
 });

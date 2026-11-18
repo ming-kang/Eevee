@@ -80,12 +80,12 @@ function fakeTimers() {
   };
 }
 
-test("streamUrl 把 http/https 转成 ws/wss 并拼接 /api/stream", () => {
+test("streamUrl turns http/https into ws/wss and appends /api/stream", () => {
   assert.equal(streamUrl("http://127.0.0.1:19190"), "ws://127.0.0.1:19190/api/stream");
   assert.equal(streamUrl("https://localhost:8443/ui/"), "wss://localhost:8443/api/stream");
 });
 
-test("子协议鉴权、hello 后重放订阅与按 id 分发事件", () => {
+test("subprotocol auth, hello replays the subscriptions, events are dispatched by id", () => {
   const sockets: FakeSocket[] = [];
   const client = createStreamClient({
     baseUrl: "http://127.0.0.1:19190",
@@ -109,7 +109,7 @@ test("子协议鉴权、hello 后重放订阅与按 id 分发事件", () => {
     topic: { kind: "board", project: "p1" },
     onEvent: (event) => boardEvents.push(event),
   });
-  // hello 之前不发送 watch
+  // no watch is sent before hello
   assert.deepEqual(ws.sent, []);
 
   ws.open();
@@ -148,7 +148,7 @@ test("子协议鉴权、hello 后重放订阅与按 id 分发事件", () => {
   client.close();
 });
 
-test("断线指数退避重连，相同 bootId 用续传窗口，bootId 变化先 reset 再重订", async () => {
+test("a drop reconnects with exponential backoff: the same bootId resumes, a new one resets first", async () => {
   const sockets: FakeSocket[] = [];
   const clock = fakeTimers();
   let cursor: EntryId | undefined = 42 as EntryId;
@@ -189,13 +189,13 @@ test("断线指数退避重连，相同 bootId 用续传窗口，bootId 变化�
     window: { from: 42 },
   });
 
-  // 第一次断线：等 100ms 后重连，bootId 未变
+  // first drop: wait 100ms, then reconnect; bootId unchanged
   sockets[0]?.drop();
   assert.equal(client.state, "reconnecting");
   assert.equal(clock.flushNext(), 100);
   assert.equal(sockets.length, 2);
 
-  // 未连上再掉线，退避翻倍到 200ms
+  // dropping again before it connects doubles the backoff to 200ms
   sockets[1]?.drop();
   assert.equal(clock.flushNext(), 200);
   assert.equal(sockets.length, 3);
@@ -210,7 +210,7 @@ test("断线指数退避重连，相同 bootId 用续传窗口，bootId 变化�
     window: { from: 42 },
   });
 
-  // 再次断线，Engine 重启（bootId 变成 boot-2）：退避复位为 100ms，先 reset 再不带 window 订阅
+  // dropping once more, the Engine restarts (bootId becomes boot-2): backoff resets to 100ms, reset first, then resubscribe without a window
   sockets[2]?.drop();
   assert.equal(clock.flushNext(), 100);
   sockets[3]?.open();
@@ -227,7 +227,7 @@ test("断线指数退避重连，相同 bootId 用续传窗口，bootId 变化�
     { bootId: "boot-2", bootChanged: true },
   ]);
 
-  // entries 请求按 id 分发与断线拒绝
+  // entries requests are dispatched by id, and a drop refuses them
   const pendingOk = client.entries(
     { kind: "conversation", project: "p1" },
     { order: "descending" },
@@ -240,6 +240,6 @@ test("断线指数退避重连，相同 bootId 用续传窗口，bootId 变化�
 
   const pendingDrop = client.entries({ kind: "conversation", project: "p1" }, {}, 10);
   sockets[3]?.drop();
-  await assert.rejects(pendingDrop, /断开/);
+  await assert.rejects(pendingDrop, /disconnected/);
   client.close();
 });

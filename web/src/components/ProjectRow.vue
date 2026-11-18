@@ -33,7 +33,7 @@ defineEmits<{
     @mouseleave="$emit('hover-leave', $event)"
   >
     <span class="p-lead"><Icon name="folder" size="sm" /></span>
-    <span class="p-tile">{{ project.title.slice(0, 1) || t("项") }}</span>
+    <span class="p-tile">{{ project.title.slice(0, 1) || t("P") }}</span>
     <span class="p-title">{{ project.title }}</span>
     <span class="p-end" :class="`s-${state.kind}`">
       <span v-if="state.kind === 'user'" class="count user">{{ state.questionCount }}</span>

@@ -149,17 +149,17 @@ function onInputKeydown(event: KeyboardEvent): void {
             :tickets="tickets"
             @open-ticket="$emit('open-ticket', $event)"
           />
-          {{ t("想问你") }}
+          {{ t("asks you") }}
         </template>
-        <template v-else>{{ t("Router 想问你") }}</template>
+        <template v-else>{{ t("The Router asks you") }}</template>
       </span>
       <span class="spacer" />
       <span v-if="questions.length > 1" class="pager">
-        <button type="button" :title="t('上一个')" :aria-label="t('上一个问题')" @click="prev">
+        <button type="button" :title="t('Previous')" :aria-label="t('Previous question')" @click="prev">
           <Icon name="chevL" size="xs" />
         </button>
         <span>{{ index + 1 }}/{{ questions.length }}</span>
-        <button type="button" :title="t('下一个')" :aria-label="t('下一个问题')" @click="next">
+        <button type="button" :title="t('Next')" :aria-label="t('Next question')" @click="next">
           <Icon name="chevR" size="xs" />
         </button>
       </span>
@@ -193,7 +193,7 @@ function onInputKeydown(event: KeyboardEvent): void {
             >
               <span class="radio" />
               <span>{{ option }}</span>
-              <span v-if="option === item.recommended" class="rec">{{ t("推荐") }}</span>
+              <span v-if="option === item.recommended" class="rec">{{ t("Recommended") }}</span>
             </button>
           </div>
           <input
@@ -202,8 +202,8 @@ function onInputKeydown(event: KeyboardEvent): void {
             class="opt-input"
             :data-q-other="current.id"
             :data-i="i"
-            :placeholder="t('写下你的回答')"
-            :aria-label="item.options.length > 0 ? t('其他回答') : item.text"
+            :placeholder="t('Write your answer')"
+            :aria-label="item.options.length > 0 ? t('Other answer') : item.text"
             @input="updateOther(i, ($event.target as HTMLInputElement).value)"
             @keydown="onInputKeydown"
           />
@@ -213,7 +213,7 @@ function onInputKeydown(event: KeyboardEvent): void {
             class="opt-more"
             @click="openOther(i)"
           >
-            {{ t("其他…") }}
+            {{ t("Other…") }}
           </button>
         </div>
         <div
@@ -230,12 +230,12 @@ function onInputKeydown(event: KeyboardEvent): void {
       <button
         type="button"
         class="btn ghost sm"
-        :title="current.ticketId ? t('先收起，给 Worker 发消息') : t('先收起，给 Router 发消息')"
+        :title="current.ticketId ? t('Set aside and message the Worker') : t('Set aside and message the Router')"
         @click="$emit('later')"
       >
-        {{ t("稍后") }}
+        {{ t("Later") }}
       </button>
-      <button type="submit" class="btn primary sm" :disabled="busy || !complete">{{ t("提交") }}</button>
+      <button type="submit" class="btn primary sm" :disabled="busy || !complete">{{ t("Submit") }}</button>
     </div>
   </form>
 </template>

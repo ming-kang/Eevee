@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { extractAuthCode, formatRoute, parseRoute, type Route, resolveRoute } from "./router.ts";
 
-test("解析与格式化全部路由并往返一致", () => {
+test("every route parses and formats and round-trips", () => {
   const routes: Route[] = [
     { name: "chat", pid: "optics" },
     { name: "worker", pid: "optics", tid: "t5" },
@@ -23,14 +23,14 @@ test("解析与格式化全部路由并往返一致", () => {
   }
 });
 
-test("支持编码过的项目编号与工单编号", () => {
+test("encoded project and ticket ids are supported", () => {
   const route: Route = { name: "worker", pid: "proj a/b", tid: "t12" };
   const hash = formatRoute(route);
   assert.equal(hash, "#/p/proj%20a%2Fb/t/t12");
   assert.deepEqual(parseRoute(hash), route);
 });
 
-test("settings 缺失或未知子页时默认 general", () => {
+test("settings defaults to general when the sub-page is missing or unknown", () => {
   assert.deepEqual(parseRoute("#/settings"), { name: "settings", section: "general" });
   assert.deepEqual(parseRoute("#/settings/unknown"), { name: "settings", section: "general" });
   assert.deepEqual(parseRoute("#/settings/general/x"), { name: "settings", section: "general" });
@@ -41,7 +41,7 @@ test("settings 缺失或未知子页时默认 general", () => {
   });
 });
 
-test("空 hash、未知路径与 #code= 不被当成普通路由", () => {
+test("an empty hash, unknown paths and #code= are not treated as routes", () => {
   assert.equal(parseRoute(""), undefined);
   assert.equal(parseRoute("#"), undefined);
   assert.equal(parseRoute("#/"), undefined);
@@ -50,7 +50,7 @@ test("空 hash、未知路径与 #code= 不被当成普通路由", () => {
   assert.equal(parseRoute("#code=secret123"), undefined);
 });
 
-test("resolveRoute 在缺省时回退到默认项目或首页", () => {
+test("resolveRoute falls back to the default project or home", () => {
   assert.deepEqual(resolveRoute("", "p1"), { name: "chat", pid: "p1" });
   assert.deepEqual(resolveRoute("#/unknown", "p1"), { name: "chat", pid: "p1" });
   assert.deepEqual(resolveRoute("", undefined), { name: "home" });
@@ -60,7 +60,7 @@ test("resolveRoute 在缺省时回退到默认项目或首页", () => {
   });
 });
 
-test("extractAuthCode 提取一次性授权码但不误伤普通路由", () => {
+test("extractAuthCode reads the one-time code without disturbing normal routes", () => {
   assert.equal(extractAuthCode("#code=abc%2B123"), "abc+123");
   assert.equal(extractAuthCode("#?code=xyz"), "xyz");
   assert.equal(extractAuthCode("#code="), undefined);

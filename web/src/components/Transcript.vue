@@ -121,7 +121,7 @@ watch(tailKey, async () => {
           :disabled="loadingEarlier"
           @click="loadEarlier?.()"
         >
-          {{ loadingEarlier ? t("正在加载…") : t("更早的消息") }}
+          {{ loadingEarlier ? t("Loading…") : t("Earlier messages") }}
         </button>
         <button
           v-else-if="item.kind === 'gap'"
@@ -130,7 +130,7 @@ watch(tailKey, async () => {
           :disabled="fillingGaps"
           @click="fillGap?.(item.gap)"
         >
-          {{ fillingGaps ? t("正在补全…") : t("补全缺失的记录") }}
+          {{ fillingGaps ? t("Filling in…") : t("Fill in missing history") }}
         </button>
         <ResetMark
           v-else-if="item.kind === 'reset'"
@@ -141,11 +141,11 @@ watch(tailKey, async () => {
           v-else-if="item.kind === 'opening'"
           type="button"
           class="note link"
-          :title="t('工单目标、输入、验收标准和项目记忆')"
+          :title="t('The ticket\'s goal, inputs, acceptance criteria and project memory')"
           @click="$emit('open-detail')"
         >
           <Icon name="flag" size="xs" />
-          <span>{{ t("开篇") }}</span>
+          <span>{{ t("Opening") }}</span>
         </button>
         <UserMessage
           v-else-if="item.kind === 'user'"
@@ -233,7 +233,7 @@ watch(tailKey, async () => {
           type="button"
           class="to-latest"
           :class="{ live }"
-          :aria-label="t('回到最新')"
+          :aria-label="t('Jump to latest')"
           @click="toLatest"
         >
           <StageGlyph v-if="live" stage="working" />

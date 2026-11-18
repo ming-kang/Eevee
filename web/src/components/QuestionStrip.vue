@@ -9,7 +9,7 @@ defineEmits<{ expand: [] }>();
 <template>
   <button type="button" class="qstrip" @click="$emit('expand')">
     <span class="dot user" />
-    <span>{{ t("{n} 个问题等你回答", { n: count }) }}</span>
+    <span>{{ t("{n} question for you|{n} questions for you", { n: count }) }}</span>
     <span class="spacer" />
     <Icon name="chevU" size="sm" />
   </button>

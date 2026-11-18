@@ -45,7 +45,7 @@ async function copy(index: number, code: string): Promise<void> {
       <button
         type="button"
         class="btn ghost sm icon copy"
-        :aria-label="t('复制')"
+        :aria-label="t('Copy')"
         @click="copy(index, block.code)"
       >
         <Icon :name="copied === index ? 'check' : 'copy'" size="xs" />

@@ -9,7 +9,7 @@ function makeTicket(id: TicketId, stage: TicketStage, jobs = 0, closed = false):
     ticket: {
       id,
       role: "worker",
-      title: `工单 ${id}`,
+      title: `Ticket ${id}`,
       goal: "",
       inputs: [],
       acceptance: [],
@@ -30,14 +30,14 @@ function makeTicket(id: TicketId, stage: TicketStage, jobs = 0, closed = false):
   };
 }
 
-test("deriveProjectState 严格按 待回答 > Router 失败 > 执行中 > 静息 优先级判断", () => {
+test("deriveProjectState ranks unanswered > Router failure > running > idle", () => {
   const runningBoard: BoardView = {
     tickets: [makeTicket("t1", "working"), makeTicket("t2", "jobs", 1), makeTicket("t3", "idle")],
     openQuestions: [],
     router: { running: false },
   };
 
-  // 4. 空闲 / 静息
+  // 4. idle / at rest
   const idle = deriveProjectState({
     board: { tickets: [makeTicket("t1", "idle")], openQuestions: [], router: { running: false } },
     activeAt: 12345,
@@ -45,14 +45,14 @@ test("deriveProjectState 严格按 待回答 > Router 失败 > 执行中 > 静�
   assert.equal(idle.kind, "rest");
   assert.equal(idle.activeAt, 12345);
 
-  // 3a. 有工单在执行中
+  // 3a. a ticket is working
   const runTicket = deriveProjectState({ board: runningBoard });
   assert.equal(runTicket.kind, "run");
   assert.equal(runTicket.openCount, 3);
   assert.equal(runTicket.runningTickets, 2);
   assert.equal(runTicket.jobCount, 1);
 
-  // 3b. Router 运行中
+  // 3b. the Router is running
   const runRouter = deriveProjectState({
     board: { tickets: [], openQuestions: [], router: { running: false } },
     router: { running: true },
@@ -60,7 +60,7 @@ test("deriveProjectState 严格按 待回答 > Router 失败 > 执行中 > 静�
   assert.equal(runRouter.kind, "run");
   assert.equal(runRouter.routerRunning, true);
 
-  // 3c. 未传 live 时回退使用 BoardView.router 状态与失败原因
+  // 3c. without a live value, fall back to BoardView.router status and failure
   const boardRouterRun = deriveProjectState({
     board: { tickets: [], openQuestions: [], router: { running: true } },
   });
@@ -75,16 +75,16 @@ test("deriveProjectState 严格按 待回答 > Router 失败 > 执行中 > 静�
     },
   });
   assert.equal(boardRouterFailed.kind, "bad");
-  assert.equal(boardRouterFailed.routerFailed, "模型调用失败：401");
+  assert.equal(boardRouterFailed.routerFailed, "Model call failed: 401");
 
-  // 2. Router 失败优先于执行中
+  // 2. a Router failure outranks a working ticket
   const failed = deriveProjectState({
     board: runningBoard,
     router: { running: false, failure: { reason: "model_error", detail: "429 Too Many Requests" } },
   });
   assert.equal(failed.kind, "bad");
 
-  // 1. 待回答问题优先级最高（过滤已回答问题）
+  // 1. an unanswered question outranks everything (answered ones are filtered out)
   const answer = deriveProjectState({
     board: {
       ...runningBoard,
@@ -99,10 +99,10 @@ test("deriveProjectState 严格按 待回答 > Router 失败 > 执行中 > 静�
   assert.equal(answer.questionCount, 1);
 });
 
-test("buildPaletteItems 与 filterPaletteItems 生成并过滤页面、工单、项目与操作", () => {
+test("buildPaletteItems and filterPaletteItems build and filter pages, tickets, projects and actions", () => {
   const projects: ProjectSummary[] = [
-    { id: "p1", title: "光学论文", workspace: "D:/papers/optics", createdAt: 1 },
-    { id: "p2", title: "后端重构", workspace: "D:/work/eevee", createdAt: 2 },
+    { id: "p1", title: "Optics paper", workspace: "D:/papers/optics", createdAt: 1 },
+    { id: "p2", title: "Backend rewrite", workspace: "D:/work/eevee", createdAt: 2 },
   ];
   const boards = {
     p1: {
@@ -123,11 +123,11 @@ test("buildPaletteItems 与 filterPaletteItems 生成并过滤页面、工单、
   });
 
   assert.equal(
-    items.some((i) => i.group === "工单" && i.id === "ticket:p1:t4"),
+    items.some((i) => i.group === "Tickets" && i.id === "ticket:p1:t4"),
     true,
   );
   assert.equal(
-    items.some((i) => i.group === "项目" && i.meta === "1 张未结"),
+    items.some((i) => i.group === "Projects" && i.meta === "1 open"),
     true,
   );
   assert.equal(filterPaletteItems(items, "t4").length, 1);

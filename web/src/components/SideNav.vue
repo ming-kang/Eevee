@@ -135,10 +135,10 @@ onUnmounted(() => {
       class="btn ghost sm icon side-toggle"
       :title="
         sideCollapsed
-          ? t('展开侧栏（{key}）', { key: sideShortcut })
-          : t('收起侧栏（{key}）', { key: sideShortcut })
+          ? t('Expand sidebar ({key})', { key: sideShortcut })
+          : t('Collapse sidebar ({key})', { key: sideShortcut })
       "
-      :aria-label="sideCollapsed ? t('展开侧栏') : t('收起侧栏')"
+      :aria-label="sideCollapsed ? t('Expand sidebar') : t('Collapse sidebar')"
       @click="$emit('toggle-side')"
     >
       <Icon name="sidebar" size="sm" />
@@ -149,31 +149,31 @@ onUnmounted(() => {
     <button
       type="button"
       class="nav-row"
-      :title="t('新建项目')"
+      :title="t('New project')"
       @click="
         hideHoverImmediate();
         $emit('new-project');
       "
     >
       <Icon name="compose" size="sm" />
-      <span class="label">{{ t("新建项目") }}</span>
+      <span class="label">{{ t("New project") }}</span>
     </button>
     <button
       type="button"
       class="nav-row"
-      :title="t('搜索（{key}）', { key: paletteShortcut })"
+      :title="t('Search ({key})', { key: paletteShortcut })"
       @click="
         hideHoverImmediate();
         $emit('open-palette');
       "
     >
       <Icon name="search" size="sm" />
-      <span class="label">{{ t("搜索") }}</span>
+      <span class="label">{{ t("Search") }}</span>
       <span class="kbd">{{ paletteShortcut }}</span>
     </button>
   </div>
 
-  <div v-if="projects.length > 0" class="side-h">{{ t("项目") }}</div>
+  <div v-if="projects.length > 0" class="side-h">{{ t("Projects") }}</div>
 
   <div class="side-scroll" @scroll="hideHoverImmediate">
     <ProjectRow
@@ -201,10 +201,10 @@ onUnmounted(() => {
     v-if="streamState === 'reconnecting'"
     class="side-conn"
     role="status"
-    :title="t('与 Engine 的实时连接断开了，正在自动重连')"
+    :title="t('Lost the live connection to the Engine; reconnecting')"
   >
     <span class="dot bad" aria-hidden="true" />
-    <span class="label">{{ t("正在重新连接…") }}</span>
+    <span class="label">{{ t("Reconnecting…") }}</span>
   </p>
 
   <ControlTiles

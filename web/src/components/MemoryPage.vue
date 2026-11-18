@@ -71,7 +71,7 @@ let filesSeq = 0;
 const AUTHOR_META: Record<MemoryAuthor, { icon: "moon" | "radio" | "user" | "commit"; label: string; badgeClass: string }> = {
   dreaming: { icon: "moon", label: "Dreaming", badgeClass: "dreaming" },
   router: { icon: "radio", label: "Router", badgeClass: "" },
-  user: { icon: "user", label: t("你"), badgeClass: "user" },
+  user: { icon: "user", label: t("You"), badgeClass: "user" },
   eevee: { icon: "commit", label: "Eevee", badgeClass: "" },
 };
 
@@ -308,7 +308,7 @@ async function performRevert(): Promise<void> {
     confirmCommit.value = undefined;
     commitDiffs.value = {};
     fileContents.value = {};
-    showToast(t("已撤销 {commit} · 新建了一个 revert commit", { commit: target.commit }));
+    showToast(t("Reverted {commit} · added a revert commit", { commit: target.commit }));
     await loadScope();
     if (tab.value === "files") await loadFiles();
     else files.value = [];
@@ -319,23 +319,23 @@ async function performRevert(): Promise<void> {
 <template>
   <section class="page-wrap">
     <header class="header">
-      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('菜单')" @click="$emit('open-side')">
+      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('Menu')" @click="$emit('open-side')">
         <Icon name="menu" size="sm" />
       </button>
-      <h1>{{ t("记忆") }}</h1>
+      <h1>{{ t("Memory") }}</h1>
       <span class="sub ellipsis hide-sm">{{ project.title }}</span>
     </header>
     <div class="split" :class="{ 'has-detail': mobileDetail }">
       <div class="split-list">
         <div class="list-head">
-          <div v-seg class="seg sm stretch" role="group" :aria-label="t('记忆范围')">
+          <div v-seg class="seg sm stretch" role="group" :aria-label="t('Memory scope')">
             <button
               type="button"
               :class="{ on: scope === 'project' }"
               :aria-pressed="scope === 'project'"
               @click="scope = 'project'"
             >
-              {{ t("本项目") }}
+              {{ t("This project") }}
             </button>
             <button
               type="button"
@@ -343,14 +343,14 @@ async function performRevert(): Promise<void> {
               :aria-pressed="scope === 'global'"
               @click="scope = 'global'"
             >
-              {{ t("全局") }}
+              {{ t("Global") }}
             </button>
           </div>
           <div
             v-seg
             class="seg sm stretch"
             role="tablist"
-            :aria-label="t('记忆视图')"
+            :aria-label="t('Memory view')"
             @keydown="onRovingKeydown($event, MEMORY_TABS, tab, (key) => (tab = key))"
           >
             <button
@@ -361,7 +361,7 @@ async function performRevert(): Promise<void> {
               :class="{ on: tab === 'history' }"
               @click="tab = 'history'"
             >
-              {{ t("历史") }}
+              {{ t("History") }}
             </button>
             <button
               type="button"
@@ -371,7 +371,7 @@ async function performRevert(): Promise<void> {
               :class="{ on: tab === 'files' }"
               @click="tab = 'files'"
             >
-              {{ t("文件") }}
+              {{ t("Files") }}
             </button>
           </div>
         </div>
@@ -385,12 +385,12 @@ async function performRevert(): Promise<void> {
               type="button"
               class="commit"
               :class="{ on: selected === 'uncommitted' }"
-              :title="t('下次提交时记为 user edit')"
+              :title="t('The next commit records this as user edit')"
               @click="selectItem('uncommitted')"
             >
               <span class="who pending"><Icon name="pencil" size="xs" /></span>
-              <span class="subj">{{ t("未提交的改动") }}</span>
-              <span class="meta ellipsis">{{ uncommittedDiffs.map((d) => d.file).join(t("、")) }}</span>
+              <span class="subj">{{ t("Uncommitted changes") }}</span>
+              <span class="meta ellipsis">{{ uncommittedDiffs.map((d) => d.file).join(t(", ")) }}</span>
             </button>
             <button
               v-for="commit in commits"
@@ -412,7 +412,7 @@ async function performRevert(): Promise<void> {
                 <span class="mono">{{ commit.commit }}</span>
               </span>
             </button>
-            <p v-if="!hasUncommitted && commits.length === 0" class="hint">{{ t("没有记录") }}</p>
+            <p v-if="!hasUncommitted && commits.length === 0" class="hint">{{ t("No history") }}</p>
           </div>
         </template>
         <template v-else>
@@ -433,7 +433,7 @@ async function performRevert(): Promise<void> {
               <span class="subj ellipsis mono">{{ file.path }}</span>
               <span class="meta">{{ formatBytes(file.size) }}</span>
             </button>
-            <p v-if="files.length === 0" class="hint">{{ t("没有文件") }}</p>
+            <p v-if="files.length === 0" class="hint">{{ t("No files") }}</p>
           </div>
         </template>
       </div>
@@ -441,7 +441,7 @@ async function performRevert(): Promise<void> {
       <div class="split-detail">
         <button v-if="mobileDetail" type="button" class="btn ghost sm split-back" @click="mobileDetail = false">
           <Icon name="chevL" size="xs" />
-          <span>{{ t("返回") }}</span>
+          <span>{{ t("Back") }}</span>
         </button>
         <template v-if="tab === 'files'">
           <div v-if="selectedFile" :key="`f:${selectedFile}`" class="detail-inner">
@@ -449,7 +449,7 @@ async function performRevert(): Promise<void> {
               <div class="spacer">
                 <h2 class="mono">{{ selectedFile }}</h2>
                 <div class="detail-meta">
-                  <span v-if="selectedFileContent !== undefined">{{ t("{n} 行", { n: selectedFileLines.length }) }}</span>
+                  <span v-if="selectedFileContent !== undefined">{{ t("{n} line|{n} lines", { n: selectedFileLines.length }) }}</span>
                   <span v-if="activeFileEntry">{{ formatBytes(activeFileEntry.size) }}</span>
                 </div>
               </div>
@@ -471,11 +471,11 @@ async function performRevert(): Promise<void> {
           <div v-if="selected === 'uncommitted'" key="uncommitted" class="detail-inner">
             <div class="detail-head">
               <div class="spacer">
-                <h2>{{ t("未提交的改动") }}</h2>
-                <div class="detail-meta">{{ t("下次提交时记为") }} <span class="mono">user edit</span></div>
+                <h2>{{ t("Uncommitted changes") }}</h2>
+                <div class="detail-meta">{{ t("The next commit records this as") }} <span class="mono">user edit</span></div>
               </div>
             </div>
-            <FileDiffs :diffs="uncommittedDiffs" :empty-text="t('没有未提交的改动')" />
+            <FileDiffs :diffs="uncommittedDiffs" :empty-text="t('No uncommitted changes')" />
           </div>
           <div v-else-if="selectedCommit" :key="selectedCommit.commit" class="detail-inner">
             <div class="detail-head">
@@ -502,12 +502,12 @@ async function performRevert(): Promise<void> {
                 "
               >
                 <Icon name="undo" size="xs" />
-                <span>{{ t("撤销") }}</span>
+                <span>{{ t("Revert") }}</span>
               </button>
             </div>
             <p v-if="diffError" class="error hint">{{ diffError }}</p>
             <Skeleton v-else-if="loadingDiff" :lines="6" />
-            <FileDiffs v-else :diffs="selectedCommitDiffs" :empty-text="t('没有文本改动')" />
+            <FileDiffs v-else :diffs="selectedCommitDiffs" :empty-text="t('No text changes')" />
           </div>
         </template>
       </div>
@@ -527,15 +527,15 @@ async function performRevert(): Promise<void> {
         aria-labelledby="revert-title"
       >
         <div class="modal-h">
-          <h2 id="revert-title">{{ t("撤销这次提交？") }}</h2>
+          <h2 id="revert-title">{{ t("Revert this commit?") }}</h2>
           <span class="spacer" />
-          <button type="button" class="btn ghost sm icon" :aria-label="t('关闭')" @click="confirmCommit = undefined">
+          <button type="button" class="btn ghost sm icon" :aria-label="t('Close')" @click="confirmCommit = undefined">
             <Icon name="x" size="sm" />
           </button>
         </div>
         <div class="modal-b">
           <p class="muted">
-            {{ t("新建一个 revert commit 抵消") }} <span class="mono">{{ confirmCommit.commit }}</span>{{ t("，历史不会被改写。") }}
+            {{ t("Adds a revert commit that undoes") }} <span class="mono">{{ confirmCommit.commit }}</span>{{ t("; history isn't rewritten.") }}
           </p>
           <div class="codeline">
             <code>{{ confirmCommit.subject }}</code>
@@ -546,10 +546,10 @@ async function performRevert(): Promise<void> {
         </div>
         <div class="modal-f">
           <button type="button" class="btn" :disabled="reverting.busy.value" @click="confirmCommit = undefined">
-            {{ t("取消") }}
+            {{ t("Cancel") }}
           </button>
           <button type="button" class="btn primary" :disabled="reverting.busy.value" @click="performRevert">
-            {{ reverting.busy.value ? t("正在撤销…") : t("撤销") }}
+            {{ reverting.busy.value ? t("Reverting…") : t("Revert") }}
           </button>
         </div>
       </div>

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { fontStack, readTextSize, TEXT_SIZE } from "./typography.ts";
 
-test("readTextSize 接受 12 到 20 的整数，其余都不算", () => {
+test("readTextSize accepts whole numbers from 12 to 20 and nothing else", () => {
   assert.deepEqual(TEXT_SIZE, { min: 12, max: 20, default: 14 });
   for (const size of [12, 14, 17, 20]) assert.equal(readTextSize(String(size)), size);
   assert.equal(readTextSize(" 15 "), 15);
@@ -11,7 +11,7 @@ test("readTextSize 接受 12 到 20 的整数，其余都不算", () => {
   }
 });
 
-test("fontStack 给每个字体名加引号，排在自带字体前面；留空用自带字体", () => {
+test("fontStack quotes each font name ahead of the built-in ones; empty uses the built-in", () => {
   assert.equal(fontStack(""), undefined);
   assert.equal(fontStack(" , "), undefined);
   assert.equal(fontStack("LXGW WenKai"), '"LXGW WenKai", var(--ev-font-base)');

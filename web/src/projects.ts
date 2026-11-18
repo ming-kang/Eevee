@@ -104,7 +104,7 @@ export function buildPaletteItems(input: {
   const go = (id: string, label: string, keywords: string, route: Route, icon: PaletteIcon) =>
     ({
       id,
-      group: t("跳转"),
+      group: t("Go to"),
       label,
       search: `${label} ${keywords}`,
       kind: "route",
@@ -114,44 +114,44 @@ export function buildPaletteItems(input: {
 
   if (pid) {
     items.push(
-      go(`nav:chat:${pid}`, t("Router 主对话"), "chat", { name: "chat", pid }, "radio"),
-      go(`nav:memory:${pid}`, t("记忆"), "memory", { name: "memory", pid }, "book"),
-      go(`nav:usage:${pid}`, t("用量"), "usage cost", { name: "usage", pid }, "chart"),
+      go(`nav:chat:${pid}`, t("Router conversation"), "chat", { name: "chat", pid }, "radio"),
+      go(`nav:memory:${pid}`, t("Memory"), "memory", { name: "memory", pid }, "book"),
+      go(`nav:usage:${pid}`, t("Usage"), "usage cost", { name: "usage", pid }, "chart"),
     );
   }
 
   items.push(
     go(
       "nav:settings:general",
-      t("设置 · 通用"),
-      `${t("主题 字体 字号 语言")} settings general theme font size language`,
+      t("Settings · General"),
+      `${t("theme font size language")} settings general theme font size language`,
       { name: "settings", section: "general" },
       "sliders",
     ),
     go(
       "nav:settings:models",
-      t("设置 · 模型"),
-      `${t("思考")} settings models thinking`,
+      t("Settings · Models"),
+      `${t("Thinking")} settings models thinking`,
       { name: "settings", section: "models" },
       "cpu",
     ),
     go(
       "nav:settings:roles",
-      t("设置 · 角色能力"),
+      t("Settings · Roles"),
       "settings roles",
       { name: "settings", section: "roles" },
       "puzzle",
     ),
     go(
       "nav:settings:mcp",
-      t("设置 · MCP 与扩展"),
+      t("Settings · MCP & extensions"),
       "settings mcp extensions",
       { name: "settings", section: "mcp" },
       "plug",
     ),
     go(
       "nav:settings:engine",
-      t("设置 · Engine"),
+      t("Settings · Engine"),
       "settings engine",
       { name: "settings", section: "engine" },
       "server",
@@ -165,7 +165,7 @@ export function buildPaletteItems(input: {
       const meta = `${view.ticket.id} · ${STAGE_LABEL[stage]}`;
       items.push({
         id: `ticket:${pid}:${view.ticket.id}`,
-        group: t("工单"),
+        group: t("Tickets"),
         label: view.ticket.title,
         meta,
         search: `${view.ticket.id} ${view.ticket.title} ${STAGE_LABEL[stage]}`,
@@ -180,44 +180,44 @@ export function buildPaletteItems(input: {
     const openCount = (input.boards[project.id]?.board?.tickets ?? []).filter(
       (t) => t.ticket.status === "open",
     ).length;
-    const meta = openCount > 0 ? t("{n} 张未结", { n: openCount }) : undefined;
+    const meta = openCount > 0 ? t("{n} open", { n: openCount }) : undefined;
     items.push({
       id: `proj:${project.id}`,
-      group: t("项目"),
+      group: t("Projects"),
       label: project.title,
       ...(meta ? { meta } : {}),
       search: `${project.title} ${project.id} ${project.workspace}`,
       kind: "route",
       route: { name: "chat", pid: project.id },
-      projectTile: project.title.slice(0, 1) || t("项"),
+      projectTile: project.title.slice(0, 1) || t("P"),
     });
   }
 
   items.push(
     {
       id: "act:new-project",
-      group: t("操作"),
-      label: t("新建项目"),
-      search: `${t("新建项目")} new create project`,
+      group: t("Actions"),
+      label: t("New project"),
+      search: `${t("New project")} new create project`,
       kind: "action",
       action: "new-project",
       icon: "plus",
     },
     {
       id: "act:toggle-theme",
-      group: t("操作"),
-      label: t("切换浅色 / 深色"),
-      search: `${t("切换浅色 / 深色")} ${t("主题")} theme dark light`,
+      group: t("Actions"),
+      label: t("Toggle light / dark"),
+      search: `${t("Toggle light / dark")} ${t("Theme")} theme dark light`,
       kind: "action",
       action: "toggle-theme",
       icon: "moon",
     },
     {
       id: "act:toggle-side",
-      group: t("操作"),
-      label: t("收起 / 展开侧栏"),
+      group: t("Actions"),
+      label: t("Toggle sidebar"),
       ...(input.sideShortcut ? { meta: input.sideShortcut } : {}),
-      search: `${t("收起 / 展开侧栏")} sidebar`,
+      search: `${t("Toggle sidebar")} sidebar`,
       kind: "action",
       action: "toggle-side",
       icon: "panel",

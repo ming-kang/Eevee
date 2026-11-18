@@ -92,7 +92,7 @@ function onKeydown(event: KeyboardEvent): void {
       class="palette"
       role="dialog"
       aria-modal="true"
-      :aria-label="t('命令面板')"
+      :aria-label="t('Command palette')"
       @keydown="onKeydown"
     >
       <div class="palette-in">
@@ -101,17 +101,17 @@ function onKeydown(event: KeyboardEvent): void {
           id="palette-input"
           ref="inputEl"
           v-model="query"
-          :placeholder="t('搜索或跳转…')"
+          :placeholder="t('Search or jump to…')"
           autocomplete="off"
           role="combobox"
-          :aria-label="t('搜索或跳转')"
+          :aria-label="t('Search or jump to')"
           aria-expanded="true"
           aria-controls="palette-list"
           aria-autocomplete="list"
           :aria-activedescendant="filtered.length > 0 ? `palette-opt-${selected}` : undefined"
         />
       </div>
-      <div id="palette-list" class="palette-list" role="listbox" :aria-label="t('结果')">
+      <div id="palette-list" class="palette-list" role="listbox" :aria-label="t('Results')">
         <template v-if="filtered.length > 0">
           <template v-for="(item, index) in filtered" :key="item.id">
             <div
@@ -143,7 +143,7 @@ function onKeydown(event: KeyboardEvent): void {
             </button>
           </template>
         </template>
-        <div v-else class="palette-empty">{{ t("没有结果") }}</div>
+        <div v-else class="palette-empty">{{ t("No results") }}</div>
       </div>
     </div>
   </div>

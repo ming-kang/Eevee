@@ -1,31 +1,32 @@
-import { en } from "./locales/en.ts";
+import { zhCN } from "./locales/zh-CN.ts";
 
 /**
- * Interface languages. The source text is Chinese and is its own key: `t("新建项目")` reads as the
- * Chinese it shows, and the English table maps it. A missing entry falls back to the Chinese.
+ * Interface languages. English is the source language and its own key: `t("New project")` reads as
+ * the English it shows, and the Chinese table maps it. A missing entry falls back to the English.
  */
-export const LOCALES = ["zh-CN", "en"] as const;
+export const LOCALES = ["en", "zh-CN"] as const;
 export type Locale = (typeof LOCALES)[number];
 export const LOCALE_KEY = "eevee.locale";
-export const LOCALE_NAME: Record<Locale, string> = { "zh-CN": "简体中文", en: "English" };
+export const LOCALE_NAME: Record<Locale, string> = { en: "English", "zh-CN": "简体中文" };
 
 /** The stored choice, else the browser's language: Chinese for any `zh`, English otherwise. */
 export function pickLocale(stored: string | null, browser: string | undefined): Locale {
   if (stored === "zh-CN" || stored === "en") return stored;
-  return browser === undefined || browser.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+  return browser?.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
 }
 
 type Params = Record<string, string | number>;
 
-/**
- * `text` with each `{name}` replaced by its parameter. A translation written `one|many` picks by `n`:
- * `"{n} file|{n} files"`.
- */
+/** `one|many` picks a form by `n`; without a numeric `n`, or without a `|`, the text is left alone. */
+export function pickForm(text: string, params?: Params): string {
+  if (params === undefined || typeof params.n !== "number") return text;
+  const forms = text.split("|");
+  return forms.length === 2 ? (forms[params.n === 1 ? 0 : 1] ?? text) : text;
+}
+
+/** `text` with each `{name}` replaced by its parameter; a parameter the text does not use is left alone. */
 export function fill(text: string, params?: Params): string {
   if (params === undefined) return text;
-  const forms = text.split("|");
-  if (forms.length === 2 && typeof params.n === "number")
-    text = forms[params.n === 1 ? 0 : 1] ?? text;
   return text.replace(/\{(\w+)\}/g, (whole, name: string) =>
     name in params ? String(params[name]) : whole,
   );
@@ -43,17 +44,19 @@ const browser = "document" in globalThis ? (globalThis as unknown as Browser) : 
 /** Fixed for the page's life: changing it reloads, so text built when a module loads is right too. */
 export const locale: Locale = browser
   ? pickLocale(browser.localStorage.getItem(LOCALE_KEY), browser.navigator.language)
-  : "zh-CN";
+  : "en";
 if (browser) browser.document.documentElement.lang = locale;
 
-const table: Readonly<Record<string, string>> | undefined = locale === "en" ? en : undefined;
+const table: Readonly<Record<string, string>> | undefined = locale === "zh-CN" ? zhCN : undefined;
 
 /**
- * The interface text for a Chinese source string, in the reader's language. A `::name` suffix tells
- * apart two meanings of one Chinese word (`"模型::list"` is "Models", `"模型"` is "Model") and never shows.
+ * The interface text for an English source string, in the reader's language. A `::name` suffix tells
+ * apart two strings that read the same in English but not in Chinese (`"Interrupted::job"` is
+ * "Interrupted", `"Interrupted"` is "已打断") and never shows.
  */
 export function t(key: string, params?: Params): string {
-  return fill(table?.[key] ?? key.replace(/::\w+$/, ""), params);
+  const chosen = pickForm(key, params);
+  return fill(table?.[chosen] ?? chosen.replace(/::\w+$/, ""), params);
 }
 
 export function setLocale(next: Locale): void {

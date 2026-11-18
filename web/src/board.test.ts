@@ -24,8 +24,8 @@ function makeTicket(
     ticket: {
       id,
       role: "worker",
-      title: `工单 ${id}`,
-      goal: `完成 ${id}`,
+      title: `Ticket ${id}`,
+      goal: `Complete ${id}`,
       inputs: [],
       acceptance: [],
       deliverTo: [],
@@ -82,13 +82,13 @@ test("ticketQuestionSummary picks first unanswered question text for the ticket"
   const questions: Question[] = [
     {
       id: "q1",
-      items: [{ text: "Router 问题", options: ["A"] }],
+      items: [{ text: "Router question", options: ["A"] }],
       askedAt: 100,
     },
     {
       id: "q2",
       ticketId: "t4",
-      items: [{ text: "已回答的问题", options: ["A"] }],
+      items: [{ text: "Answered question", options: ["A"] }],
       answer: "A",
       askedAt: 110,
       answeredAt: 120,
@@ -96,12 +96,12 @@ test("ticketQuestionSummary picks first unanswered question text for the ticket"
     {
       id: "q3",
       ticketId: "t4",
-      items: [{ text: "纵轴用线性坐标\n还是对数坐标？", options: ["线性", "对数"] }],
+      items: [{ text: "Use a linear axis\nor a log axis?", options: ["Linear", "Log"] }],
       askedAt: 130,
     },
   ];
 
-  assert.equal(ticketQuestionSummary("t4", questions), "纵轴用线性坐标 还是对数坐标？");
+  assert.equal(ticketQuestionSummary("t4", questions), "Use a linear axis or a log axis?");
   assert.equal(ticketQuestionSummary("t5", questions), undefined);
   assert.equal(countPendingQuestions({ openQuestions: questions }), 2);
 });

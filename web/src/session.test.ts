@@ -17,7 +17,7 @@ function memoryStorage(initial: Record<string, string> = {}) {
   };
 }
 
-test("先取走 #code= 并清掉 hash，再让路由从干净状态解析", async () => {
+test("take the #code= first and clear the hash, then let the route parse from a clean state", async () => {
   let cleared = false;
   const env: SessionEnv = {
     origin: "http://127.0.0.1:19190",
@@ -50,7 +50,7 @@ test("先取走 #code= 并清掉 hash，再让路由从干净状态解析", asyn
   assert.equal(env.storage.getItem("eevee.token"), "tok-1");
 });
 
-test("已有 token 时不改动普通路由 hash", async () => {
+test("with a token already stored, a normal route hash is left alone", async () => {
   let cleared = false;
   const env: SessionEnv = {
     origin: "http://127.0.0.1:19190",
@@ -73,7 +73,7 @@ test("已有 token 时不改动普通路由 hash", async () => {
   assert.deepEqual(parseRoute(env.hash), { name: "worker", pid: "optics", tid: "t5" });
 });
 
-test("无 token 或会话过期时清掉旧 token 并抛出 Unauthorized", async () => {
+test("with no token or an expired session, the old token is cleared and Unauthorized is thrown", async () => {
   const storage = memoryStorage({ "eevee.token": "stale-tok" });
   const env: SessionEnv = {
     origin: "http://127.0.0.1:19190",
@@ -85,7 +85,10 @@ test("无 token 或会话过期时清掉旧 token 并抛出 Unauthorized", async
     createClient: () =>
       ({
         call: async () => {
-          throw new ApiRequestError(401, { code: "unauthorized", message: "需要授权" });
+          throw new ApiRequestError(401, {
+            code: "unauthorized",
+            message: "Authorization required",
+          });
         },
       }) as never,
   };

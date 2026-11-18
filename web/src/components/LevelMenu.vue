@@ -46,7 +46,7 @@ function onKeydown(event: KeyboardEvent): void {
     ref="list"
     class="pop level-pop"
     role="listbox"
-    :aria-label="t('思考档位')"
+    :aria-label="t('Thinking level')"
     tabindex="-1"
     :aria-activedescendant="`level-row-${active}`"
     @keydown="onKeydown"

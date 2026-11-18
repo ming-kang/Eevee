@@ -49,46 +49,46 @@ const modelInfo = computed(() => {
   if (ticket.model) {
     return {
       name: formatModel(ticket.model),
-      hint: ticket.modelReason ?? t("指定模型"),
+      hint: ticket.modelReason ?? t("Chosen for this ticket"),
     };
   }
   const projectDefault = pickModel(ticket.role, props.projectModels);
   if (projectDefault) {
     return {
       name: formatModel(projectDefault),
-      hint: t("项目默认"),
+      hint: t("Project default"),
     };
   }
   return {
     name: undefined,
-    hint: ticket.role === "dreamer" ? t("Dreamer 默认模型") : t("Worker 默认模型"),
+    hint: ticket.role === "dreamer" ? t("Dreamer default") : t("Worker default"),
   };
 });
 </script>
 
 <template>
   <div v-if="!view && !loaded" class="rdetail"><Skeleton :lines="4" /></div>
-  <p v-else-if="!view" class="rail-empty">{{ t("找不到工单 {id}", { id: ticketId ?? "" }) }}</p>
+  <p v-else-if="!view" class="rail-empty">{{ t("Ticket {id} not found", { id: ticketId ?? "" }) }}</p>
   <div v-else class="rdetail">
     <div v-if="stage" class="rd-meta">
       <StageGlyph :stage="stage" />
       <span>{{ STAGE_LABEL[stage] }}</span>
       <span>·</span>
-      <span>{{ t("{time}创建", { time: formatRelativeTime(view.ticket.createdAt, nowMs) }) }}</span>
+      <span>{{ t("Created {time}", { time: formatRelativeTime(view.ticket.createdAt, nowMs) }) }}</span>
       <template v-if="view.ticket.closedAt">
         <span>·</span>
-        <span>{{ t("{time}结单", { time: formatRelativeTime(view.ticket.closedAt, nowMs) }) }}</span>
+        <span>{{ t("Closed {time}", { time: formatRelativeTime(view.ticket.closedAt, nowMs) }) }}</span>
       </template>
     </div>
 
     <dl class="brief col">
-      <dt>{{ t("目标") }}</dt>
+      <dt>{{ t("Goal") }}</dt>
       <dd>
         <span>{{ view.ticket.goal || "—" }}</span>
       </dd>
 
       <template v-if="view.ticket.inputs.length > 0">
-        <dt>{{ t("输入") }}</dt>
+        <dt>{{ t("Input") }}</dt>
         <dd>
           <span v-for="(input, index) in view.ticket.inputs" :key="index" class="mono">
             {{ input }}
@@ -97,7 +97,7 @@ const modelInfo = computed(() => {
       </template>
 
       <template v-if="view.ticket.acceptance.length > 0">
-        <dt>{{ t("验收标准") }}</dt>
+        <dt>{{ t("Acceptance criteria") }}</dt>
         <dd>
           <ul>
             <li v-for="(item, index) in view.ticket.acceptance" :key="index">
@@ -109,18 +109,18 @@ const modelInfo = computed(() => {
       </template>
 
       <template v-if="view.ticket.output">
-        <dt>{{ t("产物") }}</dt>
+        <dt>{{ t("Artifacts") }}</dt>
         <dd>
           <span class="mono">{{ view.ticket.output }}</span>
         </dd>
       </template>
 
       <template v-if="view.ticket.deliverTo.length > 0">
-        <dt>{{ t("交付给") }}</dt>
+        <dt>{{ t("Delivers to") }}</dt>
         <dd>
           <span>
             <template v-for="(targetId, index) in view.ticket.deliverTo" :key="targetId">
-              <template v-if="index > 0">{{ t("、") }}</template>
+              <template v-if="index > 0">{{ t(", ") }}</template>
               <TicketRef
                 :ticket-id="targetId"
                 :tickets="tickets"
@@ -131,21 +131,21 @@ const modelInfo = computed(() => {
         </dd>
       </template>
 
-      <dt>{{ t("模型") }}</dt>
+      <dt>{{ t("Model") }}</dt>
       <dd>
         <span v-if="modelInfo.name" class="mono">{{ modelInfo.name }}</span>
         <span v-if="modelInfo.hint" class="hint">{{ modelInfo.hint }}</span>
       </dd>
 
       <template v-if="view.ticket.closeNote">
-        <dt>{{ t("结单说明") }}</dt>
+        <dt>{{ t("Close note") }}</dt>
         <dd>
           <span>{{ view.ticket.closeNote }}</span>
         </dd>
       </template>
     </dl>
 
-    <div class="section-h">{{ t("报告") }}</div>
+    <div class="section-h">{{ t("Reports") }}</div>
     <div v-if="sortedReports.length > 0" class="rlist">
       <ReportCard
         v-for="report in sortedReports"
@@ -155,6 +155,6 @@ const modelInfo = computed(() => {
         full
       />
     </div>
-    <p v-else class="hint">{{ t("没有报告") }}</p>
+    <p v-else class="hint">{{ t("No reports") }}</p>
   </div>
 </template>

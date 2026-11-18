@@ -63,7 +63,7 @@ const viewOf = (entries: EntryRecord[], before?: number, running = false): Durab
   docs: running ? { "pi.live": { run: { taskId: 1, inputs: [], turns: 0 } } } : {},
 });
 
-test("应用 value/ops、重连续传并用 entries 补齐缺口和向前翻页，bootId 变化重置", async () => {
+test("applies value/ops, resumes the stream and fills gaps and earlier pages with entries; a new bootId resets", async () => {
   const sockets: FakeSocket[] = [];
   const scheduled: (() => void)[] = [];
   let latest: ConversationSnapshot | undefined;
@@ -100,20 +100,20 @@ test("应用 value/ops、重连续传并用 entries 补齐缺口和向前翻页�
   sockets[0]?.open();
   sockets[0]?.receive({ type: "hello", bootId: "b1" });
 
-  // 初始窗口：条目 3, 4，前面还有 1, 2
+  // Initial window: entries 3, 4, with 1, 2 still before them
   sockets[0]?.receive({
     type: "value",
     id: "c1",
-    value: viewOf([entry(3, "三"), entry(4, "四")], 2),
+    value: viewOf([entry(3, "three"), entry(4, "four")], 2),
   });
   assert.deepEqual(
     latest?.view?.items.map((i) => (i.kind === "entry" ? i.entry.id : i.kind)),
     ["earlier", 3, 4],
   );
 
-  // ops 增量追加条目 5，并把 live 状态设为 running
+  // The ops increment appends entry 5 and sets the live state to running
   const ops: Op[] = [
-    ["p", ["entries"], 2, 0, [entry(5, "五") as never]],
+    ["p", ["entries"], 2, 0, [entry(5, "five") as never]],
     ["s", ["docs", "pi.live"], { run: { taskId: 1, inputs: [], turns: 0 } }],
   ];
   sockets[0]?.receive({ type: "ops", id: "c1", ops });
@@ -123,7 +123,7 @@ test("应用 value/ops、重连续传并用 entries 补齐缺口和向前翻页�
   );
   assert.ok((latest?.view?.docs["pi.live"] as { run?: unknown } | undefined)?.run);
 
-  // 断线并用同一个 bootId 重连，检查续传窗口为 { from: 6 }
+  // Drop and reconnect with the same bootId; the resume window is { from: 6 }
   sockets[0]?.drop();
   scheduled.shift()?.();
   sockets[1]?.open();
@@ -135,11 +135,11 @@ test("应用 value/ops、重连续传并用 entries 补齐缺口和向前翻页�
     window: { from: 6 },
   });
 
-  // 断线期间多了 6, 7, 8，服务端窗口截断只发了 8（before=7）-> 触发自动 entries 补缺口
+  // While offline 6, 7, 8 arrive; the server window truncates to just 8 (before=7) -> triggers an automatic entries gap fill
   sockets[1]?.receive({
     type: "value",
     id: "c1",
-    value: viewOf([entry(8, "八")], 7),
+    value: viewOf([entry(8, "eight")], 7),
   });
   await Promise.resolve();
   const gapReq = sockets[1]?.sent.find((m) => m.type === "entries") as
@@ -150,7 +150,7 @@ test("应用 value/ops、重连续传并用 entries 补齐缺口和向前翻页�
   sockets[1]?.receive({
     type: "entries",
     id: gapReq.id,
-    items: [entry(6, "六"), entry(7, "七")],
+    items: [entry(6, "six"), entry(7, "seven")],
   });
   await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(
@@ -158,7 +158,7 @@ test("应用 value/ops、重连续传并用 entries 补齐缺口和向前翻页�
     ["earlier", 3, 4, 5, 6, 7, 8],
   );
 
-  // 向前翻页加载更早的条目 1, 2
+  // Paging forward loads the earlier entries 1, 2
   const earlierPromise = watcher.loadEarlier();
   await Promise.resolve();
   const earlierReq = sockets[1]?.sent.at(-1) as {
@@ -170,11 +170,11 @@ test("应用 value/ops、重连续传并用 entries 补齐缺口和向前翻页�
   assert.equal(earlierReq.type, "entries");
   assert.equal(earlierReq.limit, 3);
   assert.deepEqual(earlierReq.query, { maxEntryId: 2, order: "descending" });
-  // 返回 2 条（< limit=3），说明已经到达对话开头
+  // Two entries come back (< limit=3), so the start of the conversation is reached
   sockets[1]?.receive({
     type: "entries",
     id: earlierReq.id,
-    items: [entry(2, "二"), entry(1, "一")],
+    items: [entry(2, "two"), entry(1, "one")],
   });
   await earlierPromise;
   assert.deepEqual(
@@ -182,7 +182,7 @@ test("应用 value/ops、重连续传并用 entries 补齐缺口和向前翻页�
     [1, 2, 3, 4, 5, 6, 7, 8],
   );
 
-  // bootId 变成 b2 时丢掉旧状态重新订阅
+  // When the bootId becomes b2 the old state is dropped and it resubscribes
   sockets[1]?.drop();
   scheduled.shift()?.();
   sockets[2]?.open();

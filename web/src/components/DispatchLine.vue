@@ -26,7 +26,7 @@ const summary = computed(() => {
     by.set(act.kind, list);
   }
   return [...by.entries()]
-    .map(([kind, ids]) => `${DISPATCH_LABEL[kind]} ${ids.join(t("、"))}`)
+    .map(([kind, ids]) => `${DISPATCH_LABEL[kind]} ${ids.join(t(", "))}`)
     .join(" · ");
 });
 
@@ -39,7 +39,7 @@ const hasRunning = computed(() => props.actions.some((a) => a.status === "run"))
     <summary>
       <Icon name="chevR" size="xs" class="chev" />
       <span class="ellipsis" :class="{ shimmer: hasRunning }">{{ summary }}</span>
-      <span v-if="hasError" class="minus">· {{ t("失败") }}</span>
+      <span v-if="hasError" class="minus">· {{ t("Failed") }}</span>
     </summary>
     <div class="steps">
       <div v-for="act in actions" :key="act.id" class="step">
@@ -53,7 +53,7 @@ const hasRunning = computed(() => props.actions.some((a) => a.status === "run"))
           />
           <span v-else-if="act.questionId" class="mono">{{ act.questionId }}</span>
           <span class="ellipsis">{{ act.title }}</span>
-          <span v-if="act.status === 'err'" class="ms minus">{{ t("失败") }}</span>
+          <span v-if="act.status === 'err'" class="ms minus">{{ t("Failed") }}</span>
         </div>
         <div v-if="act.detail" class="step-note">{{ act.detail }}</div>
       </div>

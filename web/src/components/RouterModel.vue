@@ -16,7 +16,7 @@ import ModelMenu from "./ModelMenu.vue";
 /**
  * The project Router's run configuration at the start of the composer's row: one button showing
  * `model · level`, a menu with a row for each, and the choices in a submenu beside the row. A choice
- * is the project's own (`project.json`); "默认" follows the settings again. Picking keeps the menu
+ * is the project's own (`project.json`); "Default" follows the settings again. Picking keeps the menu
  * open, so the model and the level can be set in one go.
  */
 const props = defineProps<{ client: Client; project: ProjectSummary }>();
@@ -140,12 +140,12 @@ function chooseLevel(next: ThinkingLevel): void {
       class="run-trigger"
       aria-haspopup="menu"
       :aria-expanded="open"
-      :aria-label="t('运行设置')"
+      :aria-label="t('Run configuration')"
       :disabled="view === undefined"
       @click="toggle"
     >
       <Icon name="cpu" size="sm" />
-      <span class="face-text">{{ nameOf(effective) ?? t("选择模型") }}</span>
+      <span class="face-text">{{ nameOf(effective) ?? t("Choose a model") }}</span>
       <template v-if="thinks">
         <span class="face-dot" aria-hidden="true">·</span>
         <span class="face-fixed">{{ levelLabel(level) }}</span>
@@ -153,7 +153,7 @@ function chooseLevel(next: ThinkingLevel): void {
       <Icon name="chevD" size="xs" />
     </button>
 
-    <div v-if="open" class="pop run-menu up" role="menu" :aria-label="t('运行设置')" @keydown="onMenuKeydown">
+    <div v-if="open" class="pop run-menu up" role="menu" :aria-label="t('Run configuration')" @keydown="onMenuKeydown">
       <div class="run-item" @mouseenter="sub = 'model'">
         <button
           type="button"
@@ -165,8 +165,8 @@ function chooseLevel(next: ThinkingLevel): void {
           :aria-expanded="sub === 'model'"
           @click="sub = 'model'"
         >
-          <span>{{ t("模型") }}</span>
-          <span class="run-value">{{ nameOf(effective) ?? t("未设置") }}</span>
+          <span>{{ t("Model") }}</span>
+          <span class="run-value">{{ nameOf(effective) ?? t("Not set") }}</span>
           <Icon name="chevR" size="xs" />
         </button>
         <ModelMenu
@@ -191,7 +191,7 @@ function chooseLevel(next: ThinkingLevel): void {
           :disabled="busy"
           @click="sub = 'level'"
         >
-          <span>{{ t("思考") }}</span>
+          <span>{{ t("Thinking") }}</span>
           <span class="run-value">{{ levelLabel(level) }}</span>
           <Icon name="chevR" size="xs" />
         </button>

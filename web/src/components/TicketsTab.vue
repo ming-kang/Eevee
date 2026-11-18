@@ -42,11 +42,11 @@ function questionLine(view: TicketView): string | undefined {
 
 <template>
   <template v-if="board && board.tickets.length === 0">
-    <p class="rail-empty">{{ t("没有工单") }}</p>
+    <p class="rail-empty">{{ t("No tickets") }}</p>
   </template>
   <template v-else-if="board">
     <template v-if="groups.answer.length > 0">
-      <div class="group-h user">{{ t("待回答") }}</div>
+      <div class="group-h user">{{ t("Needs answer") }}</div>
       <button
         v-for="view in groups.answer"
         :key="view.ticket.id"
@@ -66,7 +66,7 @@ function questionLine(view: TicketView): string | undefined {
     </template>
 
     <template v-if="groups.active.length > 0">
-      <div class="group-h">{{ t("进行中") }}</div>
+      <div class="group-h">{{ t("In progress") }}</div>
       <button
         v-for="view in groups.active"
         :key="view.ticket.id"
@@ -93,7 +93,7 @@ function questionLine(view: TicketView): string | undefined {
         :aria-expanded="showClosed"
         @click="showClosed = !showClosed"
       >
-        <span>{{ t("已结单 {n}", { n: groups.closed.length }) }}</span>
+        <span>{{ t("Done {n}", { n: groups.closed.length }) }}</span>
         <Icon name="chevD" size="xs" class="chev" />
       </button>
       <template v-if="showClosed">

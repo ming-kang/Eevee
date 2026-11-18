@@ -70,7 +70,7 @@ onUnmounted(() => {
         ref="sidebar"
         class="sidebar"
         :class="{ open: drawer === 'side', collapsed: sideCollapsed }"
-        :aria-label="t('导航')"
+        :aria-label="t('Navigation')"
         :inert="drawer === 'rail'"
       >
         <slot name="sidebar" />
@@ -83,7 +83,7 @@ onUnmounted(() => {
         ref="rail"
         class="rail"
         :class="{ open: drawer === 'rail' }"
-        :aria-label="t('工单与作业')"
+        :aria-label="t('Tickets and jobs')"
         :inert="drawer === 'side'"
       >
         <slot name="rail" />

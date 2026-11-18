@@ -34,17 +34,17 @@ const emit = defineEmits<{ changed: [view: CapabilitiesView] }>();
 const LIST = formatRoute({ name: "settings", section: "mcp" });
 
 const EXPOSURE_LABEL: Record<McpExposure, { label: string; detail: string }> = {
-  deferred: { label: t("按需"), detail: t("模型用 tool_search 找到后才能用，适合工具多的服务器") },
-  direct: { label: t("直接"), detail: t("和其他工具一样直接提供，适合工具少、常用的服务器") },
-  codemode: { label: t("代码模式"), detail: t("只能在 codemode 脚本里调用，适合批量组合调用") },
-  hidden: { label: t("隐藏"), detail: t("保持连接，但不提供任何工具") },
+  deferred: { label: t("On demand"), detail: t("Usable once the model finds them with tool_search; suits servers with many tools") },
+  direct: { label: t("Direct"), detail: t("Offered like any other tool; suits small, frequently used servers") },
+  codemode: { label: t("Code mode"), detail: t("Callable only from codemode scripts; suits batched, combined calls") },
+  hidden: { label: t("Hidden"), detail: t("Stays connected but offers no tools") },
 };
 
 const STATE_LABEL: Record<string, { dot: string; label: string }> = {
-  connected: { dot: "ok", label: t("已连接") },
-  connecting: { dot: "run", label: t("连接中") },
-  failed: { dot: "bad", label: t("失败") },
-  disabled: { dot: "", label: t("已停用") },
+  connected: { dot: "ok", label: t("Connected") },
+  connecting: { dot: "run", label: t("Connecting") },
+  failed: { dot: "bad", label: t("Failed") },
+  disabled: { dot: "", label: t("Disabled") },
 };
 
 const entries = ref<Record<string, Record<string, unknown>>>();
@@ -111,7 +111,7 @@ watch(
 function applyPaste(): void {
   const found = parsePastedServer(pasted.value);
   if (found === undefined) {
-    formError.value = t("没认出服务器配置：需要带 command 或 url 的 JSON");
+    formError.value = t("No server config found: paste JSON with a command or url");
     return;
   }
   Object.assign(draft, toMcpDraft(found.config));
@@ -122,8 +122,8 @@ function applyPaste(): void {
 }
 
 function draftErrorText(error: McpDraftError): string {
-  if (error.code === "timeout") return t("超时应为正数（秒）");
-  return error.field === "command" ? t("请填写命令") : t("请填写 URL");
+  if (error.code === "timeout") return t("Timeout must be a positive number of seconds");
+  return error.field === "command" ? t("Enter a command") : t("Enter a URL");
 }
 
 async function save(): Promise<void> {
@@ -131,11 +131,11 @@ async function save(): Promise<void> {
   const name = serverName.value;
   if (isNew.value) {
     if (!isServerName(name)) {
-      formError.value = t("名称只能包含字母、数字、_ 和 -");
+      formError.value = t("Names may contain only letters, digits, _ and -");
       return;
     }
     if (entries.value?.[name]) {
-      formError.value = t("已经有服务器 {name}", { name });
+      formError.value = t("There is already a server named {name}", { name });
       return;
     }
   }
@@ -149,7 +149,7 @@ async function save(): Promise<void> {
     emit("changed", view);
   });
   if (!ok) return;
-  showToast(t("已保存 {name}", { name }));
+  showToast(t("Saved {name}", { name }));
   if (isNew.value) {
     location.hash = formatRoute({ name: "settings", section: "mcp", item: name });
     return;
@@ -169,38 +169,38 @@ async function remove(): Promise<void> {
     emit("changed", view);
   });
   if (!ok) return;
-  showToast(t("已删除 {name}", { name: props.name }));
+  showToast(t("Deleted {name}", { name: props.name }));
   location.hash = LIST;
 }
 </script>
 
 <template>
   <header class="set-head">
-    <a class="btn ghost sm icon" :href="LIST" :aria-label="t('返回 MCP 服务器列表')">
+    <a class="btn ghost sm icon" :href="LIST" :aria-label="t('Back to MCP servers')">
       <Icon name="chevL" size="sm" />
     </a>
-    <h2 class="ellipsis" :class="{ mono: !isNew }">{{ isNew ? t("添加 MCP 服务器") : name }}</h2>
+    <h2 class="ellipsis" :class="{ mono: !isNew }">{{ isNew ? t("Add MCP server") : name }}</h2>
     <template v-if="!isNew && original">
       <template v-if="confirmRemove">
         <button type="button" class="btn sm danger" :disabled="removing.busy.value" @click="remove">
-          {{ t("确认删除") }}
+          {{ t("Confirm delete") }}
         </button>
-        <button type="button" class="btn ghost sm" @click="confirmRemove = false">{{ t("取消") }}</button>
+        <button type="button" class="btn ghost sm" @click="confirmRemove = false">{{ t("Cancel") }}</button>
       </template>
       <button
         v-else
         type="button"
         class="btn ghost sm danger"
-        :title="roles > 0 ? t('也会从启用它的角色中去掉') : undefined"
+        :title="roles > 0 ? t('Also turns it off for the roles that enable it') : undefined"
         @click="confirmRemove = true"
       >
         <Icon name="x" size="xs" />
-        <span>{{ t("删除") }}</span>
+        <span>{{ t("Delete") }}</span>
       </button>
     </template>
     <button v-if="isNew && !pasting" type="button" class="btn ghost sm" @click="pasting = true">
       <Icon name="copy" size="xs" />
-      <span>{{ t("粘贴 JSON") }}</span>
+      <span>{{ t("Paste JSON") }}</span>
     </button>
   </header>
 
@@ -208,8 +208,8 @@ async function remove(): Promise<void> {
   <p v-else-if="removing.error.value" class="error hint">{{ removing.error.value }}</p>
   <Skeleton v-if="entries === undefined && !loadError" />
   <div v-else-if="missing" class="empty">
-    <h3>{{ t("找不到服务器 {name}", { name }) }}</h3>
-    <a class="btn sm" :href="LIST">{{ t("返回 MCP 服务器列表") }}</a>
+    <h3>{{ t("No server named {name}", { name }) }}</h3>
+    <a class="btn sm" :href="LIST">{{ t("Back to MCP servers") }}</a>
   </div>
   <form v-else-if="entries" class="pv-form" @submit.prevent="save">
     <div v-if="pasting" class="paste">
@@ -218,13 +218,13 @@ async function remove(): Promise<void> {
         class="input mono"
         rows="6"
         spellcheck="false"
-        :aria-label="t('粘贴 JSON')"
+        :aria-label="t('Paste JSON')"
         placeholder='{ "mcpServers": { "github": { "command": "github-mcp-server", "args": ["stdio"] } } }'
       />
       <div class="f-inline">
         <span class="spacer" />
-        <button type="button" class="btn ghost sm" @click="pasting = false">{{ t("取消") }}</button>
-        <button type="button" class="btn sm" :disabled="pasted.trim() === ''" @click="applyPaste">{{ t("填入") }}</button>
+        <button type="button" class="btn ghost sm" @click="pasting = false">{{ t("Cancel") }}</button>
+        <button type="button" class="btn sm" :disabled="pasted.trim() === ''" @click="applyPaste">{{ t("Fill in") }}</button>
       </div>
     </div>
 
@@ -236,33 +236,33 @@ async function remove(): Promise<void> {
             <span>{{ STATE_LABEL[status.state]?.label }}</span>
           </span>
           <span class="r-d">
-            {{ t("{n} 个工具", { n: status.tools }) }}
-            <template v-if="roles > 0"> · {{ t("{n} 个角色启用", { n: roles }) }}</template>
+            {{ t("{n} tool|{n} tools", { n: status.tools }) }}
+            <template v-if="roles > 0"> · {{ t("Enabled for {n} role|Enabled for {n} roles", { n: roles }) }}</template>
           </span>
           <span v-if="status.error" class="err">{{ configIssueText(status.error) }}</span>
         </div>
       </div>
       <div v-for="(problem, index) in problems" :key="index" class="row">
         <div class="r-main">
-          <span class="r-t"><span class="dot bad" /><span>{{ t("配置有误，没有连接") }}</span></span>
+          <span class="r-t"><span class="dot bad" /><span>{{ t("Misconfigured, not connected") }}</span></span>
           <span class="err">{{ configIssueText(problem) }}</span>
         </div>
       </div>
     </div>
 
-    <div class="section-t"><h3>{{ t("连接") }}</h3></div>
+    <div class="section-t"><h3>{{ t("Connection") }}</h3></div>
     <div class="rows">
       <div v-if="isNew" class="f-row">
-        <label for="mcp-name">{{ t("名称") }}</label>
+        <label for="mcp-name">{{ t("Name") }}</label>
         <div class="f-ctrl">
           <input id="mcp-name" v-model="newName" class="input mono" spellcheck="false" autocomplete="off" placeholder="github" />
         </div>
       </div>
       <div class="f-row">
-        <span class="f-label">{{ t("传输") }}</span>
-        <div v-seg class="seg sm" role="group" :aria-label="t('传输')">
+        <span class="f-label">{{ t("Transport") }}</span>
+        <div v-seg class="seg sm" role="group" :aria-label="t('Transport')">
           <button type="button" :class="{ on: draft.transport === 'stdio' }" :aria-pressed="draft.transport === 'stdio'" @click="draft.transport = 'stdio'">
-            {{ t("本地命令") }}
+            {{ t("Local command") }}
           </button>
           <button type="button" :class="{ on: draft.transport === 'http' }" :aria-pressed="draft.transport === 'http'" @click="draft.transport = 'http'">
             HTTP
@@ -271,13 +271,13 @@ async function remove(): Promise<void> {
       </div>
       <template v-if="draft.transport === 'stdio'">
         <div class="f-row">
-          <label for="mcp-command">{{ t("命令") }}</label>
+          <label for="mcp-command">{{ t("Command") }}</label>
           <div class="f-ctrl">
             <input id="mcp-command" v-model="draft.command" class="input mono" spellcheck="false" autocomplete="off" placeholder="npx" />
           </div>
         </div>
         <div class="f-row top">
-          <label for="mcp-args">{{ t("参数") }}</label>
+          <label for="mcp-args">{{ t("Arguments") }}</label>
           <div class="f-ctrl">
             <textarea
               id="mcp-args"
@@ -287,18 +287,18 @@ async function remove(): Promise<void> {
               spellcheck="false"
               :placeholder="'-y\n@modelcontextprotocol/server-filesystem\n/home/me/papers'"
             />
-            <span class="f-note">{{ t("一行一个参数") }}</span>
+            <span class="f-note">{{ t("One argument per line") }}</span>
           </div>
         </div>
         <div class="f-row">
-          <label for="mcp-cwd">{{ t("工作目录") }}</label>
+          <label for="mcp-cwd">{{ t("Working directory") }}</label>
           <div class="f-ctrl">
             <input id="mcp-cwd" v-model="draft.cwd" class="input mono" spellcheck="false" autocomplete="off" />
           </div>
         </div>
         <div class="f-row top">
-          <span class="f-label">{{ t("环境变量") }}</span>
-          <KeyValueRows :rows="draft.env" :label="t('环境变量')" key-placeholder="GITHUB_TOKEN" value-placeholder="${GITHUB_TOKEN}" />
+          <span class="f-label">{{ t("Environment variables") }}</span>
+          <KeyValueRows :rows="draft.env" :label="t('Environment variables')" key-placeholder="GITHUB_TOKEN" value-placeholder="${GITHUB_TOKEN}" />
         </div>
       </template>
       <template v-else>
@@ -309,31 +309,31 @@ async function remove(): Promise<void> {
           </div>
         </div>
         <div class="f-row top">
-          <span class="f-label">{{ t("请求头") }}</span>
-          <KeyValueRows :rows="draft.headers" :label="t('请求头')" key-placeholder="Authorization" value-placeholder="Bearer ${TOKEN}" />
+          <span class="f-label">{{ t("Headers") }}</span>
+          <KeyValueRows :rows="draft.headers" :label="t('Headers')" key-placeholder="Authorization" value-placeholder="Bearer ${TOKEN}" />
         </div>
       </template>
     </div>
 
-    <div class="section-t"><h3>{{ t("工具") }}</h3></div>
+    <div class="section-t"><h3>{{ t("Tools") }}</h3></div>
     <div class="rows">
       <div class="f-row">
-        <span class="f-label">{{ t("启用") }}</span>
+        <span class="f-label">{{ t("Enabled") }}</span>
         <label class="toggle">
           <button
             type="button"
             class="switch"
             :class="{ on: draft.enabled }"
             :aria-pressed="draft.enabled"
-            :aria-label="t('启用')"
+            :aria-label="t('Enabled')"
             @click="draft.enabled = !draft.enabled"
           />
         </label>
       </div>
       <div class="f-row top">
-        <span class="f-label">{{ t("提供方式") }}</span>
+        <span class="f-label">{{ t("Exposure") }}</span>
         <div class="f-ctrl">
-          <div v-seg class="seg sm" role="group" :aria-label="t('提供方式')">
+          <div v-seg class="seg sm" role="group" :aria-label="t('Exposure')">
             <button
               v-for="exposure in MCP_EXPOSURES"
               :key="exposure"
@@ -349,13 +349,13 @@ async function remove(): Promise<void> {
         </div>
       </div>
       <div class="f-row">
-        <label for="mcp-desc">{{ t("说明") }}</label>
+        <label for="mcp-desc">{{ t("Description") }}</label>
         <div class="f-ctrl">
-          <input id="mcp-desc" v-model="draft.description" class="input" autocomplete="off" :placeholder="t('一句话说明它提供什么')" />
+          <input id="mcp-desc" v-model="draft.description" class="input" autocomplete="off" :placeholder="t('What it offers, in a sentence')" />
         </div>
       </div>
       <div class="f-row">
-        <label for="mcp-timeout">{{ t("超时（秒）") }}</label>
+        <label for="mcp-timeout">{{ t("Timeout (seconds)") }}</label>
         <div class="f-ctrl">
           <input id="mcp-timeout" v-model="draft.timeout" class="input mono short" inputmode="decimal" autocomplete="off" />
         </div>
@@ -366,10 +366,10 @@ async function remove(): Promise<void> {
       <span v-if="formError || saving.error.value" class="error" role="alert">{{ formError ?? saving.error.value }}</span>
       <span class="spacer" />
       <button type="button" class="btn ghost sm" :disabled="!dirty && !isNew" @click="discard">
-        {{ isNew ? t("取消") : t("放弃更改") }}
+        {{ isNew ? t("Cancel") : t("Discard changes") }}
       </button>
       <button type="submit" class="btn sm primary" :disabled="(!dirty && !isNew) || saving.busy.value">
-        {{ isNew ? t("添加") : t("保存") }}
+        {{ isNew ? t("Add") : t("Save") }}
       </button>
     </footer>
   </form>

@@ -50,7 +50,7 @@ export async function openSessionWith(env: SessionEnv): Promise<SessionInfo> {
     }
   }
   const token = env.storage.getItem(STORAGE_KEY);
-  if (!token) throw new Unauthorized(t("还没有授权"));
+  if (!token) throw new Unauthorized(t("Not signed in yet"));
   const client = makeClient({ baseUrl: env.origin, token });
   try {
     const status = await client.call("GET /api/status");
@@ -58,7 +58,7 @@ export async function openSessionWith(env: SessionEnv): Promise<SessionInfo> {
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 401) {
       env.storage.removeItem(STORAGE_KEY);
-      throw new Unauthorized(t("授权已失效"));
+      throw new Unauthorized(t("The sign-in is no longer valid"));
     }
     throw error;
   }

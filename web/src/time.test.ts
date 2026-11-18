@@ -7,21 +7,21 @@ import {
   formatRelativeTime,
 } from "./time.ts";
 
-test("相对时间支持长短两种格式", () => {
+test("relative time supports long and short forms", () => {
   const now = 1_700_000_000_000;
-  assert.equal(formatRelativeTime(now - 20_000, now, "long"), "刚刚");
-  assert.equal(formatRelativeTime(now - 20_000, now, "short"), "刚刚");
-  assert.equal(formatRelativeTime(now - 3 * 60_000, now, "long"), "3 分钟前");
-  assert.equal(formatRelativeTime(now - 3 * 60_000, now, "short"), "3分");
-  assert.equal(formatRelativeTime(now - 5 * 3600_000, now, "long"), "5 小时前");
-  assert.equal(formatRelativeTime(now - 5 * 3600_000, now, "short"), "5时");
-  assert.equal(formatRelativeTime(now - 3 * 86400_000, now, "long"), "3 天前");
-  assert.equal(formatRelativeTime(now - 3 * 86400_000, now, "short"), "3天");
-  assert.equal(formatRelativeTime(now - 14 * 86400_000, now, "long"), "2 周前");
-  assert.equal(formatRelativeTime(now - 14 * 86400_000, now, "short"), "2周");
+  assert.equal(formatRelativeTime(now - 20_000, now, "long"), "now");
+  assert.equal(formatRelativeTime(now - 20_000, now, "short"), "now");
+  assert.equal(formatRelativeTime(now - 3 * 60_000, now, "long"), "3 min ago");
+  assert.equal(formatRelativeTime(now - 3 * 60_000, now, "short"), "3m");
+  assert.equal(formatRelativeTime(now - 5 * 3600_000, now, "long"), "5 h ago");
+  assert.equal(formatRelativeTime(now - 5 * 3600_000, now, "short"), "5h");
+  assert.equal(formatRelativeTime(now - 3 * 86400_000, now, "long"), "3 d ago");
+  assert.equal(formatRelativeTime(now - 3 * 86400_000, now, "short"), "3d");
+  assert.equal(formatRelativeTime(now - 14 * 86400_000, now, "long"), "2 wk ago");
+  assert.equal(formatRelativeTime(now - 14 * 86400_000, now, "short"), "2w");
 });
 
-test("时钟时间、毫秒与秒数格式化", () => {
+test("clock time, milliseconds and seconds formatting", () => {
   const sameDay = new Date(2026, 10, 17, 9, 5, 0).getTime();
   const prevDay = new Date(2026, 10, 14, 18, 30, 0).getTime();
   assert.equal(formatClockTime(sameDay, sameDay + 60_000), "09:05");

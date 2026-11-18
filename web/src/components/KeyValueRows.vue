@@ -29,7 +29,7 @@ function remove(index: number): void {
         spellcheck="false"
         autocomplete="off"
         :placeholder="keyPlaceholder"
-        :aria-label="t('{label} 第 {n} 行的名称', { label, n: index + 1 })"
+        :aria-label="t('{label}, row {n}: name', { label, n: index + 1 })"
       />
       <input
         v-model="row.value"
@@ -37,12 +37,12 @@ function remove(index: number): void {
         spellcheck="false"
         autocomplete="off"
         :placeholder="valuePlaceholder"
-        :aria-label="t('{label} 第 {n} 行的值', { label, n: index + 1 })"
+        :aria-label="t('{label}, row {n}: value', { label, n: index + 1 })"
       />
       <button
         type="button"
         class="btn ghost sm icon"
-        :aria-label="t('删除 {label} 第 {n} 行', { label, n: index + 1 })"
+        :aria-label="t('Remove {label} row {n}', { label, n: index + 1 })"
         @click="remove(index)"
       >
         <Icon name="x" size="xs" />
@@ -50,7 +50,7 @@ function remove(index: number): void {
     </div>
     <button type="button" class="btn ghost sm kv-add" @click="add">
       <Icon name="plus" size="xs" />
-      <span>{{ t("添加一行") }}</span>
+      <span>{{ t("Add a row") }}</span>
     </button>
   </div>
 </template>

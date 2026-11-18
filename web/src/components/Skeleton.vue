@@ -5,7 +5,7 @@ withDefaults(defineProps<{ lines?: number }>(), { lines: 3 });
 </script>
 
 <template>
-  <div class="skeleton" role="status" :aria-label="t('正在加载')">
+  <div class="skeleton" role="status" :aria-label="t('Loading')">
     <span v-for="n in lines" :key="n" class="sk" />
   </div>
 </template>

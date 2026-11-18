@@ -63,7 +63,7 @@ const glyph = computed<{ stage: VisualStage } | { icon: IconName }>(() => {
           :tickets="tickets"
           @open-ticket="$emit('open-ticket', $event)"
         />
-        {{ t("交回报告（{status}）：{text}", { status: REPORT_LABEL[status], text }) }}
+        {{ t("reported back ({status}): {text}", { status: REPORT_LABEL[status], text }) }}
       </template>
       <span v-else class="pre-wrap">{{ text }}</span>
     </span>

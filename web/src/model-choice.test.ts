@@ -19,7 +19,7 @@ const deep = spec("faux", "deep", ["off", "minimal", "low", "medium", "high"]);
 const fast = spec("faux", "fast", ["off"]);
 const max = spec("other", "max", ["off", "low", "high", "xhigh", "max"]);
 
-test("levelsOf 取目录里这个模型的档位，目录里没有时只有 off", () => {
+test("levelsOf takes this model's levels from the catalog, only off when it isn't there", () => {
   assert.deepEqual(
     levelsOf([deep, fast], { provider: "faux", modelId: "deep" }),
     deep.thinkingLevels,
@@ -28,14 +28,14 @@ test("levelsOf 取目录里这个模型的档位，目录里没有时只有 off"
   assert.deepEqual(levelsOf([deep], undefined), ["off"]);
 });
 
-test("clampLevel 取同一档，没有就往上找，再往下找", () => {
+test("clampLevel keeps the same level, else searches up, then down", () => {
   assert.equal(clampLevel(deep.thinkingLevels, "medium"), "medium");
   assert.equal(clampLevel(max.thinkingLevels, "medium"), "high");
   assert.equal(clampLevel(deep.thinkingLevels, "max"), "high");
   assert.equal(clampLevel(fast.thinkingLevels, "high"), "off");
 });
 
-test("switchModel 换模型时尽量保留思考档位", () => {
+test("switchModel keeps the thinking level when it can", () => {
   const current = { provider: "faux", modelId: "deep", thinkingLevel: "medium" } as const;
   assert.deepEqual(switchModel(current, max), {
     provider: "other",
@@ -47,7 +47,7 @@ test("switchModel 换模型时尽量保留思考档位", () => {
   assert.deepEqual(switchModel(undefined, deep), { provider: "faux", modelId: "deep" });
 });
 
-test("groupModels 按 provider 分组，搜索编号和名称", () => {
+test("groupModels groups by provider, searching id and name", () => {
   assert.deepEqual(
     groupModels([deep, fast, max], "").map(([provider, models]) => [
       provider,
@@ -65,7 +65,7 @@ test("groupModels 按 provider 分组，搜索编号和名称", () => {
   assert.deepEqual(groupModels([deep, fast, max], "other/m").length, 1);
 });
 
-test("levelLabel 用英文写档位", () => {
+test("levelLabel writes the levels in English", () => {
   assert.deepEqual(
     ["off", "minimal", "low", "medium", "high", "xhigh", "max"].map((level) =>
       levelLabel(level as Parameters<typeof levelLabel>[0]),

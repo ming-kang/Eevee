@@ -4,31 +4,31 @@ import { ApiRequestError } from "../../src/api/client.ts";
 import { configIssueText, configProblemText, errorText, problemText } from "./errors.ts";
 import { StreamError } from "./stream.ts";
 
-test("拒绝按 code 和参数措辞，不用 Engine 的原话", () => {
+test("a refusal is worded by code and parameters, not by the Engine's own words", () => {
   const refused = new ApiRequestError(409, {
     code: "ticket_closed",
     ticketId: "t3",
-    message: "Engine 的原话",
+    message: "the Engine's own words",
   });
-  assert.equal(errorText(refused), "t3 已经结单");
+  assert.equal(errorText(refused), "t3 is already closed");
   assert.equal(
-    errorText(new StreamError({ code: "no_job", jobId: "j2", message: "Engine 的原话" })),
-    "没有作业 j2",
+    errorText(new StreamError({ code: "no_job", jobId: "j2", message: "the Engine's own words" })),
+    "No job j2",
   );
   assert.equal(
     problemText({ code: "invalid", field: "mode", allowed: ["steer", "followUp"] }),
-    "mode 只能是 steer / followUp",
+    "mode must be one of steer / followUp",
   );
-  assert.equal(problemText({ code: "model_unset", role: "worker" }), "Worker 没有可用的模型");
+  assert.equal(problemText({ code: "model_unset", role: "worker" }), "Worker has no model");
 });
 
-test("意料之外的错误显示它自己的文字", () => {
+test("an unexpected error shows its own text", () => {
   assert.equal(problemText({ code: "internal", detail: "ECONNRESET" }), "ECONNRESET");
-  assert.equal(errorText(new Error("网络断了")), "网络断了");
-  assert.equal(errorText("超时"), "超时");
+  assert.equal(errorText(new Error("the network dropped")), "the network dropped");
+  assert.equal(errorText("timed out"), "timed out");
 });
 
-test("配置问题写出条目，文件名留给所在的标题", () => {
+test("a config problem names the entry and leaves the file to its heading", () => {
   assert.equal(
     configProblemText({
       file: "mcp.json",
@@ -37,7 +37,7 @@ test("配置问题写出条目，文件名留给所在的标题", () => {
       field: "exposure",
       allowed: ["deferred", "direct"],
     }),
-    "bad：exposure 只能是 deferred / direct",
+    "bad: exposure must be one of deferred / direct",
   );
   assert.equal(
     configProblemText({
@@ -46,10 +46,10 @@ test("配置问题写出条目，文件名留给所在的标题", () => {
       path: "/providers",
       detail: "Expected object",
     }),
-    "/providers：Expected object",
+    "/providers: Expected object",
   );
   assert.equal(
     configIssueText({ code: "env_unset", name: "API_TOKEN" }),
-    "API_TOKEN 引用的环境变量没有设置",
+    "API_TOKEN refers to an environment variable that isn't set",
   );
 });

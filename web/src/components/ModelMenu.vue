@@ -76,15 +76,15 @@ function onKeydown(event: KeyboardEvent): void {
       <input
         ref="input"
         v-model="query"
-        :placeholder="t('搜索模型')"
-        :aria-label="t('搜索模型')"
+        :placeholder="t('Search models')"
+        :aria-label="t('Search models')"
         role="combobox"
         aria-expanded="true"
         :aria-activedescendant="`model-row-${active}`"
         @keydown="onKeydown"
       />
     </div>
-    <div ref="list" class="pop-list" role="listbox" :aria-label="t('模型::list')">
+    <div ref="list" class="pop-list" role="listbox" :aria-label="t('Models')">
       <button
         v-if="showFallback"
         id="model-row-0"
@@ -97,7 +97,7 @@ function onKeydown(event: KeyboardEvent): void {
         @mouseenter="active = 0"
         @click="emit('pick', null)"
       >
-        <span class="spacer">{{ t("默认") }}</span>
+        <span class="spacer">{{ t("Default") }}</span>
         <span class="meta">{{ fallback }}</span>
         <Icon v-if="selected === undefined" name="check" size="sm" />
       </button>
@@ -121,7 +121,7 @@ function onKeydown(event: KeyboardEvent): void {
           <Icon v-if="sameModel(spec, selected)" name="check" size="sm" />
         </button>
       </template>
-      <div v-if="rows.length === 0" class="palette-empty">{{ t("没有匹配的模型") }}</div>
+      <div v-if="rows.length === 0" class="palette-empty">{{ t("No models match") }}</div>
     </div>
   </div>
 </template>

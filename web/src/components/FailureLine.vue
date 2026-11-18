@@ -19,7 +19,7 @@ function onRetry(): void {
 <template>
   <div class="failure">
     <Icon name="alert" size="sm" />
-    <span>{{ t("上一轮没有完成：{text}", { text }) }}</span>
+    <span>{{ t("The last turn didn't finish: {text}", { text }) }}</span>
     <span v-if="retrying.error.value" class="error">{{ retrying.error.value }}</span>
     <span class="spacer" />
     <button
@@ -29,7 +29,7 @@ function onRetry(): void {
       :disabled="retrying.busy.value"
       @click="onRetry"
     >
-      {{ t("重试") }}
+      {{ t("Retry") }}
     </button>
   </div>
 </template>

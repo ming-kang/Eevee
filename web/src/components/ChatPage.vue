@@ -74,13 +74,13 @@ async function answer(id: QuestionId, text: string): Promise<void> {
 <template>
   <section class="chat-page" :class="{ landing: empty }">
     <header class="header">
-      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('菜单')" @click="$emit('open-side')">
+      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('Menu')" @click="$emit('open-side')">
         <Icon name="menu" size="sm" />
       </button>
       <h1 v-if="!empty" class="ellipsis" :title="project.workspace">{{ project.title }}</h1>
       <span class="spacer" />
       <button type="button" class="btn ghost sm rail-btn" @click="$emit('open-rail', 'tickets')">
-        <span>{{ t("工单") }}</span>
+        <span>{{ t("Tickets") }}</span>
         <span v-if="questions.length > 0" class="count user">{{ questions.length }}</span>
       </button>
     </header>
@@ -127,7 +127,7 @@ async function answer(id: QuestionId, text: string): Promise<void> {
           <Composer
             :draft-key="`r:${project.id}`"
             :send="send"
-            :placeholder="conversation.running.value ? t('补充消息') : t('告诉 Router 要做什么')"
+            :placeholder="conversation.running.value ? t('Add a message') : t('Tell the Router what to do')"
           >
             <template #actions>
               <RouterModel :client="client" :project="project" @changed="$emit('project-changed')" />

@@ -14,7 +14,7 @@ import {
   toModelDraft,
 } from "./provider-draft.ts";
 
-test("请求地址按 API 拼出，/v1 重复时标出来；其他 API 不猜", () => {
+test("requestTarget builds the URL by API, flagging a doubled /v1; other APIs are not guessed", () => {
   assert.deepEqual(requestTarget("openai-completions", "https://gw.example/v1/"), {
     url: "https://gw.example/v1/chat/completions",
     doubled: false,
@@ -28,7 +28,7 @@ test("请求地址按 API 拼出，/v1 重复时标出来；其他 API 不猜", 
   assert.equal(requestTarget("openai-responses", ""), undefined);
 });
 
-test("token 数可以写成 128k、1.5m 或带千分位", () => {
+test("parseTokenCount reads 128k, 1.5m or thousands separators", () => {
   assert.equal(parseTokenCount("128k"), 128_000);
   assert.equal(parseTokenCount("1.5M"), 1_500_000);
   assert.equal(parseTokenCount("200,000"), 200_000);
@@ -37,7 +37,7 @@ test("token 数可以写成 128k、1.5m 或带千分位", () => {
   assert.ok(Number.isNaN(parseTokenCount("lots")));
 });
 
-test("键值行：空键丢掉，后写的同名键为准，没有行时为空", () => {
+test("fromRows drops an empty key, the last same-named key wins, and no rows is empty", () => {
   assert.deepEqual(
     fromRows([
       { key: " X-A ", value: "1" },
@@ -54,7 +54,7 @@ test("键值行：空键丢掉，后写的同名键为准，没有行时为空",
   assert.ok(!isEnvReference("sk-123"));
 });
 
-test("表单改过再写回：只动表单上的字段，其余原样保留，空值不写", () => {
+test("fromDraft writes back only edited fields, keeps the rest, and omits empty values", () => {
   const original = {
     api: "openai-completions",
     baseUrl: "https://gw.example/v1",
@@ -104,7 +104,7 @@ test("表单改过再写回：只动表单上的字段，其余原样保留，�
   assert.deepEqual(fromDraft(toDraft(undefined), undefined), { config: {} });
 });
 
-test("写不出去的值指明是哪一个", () => {
+test("fromDraft names which value can't be written", () => {
   const draft = toDraft({ models: [{ id: "a" }] });
   draft.models.push(emptyModelDraft());
   assert.deepEqual(fromDraft(draft, undefined), { error: { code: "model_id", index: 1 } });
@@ -122,7 +122,7 @@ test("写不出去的值指明是哪一个", () => {
   assert.deepEqual(fromDraft(draft, undefined), { error: { code: "price", model: "b" } });
 });
 
-test("导入端点列出的模型时跳过已有的，带上它声明的字段", () => {
+test("addProbed skips models that already exist and carries their declared fields", () => {
   const draft = toDraft({ models: [{ id: "a" }] });
   const added = addProbed(draft, [
     { id: "a" },
@@ -137,7 +137,7 @@ test("导入端点列出的模型时跳过已有的，带上它声明的字段",
   ]);
 });
 
-test("provider id 不能有空格、斜杠或以符号开头", () => {
+test("isProviderId rejects spaces, slashes and a leading symbol", () => {
   assert.ok(isProviderId("my-gw.eu_1"));
   assert.ok(!isProviderId("my gw"));
   assert.ok(!isProviderId("acme/eu"));
@@ -157,7 +157,7 @@ const sonnet: BuiltinModelView = {
   costTiers: false,
 };
 
-test("内置数据：没设的字段预先勾上，已一致的不能勾，价格从不预先勾选", () => {
+test("built-in data: unset fields are pre-checked, matching ones aren't, and price is never pre-checked", () => {
   const model = toModelDraft({ id: "claude-sonnet-4-5", maxTokens: 64_000 });
   model.image = true;
   const changes = Object.fromEntries(referenceChanges(model, sonnet).map((c) => [c.field, c]));
@@ -174,7 +174,7 @@ test("内置数据：没设的字段预先勾上，已一致的不能勾，价�
   assert.deepEqual(ctx, { field: "contextWindow", same: false, checked: false });
 });
 
-test("内置数据：只复制勾选的字段，token 数按原值写入，id 不变", () => {
+test("built-in data: only checked fields are copied, the token count is written as-is, and the id is unchanged", () => {
   const model = toModelDraft({ id: "anthropic/claude-sonnet-4.5", contextWindow: 128_000 });
   applyReference(model, sonnet, ["name", "contextWindow", "cost"]);
   assert.equal(model.id, "anthropic/claude-sonnet-4.5");

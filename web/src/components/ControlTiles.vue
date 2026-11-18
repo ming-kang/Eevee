@@ -21,8 +21,8 @@ defineEmits<{
       class="foot-tile"
       :class="{ on: routeName === 'memory', dim: !controlPid }"
       :href="controlPid ? formatRoute({ name: 'memory', pid: controlPid }) : undefined"
-      :title="controlTitle ? `${t('记忆')} · ${controlTitle}` : t('记忆')"
-      :aria-label="t('记忆')"
+      :title="controlTitle ? `${t('Memory')} · ${controlTitle}` : t('Memory')"
+      :aria-label="t('Memory')"
       @click="$emit('navigate')"
     >
       <Icon name="book" />
@@ -32,8 +32,8 @@ defineEmits<{
       class="foot-tile"
       :class="{ on: routeName === 'usage', dim: !controlPid }"
       :href="controlPid ? formatRoute({ name: 'usage', pid: controlPid }) : undefined"
-      :title="controlTitle ? `${t('用量')} · ${controlTitle}` : t('用量')"
-      :aria-label="t('用量')"
+      :title="controlTitle ? `${t('Usage')} · ${controlTitle}` : t('Usage')"
+      :aria-label="t('Usage')"
       @click="$emit('navigate')"
     >
       <Icon name="chart" />
@@ -42,8 +42,8 @@ defineEmits<{
       class="foot-tile"
       :class="{ on: routeName === 'settings' }"
       :href="formatRoute({ name: 'settings', section: 'general' })"
-      :title="t('设置')"
-      :aria-label="t('设置')"
+      :title="t('Settings')"
+      :aria-label="t('Settings')"
       @click="$emit('navigate')"
     >
       <Icon name="sliders" />

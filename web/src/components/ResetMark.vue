@@ -16,7 +16,7 @@ const timeText = computed(() => (props.at === undefined ? "" : formatClockTime(p
   <div class="reset">
     <div class="reset-line">
       <button type="button" :aria-expanded="open" @click="open = !open">
-        {{ t("交接") }}{{ timeText ? ` · ${timeText}` : "" }}
+        {{ t("Handoff") }}{{ timeText ? ` · ${timeText}` : "" }}
       </button>
     </div>
     <div v-if="open" class="handoff">{{ summary }}</div>

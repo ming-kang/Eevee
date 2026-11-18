@@ -243,7 +243,7 @@ export function createStreamClient(options: StreamClientOptions) {
       if (ws !== socket) return;
       socket = undefined;
       greeted = false;
-      rejectPending(t("实时流连接已断开"));
+      rejectPending(t("The live stream disconnected"));
       if (!disposed) scheduleReconnect();
     });
     ws.addEventListener("error", () => {
@@ -262,7 +262,7 @@ export function createStreamClient(options: StreamClientOptions) {
     },
     watch(id: string, registration: WatchRegistration): () => void {
       if (disposed) return () => {};
-      if (watches.has(id)) throw new Error(t("重复的 watch id：{id}", { id }));
+      if (watches.has(id)) throw new Error(t("Duplicate watch id: {id}", { id }));
       watches.set(id, registration);
       if (greeted && socket?.readyState === WS_OPEN) {
         sendWatch(id, registration);
@@ -281,7 +281,7 @@ export function createStreamClient(options: StreamClientOptions) {
       limit: number,
     ): Promise<EntryRecord[]> {
       if (disposed || !greeted || socket?.readyState !== WS_OPEN) {
-        return Promise.reject(new Error(t("实时流尚未连接")));
+        return Promise.reject(new Error(t("The live stream is not connected yet")));
       }
       const id = `e${nextEntrySeq++}`;
       return new Promise<EntryRecord[]>((resolve, reject) => {
@@ -311,7 +311,7 @@ export function createStreamClient(options: StreamClientOptions) {
       const prev = socket;
       socket = undefined;
       greeted = false;
-      rejectPending(t("正在重新连接实时流"));
+      rejectPending(t("Reconnecting the live stream"));
       prev?.close();
       open();
     },
@@ -326,7 +326,7 @@ export function createStreamClient(options: StreamClientOptions) {
       socket = undefined;
       greeted = false;
       watches.clear();
-      rejectPending(t("实时流已关闭"));
+      rejectPending(t("The live stream is closed"));
       prev?.close();
       setState("closed");
     },
