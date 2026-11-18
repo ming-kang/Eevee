@@ -1,10 +1,20 @@
 import type { Context } from "@earendil-works/chord/context";
-import type { CapabilitiesView, ModelsView, ProjectSummary } from "../api/contract.ts";
+import type {
+  CapabilitiesView,
+  ModelsView,
+  ProbeModelsInput,
+  ProjectSummary,
+} from "../api/contract.ts";
 import { type ModelChoice, ProblemError, ROLE_NAMES, type RoleName } from "../contracts/index.ts";
+import { mcpExtensionName } from "../extensions/mcp/index.ts";
 import { MemoryRepo } from "../extensions/memory/index.ts";
+import { type BuiltinModelRef, matchBuiltinModels } from "../models/builtin-catalog.ts";
 import { buildModelsView } from "../models/catalog.ts";
 import type { ModelRuntime } from "../models/index.ts";
+import type { ProviderConfig } from "../models/models-config.ts";
+import { type ProbeResult, probeModels } from "../models/probe.ts";
 import { roleExtensions } from "../roles/index.ts";
+import { ConfigError, processEnv, resolveConfigValue } from "../shared/config.ts";
 import { readText } from "../shared/fs.ts";
 import type { EeveePaths } from "../shared/paths.ts";
 import type { RoleSettings, SettingsStore } from "../shared/settings.ts";
@@ -22,6 +32,27 @@ export type EngineOptions = {
   /** Opens an MCP server's transport; tests pass an in-memory one. */
   openMcp?: SharedExtensionsOptions["openMcp"];
 };
+
+/** Provider ids go into URLs and `provider/model` references: no spaces, slashes or leading punctuation. */
+const PROVIDER_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/** An mcp.json the Engine could not read or change, as a refusal naming what is wrong. */
+async function mcpProblem<T>(work: Promise<T>): Promise<T> {
+  try {
+    return await work;
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      throw new ProblemError({ code: "bad_config", problems: error.problems });
+    }
+    if (error instanceof SyntaxError) {
+      throw new ProblemError({
+        code: "bad_config",
+        problems: [{ file: "mcp.json", code: "failed", detail: error.message }],
+      });
+    }
+    throw error;
+  }
+}
 
 /** A change to one role's capabilities; `maxTurns: null` goes back to Durable's default. */
 export type RoleCapabilityChange = { extensions?: readonly string[]; maxTurns?: number | null };
@@ -76,8 +107,72 @@ export class Engine {
       defaults: this.#options.settings.current.models,
       profiles: await readText(this.#options.paths.modelProfiles),
       customProviders: this.#options.models.customProviders(),
+      builtinProviders: this.#options.models.builtinProviders(),
       problems: this.#options.models.problems(),
     });
+  }
+
+  /** The providers models.json configures, as written. */
+  modelsConfig(): Promise<Record<string, ProviderConfig>> {
+    return this.#options.models.providerConfigs();
+  }
+
+  /**
+   * Writes a provider's models.json entry; `undefined` removes it, which puts a built-in provider back as it
+   * came and drops a custom one along with its saved key. A model a default uses must stay.
+   */
+  async saveProvider(id: string, entry: ProviderConfig | undefined): Promise<ModelsView> {
+    const runtime = this.#options.models;
+    const known = runtime.builtinProviders().has(id) || id in (await runtime.providerConfigs());
+    if (!known && !PROVIDER_ID.test(id)) {
+      throw new ProblemError({ code: "invalid", field: "provider" });
+    }
+    await runtime.setProviderConfig(id, entry, this.#modelsInUse(id));
+    if (entry === undefined && !runtime.builtinProviders().has(id)) {
+      await runtime.credentials.delete(id);
+      await runtime.reload();
+    }
+    await this.#applyModels();
+    return this.catalog();
+  }
+
+  /** The built-in models closest to `query`, those on `api` first: references to copy a model entry's fields from. */
+  builtinModels(query: string, api?: string): BuiltinModelRef[] {
+    return matchBuiltinModels(this.#options.models.builtinCatalog(), query, api);
+  }
+
+  /** Lists the models an endpoint serves; the key falls back to the provider's own credentials. */
+  async probeModels(input: ProbeModelsInput): Promise<ProbeResult> {
+    const models = this.#options.models.models();
+    const saved =
+      input.key === undefined && input.provider !== undefined
+        ? await models.getAuth(input.provider).catch(() => undefined)
+        : undefined;
+    const key =
+      input.key === undefined
+        ? saved?.auth.apiKey
+        : await resolveConfigValue(input.key, processEnv);
+    const headers: Record<string, string | null> = { ...saved?.auth.headers };
+    for (const [name, raw] of Object.entries(input.headers ?? {})) {
+      const value = await resolveConfigValue(raw, processEnv);
+      if (value !== undefined) headers[name] = value;
+    }
+    return probeModels({
+      baseUrl: input.baseUrl,
+      ...(input.api === undefined ? {} : { api: input.api }),
+      auth: { ...(key === undefined ? {} : { apiKey: key }), headers },
+    });
+  }
+
+  /** The models of `provider` that a default, global or a project's, names. */
+  #modelsInUse(provider: string): string[] {
+    const choices = [
+      ...Object.values(this.#options.settings.current.models),
+      ...this.projects().flatMap((p) => Object.values(p.models ?? {})),
+    ];
+    return [
+      ...new Set(choices.filter((c) => c?.provider === provider).map((c) => c?.modelId ?? "")),
+    ];
   }
 
   async setDefaultModel(role: RoleName | "default", choice: ModelChoice): Promise<void> {
@@ -114,6 +209,12 @@ export class Engine {
       type: "api_key",
       key,
     }));
+    await this.#options.models.reload();
+  }
+
+  /** Removes the key saved for a provider; other credential sources stay as they are. */
+  async logout(provider: string): Promise<void> {
+    await this.#options.models.credentials.delete(provider);
     await this.#options.models.reload();
   }
 
@@ -171,6 +272,43 @@ export class Engine {
   /** Reads mcp.json again and reconnects; servers come back in the background. */
   async reloadMcp(): Promise<CapabilitiesView> {
     await this.#requireShared().reloadMcp();
+    return this.capabilities();
+  }
+
+  /** mcp.json's server entries as written. */
+  mcpConfig(): Promise<Record<string, unknown>> {
+    return mcpProblem(this.#requireShared().mcpEntries());
+  }
+
+  /**
+   * Writes one MCP server's entry and reconnects it, the others staying connected. Removing a server also takes
+   * it off every role that enabled it.
+   */
+  async saveMcpServer(
+    name: string,
+    entry: Record<string, unknown> | undefined,
+  ): Promise<CapabilitiesView> {
+    await mcpProblem(this.#requireShared().saveMcpServer(name, entry));
+    if (entry === undefined) {
+      const extension = mcpExtensionName(name);
+      const enabling = ROLE_NAMES.filter((role) =>
+        this.#options.settings.current.roles[role]?.extensions?.includes(extension),
+      );
+      if (enabling.length > 0) {
+        await this.#options.settings.update((stored) => {
+          const roles = { ...stored.roles };
+          for (const role of enabling) {
+            const own = roles[role] ?? {};
+            roles[role] = {
+              ...own,
+              extensions: (own.extensions ?? []).filter((e) => e !== extension),
+            };
+          }
+          return { ...stored, roles };
+        });
+        await this.#refreshProjects();
+      }
+    }
     return this.capabilities();
   }
 

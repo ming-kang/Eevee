@@ -112,6 +112,9 @@ const STATUS: Record<ProblemCode, number> = {
   running: 409,
   not_failed: 409,
   revert_failed: 409,
+  model_in_use: 409,
+  bad_config: 422,
+  probe_failed: 502,
   too_large: 413,
   internal: 500,
 };

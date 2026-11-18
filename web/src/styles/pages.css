@@ -503,6 +503,401 @@
   background: var(--ev-label-3);
 }
 
+/* ——— Rows that open their item: the whole row is the link ——— */
+a.row,
+.row.has-link {
+  color: inherit;
+  text-decoration: none;
+  transition: background-color var(--ev-fast) var(--ev-ease);
+}
+
+a.row:hover,
+.row.has-link:hover {
+  background-color: var(--ev-hover);
+}
+
+a.row:first-child,
+.row.has-link:first-child {
+  border-radius: var(--ev-r-lg) var(--ev-r-lg) 0 0;
+}
+
+a.row:last-child,
+.row.has-link:last-child {
+  border-radius: 0 0 var(--ev-r-lg) var(--ev-r-lg);
+}
+
+a.row:only-child,
+.row.has-link:only-child {
+  border-radius: var(--ev-r-lg);
+}
+
+a.row:focus-visible,
+.row-link:focus-visible {
+  outline: none;
+  box-shadow: var(--ev-ring);
+}
+
+a.row .go {
+  color: var(--ev-label-3);
+}
+
+/* A row with its own controls keeps them outside the link, which still covers the row. */
+.row.has-link {
+  position: relative;
+}
+
+.row-link {
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--ev-r-sm);
+}
+
+.row-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.row.has-link > :not(.row-link) {
+  position: relative;
+  z-index: 1;
+}
+
+.set-head h2.mono {
+  font-family: var(--ev-font-mono);
+  font-size: var(--ev-headline);
+}
+
+/* ——— Editor forms: label on the left, the value holder on the right ——— */
+.pv-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pv-form .section-t {
+  margin-top: 8px;
+}
+
+.f-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 16px;
+  min-height: 52px;
+  padding: 10px 16px;
+}
+
+.f-row.top {
+  align-items: start;
+}
+
+.f-row.top > label:not(.toggle),
+.f-row.top > .f-label {
+  padding-top: 6px;
+}
+
+.f-row + .f-row {
+  box-shadow: inset 0 1px 0 var(--ev-separator);
+}
+
+.f-row > label:not(.toggle),
+.f-label {
+  font-size: var(--ev-control);
+  font-weight: 500;
+  color: var(--ev-label);
+}
+
+.f-ctrl {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.f-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.f-note {
+  font-size: var(--ev-footnote);
+  line-height: 1.4;
+  color: var(--ev-label-2);
+  overflow-wrap: anywhere;
+}
+
+.f-note.warn {
+  color: var(--ev-bad-ink);
+}
+
+.f-row .seg {
+  justify-self: start;
+  align-self: flex-start;
+}
+
+.f-row .seg + .f-note {
+  margin-top: 2px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--ev-control);
+  color: var(--ev-label);
+  cursor: pointer;
+}
+
+select.input {
+  padding-right: 28px;
+}
+
+textarea.input {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.input.short {
+  width: 96px;
+}
+
+.f-adv > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: var(--ev-control);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.f-adv > summary::-webkit-details-marker {
+  display: none;
+}
+
+.f-adv > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--ev-fast) var(--ev-ease);
+}
+
+.f-adv[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.f-adv > .rows {
+  margin-top: 8px;
+}
+
+/* The form's actions stay in reach at the bottom of the page while it scrolls. */
+.f-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 12px 0;
+  background: var(--ev-page);
+  box-shadow: 0 -1px 0 var(--ev-separator);
+}
+
+.f-foot .error {
+  font-size: var(--ev-footnote);
+  white-space: pre-wrap;
+}
+
+/* ——— Key-value rows ——— */
+.kv {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kv-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.kv-add {
+  align-self: flex-start;
+}
+
+/* ——— Models inside the provider editor ——— */
+.m-item + .m-item {
+  box-shadow: inset 0 1px 0 var(--ev-separator);
+}
+
+.m-head {
+  min-height: 44px;
+  padding: 4px 8px 4px 10px;
+}
+
+.m-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 6px;
+  border-radius: var(--ev-r-sm);
+  text-align: left;
+  font-size: var(--ev-control);
+}
+
+.m-toggle:hover {
+  background: var(--ev-hover);
+}
+
+.m-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ev-ring);
+}
+
+.m-toggle .r-d {
+  flex: 1;
+  min-width: 0;
+}
+
+.m-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  padding: 4px 16px 16px 36px;
+  animation: ev-fade var(--ev-regular) var(--ev-ease);
+}
+
+.m-fields .toggles {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  gap: 24px;
+}
+
+.m-fields .prices {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.m-fields .prices > legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+  color: var(--ev-label-2);
+}
+
+/* Copying a model's fields from a built-in one */
+.m-ref-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* A block inside the provider's card: the region rung, no shadow of its own. */
+.m-ref {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  border-radius: var(--ev-r-md);
+  background: var(--ev-region);
+  box-shadow: none;
+  animation: ev-rise var(--ev-regular) var(--ev-ease);
+}
+
+.m-ref-head {
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+}
+
+.m-ref-head > .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.m-ref-head > .r-main {
+  flex: 1;
+}
+
+.m-ref .row.pick {
+  width: 100%;
+  text-align: left;
+}
+
+.m-ref-new {
+  color: var(--ev-label);
+  font-weight: 500;
+}
+
+.m-ref-foot {
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+/* ——— Picking from an endpoint's model list ——— */
+.probe {
+  animation: ev-rise var(--ev-regular) var(--ev-ease);
+}
+
+.probe-head {
+  gap: 8px;
+}
+
+.probe-list {
+  max-height: 320px;
+  overflow-y: auto;
+  box-shadow: inset 0 1px 0 var(--ev-separator);
+}
+
+.row.pick {
+  min-height: 44px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+.row.pick:hover {
+  background: var(--ev-hover);
+}
+
+.row.pick.off {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.row.pick > input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ev-accent);
+}
+
+.paste {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 @container vp (max-width: 900px) {
   .settings {
     grid-template-columns: minmax(0, 1fr);
@@ -521,6 +916,26 @@
 
   .set-inner {
     padding: 4px 16px 48px;
+  }
+}
+
+@container vp (max-width: 620px) {
+  .f-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .f-row.top > label:not(.toggle),
+  .f-row.top > .f-label {
+    padding-top: 0;
+  }
+
+  .m-fields {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: 16px;
+  }
+
+  .m-fields .prices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

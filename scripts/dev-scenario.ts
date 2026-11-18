@@ -14,18 +14,15 @@ import {
   type Message,
 } from "@earendil-works/pi-ai";
 import type { JsonObject } from "@earendil-works/pi-durable";
-import type { ConfigProblem } from "../src/contracts/index.ts";
 import { Engine } from "../src/engine/engine.ts";
 import { writeRuntimeRecord } from "../src/engine/instance.ts";
 import { fakeMcpServer, weatherTool } from "../src/extensions/mcp/testing.ts";
 import { MemoryRepo } from "../src/extensions/memory/index.ts";
-import { FileCredentialStore } from "../src/models/auth-store.ts";
-import { applyModelsConfig, loadModelsConfig } from "../src/models/models-config.ts";
+import { createModelRuntime } from "../src/models/index.ts";
 import { Auth } from "../src/server/auth.ts";
 import { createHttpServer } from "../src/server/http.ts";
 import { createRoutes } from "../src/server/routes.ts";
 import { attachStream } from "../src/server/stream.ts";
-import { configIssue } from "../src/shared/config.ts";
 import { uiDir, version } from "../src/shared/package.ts";
 import { eeveePaths } from "../src/shared/paths.ts";
 import { DEFAULT_SETTINGS, type Settings, SettingsStore } from "../src/shared/settings.ts";
@@ -492,31 +489,14 @@ const factory: FauxResponseFactory = async (context, streamOptions, state, model
 };
 faux.setResponses(Array.from({ length: 48 }, () => factory));
 
-const credentials = new FileCredentialStore(paths.auth);
-const buildModels = async () => {
-  const models = createModels({ credentials });
-  models.setProvider(faux.provider);
-  const problems: ConfigProblem[] = [];
-  const custom = new Set<string>();
-  try {
-    problems.push(...applyModelsConfig(models, await loadModelsConfig(paths.models), custom));
-  } catch (error) {
-    problems.push({ ...configIssue(error), file: "models.json" });
-  }
-  return { models, custom, problems };
-};
-let modelState = await buildModels();
-const models = {
-  models: () => modelState.models,
-  credentials,
-  customProviders: () => modelState.custom,
-  problems: () => modelState.problems,
-  async reload() {
-    modelState = await buildModels();
+const models = await createModelRuntime(paths, {
+  base: (credentials) => {
+    const base = createModels({ credentials });
+    base.setProvider(faux.provider);
+    return base;
   },
-};
+});
 
-const mcpServer = fakeMcpServer([weatherTool]);
 const store = await SettingsStore.open(paths.settings);
 const engine = await Engine.open({
   paths,
@@ -524,7 +504,8 @@ const engine = await Engine.open({
   models,
   context: BACKGROUND_CONTEXT,
   client: { name: "eevee-dev", version },
-  openMcp: () => mcpServer.client,
+  // Every connection gets its own in-memory server, so a server reconnected from the panel comes back.
+  openMcp: () => fakeMcpServer([weatherTool]).client,
 });
 
 // Seed global memory
@@ -659,7 +640,6 @@ if (checkOnly) {
     hasUncommittedMemoryDiff: diff1.includes("本地未提交手改"),
   });
   await engine.close();
-  await mcpServer.server.close();
   if (ownHome) await rm(home, { recursive: true, force: true, maxRetries: 5 });
   process.exit(0);
 }
@@ -674,7 +654,6 @@ const shutdown = async () => {
   await stream.close();
   server.close();
   await engine.close();
-  await mcpServer.server.close();
   if (ownHome)
     await rm(home, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
   process.exit(0);

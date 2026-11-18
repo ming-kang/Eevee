@@ -46,7 +46,7 @@ Engine 的输出写在 `~/.eevee/runtime/engine.log`。所有数据都在 `~/.ee
 
 ## 3. 连接模型
 
-在面板左栏底部打开“设置”，切到“模型”页，在 provider 那一行点“填写 API Key”，粘贴后保存。Engine 把 key 保存在 `~/.eevee/auth.json` 里。
+在面板左栏底部打开“设置”，切到“模型”页，点 provider 那一行，在“API Key”里粘贴后保存。Engine 把 key 保存在 `~/.eevee/auth.json` 里。本地网关或别的兼容端点，点 Provider 一栏的“添加”，见 [接入兼容端点](models.md#接入兼容端点)。
 
 也可以不保存凭据，改用 provider 的环境变量（如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`）。Engine 只读取启动时的环境变量，所以要在设置好变量的终端里先 `eevee stop`，再运行 `eevee`。
 

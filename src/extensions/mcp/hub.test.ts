@@ -135,3 +135,49 @@ test("连接断开后扩展失去工具，reload 重新连接", async () => {
     assert.equal(hub.extensions()[0]?.tools?.length, 1);
   });
 });
+
+test("save 改写一个服务器的条目，只重连它，其他服务器保持连接", async () => {
+  const opened: string[] = [];
+  const servers = {
+    get weather() {
+      opened.push("weather");
+      return fakeServer([weather]);
+    },
+    get docs() {
+      opened.push("docs");
+      return fakeServer([weather]);
+    },
+  };
+  const config = {
+    $comment: "保留",
+    mcpServers: { weather: { command: "w" }, docs: { url: "https://docs.example/mcp" } },
+  };
+  await withHub(config, servers, async (hub) => {
+    await connected(hub, "weather");
+    await connected(hub, "docs");
+
+    await hub.save("docs", { url: "https://docs.example/mcp", exposure: "direct" });
+    await connected(hub, "docs");
+    assert.deepEqual(opened, ["weather", "docs", "docs"]);
+    assert.deepEqual(
+      hub.status().map((s) => [s.name, s.state, s.exposure]),
+      [
+        ["weather", "connected", "deferred"],
+        ["docs", "connected", "direct"],
+      ],
+    );
+    const entries = await hub.entries();
+    assert.deepEqual(entries.docs, { url: "https://docs.example/mcp", exposure: "direct" });
+
+    await hub.save("docs", undefined);
+    assert.deepEqual(
+      hub.status().map((s) => s.name),
+      ["weather"],
+    );
+    assert.deepEqual(Object.keys(await hub.entries()), ["weather"]);
+
+    await assert.rejects(hub.save("bad name", { command: "x" }), /mcp\.json/);
+    await assert.rejects(hub.save("x", { command: "x", exposure: "loud" }), /exposure/);
+    assert.deepEqual(Object.keys(await hub.entries()), ["weather"]);
+  });
+});

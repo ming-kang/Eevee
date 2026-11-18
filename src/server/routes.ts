@@ -12,6 +12,7 @@ import {
   type TicketId,
 } from "../contracts/index.ts";
 import type { Engine } from "../engine/engine.ts";
+import type { ProviderConfig } from "../models/models-config.ts";
 import type { Auth } from "./auth.ts";
 import type { RouteTable } from "./http.ts";
 
@@ -34,6 +35,18 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
       throw new ProblemError({ code: "required", field });
     }
     return value;
+  };
+
+  const optionalText = (value: unknown, field: string): string | undefined => {
+    if (value === undefined) return undefined;
+    if (typeof value !== "string") throw new ProblemError({ code: "invalid", field });
+    return value.trim() === "" ? undefined : value.trim();
+  };
+  const record = (value: unknown, field: string): Record<string, unknown> => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new ProblemError({ code: "invalid", field });
+    }
+    return value as Record<string, unknown>;
   };
 
   const role = (value: unknown): RoleName => {
@@ -105,6 +118,47 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
         return { ok: true };
       },
     },
+    "DELETE /api/auth/:provider": {
+      handle: async ({ params }) => {
+        await engine.logout(params.provider);
+        return { ok: true };
+      },
+    },
+    "GET /api/models/config": {
+      handle: async () => ({ providers: await engine.modelsConfig() }),
+    },
+    "PUT /api/models/providers/:provider": {
+      // The Engine checks the entry against the models.json schema before writing it.
+      handle: async ({ params, body }) =>
+        engine.saveProvider(params.provider, record(body?.config, "config") as ProviderConfig),
+    },
+    "DELETE /api/models/providers/:provider": {
+      handle: async ({ params }) => engine.saveProvider(params.provider, undefined),
+    },
+    "POST /api/models/builtin": {
+      handle: async ({ body }) => {
+        const api = optionalText(body?.api, "api");
+        return { models: engine.builtinModels(text(body?.query, "query"), api) };
+      },
+    },
+    "POST /api/models/probe": {
+      handle: async ({ body }) => {
+        const provider = optionalText(body?.provider, "provider");
+        const key = optionalText(body?.key, "key");
+        const api = optionalText(body?.api, "api");
+        const headers = body?.headers === undefined ? undefined : record(body.headers, "headers");
+        if (headers !== undefined && Object.values(headers).some((v) => typeof v !== "string")) {
+          throw new ProblemError({ code: "invalid", field: "headers" });
+        }
+        return engine.probeModels({
+          ...(provider === undefined ? {} : { provider }),
+          baseUrl: text(body?.baseUrl, "baseUrl"),
+          ...(api === undefined ? {} : { api }),
+          ...(key === undefined ? {} : { key }),
+          ...(headers === undefined ? {} : { headers: headers as Record<string, string> }),
+        });
+      },
+    },
     "GET /api/capabilities": { handle: async () => engine.capabilities() },
     "POST /api/capabilities/roles/:role": {
       handle: async ({ params, body }) => {
@@ -130,6 +184,18 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
       },
     },
     "POST /api/mcp/reload": { handle: async () => engine.reloadMcp() },
+    "GET /api/mcp/config": {
+      handle: async () => ({
+        servers: (await engine.mcpConfig()) as Record<string, Record<string, unknown>>,
+      }),
+    },
+    "PUT /api/mcp/servers/:server": {
+      handle: async ({ params, body }) =>
+        engine.saveMcpServer(params.server, record(body?.config, "config")),
+    },
+    "DELETE /api/mcp/servers/:server": {
+      handle: async ({ params }) => engine.saveMcpServer(params.server, undefined),
+    },
     "POST /api/projects": {
       handle: async ({ body }) =>
         engine.createProject({

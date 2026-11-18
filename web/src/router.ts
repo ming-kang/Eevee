@@ -1,12 +1,16 @@
 export const SETTINGS_SECTIONS = ["general", "models", "roles", "mcp", "engine"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
+/** The item a settings page opens on its own: a provider on the models page, a server on the MCP page. */
+export const NEW_ITEM = "+";
+const ITEM_SECTIONS: readonly SettingsSection[] = ["models", "mcp"];
+
 export type Route =
   | { name: "chat"; pid: string }
   | { name: "worker"; pid: string; tid: string }
   | { name: "memory"; pid: string }
   | { name: "usage"; pid: string }
-  | { name: "settings"; section: SettingsSection }
+  | { name: "settings"; section: SettingsSection; item?: string }
   | { name: "connect" }
   | { name: "home" };
 
@@ -43,7 +47,8 @@ export function parseRoute(hash: string): Route | undefined {
   if (parts[0] === "settings") {
     const raw = parts[1] ? decode(parts[1]) : undefined;
     const section: SettingsSection = raw && isSettingsSection(raw) ? raw : "general";
-    return { name: "settings", section };
+    const item = parts[2] && ITEM_SECTIONS.includes(section) ? decode(parts[2]) : undefined;
+    return item ? { name: "settings", section, item } : { name: "settings", section };
   }
   if (parts[0] === "p" && parts[1]) {
     const pid = decode(parts[1]);
@@ -77,7 +82,9 @@ export function formatRoute(route: Route): string {
     case "usage":
       return `#/p/${encodeURIComponent(route.pid)}/usage`;
     case "settings":
-      return `#/settings/${route.section}`;
+      return route.item === undefined
+        ? `#/settings/${route.section}`
+        : `#/settings/${route.section}/${encodeURIComponent(route.item)}`;
     case "connect":
       return "#/connect";
     case "home":

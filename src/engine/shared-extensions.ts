@@ -77,6 +77,16 @@ export class SharedExtensions {
     return this.#hub.reload();
   }
 
+  /** mcp.json's server entries as written. */
+  mcpEntries(): Promise<Record<string, unknown>> {
+    return this.#hub.entries();
+  }
+
+  /** Changes one server's entry in mcp.json, or removes it, and reconnects that server. */
+  saveMcpServer(name: string, entry: Record<string, unknown> | undefined): Promise<void> {
+    return this.#hub.save(name, entry);
+  }
+
   async close(): Promise<void> {
     await this.#hub.close();
     await this.#sandbox.close();

@@ -231,3 +231,186 @@ test("HTTP 接口暴露结构化模型、项目 activeAt、Board.router 与嵌�
     await rm(home, { recursive: true, force: true, maxRetries: 5 });
   }
 });
+
+/** Serves the Engine's routes on a free port, with a client holding the token. */
+async function serve(engine: Engine, paths: ReturnType<typeof eeveePaths>) {
+  const auth = await Auth.open({ tokenPath: paths.runtime.token });
+  const token = (await readText(paths.runtime.token))?.trim();
+  let port = 0;
+  const server = createHttpServer({
+    routes: createRoutes({ engine, auth, port: () => port, version: "0", shutdown: () => {} }),
+    auth,
+    uiDir: undefined,
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  port = (server.address() as AddressInfo).port;
+  const client = createClient({ baseUrl: `http://127.0.0.1:${port}`, token });
+  return { client, close: () => new Promise<void>((resolve) => server.close(() => resolve())) };
+}
+
+test("面板经本地接口编辑 provider：写入即生效，默认模型在用的不能删，删掉自定义 provider 连同它的 key", async () => {
+  const home = await mkdtemp(join(tmpdir(), "eevee-providers-"));
+  const paths = eeveePaths(home);
+  const settings = await SettingsStore.open(paths.settings);
+  const local = {
+    baseUrl: "http://127.0.0.1:11434/v1",
+    api: "openai-completions",
+    models: [{ id: "demo" }],
+  };
+  await writeFile(paths.models, JSON.stringify({ providers: { local } }));
+  await settings.update((s) => ({
+    ...s,
+    models: { default: { provider: "local", modelId: "demo" } },
+  }));
+  const engine = await Engine.open({
+    paths,
+    settings,
+    models: await createModelRuntime(paths),
+    context: BACKGROUND_CONTEXT,
+  });
+  const { client, close } = await serve(engine, paths);
+  try {
+    assert.deepEqual((await client.call("GET /api/models/config")).providers, { local });
+
+    const gw = {
+      baseUrl: "https://gw.example/v1",
+      api: "openai-responses",
+      models: [{ id: "m1" }],
+    };
+    const view = await client.call(
+      "PUT /api/models/providers/:provider",
+      { provider: "gw" },
+      { config: gw },
+    );
+    const added = view.providers.find((p) => p.id === "gw");
+    assert.deepEqual(
+      [added?.custom, added?.builtIn, added?.configured, added?.modelCount],
+      [true, false, false, 1],
+    );
+    const anthropic = view.providers.find((p) => p.id === "anthropic");
+    assert.equal(anthropic?.builtIn, true);
+    assert.equal(anthropic?.defaultBaseUrl, "https://api.anthropic.com");
+
+    // References come from pi-ai's own catalog, the caller's API first, never from models.json.
+    const refs = await client.call("POST /api/models/builtin", {
+      query: "claude-sonnet-4-5",
+      api: "anthropic-messages",
+    });
+    assert.equal(
+      `${refs.models[0]?.provider}/${refs.models[0]?.id}`,
+      "anthropic/claude-sonnet-4-5",
+    );
+    assert.ok(refs.models.length <= 8);
+    const demo = await client.call("POST /api/models/builtin", { query: "m1" });
+    assert.equal(
+      demo.models.some((m) => m.provider === "local" || m.provider === "gw"),
+      false,
+    );
+    await assert.rejects(client.call("POST /api/models/builtin", { query: " " }), {
+      status: 400,
+      problem: { code: "required", field: "query" },
+    });
+
+    await client.call("POST /api/auth/:provider", { provider: "gw" }, { key: "sk-gw" });
+    let gwView = (await client.call("GET /api/models")).providers.find((p) => p.id === "gw");
+    assert.deepEqual([gwView?.configured, gwView?.source], [true, "auth.json"]);
+    await client.call("DELETE /api/auth/:provider", { provider: "gw" });
+    gwView = (await client.call("GET /api/models")).providers.find((p) => p.id === "gw");
+    assert.equal(gwView?.configured, false);
+
+    await assert.rejects(
+      client.call(
+        "PUT /api/models/providers/:provider",
+        { provider: "local" },
+        {
+          config: { ...local, models: [{ id: "other" }] },
+        },
+      ),
+      { status: 409, problem: { code: "model_in_use", provider: "local", modelId: "demo" } },
+    );
+    await assert.rejects(
+      client.call("PUT /api/models/providers/:provider", { provider: "a b" }, { config: gw }),
+      { status: 400, problem: { code: "invalid", field: "provider" } },
+    );
+    await assert.rejects(
+      client.call(
+        "PUT /api/models/providers/:provider",
+        { provider: "gw" },
+        {
+          config: { ...gw, models: [] },
+        },
+      ),
+      (error: { status: number; problem: { code: string } }) =>
+        error.status === 422 && error.problem.code === "bad_config",
+    );
+
+    await client.call("POST /api/auth/:provider", { provider: "gw" }, { key: "sk-gw" });
+    await client.call("DELETE /api/models/providers/:provider", { provider: "gw" });
+    assert.equal(
+      (await client.call("GET /api/models")).providers.some((p) => p.id === "gw"),
+      false,
+    );
+    assert.equal(JSON.parse((await readText(paths.auth)) ?? "{}").gw, undefined);
+  } finally {
+    await close();
+    await engine.close();
+    await rm(home, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
+
+test("面板经本地接口编辑 MCP 服务器：只重连改动的那个，删除时从各角色去掉，文件其余内容保留", async () => {
+  const home = await mkdtemp(join(tmpdir(), "eevee-mcp-edit-"));
+  const paths = eeveePaths(home);
+  await writeFile(paths.mcp, JSON.stringify({ $comment: "我的服务器", mcpServers: {} }));
+  const engine = await Engine.open({
+    paths,
+    settings: await SettingsStore.open(paths.settings),
+    models: await createModelRuntime(paths),
+    context: BACKGROUND_CONTEXT,
+    openMcp: () => fakeMcpServer([weatherTool]).client,
+  });
+  const { client, close } = await serve(engine, paths);
+  try {
+    const entry = { command: "weather-mcp", args: ["--stdio"], exposure: "direct" };
+    await client.call("PUT /api/mcp/servers/:server", { server: "weather" }, { config: entry });
+    for (let i = 0; i < 100 && engine.capabilities().mcp[0]?.state !== "connected"; i++) {
+      await sleep(10);
+    }
+    assert.deepEqual(
+      engine.capabilities().mcp.map((m) => [m.name, m.state, m.exposure, m.tools]),
+      [["weather", "connected", "direct", 1]],
+    );
+    assert.deepEqual((await client.call("GET /api/mcp/config")).servers, { weather: entry });
+    await client.call(
+      "POST /api/capabilities/roles/:role",
+      { role: "worker" },
+      {
+        extensions: ["mcp.weather"],
+      },
+    );
+
+    await assert.rejects(
+      client.call(
+        "PUT /api/mcp/servers/:server",
+        { server: "weather" },
+        {
+          config: { command: "weather-mcp", exposure: "loud" },
+        },
+      ),
+      (error: { status: number; problem: { code: string } }) =>
+        error.status === 422 && error.problem.code === "bad_config",
+    );
+
+    const view = await client.call("DELETE /api/mcp/servers/:server", { server: "weather" });
+    assert.deepEqual(view.mcp, []);
+    assert.deepEqual(view.roles.find((r) => r.role === "worker")?.enabled, []);
+    assert.deepEqual(JSON.parse((await readText(paths.mcp)) ?? "{}"), {
+      $comment: "我的服务器",
+      mcpServers: {},
+    });
+  } finally {
+    await close();
+    await engine.close();
+    await rm(home, { recursive: true, force: true, maxRetries: 5 });
+  }
+});

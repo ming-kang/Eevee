@@ -122,8 +122,77 @@ export type ModelProviderView = {
   configured: boolean;
   authType?: "api_key" | "oauth";
   source?: string;
+  /** models.json adds or changes it. */
   custom: boolean;
+  /** pi-ai brings it; models.json can only change it. */
+  builtIn: boolean;
+  /** A built-in provider's own endpoint, before models.json changes it. */
+  defaultBaseUrl?: string;
   modelCount: number;
+};
+
+/** A models.json provider entry, as written; the Engine checks it against the schema. */
+export type ProviderConfigView = {
+  name?: string;
+  baseUrl?: string;
+  api?: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+  authHeader?: boolean;
+  models?: ProviderModelConfig[];
+  modelOverrides?: Record<string, Omit<ProviderModelConfig, "id" | "api" | "baseUrl">>;
+};
+
+export type ProviderModelConfig = {
+  id: string;
+  api?: string;
+  baseUrl?: string;
+  name?: string;
+  reasoning?: boolean;
+  input?: ("text" | "image")[];
+  contextWindow?: number;
+  maxTokens?: number;
+  cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number };
+  promptCache?: { short?: number; long?: number };
+  headers?: Record<string, string>;
+};
+
+/**
+ * What to ask an endpoint for its models with. `key` may be a literal or an environment variable reference;
+ * without it, the credentials of `provider`, when it exists, are used.
+ */
+export type ProbeModelsInput = {
+  provider?: string;
+  baseUrl: string;
+  api?: string;
+  key?: string;
+  headers?: Record<string, string>;
+};
+
+/** A model an endpoint lists, with the models.json fields it declared. */
+export type ProbedModelView = {
+  id: string;
+  name?: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  input?: ("text" | "image")[];
+  reasoning?: boolean;
+};
+
+/** A model pi-ai brings, with the fields a models.json entry can copy from it. */
+export type BuiltinModelView = {
+  provider: string;
+  id: string;
+  name: string;
+  api: string;
+  reasoning: boolean;
+  input: ("text" | "image")[];
+  contextWindow: number;
+  maxTokens: number;
+  /** USD per million tokens. */
+  cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  /** It also prices by input size; those tiers are not copied. */
+  costTiers: boolean;
 };
 
 export type ModelsView = {
@@ -180,12 +249,34 @@ export type ApiRoutes = {
     response: Ok;
   };
   "POST /api/auth/:provider": { body: { key: string }; response: Ok };
+  "DELETE /api/auth/:provider": { response: Ok };
+  "GET /api/models/config": { response: { providers: Record<string, ProviderConfigView> } };
+  "PUT /api/models/providers/:provider": {
+    body: { config: ProviderConfigView };
+    response: ModelsView;
+  };
+  "DELETE /api/models/providers/:provider": { response: ModelsView };
+  "POST /api/models/builtin": {
+    body: { query: string; api?: string };
+    response: { models: BuiltinModelView[] };
+  };
+  "POST /api/models/probe": {
+    body: ProbeModelsInput;
+    response: { models: ProbedModelView[]; truncated: boolean };
+  };
   "GET /api/capabilities": { response: CapabilitiesView };
   "POST /api/capabilities/roles/:role": {
     body: { extensions?: string[]; maxTurns?: number | null };
     response: CapabilitiesView;
   };
   "POST /api/mcp/reload": { response: CapabilitiesView };
+  /** mcp.json's server entries as written: the `mcpServers` shape other MCP clients share. */
+  "GET /api/mcp/config": { response: { servers: Record<string, Record<string, unknown>> } };
+  "PUT /api/mcp/servers/:server": {
+    body: { config: Record<string, unknown> };
+    response: CapabilitiesView;
+  };
+  "DELETE /api/mcp/servers/:server": { response: CapabilitiesView };
   "POST /api/projects": { body: { title: string; workspace: string }; response: ProjectSummary };
   "POST /api/projects/:project/models": {
     /** `null` drops the project's own choice, so the role follows the settings again. */

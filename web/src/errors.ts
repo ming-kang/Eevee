@@ -68,6 +68,14 @@ export function problemText(problem: Problem): string {
       return t("上一轮没有失败，不需要重试");
     case "revert_failed":
       return t("撤销 {commit} 失败：没有这个 commit，或与后来的改动冲突", problem);
+    case "bad_config":
+      return problem.problems.map(configProblemText).join("\n");
+    case "model_in_use":
+      return t("{model} 正被默认模型使用，先换掉再改", {
+        model: `${problem.provider}/${problem.modelId}`,
+      });
+    case "probe_failed":
+      return t("获取模型列表失败：{detail}", problem);
     case "internal":
       return problem.detail;
   }

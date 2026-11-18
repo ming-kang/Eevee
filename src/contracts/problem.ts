@@ -33,6 +33,9 @@ export type Problem =
   | { code: "running" }
   | { code: "not_failed" }
   | { code: "revert_failed"; commit: string }
+  | { code: "bad_config"; problems: readonly ConfigProblem[] }
+  | { code: "model_in_use"; provider: string; modelId: string }
+  | { code: "probe_failed"; detail: string }
   | { code: "internal"; detail: string };
 
 export type ProblemCode = Problem["code"];
@@ -112,6 +115,12 @@ export function describeProblem(problem: Problem): string {
       return "上一轮没有失败，不需要重试";
     case "revert_failed":
       return `撤销 ${problem.commit} 失败：没有这个 commit，或后来的改动（含还没提交的）与它冲突。`;
+    case "bad_config":
+      return problem.problems.map(describeConfigProblem).join("\n");
+    case "model_in_use":
+      return `${problem.provider}/${problem.modelId} 正被默认模型使用，先换掉再改`;
+    case "probe_failed":
+      return `获取模型列表失败：${problem.detail}`;
     case "internal":
       return problem.detail;
   }

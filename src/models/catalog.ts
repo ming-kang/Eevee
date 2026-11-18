@@ -21,6 +21,7 @@ export type CatalogInput = {
 
 export type ModelsViewInput = CatalogInput & {
   customProviders?: ReadonlySet<string>;
+  builtinProviders?: ReadonlyMap<string, { baseUrl?: string }>;
   problems?: readonly ConfigProblem[];
 };
 
@@ -54,6 +55,7 @@ export async function buildModelsView(input: ModelsViewInput): Promise<ModelsVie
   const providers = await Promise.all(
     input.models.getProviders().map(async (provider): Promise<ModelProviderView> => {
       const check = await input.models.checkAuth(provider.id).catch(() => undefined);
+      const builtinBaseUrl = input.builtinProviders?.get(provider.id)?.baseUrl;
       let modelCount = 0;
       try {
         modelCount = provider.getModels().length;
@@ -71,6 +73,8 @@ export async function buildModelsView(input: ModelsViewInput): Promise<ModelsVie
               ...(check.source === undefined ? {} : { source: check.source }),
             }),
         custom: input.customProviders?.has(provider.id) ?? false,
+        builtIn: input.builtinProviders?.has(provider.id) ?? false,
+        ...(builtinBaseUrl === undefined ? {} : { defaultBaseUrl: builtinBaseUrl }),
         modelCount,
       };
     }),

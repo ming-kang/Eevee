@@ -7,12 +7,14 @@ Eevee 在 [`@earendil-works/pi-ai`](https://github.com/earendil-works/pi) 之上
 | 你有什么 | 推荐做法 |
 |:-:|:-:|
 | 内置 Provider 的 API Key | 在面板的“设置 · 模型”里填写，或设置环境变量 |
-| 其他本地或云端网关 | 在 `models.json` 里[添加兼容端点](#接入兼容端点) |
+| 其他本地或云端网关 | 在“设置 · 模型”里[添加 provider](#接入兼容端点)，或写进 `models.json` |
 
 
 ## 认证
 
-在面板左栏底部打开“设置”，切到“模型”页。Provider 列表里，没有凭据的 provider 有一个“填写 API Key”按钮：输入 key 后按 `Enter` 或点“保存”，Engine 把它保存在 `~/.eevee/auth.json`，立即生效。已经有 provider 配好凭据时，列表只显示配好的，点“显示全部”可以看到其余的；已配置 API Key 的 provider 旁边有一个铅笔按钮，用来更换 key。面板只写入凭据，不会读出或显示保存过的 key。脚本可以调用 [`POST /api/auth/:provider`](http-api.md#模型) 做同样的事。
+在面板左栏底部打开“设置”，切到“模型”页。Provider 列表里，有可用凭据的 provider 带绿点和凭据类型；已经有 provider 配好凭据时，列表只显示配好的，点“显示全部”可以看到其余的。点一行打开这个 provider 的设置页，在“API Key”里粘贴 key 后按 `Enter` 或点“保存”，Engine 把它保存在 `~/.eevee/auth.json`，立即生效。
+
+面板只写入凭据，不会读出或显示保存过的 key：已经保存过时，输入框提示“已保存，输入新的 Key 替换”，旁边的“移除”删掉 `auth.json` 里的这一项。凭据来自别处（比如环境变量）时，输入框下面写着来源。脚本可以调用 [`POST /api/auth/:provider`](http-api.md#模型) 和 `DELETE /api/auth/:provider` 做同样的事。
 
 也可以不保存，在启动 Engine 的终端里设置 provider 的环境变量，比如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`GEMINI_API_KEY`、`DEEPSEEK_API_KEY`、`OPENROUTER_API_KEY`。常见变量见 [环境变量](environment-variables.md#provider-凭据)。
 
@@ -83,7 +85,26 @@ Router 用 `read models://` 查看可用模型和你记录的经验。格式与�
 
 ## 接入兼容端点
 
-服务兼容 Eevee 已支持的 API 时，在 `~/.eevee/models.json` 里新增一个 provider：
+服务兼容 Eevee 已支持的 API 时，可以在面板里添加：在“设置 · 模型”的 Provider 一栏点“添加”，填写下面几项后点“添加”。
+
+| 字段 | 说明 |
+|:-:|:-:|
+| ID | provider 的名字，模型写作 `<ID>/<模型 id>`。只能用字母、数字、`.`、`_` 和 `-`，以字母或数字开头，添加后不能改 |
+| API 类型 | 端点使用的接口协议，比如 OpenAI 兼容的 `openai-completions` |
+| Base URL | 端点地址。下面显示请求实际发往的地址；Base URL 和协议路径都带了 `/v1` 时会提醒 |
+| API Key | 保存到 `auth.json`。不检查 key 的端点（比如 Ollama）填任意值，模型才会变为可用 |
+
+“模型”一栏至少要有一个模型。点“从端点获取”，Engine 向端点请求模型列表（OpenAI 风格的 `<Base URL>/models`，或 Anthropic 的 `/v1/models`），用的是刚填的 key 或“高级”里的 `apiKey`，都没填时用这个 provider 已保存的凭据。在列表里勾选要用的模型，点“加入”，端点声明了的上下文窗口、最大输出、图片输入和推理也一起填上。端点不提供列表时，点“添加模型”手动填写：模型 ID 必填，上下文窗口和最大输出可以写成 `128k`、`1.5m` 或 `200,000`，价格是每百万 token 的美元数。
+
+网关上的模型常常就是某个内置模型。展开一个模型，点“使用内置数据”，Engine 按模型 ID 在 pi-ai 自带的模型目录里找相近的：先列 ID 完全相同的，再列只差大小写、分隔符或厂商前缀（比如 `anthropic/`）的，最后是模糊匹配；同一组里和这个模型接口相同的排在前面。搜索框里可以换别的词。选中一个后逐项列出“当前 → 内置”，勾选要复制的字段再点“复制”：可以复制名称、推理、图片输入、上下文窗口、最大输出和价格，模型 ID 和接口保持不变。没填的字段预先勾上；价格不预先勾选，因为网关的价格往往和官方不同；内置模型按输入长度分档的价格不会复制。复制只改表单，保存后才写入。
+
+“高级”里可以设置显示名称（只用于显示，留空时显示 ID）、请求头（值可以引用环境变量，比如 `$LOCAL_LLM_KEY`）、是否另以 `Authorization: Bearer` 发送 key，以及 `models.json` 里的 `apiKey`。
+
+内置 provider 的设置页可以改 Base URL 走代理、追加模型（同样可以使用内置数据）和设置请求头；“恢复内置设置”删掉 `models.json` 里它的条目。自己添加的 provider 可以删除，它保存在 `auth.json` 里的 key 一起删掉。
+
+面板保存时只改这一个 provider 的条目，Engine 先检查：字段不合法、组不成 provider，或者会去掉一个正被默认模型（全局或某个项目的）使用的模型时，不写入文件，在页面上说明原因。保存成功后立即生效，不需要重启 Engine。文件里没有的字段原样保留，比如 `modelOverrides`；整个文件会按标准 JSON 格式重新写出。
+
+也可以直接编辑 `~/.eevee/models.json`，新增一个 provider：
 
 ```json
 {
@@ -98,9 +119,9 @@ Router 用 `read models://` 查看可用模型和你记录的经验。格式与�
 }
 ```
 
-Ollama 不检查 key，`apiKey` 填任意值即可让模型变为可用。需要认证的端点，`apiKey` 和 `headers` 可以引用环境变量：`"apiKey": "${LOCAL_LLM_KEY}"`。
+需要认证的端点，`apiKey` 和 `headers` 可以引用环境变量：`"apiKey": "${LOCAL_LLM_KEY}"`。
 
-用内置 provider 的名字是修改它：改 `baseUrl` 走代理、追加模型，或用 `modelOverrides` 修改已有模型的上下文窗口和价格。
+用内置 provider 的名字是修改它：改 `baseUrl` 走代理、追加模型，或用 `modelOverrides` 修改已有模型的上下文窗口和价格（面板不编辑 `modelOverrides`）。
 
 ```json
 {
@@ -113,4 +134,4 @@ Ollama 不检查 key，`apiKey` 填任意值即可让模型变为可用。需要
 }
 ```
 
-问题写进 Engine 日志：字段类型或结构写错时整个文件都不生效；结构正确但组不成 provider 时，只影响那一个 provider。`models.json` 在 Engine 启动和保存 API Key 时读取，其他时候修改后需要重启 Engine。全部字段见 [模型配置](models-configuration.md)。
+问题写进 Engine 日志，也显示在“设置 · 模型”页：字段类型或结构写错时整个文件都不生效；结构正确但组不成 provider 时，只影响那一个 provider。`models.json` 在 Engine 启动、保存或移除 API Key、在面板里保存 provider 时读取，其他时候手动修改后需要重启 Engine。全部字段见 [模型配置](models-configuration.md)。

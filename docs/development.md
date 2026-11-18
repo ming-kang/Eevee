@@ -54,7 +54,7 @@ EEVEE_ENGINE=http://127.0.0.1:19391 npm run web:dev
 
 造完数据后，每次回答前模型会停顿 5 秒，可以在面板里看到运行中的状态，试用引导、排队和打断。授权码只能用一次。`npm run dev:scenario -- --check` 只造数据并自检，然后退出。
 
-面板的设计目标见 [用户界面](design/06-ui.md)。路由、工单分组、项目状态位、对话条目映射、流客户端等纯逻辑都放在 `web/src/` 下独立的 `.ts` 里，用 `node --test` 离线测试；组件只负责渲染。
+面板的设计目标见 [用户界面](design/06-ui.md)。路由、工单分组、项目状态位、对话条目映射、流客户端、provider 与 MCP 表单和配置条目之间的转换等纯逻辑都放在 `web/src/` 下独立的 `.ts` 里，用 `node --test` 离线测试；组件只负责渲染。
 
 ### 面板样式
 
@@ -119,9 +119,9 @@ contracts ──► orchestration ─┐
 | `src/extensions/resources/` | 统一的 `read` 工具、地址解析和分页 |
 | `src/extensions/workspace/` | 工作目录里的 `write`、`edit`、`bash`；长命令转为后台作业 |
 | `src/extensions/memory/` | `memory` 工具、按轮提交、Dreaming 定时器 |
-| `src/extensions/mcp/` | 读取 `mcp.json`、连接 MCP 服务器、把工具桥接为扩展 |
+| `src/extensions/mcp/` | 读写 `mcp.json`、连接 MCP 服务器、把工具桥接为扩展 |
 | `src/roles/` | `router`、`worker`、`dreamer` 的提示词、开篇和扩展选择；Router 的 `handoff` |
-| `src/models/` | 在 pi-ai 之上读写 `auth.json`、读取 `models.json`、生成 `models://` 目录 |
+| `src/models/` | 在 pi-ai 之上读写 `auth.json` 和 `models.json`、向端点请求模型列表、在内置目录里查参考模型、生成 `models://` 目录 |
 | `src/engine/` | `ProjectHost`（一个项目的存储与运行）、`Engine`（全部项目和共享扩展）、后台作业表、视图 |
 | `src/api/` | 本地接口的类型契约、HTTP 客户端、实时流协议 |
 | `src/server/` | HTTP 服务、鉴权（token 与一次性授权码）、实时流 |
@@ -134,7 +134,7 @@ contracts ──► orchestration ─┐
 - **扩展之间不互相 import**，只依赖 `contracts`。跨模块的数据经 `contracts` 里定义的持久状态交换；扩展需要的外部能力声明成端口，由 `ProjectHost` 注入。
 - **安装与启用分开**：项目安装了哪些扩展，和每个角色选用哪些扩展是两回事。`roles` 只声明名字，应用角色时按名字解析，不持有扩展实例。
 - **状态写进存储**：任何重置后还需要的信息（工单、依赖、待回答的问题）都必须是持久状态，不能只留在模型的上下文里。
-- **每个存储只有一条写入路径**：`session.sqlite` 只由 Engine 写；记忆库只经由 `memory` 模块提交；`settings.json`、`auth.json` 各有一个串行的写入者。
+- **每个存储只有一条写入路径**：`session.sqlite` 只由 Engine 写；记忆库只经由 `memory` 模块提交；`settings.json`、`auth.json`、`models.json`（`ModelRuntime.setProviderConfig`）、`mcp.json`（`McpHub.save`）各有一个串行的写入者。
 - **能力优先于缓存**：同一角色尽量保持稳定的配置以复用缓存，但不为了缓存前缀限制角色需要的能力。
 - **依赖的 Pi 包锁定版本**：按 `node_modules` 里安装的类型编写代码。
 

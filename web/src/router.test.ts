@@ -13,6 +13,8 @@ test("解析与格式化全部路由并往返一致", () => {
     { name: "settings", section: "roles" },
     { name: "settings", section: "mcp" },
     { name: "settings", section: "engine" },
+    { name: "settings", section: "models", item: "my gw" },
+    { name: "settings", section: "mcp", item: "+" },
     { name: "connect" },
   ];
   for (const route of routes) {
@@ -31,6 +33,12 @@ test("支持编码过的项目编号与工单编号", () => {
 test("settings 缺失或未知子页时默认 general", () => {
   assert.deepEqual(parseRoute("#/settings"), { name: "settings", section: "general" });
   assert.deepEqual(parseRoute("#/settings/unknown"), { name: "settings", section: "general" });
+  assert.deepEqual(parseRoute("#/settings/general/x"), { name: "settings", section: "general" });
+  assert.deepEqual(parseRoute("#/settings/models/openai"), {
+    name: "settings",
+    section: "models",
+    item: "openai",
+  });
 });
 
 test("空 hash、未知路径与 #code= 不被当成普通路由", () => {

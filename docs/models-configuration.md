@@ -2,11 +2,13 @@
 
 这一页列出 `~/.eevee/models.json` 的全部字段。它的格式是 pi coding agent `models.json` 的一个子集，常见场景见 [选择模型](models.md#接入兼容端点)。
 
-`models.json` 在 Engine 启动和保存 API Key 时读取，问题写进 Engine 日志：
+`models.json` 在 Engine 启动、保存或移除 API Key、在面板里保存 provider 时读取，问题写进 Engine 日志，也显示在“设置 · 模型”页：
 
 - 字段类型或结构不符合下面的定义时，整个文件都不生效，日志里给出字段路径；
 - 结构正确但组不成 provider（比如新增的 provider 缺 `baseUrl` 或 `api`，或 `api` 不认识）时，只影响那一个 provider：内置 provider 保持原样，新增的 provider 不会出现；
 - 文件不是合法 JSON 时，Engine 无法启动。
+
+在面板里保存时，Engine 先检查改后的整个文件是否符合定义，再试着组出这个 provider，有问题就不写入，见 [接入兼容端点](models.md#接入兼容端点)。
 
 ```json
 {

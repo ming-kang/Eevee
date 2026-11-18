@@ -41,6 +41,7 @@
 | 404 | `no_provider` | `provider` | provider 不存在 |
 | 404 | `no_extension` | `names` | 要启用的扩展没有安装 |
 | 409 | `model_unset` | `role` | 角色没有可用的模型 |
+| 409 | `model_in_use` | `provider`、`modelId` | 改动会去掉一个正被默认模型使用的模型 |
 | 409 | `ticket_closed` | `ticketId` | 工单已经结单 |
 | 409 | `report_changed` | `ticketId` | 待验收的报告已经被新的报告取代 |
 | 409 | `answered` | `questionId` | 问题已经回答过 |
@@ -49,7 +50,9 @@
 | 409 | `not_failed` | — | 上一轮没有失败，不需要重试 |
 | 409 | `revert_failed` | `commit` | 撤销失败：没有这个 commit，或与后来的改动冲突；仓库不变 |
 | 413 | `too_large` | — | 请求体超过 1 MB |
+| 422 | `bad_config` | `problems` | 改后的配置文件有问题，没有写入；`problems` 的格式见 [配置问题](#配置问题) |
 | 500 | `internal` | `detail` | 意料之外的错误，`detail` 是它的原话，详情写进 Engine 日志 |
+| 502 | `probe_failed` | `detail` | 向端点请求模型列表失败，`detail` 是原因 |
 
 ## Engine
 
@@ -75,8 +78,22 @@
 | `GET /api/models` | — | 模型视图 |
 | `POST /api/settings/models` | `{ role?, provider, modelId, thinkingLevel? }` | `{ ok }` |
 | `POST /api/auth/:provider` | `{ key }` | `{ ok }` |
+| `DELETE /api/auth/:provider` | — | `{ ok }` |
+| `GET /api/models/config` | — | `{ providers }`：`models.json` 里每个 provider 的条目，原样返回 |
+| `PUT /api/models/providers/:provider` | `{ config }` | 模型视图 |
+| `DELETE /api/models/providers/:provider` | — | 模型视图 |
+| `POST /api/models/probe` | `{ baseUrl, api?, key?, headers?, provider? }` | `{ models, truncated }` |
+| `POST /api/models/builtin` | `{ query, api? }` | `{ models }` |
 
 `role` 为 `router`、`worker`、`dreamer` 或 `default`，省略时为 `default`。`thinkingLevel` 为 `off`、`minimal`、`low`、`medium`、`high`、`xhigh` 或 `max`，省略时为 `off`。
+
+`POST /api/auth/:provider` 把 key 存进 `auth.json`，`DELETE` 删掉这一项；两者都重新读取 `models.json`。
+
+`PUT /api/models/providers/:provider` 用 `config` 替换 `models.json` 里这个 provider 的条目，格式见 [模型配置](models-configuration.md)；`DELETE` 删掉条目，内置 provider 回到原样，新增的 provider 连同 `auth.json` 里的 key 一起删掉。新 provider 的名字只能用字母、数字、`.`、`_` 和 `-`，以字母或数字开头。改后的文件不符合格式或组不成这个 provider 时返回 `bad_config`，会去掉默认模型（全局或某个项目的）正在用的模型时返回 `model_in_use`，文件都保持不变。成功后立即生效，返回新的模型视图。
+
+`POST /api/models/probe` 向 `baseUrl` 请求模型列表：`api` 为 `anthropic-messages` 时请求 Anthropic 的 `/v1/models`，否则请求 OpenAI 风格的 `<baseUrl>/models`。`key` 和 `headers` 的值可以引用环境变量；省略 `key` 时用 `provider` 已保存的凭据。`models` 的每一项是 `{ id, name?, contextWindow?, maxTokens?, input?, reasoning? }`，只带端点声明了的字段；超过 2000 个时截断，`truncated` 为 `true`。请求 10 秒超时。
+
+`POST /api/models/builtin` 在 pi-ai 自带的模型目录里找和 `query` 相近的模型，最多 8 个：先是 ID 完全相同的，再是只差大小写、分隔符或厂商前缀的，最后是模糊匹配；同一组里 `api` 相同的排在前面。目录是 pi-ai 随版本附带的，不受 `models.json` 和凭据影响。每一项是 `{ provider, id, name, api, reasoning, input, contextWindow, maxTokens, cost, costTiers }`，`cost` 是每百万 token 的美元价格，`costTiers` 表示它还按输入长度分档计价。
 
 模型视图：
 
@@ -85,7 +102,7 @@
 | `catalog` | 默认模型、可用模型和使用经验的文本，格式与 `read models://` 相同，但默认模型一栏是全局设置 |
 | `defaults` | `settings.json` 里的默认模型：`{ default?, router?, worker?, dreamer? }`，每项为 `{ provider, modelId }` |
 | `routerModel` | Router 实际使用的模型，没有配置时省略 |
-| `providers` | 每个 provider：`{ id, name, configured, authType?, source?, custom, modelCount }`。`configured` 表示有可用的凭据，`authType` 为 `api_key` 或 `oauth`，`source` 说明凭据从哪里来，`custom` 表示来自 `models.json` |
+| `providers` | 每个 provider：`{ id, name, configured, authType?, source?, custom, builtIn, defaultBaseUrl?, modelCount }`。`configured` 表示有可用的凭据，`authType` 为 `api_key` 或 `oauth`，`source` 说明凭据从哪里来，`custom` 表示 `models.json` 新增或修改了它，`builtIn` 表示它是内置的，`defaultBaseUrl` 是内置 provider 原本的地址 |
 | `available` | 有凭据的 provider 下的模型：`{ provider, modelId, name, contextWindow, maxTokens, reasoning, thinkingLevels, cost, cacheShortSeconds? }`，`thinkingLevels` 是它支持的思考档位，不支持推理时为 `["off"]`，`cost` 是每百万 token 的 `{ input, output, cacheRead, cacheWrite }` 美元价格 |
 | `profiles` | `models.md` 的内容 |
 | `problems` | `models.json` 里的[配置问题](#配置问题) |
@@ -97,8 +114,13 @@
 | `GET /api/capabilities` | — | 能力视图 |
 | `POST /api/capabilities/roles/:role` | `{ extensions?, maxTurns? }` | 能力视图 |
 | `POST /api/mcp/reload` | — | 能力视图 |
+| `GET /api/mcp/config` | — | `{ servers }`：`mcp.json` 里 `mcpServers` 的条目，原样返回 |
+| `PUT /api/mcp/servers/:server` | `{ config }` | 能力视图 |
+| `DELETE /api/mcp/servers/:server` | — | 能力视图 |
 
 `extensions` 是角色在自带扩展之外启用的完整列表，会替换原来的列表；名字必须已经安装。`maxTurns` 为正整数，`null` 恢复默认（不限制）。省略的字段保持不变。
+
+`PUT /api/mcp/servers/:server` 用 `config` 替换 `mcp.json` 里这个服务器的条目，格式见 [接入 MCP 服务器](mcp.md#配置服务器)，然后只重连这一个服务器；`DELETE` 删掉条目，断开连接，并把 `mcp.<server>` 从启用它的角色里去掉。条目不合法或 `mcp.json` 读不出来时返回 `bad_config`，文件保持不变。返回的能力视图里，新连接的服务器可能还是 `connecting`。
 
 能力视图：
 

@@ -25,6 +25,8 @@ import {
   type McpExposure,
   type McpServerEntry,
   mcpExtensionName,
+  readMcpEntries,
+  writeMcpEntry,
 } from "./config.ts";
 
 export type McpServerState = "disabled" | "connecting" | "connected" | "failed";
@@ -67,35 +69,49 @@ const STDERR_TAIL = 2000;
 /**
  * The Engine's MCP servers: one connection per configured server, shared by every project, each offered as
  * the extension `mcp.<name>`. Servers connect in the background; an extension has no tools until its server
- * answered, and loses them when the connection drops. `reload()` reads mcp.json again and reconnects.
+ * answered, and loses them when the connection drops. `reload()` reads mcp.json again and reconnects;
+ * `save()` changes one server's entry and reconnects just that one. A connection that is no longer the
+ * server's current one is closed as soon as it answers.
  */
 export class McpHub {
   readonly #options: McpHubOptions;
   readonly #connections = new Map<string, Connection>();
   #problems: readonly ConfigProblem[] = [];
-  #generation = 0;
+  #queue: Promise<unknown> = Promise.resolve();
 
   constructor(options: McpHubOptions) {
     this.#options = options;
   }
 
   async start(): Promise<void> {
-    const generation = ++this.#generation;
     const { servers, problems } = await loadMcpConfig(this.#options.configPath);
     this.#problems = problems;
     for (const problem of problems) console.error(describeConfigProblem(problem));
-    for (const entry of servers) {
-      const connection: Connection = {
-        entry,
-        state: entry.enabled ? "connecting" : "disabled",
-        summary: entry.description ?? "",
-        tools: 0,
-        extension: defineExtension({ name: mcpExtensionName(entry.name) }),
-      };
-      this.#connections.set(entry.name, connection);
-      if (entry.enabled) void this.#connect(connection, generation);
-    }
+    for (const entry of servers) this.#open(entry);
     this.#options.onChange();
+  }
+
+  /** The server entries of mcp.json as written. */
+  entries(): Promise<Record<string, unknown>> {
+    return this.#serial(() => readMcpEntries(this.#options.configPath));
+  }
+
+  /**
+   * Writes one server's entry, or removes it (`undefined`), then reconnects that server alone; the others
+   * keep their connections.
+   */
+  save(name: string, entry: Record<string, unknown> | undefined): Promise<void> {
+    return this.#serial(async () => {
+      await writeMcpEntry(this.#options.configPath, name, entry);
+      const { servers, problems } = await loadMcpConfig(this.#options.configPath);
+      this.#problems = problems;
+      const old = this.#connections.get(name);
+      this.#connections.delete(name);
+      await old?.client?.close().catch(() => undefined);
+      const fresh = servers.find((s) => s.name === name);
+      if (fresh !== undefined) this.#open(fresh);
+      this.#options.onChange();
+    });
   }
 
   /** Extensions of the enabled servers, connected or not, so roles can name them either way. */
@@ -131,14 +147,37 @@ export class McpHub {
     return this.#problems;
   }
 
-  async reload(): Promise<void> {
-    await this.#closeAll();
-    await this.start();
+  reload(): Promise<void> {
+    return this.#serial(async () => {
+      await this.#closeAll();
+      await this.start();
+    });
   }
 
   async close(): Promise<void> {
-    this.#generation += 1;
     await this.#closeAll();
+  }
+
+  #serial<T>(work: () => Promise<T>): Promise<T> {
+    const next = this.#queue.then(work, work);
+    this.#queue = next.catch(() => undefined);
+    return next;
+  }
+
+  #open(entry: McpServerEntry): void {
+    const connection: Connection = {
+      entry,
+      state: entry.enabled ? "connecting" : "disabled",
+      summary: entry.description ?? "",
+      tools: 0,
+      extension: defineExtension({ name: mcpExtensionName(entry.name) }),
+    };
+    this.#connections.set(entry.name, connection);
+    if (entry.enabled) void this.#connect(connection);
+  }
+
+  #current(connection: Connection): boolean {
+    return this.#connections.get(connection.entry.name) === connection;
   }
 
   async #closeAll(): Promise<void> {
@@ -147,7 +186,7 @@ export class McpHub {
     await Promise.allSettled(clients.map((client) => client.close()));
   }
 
-  async #connect(connection: Connection, generation: number): Promise<void> {
+  async #connect(connection: Connection): Promise<void> {
     const { entry } = connection;
     const client = new McpClient({ ...this.#options.client });
     let stderr = "";
@@ -159,7 +198,7 @@ export class McpHub {
       const tools = await client.listTools(
         entry.timeoutMs === undefined ? {} : { timeoutMs: entry.timeoutMs },
       );
-      if (generation !== this.#generation) {
+      if (!this.#current(connection)) {
         await client.close();
         return;
       }
@@ -177,12 +216,12 @@ export class McpHub {
         tools: bridged,
       });
       client.onClose(() => {
-        if (connection.client !== client || generation !== this.#generation) return;
+        if (connection.client !== client || !this.#current(connection)) return;
         this.#drop(connection, { code: "disconnected" });
       });
     } catch (error) {
       await client.close().catch(() => undefined);
-      if (generation !== this.#generation) return;
+      if (!this.#current(connection)) return;
       const issue = configIssue(error);
       connection.state = "failed";
       connection.error =

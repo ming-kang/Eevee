@@ -47,10 +47,11 @@ Eevee 的全部配置和数据都在一个数据目录里，默认是 `~/.eevee/
 |---|---|
 | 在面板里修改默认模型或角色能力 | 立即应用到全部项目的 Router 和未结工单 |
 | 手动编辑 `settings.json` | 重启 Engine 后，或下一次在面板里修改设置时；`port` 只在 Engine 启动时读取 |
-| 在面板里保存 API Key | 立即 |
-| 手动编辑 `models.json` | 下次保存 API Key 或重启 Engine 后 |
+| 在面板里保存 API Key 或 provider | 立即 |
+| 手动编辑 `models.json` | 下次在面板里保存 API Key 或 provider，或重启 Engine 后 |
 | 编辑 `models.md` | 下次读取时（`read models://`、面板的“设置 · 模型”） |
-| 编辑 `mcp.json` | 在“设置 · MCP 与扩展”里点“重新加载”后 |
+| 在面板里保存 MCP 服务器 | 立即，只重连这一个服务器 |
+| 手动编辑 `mcp.json` | 在“设置 · MCP 与扩展”里点“重新加载”后 |
 | 增删改 `extensions/` 里的文件 | 重启 Engine 后 |
 | 编辑 `project.json` | 重启 Engine 后 |
 | 编辑记忆文件 | 之后创建或重置的对话 |

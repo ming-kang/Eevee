@@ -359,6 +359,7 @@ function onPaletteSelect(item: PaletteItem): void {
       <SettingsPage
         :client="session.client"
         :section="route.section"
+        :item="route.item"
         :status="engine.status.value"
         :stream-state="engine.streamState.value"
         :refresh-status="engine.refreshStatus"

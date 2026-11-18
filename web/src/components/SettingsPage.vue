@@ -13,14 +13,14 @@ import {
   type RoleName,
   type ThinkingLevel,
 } from "@shared/contracts/index.ts";
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { configIssueText, configProblemText, errorText } from "../errors.ts";
 import { ROLE_LABEL } from "../labels.ts";
 import { LOCALE_NAME, LOCALES, locale, setLocale, t } from "../i18n.ts";
 import type { IconName } from "../icons.ts";
 import { levelsOf, switchModel, levelLabel } from "../model-choice.ts";
 import { useModelsView } from "../models-view.ts";
-import type { SettingsSection } from "../router.ts";
+import { formatRoute, NEW_ITEM, type SettingsSection } from "../router.ts";
 import { vSeg } from "../dom.ts";
 import type { StreamState } from "../stream.ts";
 import { useSubmit } from "../submit.ts";
@@ -30,12 +30,16 @@ import { readTextSize, TEXT_SIZE } from "../typography.ts";
 import Icon from "./Icon.vue";
 import LevelMenu from "./LevelMenu.vue";
 import MarkdownText from "./MarkdownText.vue";
+import McpEditor from "./McpEditor.vue";
 import ModelMenu from "./ModelMenu.vue";
+import ProviderEditor from "./ProviderEditor.vue";
 import Skeleton from "./Skeleton.vue";
 
 const props = defineProps<{
   client: Client;
   section: SettingsSection;
+  /** The provider or MCP server open on its own page, or `NEW_ITEM` to add one. */
+  item?: string | undefined;
   status: EngineStatus | undefined;
   streamState: StreamState;
   refreshStatus: () => Promise<void>;
@@ -95,29 +99,10 @@ const THEME_OPTIONS: { key: ThemePreference; label: string }[] = [
 
 const RESTART = "eevee stop && eevee start";
 
-/** The provider whose API key is being typed in its row, and what has been typed so far. */
-const keyDraft = ref<{ provider: string; key: string }>();
-const savingKey = useSubmit();
-
-async function editKey(provider: string): Promise<void> {
-  keyDraft.value = { provider, key: "" };
-  savingKey.error.value = undefined;
-  await nextTick();
-  document.querySelector<HTMLInputElement>("#provider-key")?.focus();
-}
-
-async function saveKey(): Promise<void> {
-  const draft = keyDraft.value;
-  const key = draft?.key.trim();
-  if (!draft || !key) return;
-  const ok = await savingKey.run(async () => {
-    await props.client.call("POST /api/auth/:provider", { provider: draft.provider }, { key });
-  });
-  if (!ok) return;
-  keyDraft.value = undefined;
-  showToast(t("已保存 {provider} 的 API Key", { provider: draft.provider }));
-  await loadModels();
-}
+const NEW_PROVIDER = formatRoute({ name: "settings", section: "models", item: NEW_ITEM });
+const NEW_SERVER = formatRoute({ name: "settings", section: "mcp", item: NEW_ITEM });
+const providerHref = (id: string) => formatRoute({ name: "settings", section: "models", item: id });
+const serverHref = (name: string) => formatRoute({ name: "settings", section: "mcp", item: name });
 
 const MCP_STATE_LABEL: Record<McpServerView["state"], { dot: string; label: string }> = {
   connected: { dot: "ok", label: t("已连接") },
@@ -142,8 +127,8 @@ function syncTurnDrafts(cap: CapabilitiesView): void {
   turnDrafts.value = next;
 }
 
-async function loadCapabilities(): Promise<void> {
-  loadingCap.value = true;
+async function loadCapabilities(quiet = false): Promise<void> {
+  loadingCap.value = !quiet;
   capError.value = undefined;
   try {
     const view = await props.client.call("GET /api/capabilities");
@@ -162,9 +147,53 @@ watch(
     pop.value = undefined;
     if (sec === "models" && modelsView.value === undefined) void loadModels();
     if (!capabilities.value) void loadCapabilities();
+    if (sec === "mcp") void loadMcpEntries();
   },
   { immediate: true },
 );
+
+/** mcp.json's entries, which the server list switches on and off. */
+const mcpEntries = ref<Record<string, Record<string, unknown>>>();
+const togglingServer = useSubmit();
+
+async function loadMcpEntries(): Promise<void> {
+  try {
+    mcpEntries.value = (await props.client.call("GET /api/mcp/config")).servers;
+  } catch {
+    mcpEntries.value = undefined;
+  }
+}
+
+async function toggleServer(name: string): Promise<void> {
+  const entry = mcpEntries.value?.[name];
+  if (entry === undefined) return;
+  const { enabled, ...rest } = entry;
+  const config = enabled === false ? rest : { ...rest, enabled: false };
+  const ok = await togglingServer.run(async () => {
+    applyCapabilities(await props.client.call("PUT /api/mcp/servers/:server", { server: name }, { config }));
+  });
+  if (ok) await loadMcpEntries();
+}
+
+function applyCapabilities(view: CapabilitiesView): void {
+  capabilities.value = view;
+  syncTurnDrafts(view);
+}
+
+// Servers connect in the background; while one is still connecting, look again shortly.
+let polling: ReturnType<typeof setTimeout> | undefined;
+watch(capabilities, (view) => {
+  clearTimeout(polling);
+  if (view?.mcp.some((m) => m.state === "connecting")) {
+    polling = setTimeout(() => void loadCapabilities(true), 1000);
+  }
+});
+onUnmounted(() => clearTimeout(polling));
+
+/** A problem's entry in mcp.json, which can be opened and fixed. */
+function problemServer(problem: { file: string; entry?: string }): string | undefined {
+  return problem.file === "mcp.json" ? problem.entry : undefined;
+}
 
 function onWindowClick(event: MouseEvent): void {
   const target = event.target as HTMLElement | null;
@@ -480,6 +509,12 @@ const streamBadge = computed(() => {
             </div>
           </template>
 
+          <template v-else-if="section === 'models' && item !== undefined">
+            <p v-if="modelsError" class="error hint">{{ modelsError }}</p>
+            <Skeleton v-else-if="modelsView === undefined" />
+            <ProviderEditor v-else :client="client" :id="item" :view="modelsView" :reload-view="loadModels" />
+          </template>
+
           <template v-else-if="section === 'models'">
             <header class="set-head"><h2>{{ t("模型::list") }}</h2></header>
             <p v-if="modelsError" class="error hint">{{ modelsError }}</p>
@@ -567,14 +602,18 @@ const streamBadge = computed(() => {
                 >
                   {{ showAllProviders ? t("仅已配置") : t("显示全部") }}
                 </button>
+                <a class="btn sm" :href="NEW_PROVIDER">
+                  <Icon name="plus" size="xs" />
+                  <span>{{ t("添加") }}</span>
+                </a>
               </div>
               <div class="rows">
-                <div v-for="prov in visibleProviders" :key="prov.id" class="row">
+                <a v-for="prov in visibleProviders" :key="prov.id" class="row link" :href="providerHref(prov.id)">
                   <span class="dot" :class="{ ok: prov.configured }" />
                   <div class="r-main">
                     <span class="r-t">
                       <span>{{ prov.name }}</span>
-                      <span v-if="prov.custom" class="chip">{{ t("自定义") }}</span>
+                      <span v-if="prov.custom" class="chip">{{ prov.builtIn ? t("已修改") : t("自定义") }}</span>
                     </span>
                     <span class="r-d">
                       <span v-if="prov.name !== prov.id" class="mono">{{ prov.id }} · </span>
@@ -582,59 +621,13 @@ const streamBadge = computed(() => {
                       <template v-if="prov.configured && prov.source"> · {{ prov.source }}</template>
                     </span>
                   </div>
-                  <template v-if="keyDraft?.provider === prov.id">
-                    <input
-                      id="provider-key"
-                      v-model="keyDraft.key"
-                      class="input pref mono"
-                      type="password"
-                      autocomplete="off"
-                      spellcheck="false"
-                      placeholder="API Key"
-                      :aria-label="t('{provider} 的 API Key', { provider: prov.name })"
-                      :disabled="savingKey.busy.value"
-                      @keydown.enter="saveKey"
-                      @keydown.esc="keyDraft = undefined"
-                    />
-                    <button
-                      type="button"
-                      class="btn sm"
-                      :disabled="!keyDraft.key.trim() || savingKey.busy.value"
-                      @click="saveKey"
-                    >
-                      {{ t("保存") }}
-                    </button>
-                    <button
-                      type="button"
-                      class="btn ghost sm icon"
-                      :aria-label="t('取消')"
-                      @click="keyDraft = undefined"
-                    >
-                      <Icon name="x" size="xs" />
-                    </button>
-                  </template>
-                  <template v-else-if="prov.configured">
-                    <span class="chip">
-                      <Icon name="key" size="xs" />
-                      <span>{{ prov.authType === "oauth" ? "OAuth" : "API Key" }}</span>
-                    </span>
-                    <button
-                      v-if="prov.authType !== 'oauth'"
-                      type="button"
-                      class="btn ghost sm icon"
-                      :aria-label="t('更换 {provider} 的 API Key', { provider: prov.name })"
-                      @click="editKey(prov.id)"
-                    >
-                      <Icon name="pencil" size="xs" />
-                    </button>
-                  </template>
-                  <button v-else type="button" class="btn sm" @click="editKey(prov.id)">
+                  <span v-if="prov.configured" class="chip">
                     <Icon name="key" size="xs" />
-                    <span>{{ t("填写 API Key") }}</span>
-                  </button>
-                </div>
+                    <span>{{ prov.authType === "oauth" ? "OAuth" : "API Key" }}</span>
+                  </span>
+                  <Icon name="chevR" size="xs" class="go" />
+                </a>
               </div>
-              <p v-if="savingKey.error.value" class="error hint">{{ savingKey.error.value }}</p>
 
               <template v-if="availableModels.length > 0">
                 <div class="section-t"><h3>{{ t("可用模型") }}</h3></div>
@@ -776,6 +769,18 @@ const streamBadge = computed(() => {
             </div>
           </template>
 
+          <template v-else-if="section === 'mcp' && item !== undefined">
+            <p v-if="capError" class="error hint">{{ capError }}</p>
+            <Skeleton v-else-if="capabilities === undefined" />
+            <McpEditor
+              v-else
+              :client="client"
+              :name="item"
+              :capabilities="capabilities"
+              @changed="(view) => { applyCapabilities(view); void loadMcpEntries(); }"
+            />
+          </template>
+
           <template v-else-if="section === 'mcp'">
             <header class="set-head">
               <h2>{{ t("MCP 与扩展") }}</h2>
@@ -794,20 +799,33 @@ const streamBadge = computed(() => {
                 <div>
                   <strong>{{ t("{n} 个问题", { n: capabilities.problems.length }) }}</strong>
                   <ul>
-                    <li v-for="(prob, idx) in capabilities.problems" :key="idx">{{ configProblemText(prob) }}</li>
+                    <li v-for="(prob, idx) in capabilities.problems" :key="idx">
+                      <a v-if="problemServer(prob)" :href="serverHref(problemServer(prob) ?? '')">
+                        {{ configProblemText(prob) }}
+                      </a>
+                      <template v-else>{{ configProblemText(prob) }}</template>
+                    </li>
                   </ul>
                 </div>
               </div>
-              <div class="section-t"><h3 title="~/.eevee/mcp.json">{{ t("MCP 服务器") }}</h3></div>
+              <div class="section-t">
+                <h3 title="~/.eevee/mcp.json">{{ t("MCP 服务器") }}</h3>
+                <span class="spacer" />
+                <a class="btn sm" :href="NEW_SERVER">
+                  <Icon name="plus" size="xs" />
+                  <span>{{ t("添加") }}</span>
+                </a>
+              </div>
+              <p v-if="togglingServer.error.value" class="error hint">{{ togglingServer.error.value }}</p>
               <div class="rows">
                 <div v-if="capabilities.mcp.length === 0" class="row">
                   <span class="muted">{{ t("没有 MCP 服务器") }}</span>
                 </div>
-                <div v-for="server in capabilities.mcp" :key="server.name" class="row">
-                  <div class="r-main">
+                <div v-for="server in capabilities.mcp" :key="server.name" class="row has-link">
+                  <a class="r-main row-link" :href="serverHref(server.name)">
                     <span class="r-t">
                       <span class="mono">mcp.{{ server.name }}</span>
-                      <span class="chip mono" :title="t('工具呈现方式（在 mcp.json 中配置）')">{{ server.exposure }}</span>
+                      <span class="chip mono" :title="t('工具提供方式')">{{ server.exposure }}</span>
                     </span>
                     <span class="r-d">
                       {{ t("{n} 个工具", { n: server.tools }) }}
@@ -816,11 +834,20 @@ const streamBadge = computed(() => {
                       </template>
                     </span>
                     <span v-if="server.error" class="err">{{ configIssueText(server.error) }}</span>
-                  </div>
+                  </a>
                   <span class="status-text">
                     <span class="dot" :class="MCP_STATE_LABEL[server.state].dot" />
                     <span>{{ MCP_STATE_LABEL[server.state].label }}</span>
                   </span>
+                  <button
+                    type="button"
+                    class="switch"
+                    :class="{ on: server.state !== 'disabled' }"
+                    :disabled="togglingServer.busy.value || mcpEntries?.[server.name] === undefined"
+                    :aria-pressed="server.state !== 'disabled'"
+                    :aria-label="t('启用 {name}', { name: server.name })"
+                    @click="toggleServer(server.name)"
+                  />
                 </div>
               </div>
               <div class="section-t"><h3 title="~/.eevee/extensions/">{{ t("用户扩展") }}</h3></div>
