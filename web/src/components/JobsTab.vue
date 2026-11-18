@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import type { Client } from "@shared/api/client.ts";
 import type { JobLogView } from "@shared/api/contract.ts";
-import type { JobId, JobStatus } from "@shared/contracts/index.ts";
+import type { JobId } from "@shared/contracts/index.ts";
 import { computed, onUnmounted, ref, watch } from "vue";
 import type { RunningJobItem } from "../board.ts";
 import { vTail } from "../dom.ts";
+import { errorText } from "../errors.ts";
 import { t } from "../i18n.ts";
+import { jobStatusText } from "../labels.ts";
 import { useSubmit } from "../submit.ts";
 import { formatElapsedSeconds } from "../time.ts";
 import { showToast } from "../toasts.ts";
@@ -82,7 +84,7 @@ async function fetchLog(jobId: string, pid: string, silent = false): Promise<voi
     }
   } catch (err) {
     if (token !== logSeq) return;
-    if (!silent) logError.value = err instanceof Error ? err.message : String(err);
+    if (!silent) logError.value = errorText(err);
   } finally {
     if (token === logSeq && !silent) logLoading.value = false;
   }
@@ -131,13 +133,6 @@ function elapsed(startedAt: number): string {
   return formatElapsedSeconds((nowMs.value - startedAt) / 1000);
 }
 
-function statusLabel(status: JobStatus, exitCode?: number): string {
-  if (status === "running") return t("运行中");
-  if (status === "killed") return t("已终止");
-  if (status === "interrupted") return t("被打断");
-  return exitCode !== undefined ? t("退出码 {code}", { code: exitCode }) : t("已结束");
-}
-
 async function killJob(jobId: JobId): Promise<void> {
   const pid = props.projectId;
   if (!pid) return;
@@ -169,7 +164,7 @@ async function killJob(jobId: JobId): Promise<void> {
         <span class="job-cmd">{{ logView?.job.command ?? t("作业 {id}", { id: openJobId ?? "" }) }}</span>
         <span class="job-sub">
           <span v-if="logView" class="t-id">{{ logView.job.ticketId }}</span>
-          <span>{{ logView ? statusLabel(logView.job.status, logView.job.exitCode) : openJobId }}</span>
+          <span>{{ logView ? jobStatusText(logView.job) : openJobId }}</span>
           <span class="spacer" />
           <span class="num">{{ openJobId }}</span>
         </span>

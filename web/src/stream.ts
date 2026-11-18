@@ -1,4 +1,5 @@
 import type { ConversationWindow, EntryQuery, EntryRecord } from "@earendil-works/pi-durable";
+import type { ProblemBody } from "../../src/api/contract.ts";
 import {
   type BoardTopic,
   type ConversationTopic,
@@ -8,17 +9,19 @@ import {
   type StreamRequest,
   TOKEN_PROTOCOL_PREFIX,
 } from "../../src/api/stream.ts";
+import type { Problem } from "../../src/contracts/index.ts";
 import { t } from "./i18n.ts";
 
 export type StreamState = "connecting" | "connected" | "reconnecting" | "closed";
 
+/** A request the Engine refused over the stream: the Problem to word, its wording as the message. */
 export class StreamError extends Error {
   override name = "StreamError";
-  readonly code: string;
+  readonly problem: Problem;
 
-  constructor(code: string, message: string) {
+  constructor({ message, ...problem }: ProblemBody) {
     super(message);
-    this.code = code;
+    this.problem = problem as Problem;
   }
 }
 
@@ -42,7 +45,7 @@ export type TimerLike = {
 
 export type WatchEvent =
   | Extract<StreamEvent, { type: "value" | "ops" | "board" | "end" }>
-  | { type: "error"; id: string; code: string; message: string };
+  | { type: "error"; id: string; error: ProblemBody };
 
 export type WatchRegistration = {
   topic: ConversationTopic | BoardTopic;
@@ -192,7 +195,7 @@ export function createStreamClient(options: StreamClientOptions) {
         return;
       }
       case "error": {
-        const error = new StreamError(event.code, event.message);
+        const error = new StreamError(event.error);
         if (event.id !== undefined) {
           const pending = pendingEntries.get(event.id);
           if (pending) {
@@ -202,7 +205,7 @@ export function createStreamClient(options: StreamClientOptions) {
           }
           const sub = watches.get(event.id);
           if (sub) {
-            sub.onEvent({ type: "error", id: event.id, code: event.code, message: event.message });
+            sub.onEvent({ type: "error", id: event.id, error: event.error });
             return;
           }
         }

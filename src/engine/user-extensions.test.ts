@@ -26,13 +26,14 @@ test("用户扩展：默认导出 extension 或工厂函数，保留名、重名
       ["weather", "notes"],
     );
     const errors = Object.fromEntries(status.map((s) => [s.file, s.error ?? "ok"]));
-    assert.equal(errors["a-object.mjs"], "ok");
-    assert.equal(errors["b-factory.mjs"], "ok");
-    assert.match(errors["c-reserved.mjs"] ?? "", /保留/);
-    assert.match(errors["d-duplicate.mjs"] ?? "", /已被另一个文件使用/);
-    assert.match(errors["e-broken.mjs"] ?? "", /坏了/);
-    assert.match(errors["f-shape.mjs"] ?? "", /默认导出/);
-    assert.equal(errors["README.md"], undefined);
+    assert.deepEqual(errors, {
+      "a-object.mjs": "ok",
+      "b-factory.mjs": "ok",
+      "c-reserved.mjs": { code: "name_reserved", name: "eevee.sneaky" },
+      "d-duplicate.mjs": { code: "name_taken", name: "weather" },
+      "e-broken.mjs": { code: "failed", detail: "坏了" },
+      "f-shape.mjs": { code: "bad_export" },
+    });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

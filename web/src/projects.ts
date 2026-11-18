@@ -2,7 +2,7 @@ import type { BoardView, ProjectSummary } from "../../src/api/contract.ts";
 import type { RunSummary } from "../../src/contracts/index.ts";
 import { effectiveStage, type VisualStage } from "./board.ts";
 import { t } from "./i18n.ts";
-import { STAGE_LABEL } from "./labels.ts";
+import { failureText, STAGE_LABEL } from "./labels.ts";
 import type { Route } from "./router.ts";
 
 export type ProjectRowState = {
@@ -39,7 +39,7 @@ export function deriveProjectState(input: {
   );
   const router = input.router ?? input.board?.router;
   const routerRunning = router?.running ?? false;
-  const routerFailed = router?.failure;
+  const routerFailed = router?.failure && failureText(router.failure);
 
   let kind: ProjectRowState["kind"] = "rest";
   if (questionCount > 0) kind = "user";

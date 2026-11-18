@@ -3,10 +3,11 @@ import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
-import { formatAddress, type Job, type JobId, type TicketId } from "../contracts/index.ts";
+import type { Job, JobId, JobOutcome, TicketId } from "../contracts/index.ts";
 import {
   type DeliveryContext,
   deliver,
+  describeJobOutcome,
   readBinding,
   readTicket,
   registerJob,
@@ -46,7 +47,7 @@ export class JobHost implements BackgroundJobs {
     api: ToolExecutionApi,
     command: RunningCommand,
     context: Context,
-  ): Promise<string | undefined> {
+  ): Promise<JobId | undefined> {
     const initial = command.output();
     const pending: string[] = [];
     let write = (chunk: string) => {
@@ -70,7 +71,7 @@ export class JobHost implements BackgroundJobs {
     };
     const settled = command.done.then((result) => this.#settle(job, command, result, log));
     this.#running.set(job.id, { job, command, settled });
-    return formatAddress({ kind: "job", id: job.id });
+    return job.id;
   }
 
   running(ticketId?: TicketId): Job[] {
@@ -135,20 +136,18 @@ export class JobHost implements BackgroundJobs {
     if (tracked !== undefined) tracked.settling = true;
     const killedFor = this.#killed.get(job.id);
     this.#killed.delete(job.id);
-    const killed = killedFor !== undefined;
-    log.write(`\n[${describe(result, killed)}]\n`);
+    const outcome: JobOutcome = {
+      status: killedFor === undefined ? "exited" : "killed",
+      ...(result.exitCode === undefined ? {} : { exitCode: result.exitCode }),
+      ...(result.error === undefined ? {} : { error: result.error }),
+    };
+    log.write(`\n[${describeJobOutcome(outcome)}]\n`);
     await new Promise<void>((resolve) => log.end(resolve));
     this.#running.delete(job.id);
     if (this.#closing) return;
 
     const { context } = this.#deps;
     const host = this.#deps.delivery();
-    const outcome = {
-      status: killed ? ("killed" as const) : ("exited" as const),
-      endedAt: this.#now(),
-      ...(result.exitCode === undefined ? {} : { exitCode: result.exitCode }),
-      ...(result.error === undefined ? {} : { error: result.error }),
-    };
     const ticket = await readTicket(host, job.ticketId, context);
     const deliveries =
       killedFor === "closed" || ticket?.status !== "open"
@@ -157,24 +156,17 @@ export class JobHost implements BackgroundJobs {
             type: "job-finished",
             ticketId: job.ticketId,
             jobId: job.id,
-            outcome: describe(result, killed),
+            outcome,
             tail: command.output().slice(-TAIL_CHARS),
           });
     await deliver(host, deliveries, context, async (tx) => {
-      await settleJob(tx, job, outcome);
+      await settleJob(tx, job, { ...outcome, endedAt: this.#now() });
     });
   }
 
   #now(): number {
     return (this.#deps.now ?? Date.now)();
   }
-}
-
-function describe(result: CommandResult, killed: boolean): string {
-  if (killed) return "已终止";
-  if (result.error === "timeout") return "超时终止";
-  if (result.error !== undefined) return `出错：${result.error}`;
-  return `退出码 ${result.exitCode}`;
 }
 
 async function openLog(path: string): Promise<WriteStream> {

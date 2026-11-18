@@ -1,5 +1,7 @@
+import type { Problem } from "../contracts/index.ts";
 import {
   type ApiError,
+  type ProblemBody,
   type RouteBody,
   type RouteKey,
   type RouteParams,
@@ -7,15 +9,16 @@ import {
   TOKEN_HEADER,
 } from "./contract.ts";
 
+/** A refused request: the Problem to word, and the Engine's own wording as the message. */
 export class ApiRequestError extends Error {
   override name = "ApiRequestError";
   readonly status: number;
-  readonly code: string;
+  readonly problem: Problem;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, { message, ...problem }: ProblemBody) {
     super(message);
     this.status = status;
-    this.code = code;
+    this.problem = problem as Problem;
   }
 }
 
@@ -47,14 +50,16 @@ export function createClient(options: ClientOptions) {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    const payload = response.status === 204 ? undefined : await response.json();
+    const payload =
+      response.status === 204 ? undefined : await response.json().catch(() => undefined);
     if (!response.ok) {
-      const error = (payload as ApiError | undefined)?.error;
-      throw new ApiRequestError(
-        response.status,
-        error?.code ?? "http",
-        error?.message ?? response.statusText,
-      );
+      const detail = response.statusText || String(response.status);
+      const error = (payload as ApiError | undefined)?.error ?? {
+        code: "internal",
+        detail,
+        message: detail,
+      };
+      throw new ApiRequestError(response.status, error);
     }
     return payload as RouteResponse<K>;
   }

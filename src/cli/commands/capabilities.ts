@@ -1,6 +1,11 @@
 import type { Command } from "commander";
 import type { CapabilitiesView } from "../../api/contract.ts";
-import { ROLE_NAMES, type RoleName } from "../../contracts/index.ts";
+import {
+  describeConfigIssue,
+  describeConfigProblem,
+  ROLE_NAMES,
+  type RoleName,
+} from "../../contracts/index.ts";
 import type { EeveePaths } from "../../shared/paths.ts";
 import { connect } from "../connection.ts";
 
@@ -101,7 +106,7 @@ function printCapabilities(view: CapabilitiesView): void {
   console.log("\n可启用：");
   for (const e of view.available) console.log(`  ${e.name}（${e.tools} 个工具）`);
   for (const u of view.userExtensions) {
-    if (u.error !== undefined) console.log(`  ✗ ${u.file}：${u.error}`);
+    if (u.error !== undefined) console.log(`  ✗ ${u.file}：${describeConfigIssue(u.error)}`);
   }
   printMcp(view);
 }
@@ -114,8 +119,8 @@ function printMcp(view: CapabilitiesView): void {
   console.log("\nMCP：");
   for (const s of view.mcp) {
     const tools = s.state === "connected" ? `，${s.tools} 个工具` : "";
-    const error = s.error === undefined ? "" : `：${s.error}`;
+    const error = s.error === undefined ? "" : `：${describeConfigIssue(s.error)}`;
     console.log(`  ${s.extension} [${s.state}] ${s.exposure}${tools}${error}`);
   }
-  for (const problem of view.problems) console.log(`  ✗ ${problem}`);
+  for (const problem of view.problems) console.log(`  ✗ ${describeConfigProblem(problem)}`);
 }

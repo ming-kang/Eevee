@@ -54,7 +54,7 @@ async function connected(hub: McpHub, name: string): Promise<void> {
 const execute = (tool: ToolRegistration | undefined, args: unknown) =>
   tool?.execute(args as never, {} as ToolExecutionApi, { abortSignal: undefined } as never);
 
-test("MCP 服务器变成 mcp.<名字> 扩展，工具默认延迟加载，调用转给服务器", async () => {
+test("MCP 服务器变成 mcp.<name> 扩展，工具默认延迟加载，调用转给服务器", async () => {
   const servers = { weather: fakeServer([weather], "天气服务\n第二行") };
   const config = { mcpServers: { weather: { command: "unused" } } };
   await withHub(config, servers, async (hub, changes) => {
@@ -103,7 +103,15 @@ test("exposure 决定工具怎样给模型，停用的服务器不连接", async
     assert.deepEqual(tools["mcp.hidden"], []);
     assert.equal(tools["mcp.off"], undefined);
     assert.equal(hub.status().find((s) => s.name === "off")?.state, "disabled");
-    assert.match(hub.problems()[0] ?? "", /bad 的 exposure/);
+    assert.deepEqual(hub.problems(), [
+      {
+        file: "mcp.json",
+        entry: "bad",
+        code: "invalid",
+        field: "exposure",
+        allowed: ["deferred", "direct", "codemode", "hidden"],
+      },
+    ]);
   });
 });
 

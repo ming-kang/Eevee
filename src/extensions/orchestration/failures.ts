@@ -3,6 +3,7 @@ import { defineDoc, LiveDoc, type TaskId } from "@earendil-works/pi-durable";
 import { Board } from "../../contracts/docs.ts";
 import {
   describeRunFailure,
+  failureView,
   isDeliberateEnd,
   REPORT_SUMMARY_LIMIT,
   type Report,
@@ -52,6 +53,7 @@ export async function reportRunFailures(
           ? summary
           : `${summary.slice(0, REPORT_SUMMARY_LIMIT - 1)}…`,
       need: "排除原因后用 ticket message 让它继续，或者取消工单。",
+      origin: { type: "run-failed", failure: failureView(failure) },
       artifacts: [],
       handled: false,
       reminded: false,

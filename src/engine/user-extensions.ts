@@ -12,12 +12,14 @@ import { readdir } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Extension } from "@earendil-works/pi-durable";
+import { type ConfigIssue, describeConfigIssue } from "../contracts/index.ts";
+import { ConfigError, configIssue } from "../shared/config.ts";
 
 export type UserExtensionStatus = {
   file: string;
   name?: string;
   tools: number;
-  error?: string;
+  error?: ConfigIssue;
 };
 
 const SOURCE = new Set([".ts", ".js", ".mjs"]);
@@ -31,16 +33,16 @@ export async function loadUserExtensions(
   const status: UserExtensionStatus[] = [];
   for (const file of files) {
     try {
-      const extension = await loadOne(join(dir, file));
+      const extension = await loadOne(dir, file);
       if (extensions.some((e) => e.name === extension.name)) {
-        throw new Error(`扩展名 ${extension.name} 已被另一个文件使用`);
+        throw new ConfigError([{ file, code: "name_taken", name: extension.name }]);
       }
       extensions.push(extension);
       status.push({ file, name: extension.name, tools: extension.tools?.length ?? 0 });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[extensions] ${file} 加载失败：${message}`);
-      status.push({ file, tools: 0, error: message });
+      const issue = configIssue(error);
+      console.error(`[extensions] ${file} 加载失败：${describeConfigIssue(issue)}`);
+      status.push({ file, tools: 0, error: issue });
     }
   }
   return { extensions, status };
@@ -59,15 +61,13 @@ async function sourceFiles(dir: string): Promise<string[]> {
   }
 }
 
-async function loadOne(path: string): Promise<Extension> {
-  const module = (await import(pathToFileURL(path).href)) as { default?: unknown };
+async function loadOne(dir: string, file: string): Promise<Extension> {
+  const module = (await import(pathToFileURL(join(dir, file)).href)) as { default?: unknown };
   const exported = module.default;
   const value = typeof exported === "function" ? await (exported as () => unknown)() : exported;
-  if (!isExtension(value)) {
-    throw new Error("默认导出应为 extension（带 name 的对象），或返回 extension 的函数");
-  }
+  if (!isExtension(value)) throw new ConfigError([{ file, code: "bad_export" }]);
   if (RESERVED.some((pattern) => pattern.test(value.name))) {
-    throw new Error(`扩展名 ${value.name} 是 Eevee 保留的`);
+    throw new ConfigError([{ file, code: "name_reserved", name: value.name }]);
   }
   return value;
 }

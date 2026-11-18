@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { MemoryConflict, MemoryHistoryError, MemoryRepo } from "./repo.ts";
+import { MemoryConflict, MemoryRepo } from "./repo.ts";
 
 let dir: string;
 let repo: MemoryRepo;
@@ -71,9 +71,11 @@ test("历史按提交列出，撤销一次提交生成反向提交", async () =>
 
 test("不是 commit 编号或撤销不了时给出明确错误，不改动仓库", async () => {
   const before = log().length;
-  await assert.rejects(repo.revert("--hard"), MemoryHistoryError);
-  await assert.rejects(repo.diff("HEAD~1"), MemoryHistoryError);
-  await assert.rejects(repo.revert("deadbeef"), MemoryHistoryError);
+  await assert.rejects(repo.revert("--hard"), { problem: { code: "no_commit", commit: "--hard" } });
+  await assert.rejects(repo.diff("HEAD~1"), { problem: { code: "no_commit", commit: "HEAD~1" } });
+  await assert.rejects(repo.revert("deadbeef"), {
+    problem: { code: "revert_failed", commit: "deadbeef" },
+  });
   assert.equal(log().length, before);
 });
 

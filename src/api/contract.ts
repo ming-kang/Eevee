@@ -1,11 +1,15 @@
 import type {
+  ConfigIssue,
+  ConfigProblem,
   Job,
   MemoryScope,
   ModelChoice,
   ModelDefaults,
+  Problem,
   Question,
   Report,
   RoleName,
+  RunFailureView,
   RunSummary,
   ThinkingLevel,
   Ticket,
@@ -55,7 +59,7 @@ export type ChatLine = {
 export type ConversationView = {
   lines: ChatLine[];
   running: boolean;
-  failure?: string;
+  failure?: RunFailureView;
 };
 
 /** Spend, summed over one or more conversations. */
@@ -129,7 +133,7 @@ export type ModelsView = {
   providers: ModelProviderView[];
   available: ModelSpecView[];
   profiles: string;
-  problems: readonly string[];
+  problems: readonly ConfigProblem[];
 };
 
 export type McpServerView = {
@@ -139,10 +143,10 @@ export type McpServerView = {
   state: "disabled" | "connecting" | "connected" | "failed";
   exposure: "deferred" | "direct" | "codemode" | "hidden";
   tools: number;
-  error?: string;
+  error?: ConfigIssue;
 };
 
-export type UserExtensionView = { file: string; name?: string; tools: number; error?: string };
+export type UserExtensionView = { file: string; name?: string; tools: number; error?: ConfigIssue };
 
 export type RoleCapabilityView = {
   role: RoleName;
@@ -159,7 +163,7 @@ export type CapabilitiesView = {
   roles: RoleCapabilityView[];
   mcp: McpServerView[];
   userExtensions: UserExtensionView[];
-  problems: readonly string[];
+  problems: readonly ConfigProblem[];
 };
 
 type Ok = { ok: true };
@@ -229,7 +233,10 @@ type ParamNames<P extends string> = P extends `${string}:${infer Name}/${infer R
 type PathOf<K extends RouteKey> = K extends `${string} ${infer P}` ? P : never;
 export type RouteParams<K extends RouteKey> = Record<ParamNames<PathOf<K>>, string>;
 
-export type ApiError = { error: { code: string; message: string } };
+/** A refusal as it travels: the Problem's data, plus the Engine's wording for clients that just print it. */
+export type ProblemBody = Problem & { message: string };
+
+export type ApiError = { error: ProblemBody };
 
 /** Memory scopes as they appear in paths. */
 export const MEMORY_SCOPES: readonly MemoryScope[] = ["project", "global"];

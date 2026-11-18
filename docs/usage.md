@@ -51,7 +51,7 @@ Router 正在工作时，你发的消息会在它当前这批工具调用结束�
 终端里也可以给 Router 发消息：
 
 ```bash
-eevee project say <项目> 先别动 figures/ 目录，我还在改
+eevee project say <project> 先别动 figures/ 目录，我还在改
 ```
 
 Router 本身不读写工作目录、不执行命令。耗时的工作都会变成工单，由 Worker 在后台完成。
@@ -62,12 +62,12 @@ Router 本身不读写工作目录、不执行命令。耗时的工作都会变�
 
 问题可能来自 Router 自己，也可能来自某张工单。回答工单的问题时，答案直接投给那个 Worker，不经过 Router 转述。
 
-`eevee project board <项目>` 会在工单列表前列出所有待回答的问题。命令行目前只能列出问题，不能回答。
+`eevee project board <project>` 会在工单列表前列出所有待回答的问题。命令行目前只能列出问题，不能回答。
 
 ## 查看工单
 
 ```bash
-eevee project board <项目>
+eevee project board <project>
 ```
 
 每张工单显示编号、[阶段](tickets.md#工单阶段) 和标题，有后台作业在跑时也会注明。已结单的工单也会列出，通常显示为 `idle`。例如：
@@ -106,7 +106,7 @@ Worker 空闲时，引导和排队效果一样，都会直接开始新的一轮�
 ## 查看花费
 
 ```bash
-eevee project usage <项目>
+eevee project usage <project>
 ```
 
 输出项目的合计用量，以及 Router、每张工单和每个模型各自的输入、输出、缓存读写 token 和花费：

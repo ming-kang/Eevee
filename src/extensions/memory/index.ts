@@ -9,9 +9,9 @@ import {
 } from "@earendil-works/pi-durable";
 import { obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import { TicketBinding, TicketDoc } from "../../contracts/docs.ts";
-import type { MemoryScope } from "../../contracts/index.ts";
+import { type MemoryScope, ProblemError } from "../../contracts/index.ts";
 import { createDreamTimer, type DreamingPort } from "./dreaming.ts";
-import { MemoryConflict, MemoryHistoryError, type MemoryRepo } from "./repo.ts";
+import { MemoryConflict, type MemoryRepo } from "./repo.ts";
 
 export {
   type DreamDraft,
@@ -20,7 +20,7 @@ export {
   type DreamTimer,
   ensureDreamTimer,
 } from "./dreaming.ts";
-export { type MemoryCommit, MemoryConflict, MemoryHistoryError, MemoryRepo } from "./repo.ts";
+export { type MemoryCommit, MemoryConflict, MemoryRepo } from "./repo.ts";
 
 export const MEMORY_TOOL = "memory";
 /** The Router's memory: both repositories, and the Dreaming timer. */
@@ -131,7 +131,7 @@ function createMemoryTool(
         if (error instanceof MemoryConflict) {
           return text(`${error.message}\n\n当前内容：\n${error.current}`, true);
         }
-        if (error instanceof MemoryHistoryError) return text(error.message, true);
+        if (error instanceof ProblemError) return text(error.message, true);
         throw error;
       }
     },

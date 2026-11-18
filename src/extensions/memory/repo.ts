@@ -3,6 +3,7 @@ import type { Dirent } from "node:fs";
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { promisify } from "node:util";
+import { ProblemError } from "../../contracts/index.ts";
 import { isNotFound, readText, writeFileAtomic } from "../../shared/fs.ts";
 import { resolveInside } from "../../shared/paths.ts";
 
@@ -18,18 +19,13 @@ export class MemoryConflict extends Error {
   }
 }
 
-/** A history operation that cannot be done: an unknown commit, or a revert that conflicts. */
-export class MemoryHistoryError extends Error {
-  override name = "MemoryHistoryError";
-}
-
 export type MemoryCommit = { commit: string; at: string; subject: string };
 export type MemoryFileInfo = { path: string; size: number };
 
 const COMMIT = /^[0-9a-f]{4,40}$/i;
 
 function commitRef(commit: string): string {
-  if (!COMMIT.test(commit)) throw new MemoryHistoryError(`不是 commit 编号：${commit}`);
+  if (!COMMIT.test(commit)) throw new ProblemError({ code: "no_commit", commit });
   return commit;
 }
 
@@ -151,7 +147,7 @@ export class MemoryRepo {
     try {
       return await this.#git("show", "--stat", "--patch", ref);
     } catch {
-      throw new MemoryHistoryError(`没有 commit ${commit}`);
+      throw new ProblemError({ code: "no_commit", commit });
     }
   }
 
@@ -163,9 +159,7 @@ export class MemoryRepo {
         await this.#git("revert", "--no-edit", ref);
       } catch {
         await this.#git("revert", "--abort").catch(() => undefined);
-        throw new MemoryHistoryError(
-          `撤销 ${commit} 失败：没有这个 commit，或后来的改动（含还没提交的）与它冲突。`,
-        );
+        throw new ProblemError({ code: "revert_failed", commit });
       }
     });
   }

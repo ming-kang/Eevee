@@ -9,6 +9,7 @@ import {
   THINKING_LEVELS,
   type ThinkingLevel,
   type Ticket,
+  type TicketDetails,
   type TicketId,
 } from "../../../contracts/index.ts";
 import {
@@ -156,7 +157,7 @@ async function create(
   return ok(`已建单 ${ticket.id}，执行对话会在有空闲槽位时开始工作。`, {
     ticketId: ticket.id,
     conversationId: ticket.conversationId,
-  });
+  } satisfies TicketDetails & { conversationId: number });
 }
 
 /** The model the arguments name, `undefined` for the default, or why it cannot be used. */

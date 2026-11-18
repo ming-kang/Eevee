@@ -8,6 +8,7 @@ import {
   type TranscriptView,
 } from "@earendil-works/pi-durable";
 import type { ConversationTopic } from "../../src/api/stream.ts";
+import { errorText, problemText } from "./errors.ts";
 import type { StreamClient } from "./stream.ts";
 
 export type GapItem = Extract<TranscriptItem, { kind: "gap" }>;
@@ -94,7 +95,7 @@ export function createConversationWatcher(options: ConversationWatcherOptions) {
       view = next;
     } catch (cause) {
       if (disposed || epoch !== myEpoch) return;
-      error = cause instanceof Error ? cause.message : String(cause);
+      error = errorText(cause);
     } finally {
       if (!disposed && epoch === myEpoch) {
         loadingEarlier = false;
@@ -116,7 +117,7 @@ export function createConversationWatcher(options: ConversationWatcherOptions) {
       maybeAutoFill(next.items);
     } catch (cause) {
       if (disposed || epoch !== myEpoch) return;
-      error = cause instanceof Error ? cause.message : String(cause);
+      error = errorText(cause);
     } finally {
       if (!disposed && epoch === myEpoch) {
         fillingCount = Math.max(0, fillingCount - 1);
@@ -153,7 +154,7 @@ export function createConversationWatcher(options: ConversationWatcherOptions) {
           emit();
           return;
         case "error":
-          error = event.message;
+          error = problemText(event.error);
           emit();
           return;
       }

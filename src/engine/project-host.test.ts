@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { eeveePaths } from "../shared/paths.ts";
-import { Conflict, NotFound } from "./project-host.ts";
 import { type Brain, call, openTestProject, say, textOf, toolName } from "./testing.ts";
 
 test("Router 建单，Worker 交 ready，Router 验收结单", async () => {
@@ -75,6 +74,7 @@ test("Worker 不交报告就结束时，引擎补一份 waiting", async () => {
     });
     assert.equal(report.status, "waiting");
     assert.match(report.summary, /忘了交报告/);
+    assert.deepEqual(report.origin, { type: "no-report", answered: true });
     await project.until(async () =>
       project.calls.some((c) => c.role === "router" && textOf(c.last).includes("报告 · waiting")),
     );
@@ -470,9 +470,10 @@ test("读取后台作业日志尾部并在运行中终止作业", async () => {
       return worker.lines.some((line) => line.text.includes("作业被终止了。"));
     });
 
-    await assert.rejects(project.host.killJob(jobId), Conflict);
-    await assert.rejects(project.host.killJob("j99"), NotFound);
-    await assert.rejects(project.host.jobLog("j99"), NotFound);
+    await assert.rejects(project.host.killJob(jobId), { problem: { code: "job_ended", jobId } });
+    const noJob = { problem: { code: "no_job", jobId: "j99" } };
+    await assert.rejects(project.host.killJob("j99"), noJob);
+    await assert.rejects(project.host.jobLog("j99"), noJob);
   } finally {
     await project.close();
   }
@@ -503,9 +504,11 @@ test("memoryFiles 和 memoryFile 列出并安全读取项目与全局记忆文�
     const globalFiles = await project.host.memoryFiles("global");
     assert.equal(globalFiles[0]?.path, "MEMORY.md");
 
-    await assert.rejects(project.host.memoryFile("project", "missing.md"), NotFound);
-    await assert.rejects(project.host.memoryFile("project", "../project.json"), NotFound);
-    await assert.rejects(project.host.memoryFile("project", ".git/HEAD"), NotFound);
+    for (const file of ["missing.md", "../project.json", ".git/HEAD"]) {
+      await assert.rejects(project.host.memoryFile("project", file), {
+        problem: { code: "no_memory_file", file },
+      });
+    }
   } finally {
     await project.close();
   }
@@ -556,11 +559,11 @@ test("BoardView 反映 Router 运行状态与失败原因，ProjectSummary.activ
       return b.router.failure !== undefined && b;
     });
     assert.equal(failedBoard.router.running, false);
-    assert.match(failedBoard.router.failure ?? "", /403 forbidden/);
+    assert.match(failedBoard.router.failure?.detail ?? "", /403 forbidden/);
 
     await project.reopen();
     assert.ok((project.host.summary().activeAt ?? 0) >= afterTurn);
-    assert.match((await project.host.board()).router.failure ?? "", /403 forbidden/);
+    assert.match((await project.host.board()).router.failure?.detail ?? "", /403 forbidden/);
   } finally {
     releaseGate();
     await project.close();

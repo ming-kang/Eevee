@@ -1,3 +1,5 @@
+import type { RunFailureView } from "./failure.ts";
+
 export type TicketId = `t${number}`;
 export type QuestionId = `q${number}`;
 export type JobId = `j${number}`;
@@ -89,6 +91,14 @@ export type QuestionItem = {
   recommended?: string;
 };
 
+/**
+ * Why the Engine wrote a report in the Worker's place: the turn ended without one (`answered` when the
+ * Worker left a last answer, which is then the summary), or the run failed.
+ */
+export type ReportOrigin =
+  | { type: "no-report"; answered: boolean }
+  | { type: "run-failed"; failure: RunFailureView };
+
 export type Report = {
   ticketId: TicketId;
   seq: number;
@@ -99,6 +109,8 @@ export type Report = {
   need?: string;
   questions?: QuestionItem[];
   lessons?: string[];
+  /** Set when the Engine wrote it; its summary and need are then the Engine's words for the model. */
+  origin?: ReportOrigin;
   handled: boolean;
   reminded: boolean;
   at: number;

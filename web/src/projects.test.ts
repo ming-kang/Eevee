@@ -71,7 +71,7 @@ test("deriveProjectState 严格按 待回答 > Router 失败 > 执行中 > 静�
     board: {
       tickets: [],
       openQuestions: [],
-      router: { running: false, failure: "模型调用失败：401" },
+      router: { running: false, failure: { reason: "model_error", detail: "401" } },
     },
   });
   assert.equal(boardRouterFailed.kind, "bad");
@@ -80,7 +80,7 @@ test("deriveProjectState 严格按 待回答 > Router 失败 > 执行中 > 静�
   // 2. Router 失败优先于执行中
   const failed = deriveProjectState({
     board: runningBoard,
-    router: { running: false, failure: "429 Too Many Requests" },
+    router: { running: false, failure: { reason: "model_error", detail: "429 Too Many Requests" } },
   });
   assert.equal(failed.kind, "bad");
 
@@ -93,7 +93,7 @@ test("deriveProjectState 严格按 待回答 > Router 失败 > 执行中 > 静�
         { id: "q2", items: [{ text: "Q2", options: ["A"] }], askedAt: 2 },
       ],
     },
-    router: { running: false, failure: "429" },
+    router: { running: false, failure: { reason: "model_error", detail: "429" } },
   });
   assert.equal(answer.kind, "user");
   assert.equal(answer.questionCount, 1);

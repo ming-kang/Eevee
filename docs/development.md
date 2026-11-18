@@ -16,7 +16,7 @@ Node.js 26 直接运行 `.ts` 源码，开发时不需要先编译。
 
 | 命令 | 作用 |
 |---|---|
-| `npm run dev -- <参数>` | 直接从源码运行命令行，如 `npm run dev -- status` |
+| `npm run dev -- <args>` | 直接从源码运行命令行，如 `npm run dev -- status` |
 | `npm run engine` | 在前台运行 Engine，日志直接输出到终端 |
 | `npm run web:dev` | 启动面板的 Vite 开发服务器 |
 | `npm run dev:scenario` | 启动一个带模拟数据的 Engine，供面板开发使用，见下文 |
@@ -75,6 +75,10 @@ EEVEE_ENGINE=http://127.0.0.1:19391 npm run web:dev
 - 会持续增长的输出（作业日志、命令输出）加 `v-tail`，打开时停在最新一行并跟随新输出，读者往上翻时暂停；
 - `trackFocusModality()` 在 `<html>` 上标出 `data-modality`，用鼠标时焦点环宽度为 0，用 Tab 或方向键时才画。新写的焦点样式用 `--ev-ring` / `--ev-ring-in`，文本框用 `--ev-ring-field`。
 
+### 消息 Markdown
+
+回答由 [stream-markdown-parser](https://github.com/Simon-He95/markstream-vue/tree/main/packages/markdown-parser) 解析。`web/src/markdown.ts` 把它的节点收窄成面板会画的几种块和行内元素，认不出的节点退化为文字，所以模型写的 HTML 和非网页链接不会生效；工单编号也在这里变成引用。正在输出的消息有自己的解析实例，增量解析，未闭合的语法先按闭合显示；输出结束后改用一次完整解析。`MarkdownText` 负责解析，`MarkdownBlocks` 和 `MarkdownInlines` 递归渲染。
+
 ### 面板文字
 
 面板有简体中文和英文两种语言。界面文字一律写成中文原文并包进 `t()`（`web/src/i18n.ts`），中文原文就是键，英文在 `web/src/locales/en.ts`：
@@ -82,7 +86,9 @@ EEVEE_ENGINE=http://127.0.0.1:19391 npm run web:dev
 - 带参数写成 `t("{n} 张未结", { n })`；英文可以写成 `"{n} job|{n} jobs"`，按 `n` 是否为 1 挑单复数；
 - 同一个中文在英文里意思不同时，在键后加 `::名字`（`t("模型::list")` 显示“模型”，英文是 “Models”）；
 - 产品和技术名词保留英文：Router、Worker、Dreamer、Engine、MCP、Provider、commit 和思考档位的取值；工单、记忆、报告这类一般名词写中文；
-- 语言在页面载入时定下，切换后重新载入，所以模块顶层的常量也可以用 `t()`。
+- 语言在页面载入时定下，切换后重新载入，所以模块顶层的常量也可以用 `t()`；
+- Engine 给面板的是数据而不是句子：通知的 `data.notice`、工具结果的 `details`、运行失败的 `{ reason, detail }`（见 [实时流](stream.md)），以及请求被拒和配置问题的 `code` 与参数（见 [HTTP 接口](http-api.md#错误)）。面板按数据用读者的语言措辞（`web/src/errors.ts`），不解析 Engine 写给模型的文字；只有别人的原话（`detail`）原样显示。
+- 新的错误加进 `src/contracts/problem.ts`：请求被拒加到 `Problem`，在 `src/server/http.ts` 的 `STATUS` 里给它一个状态码；配置文件或加载出的问题加到 `ConfigIssue`。两处的 `describe…` 写 Engine 的中文措辞，`web/src/errors.ts` 写面板的措辞，漏写一处类型检查就不通过。
 
 `web/src/i18n.test.ts` 扫描全部组件：`t()` 之外出现中文（注释和匹配 Engine 原文的正则除外）、用到的键没有英文、英文表里有没人用的键，都会失败。
 

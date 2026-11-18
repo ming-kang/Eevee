@@ -1,5 +1,6 @@
 import { ApiRequestError, type Client, createClient } from "../../src/api/client.ts";
 import type { EngineStatus } from "../../src/api/contract.ts";
+import { errorText } from "./errors.ts";
 import { t } from "./i18n.ts";
 import { extractAuthCode } from "./router.ts";
 
@@ -43,7 +44,7 @@ export async function openSessionWith(env: SessionEnv): Promise<SessionInfo> {
       env.storage.setItem(STORAGE_KEY, token);
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 401) {
-        throw new Unauthorized(error.message);
+        throw new Unauthorized(errorText(error));
       }
       throw error;
     }

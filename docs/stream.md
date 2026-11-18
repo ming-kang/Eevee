@@ -59,7 +59,7 @@ const ws = new WebSocket(`ws://127.0.0.1:${port}/api/stream`, ["eevee.v1", `toke
 | `board` | `id`、`board` | 看板变化后的完整看板 |
 | `entries` | `id`、`items` | `entries` 请求的结果 |
 | `end` | `id`、`reason` | 订阅自行结束：`ended`（来源已关闭）、`failed` 或 `listener_error` |
-| `error` | 可选 `id`、`code`、`message` | 请求失败；`code` 为 `not_found` 或 `error` |
+| `error` | 可选 `id`、`error` | 请求失败；`error` 与 HTTP 的[错误](http-api.md#错误)格式相同，比如 `{ code: "no_project", projectId, message }` |
 
 ## 订阅对话
 
@@ -70,6 +70,11 @@ const ws = new WebSocket(`ws://127.0.0.1:${port}/api/stream`, ["eevee.v1", `toke
 对话订阅原样转发 Pi Durable 的对话观察（watch）：先发一个 `value`，之后每次变化发一个 `ops`。`value`、`ops`、`window` 的格式，以及怎样应用增量、拼出完整记录，见 [Pi Durable 的文档](https://github.com/earendil-works/pi/tree/main/packages/durable) 中观察对话的部分。
 
 慢客户端不会拖住 Engine，也不会丢失状态：连接的发送缓冲超过 1 MB 时，Engine 暂停发送对话的增量，降到 1 MB 以下后再发，期间的变化合并成一批。
+
+Eevee 自己写进对话的内容带着数据，界面按数据措辞，不要解析给模型读的文字：
+
+- Engine 发给 Router 或 Worker 的通知是 `kind` 为 `eevee.notice` 的条目：`model` 是给模型读的文字，`data` 为 `{ requestId, notice? }`。`notice.type` 为 `report`、`accepted`、`delivered`、`cancelled`、`answer`、`job-finished`、`jobs-interrupted`、`panel-message`、`panel-interrupt`、`handoff-nudge`、`opening`、`router-message` 或 `reminder`，各自的字段见 `src/contracts/details.ts`；`opening` 和 `router-message` 的内容就是条目的文字。
+- 工具结果的 `details`：`ticket` 建单时为 `{ ticketId }`，`ask_user` 为 `{ questionId }`，`bash` 为 `{ exitCode }`，转入后台时为 `{ jobId }`，被打断时为 `{ stopped: true }`。
 
 ### 补齐缺口
 

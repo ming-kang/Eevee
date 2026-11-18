@@ -3,6 +3,7 @@ import type { Client } from "@shared/api/client.ts";
 import type { ModelSpecView, ProjectSummary } from "@shared/api/contract.ts";
 import { type ModelChoice, pickModel, type ThinkingLevel } from "@shared/contracts/index.ts";
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { errorText } from "../errors.ts";
 import { t } from "../i18n.ts";
 import { listStep } from "../keyboard.ts";
 import { levelLabel, levelsOf, sameModel, switchModel } from "../model-choice.ts";
@@ -111,7 +112,7 @@ async function save(model: ModelChoice | null): Promise<void> {
     );
     emit("changed");
   } catch (err) {
-    showToast(err instanceof Error ? err.message : String(err), "error");
+    showToast(errorText(err), "error");
   } finally {
     busy.value = false;
   }

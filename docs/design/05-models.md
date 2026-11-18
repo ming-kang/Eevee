@@ -37,10 +37,10 @@
 
 ```markdown
 ## anthropic/<model-id>
-- <使用经验>
+- <notes>
 
 ## deepseek/<model-id>
-- <使用经验>
+- <notes>
 ```
 
 Router 需要为非默认工作选模型时，可以通过 `models://` 查看当前可用模型、`models.json` 里的关键参数（上下文窗口、价格、缓存有效期）和 `models.md` 中对应的经验。

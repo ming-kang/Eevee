@@ -43,6 +43,7 @@ import {
   jobId,
   type MemoryScope,
   type ModelDefaults,
+  ProblemError,
   pickModel,
   type QuestionId,
   questionId,
@@ -80,14 +81,6 @@ import { JobHost } from "./jobs.ts";
 import { type ProjectMeta, saveProjectMeta } from "./project.ts";
 import { recentRounds, transcriptSource } from "./transcript.ts";
 import { boardView, conversationView, usageView } from "./views.ts";
-
-export class NotFound extends Error {
-  override name = "NotFound";
-}
-
-export class Conflict extends Error {
-  override name = "Conflict";
-}
 
 const TICK_MS = 250;
 const UPKEEP_MS = 5_000;
@@ -314,8 +307,8 @@ export class ProjectHost {
 
   async answerQuestion(id: QuestionId, answer: string): Promise<void> {
     const question = await this.#harness.snapshot(QuestionDoc, id, this.#context);
-    if (question === undefined) throw new NotFound(`没有问题 ${id}`);
-    if (question.answer !== undefined) throw new Conflict(`${id} 已经回答过了`);
+    if (question === undefined) throw new ProblemError({ code: "no_question", questionId: id });
+    if (question.answer !== undefined) throw new ProblemError({ code: "answered", questionId: id });
     const answered = { ...question, answer, answeredAt: Date.now() };
     await this.#dispatch({ type: "question-answered", question: answered }, async (tx) => {
       Object.assign(await tx.doc(QuestionDoc, id, answered), answered);
@@ -347,8 +340,8 @@ export class ProjectHost {
     if (ticketId !== undefined) await this.#openTicket(ticketId);
     const conversation = await this.#conversationOf(ticketId);
     const live = await this.#harness.snapshot(LiveDoc, conversation.id, this.#context);
-    if (live?.run !== undefined) throw new Conflict("对话正在运行");
-    if (live?.runFailure === undefined) throw new Conflict("上一轮没有失败，不需要重试");
+    if (live?.run !== undefined) throw new ProblemError({ code: "running" });
+    if (live?.runFailure === undefined) throw new ProblemError({ code: "not_failed" });
     await conversation.submit({ type: "continue" }, this.#context);
   }
 
@@ -381,13 +374,13 @@ export class ProjectHost {
   async killJob(id: JobId): Promise<void> {
     if (await this.#jobs.kill(id)) return;
     const job = await this.#harness.snapshot(JobDoc, id, this.#context);
-    if (job === undefined) throw new NotFound(`没有作业 ${id}`);
-    throw new Conflict(`作业 ${id} 已经结束`);
+    if (job === undefined) throw new ProblemError({ code: "no_job", jobId: id });
+    throw new ProblemError({ code: "job_ended", jobId: id });
   }
 
   async jobLog(id: JobId, maxLines = JOB_LOG_DEFAULT_LINES): Promise<JobLogView> {
     const job = await this.#harness.snapshot(JobDoc, id, this.#context);
-    if (job === undefined) throw new NotFound(`没有作业 ${id}`);
+    if (job === undefined) throw new ProblemError({ code: "no_job", jobId: id });
     const tail = await readLogTail(this.#jobLogPath(id), maxLines);
     return { job, ...tail };
   }
@@ -444,18 +437,17 @@ export class ProjectHost {
 
   async memoryFile(scope: MemoryScope, file: string): Promise<MemoryFileView> {
     const repo = this.#repos[scope];
+    const missingFile = new ProblemError({ code: "no_memory_file", file });
     let resolved: string;
     try {
       resolved = resolveInside(repo.dir, file);
     } catch {
-      throw new NotFound(`没有记忆文件 ${file}`);
+      throw missingFile;
     }
     const rel = relative(repo.dir, resolved).replaceAll("\\", "/");
-    if (rel === ".git" || rel.startsWith(".git/")) {
-      throw new NotFound(`没有记忆文件 ${file}`);
-    }
+    if (rel === ".git" || rel.startsWith(".git/")) throw missingFile;
     const content = await repo.read(rel);
-    if (content === undefined) throw new NotFound(`没有记忆文件 ${file}`);
+    if (content === undefined) throw missingFile;
     return { path: rel, content };
   }
 
@@ -547,8 +539,8 @@ export class ProjectHost {
 
   async #openTicket(id: TicketId) {
     const ticket = await this.#harness.snapshot(TicketDoc, id, this.#context);
-    if (ticket === undefined) throw new NotFound(`没有工单 ${id}`);
-    if (ticket.status !== "open") throw new Conflict(`${id} 已经结单`);
+    if (ticket === undefined) throw new ProblemError({ code: "no_ticket", ticketId: id });
+    if (ticket.status !== "open") throw new ProblemError({ code: "ticket_closed", ticketId: id });
     return ticket;
   }
 
@@ -556,9 +548,9 @@ export class ProjectHost {
   async #conversationOf(ticketId?: TicketId): Promise<Conversation> {
     if (ticketId === undefined) return this.#root;
     const ticket = await this.#harness.snapshot(TicketDoc, ticketId, this.#context);
-    if (ticket === undefined) throw new NotFound(`没有工单 ${ticketId}`);
+    if (ticket === undefined) throw new ProblemError({ code: "no_ticket", ticketId });
     const conversation = await this.#harness.conversation(conversationOf(ticket), this.#context);
-    if (conversation === undefined) throw new NotFound(`找不到 ${ticketId} 的执行对话`);
+    if (conversation === undefined) throw new ProblemError({ code: "no_worker", ticketId });
     return conversation;
   }
 }

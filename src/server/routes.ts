@@ -3,6 +3,7 @@ import {
   type JobId,
   type MemoryScope,
   type ModelChoice,
+  ProblemError,
   type QuestionId,
   ROLE_NAMES,
   type RoleName,
@@ -12,7 +13,7 @@ import {
 } from "../contracts/index.ts";
 import type { Engine } from "../engine/engine.ts";
 import type { Auth } from "./auth.ts";
-import { HttpError, type RouteTable } from "./http.ts";
+import type { RouteTable } from "./http.ts";
 
 export type RouteDeps = {
   engine: Engine;
@@ -25,19 +26,19 @@ export type RouteDeps = {
 export function createRoutes({ engine, auth, port, version, shutdown }: RouteDeps): RouteTable {
   const project = (id: string) => {
     const host = engine.project(id);
-    if (host === undefined) throw new HttpError(404, "no_project", `没有项目 ${id}`);
+    if (host === undefined) throw new ProblemError({ code: "no_project", projectId: id });
     return host;
   };
   const text = (value: unknown, field: string) => {
     if (typeof value !== "string" || value.trim() === "") {
-      throw new HttpError(400, "bad_request", `${field} 不能为空`);
+      throw new ProblemError({ code: "required", field });
     }
     return value;
   };
 
   const role = (value: unknown): RoleName => {
     if (!ROLE_NAMES.includes(value as RoleName)) {
-      throw new HttpError(400, "bad_request", `未知角色 ${String(value)}`);
+      throw new ProblemError({ code: "invalid", field: "role", allowed: ROLE_NAMES });
     }
     return value as RoleName;
   };
@@ -47,7 +48,11 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     const body = value as Record<string, unknown> | undefined;
     const thinkingLevel = body?.thinkingLevel;
     if (thinkingLevel !== undefined && !THINKING_LEVELS.includes(thinkingLevel as ThinkingLevel)) {
-      throw new HttpError(400, "bad_request", `思考档位只能是 ${THINKING_LEVELS.join(" / ")}`);
+      throw new ProblemError({
+        code: "invalid",
+        field: "thinkingLevel",
+        allowed: THINKING_LEVELS,
+      });
     }
     return {
       provider: text(body?.provider, "provider"),
@@ -57,7 +62,7 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
   };
   const scope = (value: string): MemoryScope => {
     if (!MEMORY_SCOPES.includes(value as MemoryScope)) {
-      throw new HttpError(400, "bad_request", `记忆范围只能是 ${MEMORY_SCOPES.join(" / ")}`);
+      throw new ProblemError({ code: "invalid", field: "scope", allowed: MEMORY_SCOPES });
     }
     return value as MemoryScope;
   };
@@ -83,8 +88,7 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
       public: true,
       handle: async ({ body }) => {
         const token = await auth.exchange(text(body?.code, "code"));
-        if (token === undefined)
-          throw new HttpError(401, "bad_code", "授权码无效或已过期，请重新运行 eevee web");
+        if (token === undefined) throw new ProblemError({ code: "bad_code" });
         return { token };
       },
     },
@@ -111,7 +115,7 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
           extensions !== undefined &&
           (!Array.isArray(extensions) || extensions.some((e) => typeof e !== "string"))
         ) {
-          throw new HttpError(400, "bad_request", "extensions 应为扩展名数组");
+          throw new ProblemError({ code: "invalid", field: "extensions" });
         }
         const maxTurns = body?.maxTurns;
         if (
@@ -119,7 +123,7 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
           maxTurns !== null &&
           !(Number.isInteger(maxTurns) && maxTurns >= 1)
         ) {
-          throw new HttpError(400, "bad_request", "maxTurns 应为正整数，或 null 表示恢复默认");
+          throw new ProblemError({ code: "invalid", field: "maxTurns" });
         }
         return engine.setRoleCapability(role(params.role), {
           ...(extensions === undefined ? {} : { extensions }),
@@ -220,7 +224,11 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
       handle: async ({ params, body }) => {
         const mode = body?.mode ?? "steer";
         if (mode !== "steer" && mode !== "followUp") {
-          throw new HttpError(400, "bad_request", "mode 只能是 steer 或 followUp");
+          throw new ProblemError({
+            code: "invalid",
+            field: "mode",
+            allowed: ["steer", "followUp"],
+          });
         }
         await project(params.project).messageWorker(
           params.ticket as TicketId,

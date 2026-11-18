@@ -2,6 +2,7 @@ import { BACKGROUND_CONTEXT, type Context, withCancel } from "@earendil-works/ch
 import { defineTool, type ToolExecutionApi } from "@earendil-works/pi-durable";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { bool, int, obj, opt, str } from "@earendil-works/pi-schema";
+import { type BashDetails, formatAddress, type JobId } from "../../contracts/index.ts";
 
 export type CommandResult = { exitCode?: number; error?: string };
 
@@ -18,7 +19,7 @@ export type BackgroundJobs = {
     api: ToolExecutionApi,
     command: RunningCommand,
     context: Context,
-  ): Promise<string | undefined>;
+  ): Promise<JobId | undefined>;
 };
 
 export type BashDeps = {
@@ -60,12 +61,16 @@ export function createBashTool(deps: BashDeps) {
         if (settled !== undefined) return finish(settled, args.timeout);
         if (context.abortSignal?.aborted) {
           running.kill();
-          throw new Error("命令已中止");
+          const details: BashDetails = { stopped: true };
+          return { isError: true, output: [{ type: "text", text: "命令已中止" }], details };
         }
-        const address = await deps.jobs.adopt(api, running, context);
-        if (address === undefined) return finish(await running.done, args.timeout);
+        const jobId = await deps.jobs.adopt(api, running, context);
+        if (jobId === undefined) return finish(await running.done, args.timeout);
         foreground = false;
+        const address = formatAddress({ kind: "job", id: jobId });
+        const details: BashDetails = { jobId };
         return {
+          details,
           output: [
             {
               type: "text",
@@ -85,9 +90,11 @@ export function createBashTool(deps: BashDeps) {
 function finish(result: CommandResult, timeout: number | undefined) {
   if (result.error === "timeout") throw new Error(`命令超时（${timeout} 秒）`);
   if (result.error !== undefined) throw new Error(result.error);
-  if (result.exitCode === 0) return {};
+  const details: BashDetails = result.exitCode === undefined ? {} : { exitCode: result.exitCode };
+  if (result.exitCode === 0) return { details };
   return {
     isError: true,
+    details,
     diagnostics: [
       { severity: "error" as const, code: "exit_code", message: `退出码 ${result.exitCode}` },
     ],

@@ -200,7 +200,7 @@ async function readTranscript(
   if (page.next !== undefined) {
     hints.push(`还有更新的条目：read("${address}", offset: ${page.next})`);
   }
-  hints.push(`单条全文：read("${address}/<条目编号>")`);
+  hints.push(`单条全文：read("${address}/<entry>")`);
   return text(`${body || "没有条目。"}\n\n[${hints.join("；")}]`);
 }
 

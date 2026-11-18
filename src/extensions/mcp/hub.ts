@@ -11,7 +11,13 @@ import {
   StdioTransport,
   StreamableHttpTransport,
 } from "@earendil-works/pi-mcp";
-import { processEnv, resolveConfigValue } from "../../shared/config.ts";
+import {
+  type ConfigIssue,
+  type ConfigProblem,
+  describeConfigIssue,
+  describeConfigProblem,
+} from "../../contracts/index.ts";
+import { ConfigError, configIssue, processEnv, resolveConfigValue } from "../../shared/config.ts";
 import { scrubbedEnv } from "../../shared/env.ts";
 import { bridgeTools } from "./bridge.ts";
 import {
@@ -29,7 +35,7 @@ export type McpServerStatus = {
   state: McpServerState;
   exposure: McpExposure;
   tools: number;
-  error?: string;
+  error?: ConfigIssue;
 };
 
 export type McpHubOptions = {
@@ -49,7 +55,7 @@ export type McpHubOptions = {
 type Connection = {
   entry: McpServerEntry;
   state: McpServerState;
-  error?: string;
+  error?: ConfigIssue;
   client?: McpClient;
   summary: string;
   tools: number;
@@ -66,7 +72,7 @@ const STDERR_TAIL = 2000;
 export class McpHub {
   readonly #options: McpHubOptions;
   readonly #connections = new Map<string, Connection>();
-  #problems: readonly string[] = [];
+  #problems: readonly ConfigProblem[] = [];
   #generation = 0;
 
   constructor(options: McpHubOptions) {
@@ -77,7 +83,7 @@ export class McpHub {
     const generation = ++this.#generation;
     const { servers, problems } = await loadMcpConfig(this.#options.configPath);
     this.#problems = problems;
-    for (const problem of problems) console.error(problem);
+    for (const problem of problems) console.error(describeConfigProblem(problem));
     for (const entry of servers) {
       const connection: Connection = {
         entry,
@@ -121,7 +127,7 @@ export class McpHub {
     }));
   }
 
-  problems(): readonly string[] {
+  problems(): readonly ConfigProblem[] {
     return this.#problems;
   }
 
@@ -172,20 +178,23 @@ export class McpHub {
       });
       client.onClose(() => {
         if (connection.client !== client || generation !== this.#generation) return;
-        this.#drop(connection, "连接已断开");
+        this.#drop(connection, { code: "disconnected" });
       });
     } catch (error) {
       await client.close().catch(() => undefined);
       if (generation !== this.#generation) return;
-      const reason = error instanceof Error ? error.message : String(error);
+      const issue = configIssue(error);
       connection.state = "failed";
-      connection.error = stderr.trim() ? `${reason}\n${stderr.trim()}` : reason;
-      console.error(`[mcp] ${entry.name} 连接失败：${connection.error}`);
+      connection.error =
+        issue.code === "failed" && stderr.trim()
+          ? { ...issue, detail: `${issue.detail}\n${stderr.trim()}` }
+          : issue;
+      console.error(`[mcp] ${entry.name} 连接失败：${describeConfigIssue(connection.error)}`);
     }
     this.#options.onChange();
   }
 
-  #drop(connection: Connection, reason: string): void {
+  #drop(connection: Connection, reason: ConfigIssue): void {
     connection.state = "failed";
     connection.error = reason;
     delete connection.client;
@@ -239,7 +248,9 @@ async function resolveAll(
   const resolved: Record<string, string> = {};
   for (const [key, raw] of Object.entries(values)) {
     const value = await resolveConfigValue(raw, processEnv);
-    if (value === undefined) throw new Error(`${server} 的 ${key} 引用的环境变量没有设置`);
+    if (value === undefined) {
+      throw new ConfigError([{ file: "mcp.json", entry: server, code: "env_unset", name: key }]);
+    }
     resolved[key] = value;
   }
   return resolved;

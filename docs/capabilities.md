@@ -16,7 +16,7 @@ Eevee 的每个对话都属于一种角色：Router、Worker，或者整理记�
 
 | 扩展 | 来源 |
 |---|---|
-| `mcp.<名字>` | `mcp.json` 里的每个 MCP 服务器，见 [接入 MCP 服务器](mcp.md) |
+| `mcp.<name>` | `mcp.json` 里的每个 MCP 服务器，见 [接入 MCP 服务器](mcp.md) |
 | 扩展自己的名字 | `extensions/` 里的每个用户扩展，见 [编写扩展](extensions.md) |
 | `tool-search` | 工具搜索：模型用 `tool_search` 找到延迟加载的工具后再使用 |
 | `codemode` | 代码模式：模型写脚本批量调用工具 |

@@ -3,7 +3,7 @@ import { isFinalReport, type Report } from "@shared/contracts/index.ts";
 import { computed } from "vue";
 import { reportStage } from "../board.ts";
 import { t } from "../i18n.ts";
-import { REPORT_LABEL } from "../labels.ts";
+import { REPORT_LABEL, reportNeed, reportSummary } from "../labels.ts";
 import { formatRelativeTime } from "../time.ts";
 import Icon from "./Icon.vue";
 import StageGlyph from "./StageGlyph.vue";
@@ -17,9 +17,11 @@ const props = defineProps<{
 const stage = computed(() => reportStage(props.report.status));
 const final = computed(() => isFinalReport(props.report.status));
 const when = computed(() => formatRelativeTime(props.report.at, props.nowMs));
+const summary = computed(() => reportSummary(props.report));
+const need = computed(() => reportNeed(props.report));
 const hasDetails = computed(
   () =>
-    Boolean(props.report.need) ||
+    Boolean(need.value) ||
     props.report.artifacts.length > 0 ||
     (props.report.lessons?.length ?? 0) > 0,
 );
@@ -28,7 +30,7 @@ const hasDetails = computed(
 <template>
   <div v-if="report.status === 'progress' && !full" class="note">
     <Icon name="flag" size="xs" />
-    <span>{{ t("进展：{summary}", { summary: report.summary }) }}</span>
+    <span>{{ t("进展：{summary}", { summary }) }}</span>
   </div>
   <div v-else class="report">
     <div class="report-h">
@@ -38,11 +40,11 @@ const hasDetails = computed(
       <span class="spacer" />
       <span class="dim">{{ when }}</span>
     </div>
-    <div class="report-sum">{{ report.summary }}</div>
+    <div class="report-sum">{{ summary }}</div>
     <dl v-if="hasDetails" class="kv">
-      <template v-if="report.need">
+      <template v-if="need">
         <dt>{{ t("需要") }}</dt>
-        <dd>{{ report.need }}</dd>
+        <dd>{{ need }}</dd>
       </template>
       <template v-if="report.artifacts.length > 0">
         <dt>{{ t("产物") }}</dt>

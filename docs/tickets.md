@@ -52,6 +52,8 @@ Router 用 `ticket` 工具的 `create` 动作建单（下文简写为 `ticket cr
 - **没交收尾报告**：Worker 的一次运行以普通回答结束、又没有后台作业在跑时，Engine 用它最后的回答补交一份 `waiting`。
 - **运行失败**：重试用尽、超出 [轮次上限](capabilities.md#限制每次运行的轮次) 等失败，Engine 记一份 `failed`，摘要写明原因，并提示 Router 可以用 `ticket message` 让它继续或取消工单。你或 Router 主动打断、重置这类有意的结束不算失败。
 
+Engine 补交的报告带 `origin`：没交报告时为 `{ type: "no-report", answered }`，`answered` 表示摘要是否是 Worker 的最后回答；运行失败时为 `{ type: "run-failed", failure }`，`failure` 同看板的 [`router.failure`](http-api.md#项目)。面板据此用你选的语言显示原因，摘要和 `need` 是写给 Router 的。
+
 ## 工单阶段
 
 面板和 `eevee project board` 给每张工单显示一个阶段。阶段由最新报告和运行情况推导，按下表从上往下取第一个符合的。阶段只对 `open` 工单有意义；看板也会列出已结单的工单，它们通常显示为 `idle`。
@@ -110,7 +112,7 @@ Router 对工单采取相关的 `ticket` 动作、为它提问，或者新建一
 Worker 的 `bash` 命令运行超过 [`backgroundAfterMs`](settings.md)（默认 5 秒），或者 Worker 明确要求后台执行时，命令转入后台：
 
 - `bash` 立即返回作业地址，比如 `job://j7`；
-- 完整输出续写到 `projects/<项目>/jobs/j7.log`，任何对话都可以用 `read job://j7` 查看状态和输出；
+- 完整输出续写到 `projects/<project>/jobs/j7.log`，任何对话都可以用 `read job://j7` 查看状态和输出；
 - Worker 可以先结束本轮，命令结束后结果作为新消息唤醒它；这时不会补 `waiting` 报告。
 
 你可以在面板的作业标签里，或者用 [HTTP 接口](http-api.md#后台作业) 终止单个作业，所属的 Worker 会收到作业已终止的通知。工单结单时，它仍在运行的作业会被终止，不再通知。Engine 重启时，仍在运行的作业记为被打断，并通知所属的 Worker。

@@ -34,17 +34,17 @@ Worker 对话的编号写在 `ticket://t3` 的 `conversationId` 字段里。
 
 ## 读对话记录
 
-`transcript://<对话>` 不带 `offset` 时读最新的条目，带 `offset` 时从那个条目编号读起。每个条目显示为一行预览：
+`transcript://<conversation>` 不带 `offset` 时读最新的条目，带 `offset` 时从那个条目编号读起。每个条目显示为一行预览：
 
 ```text
 #40 user: 先别动 figures/ 目录，我还在改
 #41 assistant: 好的，我会让 t2 只改 results/。
 #42 tool: 已给 t2 追加指令。
 
-[更早的条目：read("transcript://1", offset: 20)；单条全文：read("transcript://1/<条目编号>")]
+[更早的条目：read("transcript://1", offset: 20)；单条全文：read("transcript://1/<entry>")]
 ```
 
-需要某个条目的完整内容时，读 `transcript://<对话>/<条目>`。重置后的开篇里带有最近几轮原文，其中超过 1500 字的工具输出会被截短，截断标记里附有这个地址。
+需要某个条目的完整内容时，读 `transcript://<conversation>/<entry>`。重置后的开篇里带有最近几轮原文，其中超过 1500 字的工具输出会被截短，截断标记里附有这个地址。
 
 ## 搜索
 

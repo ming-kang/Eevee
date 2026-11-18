@@ -16,7 +16,7 @@ export {
   queuedTickets,
 } from "./deliver.ts";
 export type { EngineEvent } from "./delivery.ts";
-export { route } from "./delivery.ts";
+export { describeJobOutcome, route } from "./delivery.ts";
 export { reportRunFailures } from "./failures.ts";
 export { registerJob, runningJobs, settleJob } from "./jobs.ts";
 export { openTicket, type TicketDraft } from "./open.ts";

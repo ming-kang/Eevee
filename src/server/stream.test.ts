@@ -180,7 +180,11 @@ test("未知项目和坏消息回 error，连接不断", async () => {
   client.send({ type: "watch", id: "x", topic: { kind: "board", project: "nope" } });
   const error = await client.next();
   assert.equal(error.type, "error");
-  assert.equal(error.type === "error" && error.code, "not_found");
+  assert.deepEqual(error.type === "error" && error.error, {
+    code: "no_project",
+    projectId: "nope",
+    message: "没有项目 nope",
+  });
   client.ws.send("{");
   assert.equal((await client.next()).type, "error");
   client.ws.close();

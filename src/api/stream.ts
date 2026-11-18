@@ -18,7 +18,7 @@ import type {
   EntryRecord,
 } from "@earendil-works/pi-durable";
 import type { TicketId } from "../contracts/index.ts";
-import type { BoardView } from "./contract.ts";
+import type { BoardView, ProblemBody } from "./contract.ts";
 
 export const STREAM_PATH = "/api/stream";
 export const STREAM_PROTOCOL = "eevee.v1";
@@ -48,4 +48,4 @@ export type StreamEvent =
   | { type: "entries"; id: string; items: EntryRecord[] }
   /** The watch ended on its own, for good: `ended` when its source closed, `failed`, `listener_error`. */
   | { type: "end"; id: string; reason: string }
-  | { type: "error"; id?: string; code: string; message: string };
+  | { type: "error"; id?: string; error: ProblemBody };

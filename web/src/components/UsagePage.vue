@@ -2,6 +2,7 @@
 import type { Client } from "@shared/api/client.ts";
 import type { ProjectSummary, UsageSummary, UsageView } from "@shared/api/contract.ts";
 import { computed, ref, watch } from "vue";
+import { errorText } from "../errors.ts";
 import { t } from "../i18n.ts";
 import Icon from "./Icon.vue";
 import Skeleton from "./Skeleton.vue";
@@ -34,7 +35,7 @@ async function loadUsage(): Promise<void> {
     usage.value = view;
   } catch (err) {
     if (token !== seq) return;
-    error.value = err instanceof Error ? err.message : String(err);
+    error.value = errorText(err);
   } finally {
     if (token === seq) loading.value = false;
   }

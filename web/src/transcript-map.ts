@@ -11,16 +11,20 @@ import {
   UserEntry,
 } from "@earendil-works/pi-durable";
 import {
-  describeRunFailure,
+  type AskDetails,
+  type BashDetails,
   isDeliberateEnd,
+  type NoticeData,
   type Report,
   type ReportStatus,
+  type TicketDetails,
   type TicketId,
   type TicketStage,
   type TicketStatus,
 } from "../../src/contracts/index.ts";
 import type { GapItem } from "./conversation.ts";
 import { t } from "./i18n.ts";
+import { failureText, jobStatusText, reportSummary } from "./labels.ts";
 
 export type DiffLine = {
   k: "ctx" | "add" | "del" | "hunk";
@@ -119,18 +123,16 @@ export type TranscriptDisplayItem =
   | { kind: "failure"; key: string; reason: string; text: string }
   | { kind: "idle"; key: string; text: string };
 
-const NOTICE_KIND = "eevee.notice";
+type EventItem = Extract<TranscriptDisplayItem, { kind: "event" }>;
+type EventFields = Partial<
+  Pick<EventItem, "ticketId" | "questionId" | "jobId" | "status" | "detail">
+>;
 
-const REPORT_RE =
-  /^\[(t\d+)「([^」]*)」报告 · (progress|waiting|ready|blocked|failed|dropped)\]\s*([\s\S]*)$/;
-const ANSWER_ROUTER_RE = /^用户已回答 (q\d+)，答案已直接投给 (t\d+)。(?:\n([\s\S]*))?$/;
-const ANSWER_DIRECT_RE = /^用户回答了问题 (q\d+)：\n([\s\S]*)$/;
-const DELIVER_RE = /^已把 (t\d+) 的结果投递给 ([^。]+)。$/;
-const PANEL_MSG_RE = /^用户直接给 (t\d+) 发了消息：\n([\s\S]*)$/;
-const PANEL_INT_RE = /^用户在面板打断了 (t\d+) 当前这一轮。$/;
-const JOB_DONE_RE = /^后台作业 job:\/\/(j\d+) 已结束（([^）]*)）。\n输出末尾：\n([\s\S]*)$/;
-const HANDOVER_RE = /^你等待的 (t\d+)「([^」]*)」已验收(?:。|：\n([\s\S]*))$/;
-const ANSWER_PREFIX_RE = /^用户回答了问题 q\d+：\n/;
+/** A tool result's `details`, for the fields a tool documents in `src/contracts/details.ts`. */
+const detailsOf = <T>(result: ToolResultMessage | undefined): Partial<T> =>
+  (result?.details ?? {}) as Partial<T>;
+
+const NOTICE_KIND = "eevee.notice";
 
 export type MapTranscriptOptions = {
   mode: "router" | "worker";
@@ -361,7 +363,7 @@ export function mapTranscript(
         kind: "failure",
         key: `live:fail:${failure.taskId}`,
         reason: failure.reason,
-        text: describeRunFailure(failure),
+        text: failureText(failure),
       });
     }
   }
@@ -465,158 +467,113 @@ function mapReset(
   };
 }
 
+/** A notice in the reader's words, from the facts the Engine attached; an older notice shows its text. */
 function mapNotice(
   entry: EntryRecord,
   mode: "router" | "worker",
 ): TranscriptDisplayItem | undefined {
   const { text, at } = extractTextAndTime(entry);
-  if (text === "") return undefined;
+  const notice = (entry.data as NoticeData | undefined)?.notice;
+  const key = `e:${entry.id}`;
+  const time = at === undefined ? {} : { at };
+  const event = (eventKind: EventKind, line: string, fields: EventFields = {}) =>
+    ({ kind: "event", key, eventKind, text: line, ...fields, ...time }) as const;
+  const list = (ids: readonly string[]) => ids.join(t("、"));
 
-  if (mode === "worker" && text.includes("<ticket>")) {
-    return { kind: "opening", key: `e:${entry.id}`, text: extractTag(text, "ticket") ?? text };
-  }
-
-  const reportMatch = REPORT_RE.exec(text);
-  if (reportMatch) {
-    const ticketId = reportMatch[1] ?? "";
-    const status = reportMatch[3] as ReportStatus;
-    if (mode === "router" && status === "progress") return undefined;
-    const body = reportMatch[4] ?? "";
-    const firstLine =
-      body
-        .split("\n")[0]
-        ?.replace(/^完整报告：.*$/, "")
-        .trim() ?? "";
-    return {
-      kind: "event",
-      key: `e:${entry.id}`,
-      eventKind: "report",
-      ticketId,
-      status,
-      text: firstLine || body,
-      ...(at === undefined ? {} : { at }),
-    };
-  }
-
-  const answerRouter = ANSWER_ROUTER_RE.exec(text);
-  if (answerRouter) {
-    const questionId = answerRouter[1] ?? "";
-    const ticketId = answerRouter[2] ?? "";
-    const detail = answerRouter[3]?.replace(ANSWER_PREFIX_RE, "").trim();
-    return {
-      kind: "event",
-      key: `e:${entry.id}`,
-      eventKind: "answer",
-      questionId,
-      ticketId,
-      text: t("你回答了 {question}（已直接投给 {ticket}）", {
-        question: questionId,
-        ticket: ticketId,
-      }),
-      ...(detail ? { detail } : {}),
-      ...(at === undefined ? {} : { at }),
-    };
-  }
-
-  const answerDirect = ANSWER_DIRECT_RE.exec(text);
-  if (answerDirect) {
-    const questionId = answerDirect[1] ?? "";
-    const answer = answerDirect[2]?.trim() ?? "";
-    if (mode === "router") {
+  switch (notice?.type) {
+    case undefined:
+      return text === "" ? undefined : event("notice", text);
+    case "opening":
+      return { kind: "opening", key, text: extractTag(text, "ticket") ?? text };
+    case "router-message":
+      return event("notice", text);
+    case "report": {
+      const { status } = notice.report;
+      if (mode === "router" && status === "progress") return undefined;
+      return event("report", reportSummary(notice.report), { ticketId: notice.ticketId, status });
+    }
+    case "accepted":
+      return event(
+        "deliver",
+        t("你等待的 {ticket}「{title}」已验收", { ticket: notice.ticketId, title: notice.title }),
+        {
+          ticketId: notice.ticketId,
+          ...(notice.report ? { detail: reportSummary(notice.report) } : {}),
+        },
+      );
+    case "delivered":
+      return event(
+        "deliver",
+        t("已把 {ticket} 的结果投递给 {targets}", {
+          ticket: notice.ticketId,
+          targets: list(notice.to),
+        }),
+        { ticketId: notice.ticketId },
+      );
+    case "cancelled":
+      return event(
+        "notice",
+        t("{ticket}「{title}」已取消，{waiting} 还在等它的结果", {
+          ticket: notice.ticketId,
+          title: notice.title,
+          waiting: list(notice.waiting),
+        }),
+        { ticketId: notice.ticketId, ...(notice.reason ? { detail: notice.reason } : {}) },
+      );
+    case "answer": {
+      const question = notice.questionId;
+      if (notice.forwardedTo !== undefined) {
+        return event(
+          "answer",
+          t("你回答了 {question}（已直接投给 {ticket}）", { question, ticket: notice.forwardedTo }),
+          { questionId: question, ticketId: notice.forwardedTo, detail: notice.answer },
+        );
+      }
+      if (mode === "router") {
+        return {
+          kind: "qa",
+          key,
+          questionId: question,
+          question: t("回答 {question}", { question }),
+          answer: notice.answer,
+          ...time,
+        };
+      }
       return {
-        kind: "qa",
-        key: `e:${entry.id}`,
-        questionId,
-        question: t("回答 {question}", { question: questionId }),
-        answer,
-        ...(at === undefined ? {} : { at }),
+        kind: "user",
+        key,
+        text: t("[{question} 的回答] {answer}", { question, answer: notice.answer }),
+        ...time,
       };
     }
-    return {
-      kind: "user",
-      key: `e:${entry.id}`,
-      text: t("[{question} 的回答] {answer}", { question: questionId, answer }),
-      ...(at === undefined ? {} : { at }),
-    };
+    case "job-finished": {
+      const tail = notice.tail.trim();
+      return event(
+        "job",
+        t("后台作业 {job} 已结束（{status}）", {
+          job: notice.jobId,
+          status: jobStatusText(notice.outcome),
+        }),
+        { jobId: notice.jobId, ...(tail ? { detail: tail } : {}) },
+      );
+    }
+    case "jobs-interrupted":
+      return event("job", t("Engine 重启打断了后台作业 {jobs}", { jobs: list(notice.jobIds) }));
+    case "panel-message":
+      return event(
+        "intervene",
+        t("你直接给 {ticket} 发了消息：{text}", { ticket: notice.ticketId, text: notice.text }),
+        { ticketId: notice.ticketId },
+      );
+    case "panel-interrupt":
+      return event("intervene", t("你打断了 {ticket} 当前这一轮", { ticket: notice.ticketId }), {
+        ticketId: notice.ticketId,
+      });
+    case "handoff-nudge":
+      return event("notice", t("上下文已经很长，请 Router 交接"));
+    case "reminder":
+      return event("notice", t("还有 {n} 份报告没处理", { n: notice.reports.length }));
   }
-
-  const deliverMatch = DELIVER_RE.exec(text);
-  if (deliverMatch) {
-    const ticketId = deliverMatch[1] ?? "";
-    return {
-      kind: "event",
-      key: `e:${entry.id}`,
-      eventKind: "deliver",
-      ticketId,
-      text,
-      ...(at === undefined ? {} : { at }),
-    };
-  }
-
-  const jobDone = JOB_DONE_RE.exec(text);
-  if (jobDone) {
-    const jobId = jobDone[1] ?? "";
-    const tail = jobDone[3]?.trim();
-    return {
-      kind: "event",
-      key: `e:${entry.id}`,
-      eventKind: "job",
-      jobId,
-      text: t("后台作业 {job} 已结束（{status}）", { job: jobId, status: jobDone[2] ?? "" }),
-      ...(tail ? { detail: tail } : {}),
-      ...(at === undefined ? {} : { at }),
-    };
-  }
-
-  const handover = HANDOVER_RE.exec(text);
-  if (handover) {
-    const ticketId = handover[1] ?? "";
-    const detail = handover[3]?.trim();
-    return {
-      kind: "event",
-      key: `e:${entry.id}`,
-      eventKind: "deliver",
-      ticketId,
-      text: t("你等待的 {ticket}「{title}」已验收", { ticket: ticketId, title: handover[2] ?? "" }),
-      ...(detail ? { detail } : {}),
-      ...(at === undefined ? {} : { at }),
-    };
-  }
-
-  const panelMsg = PANEL_MSG_RE.exec(text);
-  if (panelMsg) {
-    const ticketId = panelMsg[1] ?? "";
-    const msg = panelMsg[2]?.trim() ?? "";
-    return {
-      kind: "event",
-      key: `e:${entry.id}`,
-      eventKind: "intervene",
-      ticketId,
-      text: t("你直接给 {ticket} 发了消息：{text}", { ticket: ticketId, text: msg }),
-      ...(at === undefined ? {} : { at }),
-    };
-  }
-
-  const panelInt = PANEL_INT_RE.exec(text);
-  if (panelInt) {
-    const ticketId = panelInt[1] ?? "";
-    return {
-      kind: "event",
-      key: `e:${entry.id}`,
-      eventKind: "intervene",
-      ticketId,
-      text,
-      ...(at === undefined ? {} : { at }),
-    };
-  }
-
-  return {
-    kind: "event",
-    key: `e:${entry.id}`,
-    eventKind: "notice",
-    text,
-    ...(at === undefined ? {} : { at }),
-  };
 }
 
 function mapDispatch(
@@ -631,8 +588,7 @@ function mapDispatch(
 
   if (call.name === "ask_user") {
     const items = Array.isArray(args.items) ? (args.items as { text?: string }[]) : [];
-    const qMatch = /已提问 (q\d+)/.exec(resText);
-    const questionId = qMatch?.[1];
+    const questionId = detailsOf<AskDetails>(result).questionId;
     const ticketId = typeof args.ticketId === "string" ? args.ticketId : undefined;
     const firstTitle = items[0]?.text ?? t("向用户提问");
     const title =
@@ -656,7 +612,7 @@ function mapDispatch(
 
   const action = String(args.action ?? "");
   const argTicketId = typeof args.ticketId === "string" ? args.ticketId : undefined;
-  const createdId = /^已建单 (t\d+)/.exec(resText)?.[1];
+  const createdId = detailsOf<TicketDetails>(result).ticketId;
   const ticketId = argTicketId ?? createdId;
 
   if (action === "create") {
@@ -997,41 +953,36 @@ function mapWorkerBash(
     };
   }
   const output = toolResultText(result);
-  const jobMatch = /^命令仍在运行，已转入后台作业 (?:job:\/\/)?(j\d+)/.exec(output);
-  if (jobMatch) {
+  const details = detailsOf<BashDetails>(result);
+  if (details.jobId !== undefined) {
     return {
       kind: "bash",
       key,
       command,
       status: "job",
-      output,
-      jobId: jobMatch[1],
+      output: slot?.output ?? "",
+      jobId: details.jobId,
       ...(result.durationMs === undefined ? {} : { ms: result.durationMs }),
     };
   }
   if (result.isError) {
-    if (
-      /命令已中止/.test(output) ||
-      output.toLowerCase().includes("aborted") ||
-      output.toLowerCase().includes("interrupted")
-    ) {
+    if (details.stopped || /aborted|interrupted/i.test(output)) {
       return {
         kind: "bash",
         key,
         command,
         status: "stopped",
-        output,
+        output: details.stopped ? (slot?.output ?? "") : output,
         ...(result.durationMs === undefined ? {} : { ms: result.durationMs }),
       };
     }
-    const exitMatch = /退出码\s+(\d+)/.exec(output);
     return {
       kind: "bash",
       key,
       command,
       status: "exit",
       output,
-      exitCode: exitMatch ? Number(exitMatch[1]) : 1,
+      exitCode: details.exitCode ?? 1,
       ...(result.durationMs === undefined ? {} : { ms: result.durationMs }),
     };
   }

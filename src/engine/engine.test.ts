@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { ApiRequestError, createClient } from "../api/client.ts";
+import { createClient } from "../api/client.ts";
 import { fakeMcpServer, weatherTool } from "../extensions/mcp/testing.ts";
 import { createModelRuntime } from "../models/index.ts";
 import { Auth } from "../server/auth.ts";
@@ -15,7 +15,7 @@ import { createRoutes } from "../server/routes.ts";
 import { readText } from "../shared/fs.ts";
 import { eeveePaths } from "../shared/paths.ts";
 import { SettingsStore } from "../shared/settings.ts";
-import { Engine, UnknownExtension } from "./engine.ts";
+import { Engine } from "./engine.ts";
 
 test("Engine 汇总可启用的扩展；按角色启用要求已安装，写进 settings.json 并应用到各项目", async () => {
   const home = await mkdtemp(join(tmpdir(), "eevee-engine-"));
@@ -52,10 +52,9 @@ test("Engine 汇总可启用的扩展；按角色启用要求已安装，写进 
       "eevee.report",
     ]);
 
-    await assert.rejects(
-      engine.setRoleCapability("worker", { extensions: ["mcp.nope"] }),
-      UnknownExtension,
-    );
+    await assert.rejects(engine.setRoleCapability("worker", { extensions: ["mcp.nope"] }), {
+      problem: { code: "no_extension", names: ["mcp.nope"] },
+    });
     const updated = await engine.setRoleCapability("worker", {
       extensions: ["mcp.weather", "notes", "notes"],
       maxTurns: 30,
@@ -165,14 +164,34 @@ test("HTTP 接口暴露结构化模型、项目 activeAt、Board.router 与嵌�
         scope: "project",
         file: ".git/HEAD",
       }),
-      (err: unknown) => err instanceof ApiRequestError && err.status === 404,
+      // A refusal is data the panel can word; the status follows from its code.
+      {
+        name: "ApiRequestError",
+        status: 404,
+        problem: { code: "no_memory_file", file: ".git/HEAD" },
+        message: "没有记忆文件 .git/HEAD",
+      },
     );
     await assert.rejects(
       client.call("GET /api/projects/:project/jobs/:job/log", {
         project: created.id,
         job: "j1",
       }),
-      (err: unknown) => err instanceof ApiRequestError && err.status === 404,
+      { status: 404, problem: { code: "no_job", jobId: "j1" } },
+    );
+    await assert.rejects(
+      client.call("GET /api/projects/:project/memory/:scope/files", {
+        project: created.id,
+        scope: "team",
+      }),
+      { status: 400, problem: { code: "invalid", field: "scope", allowed: ["project", "global"] } },
+    );
+    await assert.rejects(
+      client.call("GET /api/projects/:project/memory/:scope/files", {
+        project: "p0",
+        scope: "project",
+      }),
+      { status: 404, problem: { code: "no_project", projectId: "p0" } },
     );
   } finally {
     await new Promise((resolve) => server.close(resolve));

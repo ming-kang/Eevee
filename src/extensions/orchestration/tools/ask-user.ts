@@ -1,6 +1,6 @@
 import { defineTool } from "@earendil-works/pi-durable";
 import { arr, obj, opt, str } from "@earendil-works/pi-schema";
-import type { TicketId } from "../../../contracts/index.ts";
+import type { AskDetails, TicketId } from "../../../contracts/index.ts";
 import { addQuestion, markHandled, readTicket } from "../board.ts";
 import { fail, ok } from "../result.ts";
 
@@ -43,6 +43,6 @@ export const askUserTool = defineTool({
     }, context);
     return ok(`已提问 ${question.id}，用户回答后会作为新消息送达。现在可以继续处理其他事情。`, {
       questionId: question.id,
-    });
+    } satisfies AskDetails);
   },
 });

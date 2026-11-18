@@ -111,14 +111,33 @@
   overflow-wrap: anywhere;
 }
 
-.msg-ai > * + * {
+/* Rendered Markdown. Blocks are spaced by their container, never by their own margins. */
+:where(.msg-ai) :where(p, ul, ol, h1, h2, h3, h4, h5, h6, blockquote, pre, hr, table) {
+  margin: 0;
+}
+
+.msg-ai > * + *,
+.msg-ai blockquote > * + * {
   margin-top: 10px;
 }
 
-.msg-ai p,
-.msg-ai ul,
-.msg-ai ol {
-  margin-block: 0;
+.msg-ai > * + :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 20px;
+}
+
+.msg-ai :is(h1, h2, h3, h4, h5, h6) {
+  font-size: var(--ev-body);
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ev-strong);
+}
+
+.msg-ai h1 {
+  font-size: var(--ev-title);
+}
+
+.msg-ai h2 {
+  font-size: var(--ev-headline);
 }
 
 .msg-ai ul,
@@ -126,17 +145,136 @@
   padding-left: 22px;
 }
 
-.msg-ai li + li {
-  margin-top: 2px;
+.msg-ai li + li,
+.msg-ai li > * + * {
+  margin-top: 4px;
 }
 
 .msg-ai li::marker {
   color: var(--ev-label-3);
 }
 
+.msg-ai li.task {
+  position: relative;
+  list-style: none;
+}
+
+/* A task's box sits where its bullet would, centred on the first line. */
+.msg-ai .check {
+  position: absolute;
+  top: calc((var(--ev-reading) * 1em - 14px) / 2);
+  left: -20px;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--ev-label-3);
+  border-radius: 4px;
+  corner-shape: squircle;
+}
+
+.msg-ai .check.on {
+  border-color: transparent;
+  color: var(--ev-on-ink);
+  background: var(--ev-ink);
+}
+
+.msg-ai .check .ico {
+  width: 10px;
+  height: 10px;
+}
+
 .msg-ai strong {
   font-weight: 600;
   color: var(--ev-strong);
+}
+
+.msg-ai del {
+  color: var(--ev-label-2);
+}
+
+.msg-ai a {
+  color: var(--ev-link);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--ev-link) 35%, transparent);
+  text-underline-offset: 0.22em;
+  transition: text-decoration-color var(--ev-fast) var(--ev-ease);
+}
+
+.msg-ai a:hover {
+  text-decoration-color: currentColor;
+}
+
+.msg-ai blockquote {
+  padding-left: 12px;
+  border-left: 2px solid var(--ev-separator);
+  color: var(--ev-label-2);
+}
+
+.msg-ai > hr {
+  margin-block: 18px;
+  border: 0;
+  border-top: 1px solid var(--ev-separator);
+}
+
+.msg-ai .table-scroll {
+  overflow-x: auto;
+}
+
+.msg-ai table {
+  border-collapse: collapse;
+  font-size: var(--ev-control);
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.msg-ai th,
+.msg-ai td {
+  padding: 6px 16px 6px 0;
+  border-bottom: 1px solid var(--ev-separator);
+  text-align: left;
+  vertical-align: top;
+}
+
+.msg-ai :is(th, td).center {
+  text-align: center;
+}
+
+.msg-ai :is(th, td).right {
+  text-align: right;
+}
+
+.msg-ai th {
+  font-weight: 500;
+  color: var(--ev-label-2);
+}
+
+.msg-ai tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Code copies from a button that shows only while the pointer is over the block. */
+.msg-ai .code {
+  position: relative;
+}
+
+.msg-ai .code .copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  opacity: 0;
+  transition: opacity var(--ev-fast) var(--ev-ease);
+}
+
+.msg-ai .code:hover .copy,
+.msg-ai .code .copy:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .msg-ai .code .copy {
+    opacity: 1;
+  }
 }
 
 .msg-ai code,

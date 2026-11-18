@@ -1,6 +1,6 @@
 # 模型配置
 
-这一页列出 `<数据目录>/models.json` 的全部字段。它的格式是 pi coding agent `models.json` 的一个子集，常见场景见 [选择模型](models.md#接入兼容端点)。
+这一页列出 `~/.eevee/models.json` 的全部字段。它的格式是 pi coding agent `models.json` 的一个子集，常见场景见 [选择模型](models.md#接入兼容端点)。
 
 `models.json` 在 Engine 启动和 `eevee model login` 时读取，问题写进 Engine 日志：
 

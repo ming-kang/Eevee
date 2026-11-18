@@ -19,6 +19,7 @@ import {
   TOKEN_PROTOCOL_PREFIX,
 } from "../api/stream.ts";
 import type { TicketId } from "../contracts/index.ts";
+import { ProblemError, problemOf } from "../contracts/index.ts";
 import { type Auth, isLoopbackRequest } from "./auth.ts";
 
 /** What the stream reads: the Engine, or a stand-in in tests. */
@@ -104,12 +105,15 @@ function serve(ws: WebSocket, options: StreamOptions): void {
   };
   const fail = (id: string | undefined, error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
-    const code = error instanceof Error && error.name === "NotFound" ? "not_found" : "error";
-    send({ type: "error", ...(id === undefined ? {} : { id }), code, message });
+    send({
+      type: "error",
+      ...(id === undefined ? {} : { id }),
+      error: { ...problemOf(error), message },
+    });
   };
   const project = (id: string): ProjectStream => {
     const found = source.project(id);
-    if (found === undefined) throw Object.assign(new Error(`没有项目 ${id}`), { name: "NotFound" });
+    if (found === undefined) throw new ProblemError({ code: "no_project", projectId: id });
     return found;
   };
 
@@ -134,7 +138,7 @@ function serve(ws: WebSocket, options: StreamOptions): void {
     try {
       request = JSON.parse(String(data)) as StreamRequest;
     } catch {
-      return fail(undefined, new Error("消息不是合法的 JSON"));
+      return fail(undefined, new ProblemError({ code: "bad_json" }));
     }
     void handle(request).catch((error: unknown) => fail(request.id, error));
   });
@@ -152,7 +156,7 @@ function serve(ws: WebSocket, options: StreamOptions): void {
         return send({ type: "entries", id: request.id, items });
       }
       case "watch":
-        if (watches.has(request.id)) throw new Error(`watch ${request.id} 已存在`);
+        if (watches.has(request.id)) throw new ProblemError({ code: "invalid", field: "id" });
         if (request.topic.kind === "board")
           return watchBoard(request.id, project(request.topic.project));
         return watchConversation(

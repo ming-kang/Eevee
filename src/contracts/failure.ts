@@ -29,10 +29,19 @@ export function describeRunFailure(failure: Pick<RunFailure, "reason" | "detail"
   return failure.detail === undefined ? label : `${label}：${failure.detail}`;
 }
 
+/** Why a run failed, and the provider's or runtime's own words for it, if any: each reader words the reason. */
+export type RunFailureView = Pick<RunFailure, "reason" | "detail">;
+
+export function failureView(failure: Pick<RunFailure, "reason" | "detail">): RunFailureView {
+  return failure.detail === undefined
+    ? { reason: failure.reason }
+    : { reason: failure.reason, detail: failure.detail };
+}
+
 /** Whether a conversation runs, and how its last run failed when that was not a deliberate end. */
 export type RunSummary = {
   running: boolean;
-  failure?: string;
+  failure?: RunFailureView;
 };
 
 /** Sums up a conversation's `pi.live` document. */
@@ -40,5 +49,5 @@ export function summarizeRun(live: Pick<LiveState, "run" | "runFailure"> | undef
   if (live?.run !== undefined) return { running: true };
   const failure = live?.runFailure;
   if (failure === undefined || isDeliberateEnd(failure.reason)) return { running: false };
-  return { running: false, failure: describeRunFailure(failure) };
+  return { running: false, failure: failureView(failure) };
 }

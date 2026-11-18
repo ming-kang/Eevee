@@ -80,7 +80,7 @@ Eevee 升级这些包时，扩展目录里的版本也要跟着升级。
 
 ## 启用与调试
 
-- 用 `eevee role enable <角色> <扩展名>` 启用，见 [配置角色能力](capabilities.md)。
+- 用 `eevee role enable <role> <extension>` 启用，见 [配置角色能力](capabilities.md)。
 - 用 `eevee role list` 查看加载结果和每个扩展的工具数。加载失败的原因（语法错误、默认导出不对、重名、保留名）显示在可启用列表下方。
 - 扩展里 `console.log` 的输出写进 Engine 日志 `~/.eevee/runtime/engine.log`。
 - 修改扩展后重启 Engine。已经启用它的角色不需要重新启用。

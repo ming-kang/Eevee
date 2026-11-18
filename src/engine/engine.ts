@@ -1,6 +1,6 @@
 import type { Context } from "@earendil-works/chord/context";
 import type { CapabilitiesView, ModelsView, ProjectSummary } from "../api/contract.ts";
-import { type ModelChoice, ROLE_NAMES, type RoleName } from "../contracts/index.ts";
+import { type ModelChoice, ProblemError, ROLE_NAMES, type RoleName } from "../contracts/index.ts";
 import { MemoryRepo } from "../extensions/memory/index.ts";
 import { buildModelsView } from "../models/catalog.ts";
 import type { ModelRuntime } from "../models/index.ts";
@@ -22,14 +22,6 @@ export type EngineOptions = {
   /** Opens an MCP server's transport; tests pass an in-memory one. */
   openMcp?: SharedExtensionsOptions["openMcp"];
 };
-
-export class UnknownModel extends Error {
-  override name = "UnknownModel";
-}
-
-export class UnknownExtension extends Error {
-  override name = "UnknownExtension";
-}
 
 /** A change to one role's capabilities; `maxTurns: null` goes back to Durable's default. */
 export type RoleCapabilityChange = { extensions?: readonly string[]; maxTurns?: number | null };
@@ -111,13 +103,13 @@ export class Engine {
 
   #requireModel(choice: ModelChoice): void {
     if (this.#options.models.models().getModel(choice.provider, choice.modelId) === undefined) {
-      throw new UnknownModel(`没有模型 ${choice.provider}/${choice.modelId}`);
+      throw new ProblemError({ code: "no_model", ...choice });
     }
   }
 
   async login(provider: string, key: string): Promise<void> {
     if (this.#options.models.models().getProvider(provider) === undefined) {
-      throw new UnknownModel(`没有 provider ${provider}`);
+      throw new ProblemError({ code: "no_provider", provider });
     }
     await this.#options.models.credentials.modify(provider, async () => ({
       type: "api_key",
@@ -157,7 +149,7 @@ export class Engine {
           .map((e) => e.name),
       );
       const unknown = change.extensions.filter((name) => !known.has(name));
-      if (unknown.length > 0) throw new UnknownExtension(`没有安装扩展：${unknown.join("、")}`);
+      if (unknown.length > 0) throw new ProblemError({ code: "no_extension", names: unknown });
     }
     await this.#options.settings.update((stored) => {
       const current = stored.roles?.[role] ?? {};

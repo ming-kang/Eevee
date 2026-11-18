@@ -14,6 +14,8 @@ import {
   type ThinkingLevel,
 } from "@shared/contracts/index.ts";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { configIssueText, configProblemText, errorText } from "../errors.ts";
+import { ROLE_LABEL } from "../labels.ts";
 import { LOCALE_NAME, LOCALES, locale, setLocale, t } from "../i18n.ts";
 import type { IconName } from "../icons.ts";
 import { levelsOf, switchModel, levelLabel } from "../model-choice.ts";
@@ -85,12 +87,6 @@ const MODEL_ROLES: { key: "default" | RoleName; label: string }[] = [
   { key: "dreamer", label: "Dreamer" },
 ];
 
-const ROLE_LABEL: Record<RoleName, string> = {
-  router: "Router",
-  worker: "Worker",
-  dreamer: "Dreamer",
-};
-
 const THEME_OPTIONS: { key: ThemePreference; label: string }[] = [
   { key: "system", label: t("跟随系统") },
   { key: "light", label: t("浅色") },
@@ -132,7 +128,7 @@ async function loadCapabilities(): Promise<void> {
     capabilities.value = view;
     syncTurnDrafts(view);
   } catch (err) {
-    capError.value = err instanceof Error ? err.message : String(err);
+    capError.value = errorText(err);
   } finally {
     loadingCap.value = false;
   }
@@ -464,7 +460,7 @@ const streamBadge = computed(() => {
                 <div>
                   <strong>{{ t("models.json 有问题，相关 Provider 沿用内置设置") }}</strong>
                   <ul>
-                    <li v-for="(prob, idx) in modelsView.problems" :key="idx">{{ prob }}</li>
+                    <li v-for="(prob, idx) in modelsView.problems" :key="idx">{{ configProblemText(prob) }}</li>
                   </ul>
                 </div>
               </div>
@@ -662,7 +658,7 @@ const streamBadge = computed(() => {
                   </tr>
                   <tr>
                     <td>
-                      <div class="ext" :title="t('settings.json 中的 roles.<角色>.maxTurns')">
+                      <div class="ext" :title="t('settings.json 中的 roles.<role>.maxTurns')">
                         <b>{{ t("轮次上限") }}</b>
                       </div>
                     </td>
@@ -717,7 +713,7 @@ const streamBadge = computed(() => {
                 <div>
                   <strong>{{ t("{n} 个问题", { n: capabilities.problems.length }) }}</strong>
                   <ul>
-                    <li v-for="(prob, idx) in capabilities.problems" :key="idx">{{ prob }}</li>
+                    <li v-for="(prob, idx) in capabilities.problems" :key="idx">{{ configProblemText(prob) }}</li>
                   </ul>
                 </div>
               </div>
@@ -738,7 +734,7 @@ const streamBadge = computed(() => {
                         · {{ rolesUsingExtension(`mcp.${server.name}`).join(t("、")) }}
                       </template>
                     </span>
-                    <span v-if="server.error" class="err">{{ server.error }}</span>
+                    <span v-if="server.error" class="err">{{ configIssueText(server.error) }}</span>
                   </div>
                   <span class="status-text">
                     <span class="dot" :class="MCP_STATE_LABEL[server.state].dot" />
@@ -755,7 +751,7 @@ const streamBadge = computed(() => {
                   <div class="r-main">
                     <span class="r-t"><span class="mono">{{ ext.file }}</span></span>
                     <span class="r-d">{{ ext.name ? `${ext.name} · ${t("{n} 个工具", { n: ext.tools })}` : t("未加载") }}</span>
-                    <span v-if="ext.error" class="err">{{ ext.error }}</span>
+                    <span v-if="ext.error" class="err">{{ configIssueText(ext.error) }}</span>
                   </div>
                   <span class="status-text">
                     <span class="dot" :class="ext.error ? 'bad' : 'ok'" />

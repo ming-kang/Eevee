@@ -12,7 +12,7 @@
 
 ## 找到 Engine
 
-Engine 把实际端口写在 `<数据目录>/runtime/engine.json` 里：
+Engine 把实际端口写在 `~/.eevee/runtime/engine.json` 里：
 
 ```json
 { "pid": 41236, "port": 19190, "bootId": "8f0c…", "startedAt": 1763366400000 }
@@ -26,7 +26,7 @@ Engine 把实际端口写在 `<数据目录>/runtime/engine.json` 里：
 
 | token | 从哪里来 | 能做什么 |
 |:-:|---|:-:|
-| CLI token | `<数据目录>/runtime/cli-token` 文件 | 全部接口 |
+| CLI token | `~/.eevee/runtime/cli-token` 文件 | 全部接口 |
 | 会话 token | 用 `eevee web` 的一次性授权码换取 | 除停止 Engine、生成授权码、保存凭据以外的接口 |
 
 本机脚本直接读 CLI token 即可。浏览器类客户端应当走授权码流程：CLI 调用 `POST /api/session/code` 生成授权码，客户端用 `POST /api/session` 把它换成会话 token。授权码 90 秒内有效、只能用一次；会话 12 小时无操作后过期。
@@ -46,7 +46,7 @@ curl -s -X POST -H "x-eevee-token: $TOKEN" -H "content-type: application/json" \
   "http://127.0.0.1:$PORT/api/projects/p3f9a1c2e/messages"
 ```
 
-成功时返回 JSON；失败时返回对应的 HTTP 状态码和 `{"error":{"code":"…","message":"…"}}`，错误码见 [HTTP 接口](http-api.md#错误)。
+成功时返回 JSON；失败时返回对应的 HTTP 状态码和 `{"error":{"code":"…",…,"message":"…"}}`：`code` 和它的参数说明是什么问题，`message` 是可以直接打印的中文。错误码见 [HTTP 接口](http-api.md#错误)。
 
 在本仓库里写 TypeScript 时，可以用 `src/api/client.ts` 的 `createClient`，它按 `src/api/contract.ts` 推导每个接口的参数和返回类型：
 

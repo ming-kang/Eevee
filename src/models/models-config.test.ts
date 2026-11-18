@@ -59,8 +59,9 @@ test("一个 provider 配错只影响它自己", () => {
       faux: { modelOverrides: { brain: { contextWindow: 42 } } },
     },
   });
-  assert.equal(problems.length, 1);
-  assert.match(problems[0] ?? "", /broken/);
+  assert.deepEqual(problems, [
+    { file: "models.json", entry: "broken", code: "needs_api", model: "x" },
+  ]);
   assert.equal(models.getProvider("broken"), undefined);
   assert.equal(models.getModel("faux", "brain")?.contextWindow, 42);
 });
@@ -68,6 +69,8 @@ test("一个 provider 配错只影响它自己", () => {
 test("格式不对的 models.json 给出具体位置", () => {
   assert.throws(
     () => parseConfig(ModelsConfigSchema, { providers: { a: { models: [{}] } } }, "models.json"),
-    (error: unknown) => error instanceof ConfigError && /models\.json/.test(error.message),
+    (error: unknown) =>
+      error instanceof ConfigError &&
+      error.problems.every((p) => p.file === "models.json" && p.code === "schema"),
   );
 });

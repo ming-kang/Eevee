@@ -6,6 +6,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { ModelProviderView, ModelSpecView, ModelsView } from "../api/contract.ts";
 import {
+  type ConfigProblem,
   formatModel,
   type ModelChoice,
   type ModelDefaults,
@@ -20,7 +21,7 @@ export type CatalogInput = {
 
 export type ModelsViewInput = CatalogInput & {
   customProviders?: ReadonlySet<string>;
-  problems?: readonly string[];
+  problems?: readonly ConfigProblem[];
 };
 
 function formatCatalog(

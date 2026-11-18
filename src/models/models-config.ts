@@ -43,7 +43,14 @@ import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completio
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { piMessagesApi } from "@earendil-works/pi-ai/api/pi-messages.lazy";
 import { arr, bool, map, num, obj, oneOf, opt, type Static, str } from "@earendil-works/pi-schema";
-import { loadConfig, processEnv, resolveConfigValue } from "../shared/config.ts";
+import type { ConfigIssue, ConfigProblem } from "../contracts/index.ts";
+import {
+  ConfigError,
+  configIssue,
+  loadConfig,
+  processEnv,
+  resolveConfigValue,
+} from "../shared/config.ts";
 
 const Headers = map(str());
 const Positive = num({ exclusiveMinimum: 0 });
@@ -120,16 +127,14 @@ export function applyModelsConfig(
   models: MutableModels,
   config: ModelsConfig,
   applied?: Set<string>,
-): string[] {
-  const problems: string[] = [];
+): ConfigProblem[] {
+  const problems: ConfigProblem[] = [];
   for (const [id, entry] of Object.entries(config.providers ?? {})) {
     try {
       models.setProvider(composeProvider(id, models.getProvider(id), entry));
       applied?.add(id);
     } catch (error) {
-      problems.push(
-        `models.json 的 provider ${id}：${error instanceof Error ? error.message : error}`,
-      );
+      problems.push({ ...configIssue(error), file: "models.json", entry: id });
     }
   }
   return problems;
@@ -154,10 +159,10 @@ export function composeProvider(
     return models.map((m) => withOverride(m, config.modelOverrides?.[m.id]));
   };
   const known = chatModels();
-  if (base === undefined && known.length === 0) throw new Error("新增的 provider 需要 models");
+  if (base === undefined && known.length === 0) throw issue(id, { code: "needs_models" });
   for (const model of known) {
     if (!supports(base, model) && APIS[model.api] === undefined) {
-      throw new Error(`模型 ${model.id} 的 api「${model.api}」不受支持`);
+      throw issue(id, { code: "unsupported_api", model: model.id, api: model.api });
     }
   }
 
@@ -193,7 +198,7 @@ export function composeProvider(
       streamsOf(model).streamSimple(model, context, options),
   };
   if (provider.auth.apiKey === undefined && provider.auth.oauth === undefined) {
-    throw new Error("没有可用的认证方式");
+    throw issue(id, { code: "no_auth" });
   }
   if (base?.getAllModels !== undefined) {
     const all = base.getAllModels.bind(base);
@@ -223,6 +228,10 @@ export function composeProvider(
   return provider;
 }
 
+/** A provider entry models.json gets wrong. */
+const issue = (provider: string, what: ConfigIssue): ConfigError =>
+  new ConfigError([{ ...what, file: "models.json", entry: provider }]);
+
 const supports = (base: Provider | undefined, model: Model<Api>): boolean =>
   base?.getModels().some((m) => m.api === model.api) ?? false;
 
@@ -234,9 +243,11 @@ function fromDefinition(
 ): Model<Api> {
   const template = existing.find((m) => m.id === definition.id);
   const api = definition.api ?? config.api ?? template?.api;
-  if (api === undefined) throw new Error(`模型 ${definition.id} 没有指定 api`);
+  if (api === undefined) throw issue(providerId, { code: "needs_api", model: definition.id });
   const baseUrl = definition.baseUrl ?? config.baseUrl ?? template?.baseUrl;
-  if (baseUrl === undefined) throw new Error(`模型 ${definition.id} 没有 baseUrl`);
+  if (baseUrl === undefined) {
+    throw issue(providerId, { code: "needs_base_url", model: definition.id });
+  }
   const model: Model<Api> = {
     id: definition.id,
     name: definition.id,

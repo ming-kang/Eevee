@@ -43,7 +43,7 @@ eevee model default anthropic/<model-id>
 
 ```bash
 eevee model default deepseek/<model-id> --role worker
-eevee model default <provider>/<轻量模型> --role dreamer
+eevee model default <provider>/<model-id> --role dreamer   # Dreaming 用一个轻量模型就够了
 ```
 
 改动立即应用到全部项目的 Router 和没有指定模型的工单。
@@ -60,7 +60,7 @@ eevee model default anthropic/<model-id> --role worker --thinking high
 
 ### 项目的默认模型
 
-在面板里，输入框左下角的按钮显示当前项目 Router 的模型和思考档位，点开可以换；选择写进这个项目的 `project.json`，选“默认”则回到全局设置。也可以直接编辑 `~/.eevee/projects/<项目>/project.json`，加上 `models`，然后重启 Engine：
+在面板里，输入框左下角的按钮显示当前项目 Router 的模型和思考档位，点开可以换；选择写进这个项目的 `project.json`，选“默认”则回到全局设置。也可以直接编辑 `~/.eevee/projects/<project>/project.json`，加上 `models`，然后重启 Engine：
 
 ```json
 {

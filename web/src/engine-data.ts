@@ -12,6 +12,7 @@ import {
 import type { BoardView, EngineStatus, ProjectSummary } from "../../src/api/contract.ts";
 import type { ConversationTopic } from "../../src/api/stream.ts";
 import { createConversationWatcher, type GapItem } from "./conversation.ts";
+import { errorText, problemText } from "./errors.ts";
 import type { SessionInfo } from "./session.ts";
 import { createStreamClient, type StreamClient, type StreamState } from "./stream.ts";
 
@@ -48,7 +49,7 @@ export function useEngineData(session: ShallowRef<SessionInfo | undefined>): Eng
       status.value = await current.client.call("GET /api/status");
       statusError.value = undefined;
     } catch (cause) {
-      statusError.value = cause instanceof Error ? cause.message : String(cause);
+      statusError.value = errorText(cause);
     }
   }
 
@@ -85,7 +86,7 @@ export function useEngineData(session: ShallowRef<SessionInfo | undefined>): Eng
             } else if (event.type === "error") {
               boards.value = {
                 ...boards.value,
-                [pid]: { ...boards.value[pid], error: event.message },
+                [pid]: { ...boards.value[pid], error: problemText(event.error) },
               };
             }
           },

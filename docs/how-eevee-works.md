@@ -19,7 +19,7 @@ Engine 是运行在 Node.js 26 上的后台进程，只监听 `127.0.0.1`。命�
 - 一个 **项目记忆库**，所有项目还共用一个 **全局记忆库**；
 - 一个 **工作目录**，是你自己的目录，产物默认写在这里。
 
-项目的全部对话记录、工单、报告和问题都存在 `projects/<项目编号>/session.sqlite` 里。
+项目的全部对话记录、工单、报告和问题都存在 `projects/<project>/session.sqlite` 里。
 
 ## Router 与 Worker
 
@@ -84,7 +84,7 @@ Dreaming 默认开启：Engine 定期开一张整理工单，回顾新的对话�
 
 ## 后台作业
 
-Worker 的 `bash` 命令运行超过 [`backgroundAfterMs`](settings.md)（默认 5 秒）就转入后台，立即返回一个 `job://j7` 这样的地址，完整输出续写到 `jobs/<作业编号>.log`。Worker 可以先结束本轮、释放并发槽位，命令结束后结果会唤醒它。
+Worker 的 `bash` 命令运行超过 [`backgroundAfterMs`](settings.md)（默认 5 秒）就转入后台，立即返回一个 `job://j7` 这样的地址，完整输出续写到 `jobs/<job>.log`。Worker 可以先结束本轮、释放并发槽位，命令结束后结果会唤醒它。
 
 后台进程只存在于 Engine 进程里。Engine 重启时，仍在运行的作业记为被打断，并通知所属的 Worker 先检查工作目录再决定是否重跑。工单结单时，它仍在运行的作业会被终止。
 
@@ -93,7 +93,7 @@ Worker 的 `bash` 命令运行超过 [`backgroundAfterMs`](settings.md)（默认
 Eevee 的全部能力都以扩展的形式安装，再由角色按名字选用：
 
 - Eevee 自带的扩展提供 `read`、`write`、`edit`、`bash`、`ticket`、`ask_user`、`report`、`memory`、`handoff` 等工具，每个角色自带固定的一组；
-- 每个 MCP 服务器是一个扩展 `mcp.<名字>`，`~/.eevee/extensions/` 里的每个文件也是一个扩展；
+- 每个 MCP 服务器是一个扩展 `mcp.<name>`，`~/.eevee/extensions/` 里的每个文件也是一个扩展；
 - 工具搜索（`tool-search`）和代码模式（`codemode`）在需要时自动带上。
 
 你用 `eevee role enable` 为角色启用更多扩展（保存在 `settings.json`），改动立即应用到 Router 和全部未结工单。详见 [配置角色能力](capabilities.md)。

@@ -85,7 +85,7 @@ test("无 token 或会话过期时清掉旧 token 并抛出 Unauthorized", async
     createClient: () =>
       ({
         call: async () => {
-          throw new ApiRequestError(401, "unauthorized", "需要授权");
+          throw new ApiRequestError(401, { code: "unauthorized", message: "需要授权" });
         },
       }) as never,
   };

@@ -1,6 +1,6 @@
 # 配置
 
-Eevee 的全部配置和数据都在一个数据目录里，默认是 `~/.eevee/`，用环境变量 [`EEVEE_HOME`](environment-variables.md) 可以换一个位置。下文把它写作 `<数据目录>`。
+Eevee 的全部配置和数据都在一个数据目录里，默认是 `~/.eevee/`，用环境变量 [`EEVEE_HOME`](environment-variables.md) 可以换一个位置。下文都写作 `~/.eevee/`。
 
 常用的设置可以用命令行修改，改动立即生效；其他配置直接编辑对应文件。
 
@@ -15,7 +15,7 @@ Eevee 的全部配置和数据都在一个数据目录里，默认是 `~/.eevee/
 | `mcp.json` | [MCP 服务器](mcp.md) |
 | `extensions/` | [用户扩展](extensions.md)：`*.ts`、`*.js`、`*.mjs` 文件 |
 | `memory/` | 全局记忆库（Git），只有一个 `MEMORY.md` |
-| `projects/<项目>/` | 一个项目的全部数据，见下表 |
+| `projects/<project>/` | 一个项目的全部数据，见下表 |
 | `runtime/` | Engine 运行时的私有文件，见下表 |
 
 ## 项目目录
@@ -25,7 +25,7 @@ Eevee 的全部配置和数据都在一个数据目录里，默认是 `~/.eevee/
 | `project.json` | 标题、关联的工作目录、创建时间，以及可选的项目默认模型 |
 | `session.sqlite` | 项目的持久存储：全部对话记录，以及工单、报告、问题 |
 | `memory/` | 项目记忆库（Git）：`MEMORY.md` 和主题笔记 |
-| `jobs/<作业>.log` | 后台作业的完整输出 |
+| `jobs/<job>.log` | 后台作业的完整输出 |
 
 工作目录本身是你自己的目录，不在数据目录里。
 

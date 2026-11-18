@@ -1,16 +1,43 @@
 import { compile, type Schema, type Static } from "@earendil-works/pi-schema";
+import { type ConfigIssue, type ConfigProblem, describeConfigProblem } from "../contracts/index.ts";
 import { readJson } from "./fs.ts";
 
+/** Problems in files the user edits; the message lists them in the Engine's words. */
 export class ConfigError extends Error {
   override name = "ConfigError";
+  readonly problems: readonly ConfigProblem[];
+
+  constructor(problems: readonly ConfigProblem[]) {
+    super(problems.map(describeConfigProblem).join("\n"));
+    this.problems = problems;
+  }
+}
+
+/**
+ * What went wrong loading something, without where: the caller knows the file or entry it was loading.
+ * An unexpected error keeps its own words.
+ */
+export function configIssue(error: unknown): ConfigIssue {
+  const [first] = error instanceof ConfigError ? error.problems : [];
+  if (first === undefined) {
+    return { code: "failed", detail: error instanceof Error ? error.message : String(error) };
+  }
+  const { file: _file, entry: _entry, ...issue } = first;
+  return issue;
 }
 
 /** Validates a parsed config value; the error names the file and every failing path. */
 export function parseConfig<S extends Schema>(schema: S, value: unknown, file: string): Static<S> {
   const result = compile(schema).validate(value);
   if (result.ok) return result.value as Static<S>;
-  const problems = result.errors.map((e) => `  ${e.path || "/"}：${e.message}`).join("\n");
-  throw new ConfigError(`${file} 格式不对：\n${problems}`);
+  throw new ConfigError(
+    result.errors.map((e) => ({
+      file,
+      code: "schema",
+      path: e.path || "/",
+      detail: e.message,
+    })),
+  );
 }
 
 /** Reads and validates a JSON config file; a missing file reads as `fallback`. */

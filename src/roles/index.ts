@@ -9,7 +9,13 @@ import {
 } from "@earendil-works/pi-durable";
 import { obj, str } from "@earendil-works/pi-schema";
 import { Board, TicketDoc } from "../contracts/docs.ts";
-import type { ModelChoice, RoleName, Ticket, TicketId } from "../contracts/index.ts";
+import {
+  type ModelChoice,
+  ProblemError,
+  type RoleName,
+  type Ticket,
+  type TicketId,
+} from "../contracts/index.ts";
 import type { DocReader, TicketConversations } from "../extensions/orchestration/index.ts";
 import { dreamerRole } from "./dreamer.ts";
 import { type MemorySnapshot, type Role, resolveCapability, roleChange } from "./role.ts";
@@ -47,15 +53,6 @@ export type RolesDeps = {
   onMissing?(role: RoleName, missing: string[]): void;
 };
 
-export class NoModelConfigured extends Error {
-  override name = "NoModelConfigured";
-  constructor(role: RoleName) {
-    super(
-      `${role} 没有可用的模型：在 settings.json 的 models 里设置 default 或 ${role}，或建单时指定 provider 与 modelId。`,
-    );
-  }
-}
-
 export function createRoles(deps: RolesDeps) {
   /** The agent change applying `role`: its extensions and the enabled ones, its prompt, the model. */
   const agent = (role: RoleName, registry: RegistrySnapshot, model?: ModelChoice): AgentChange => {
@@ -86,7 +83,8 @@ export function createRoles(deps: RolesDeps) {
   const ticketConversations: TicketConversations = {
     async configure(tx, conversationId, ticket, registry) {
       const change = agent(ticket.role, registry, ticket.model);
-      if (change.model === undefined) throw new NoModelConfigured(ticket.role);
+      if (change.model === undefined)
+        throw new ProblemError({ code: "model_unset", role: ticket.role });
       await configure(tx, conversationId, change);
     },
     async opening(ticket, context, handoff) {

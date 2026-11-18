@@ -24,6 +24,11 @@ test("Worker 运行失败后，引擎替它交一份 failed 报告并唤醒 Rout
     );
     assert.equal(report.status, "failed");
     assert.match(report.summary, /模型调用失败/);
+    assert.equal(report.origin?.type, "run-failed");
+    assert.match(
+      report.origin?.type === "run-failed" ? (report.origin.failure.detail ?? "") : "",
+      /403/,
+    );
     await project.until(async () =>
       project.calls.some((c) => c.role === "router" && textOf(c.last).includes("报告 · failed")),
     );

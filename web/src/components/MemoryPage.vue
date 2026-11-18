@@ -7,6 +7,7 @@ import type {
 } from "@shared/api/contract.ts";
 import type { MemoryScope } from "@shared/contracts/index.ts";
 import { computed, onUnmounted, ref, watch } from "vue";
+import { errorText } from "../errors.ts";
 import { focusFirst, onRovingKeydown, trapTab, useFocusReturn } from "../focus.ts";
 import { t } from "../i18n.ts";
 import { classifyCommitAuthor, type MemoryAuthor, parseGitDiff } from "../memory.ts";
@@ -138,7 +139,7 @@ async function loadCommitDiff(targetScope: MemoryScope, commit: string): Promise
     );
     commitDiffs.value = { ...commitDiffs.value, [cacheKey]: res.diff };
   } catch (err) {
-    diffError.value = err instanceof Error ? err.message : String(err);
+    diffError.value = errorText(err);
   } finally {
     loadingDiff.value = false;
   }
@@ -178,7 +179,7 @@ async function loadScope(preferredSelection?: string): Promise<void> {
     }
   } catch (err) {
     if (token !== requestSeq) return;
-    listError.value = err instanceof Error ? err.message : String(err);
+    listError.value = errorText(err);
     commits.value = [];
     uncommittedRaw.value = "";
     selected.value = undefined;
@@ -203,7 +204,7 @@ async function loadFileContent(targetScope: MemoryScope, filePath: string): Prom
     });
     fileContents.value = { ...fileContents.value, [cacheKey]: res.content };
   } catch (err) {
-    fileError.value = err instanceof Error ? err.message : String(err);
+    fileError.value = errorText(err);
   } finally {
     loadingFile.value = false;
   }
@@ -232,7 +233,7 @@ async function loadFiles(preferredFile?: string): Promise<void> {
     }
   } catch (err) {
     if (token !== filesSeq) return;
-    filesError.value = err instanceof Error ? err.message : String(err);
+    filesError.value = errorText(err);
     files.value = [];
     selectedFile.value = undefined;
   } finally {

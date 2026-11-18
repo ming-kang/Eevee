@@ -42,7 +42,7 @@ test("buildModelsView 返回角色默认模型、Router 生效模型、凭据状
     },
     profiles: "# 使用经验\n\n- deep 适合复杂任务\n",
     customProviders: new Set(["configured"]),
-    problems: ["测试警告"],
+    problems: [{ file: "models.json", code: "failed", detail: "测试警告" }],
   });
 
   assert.deepEqual(view.routerModel, { provider: "configured", modelId: "fast" });
@@ -51,7 +51,7 @@ test("buildModelsView 返回角色默认模型、Router 生效模型、凭据状
     modelId: "deep",
     thinkingLevel: "high",
   });
-  assert.deepEqual(view.problems, ["测试警告"]);
+  assert.deepEqual(view.problems, [{ file: "models.json", code: "failed", detail: "测试警告" }]);
   assert.equal(view.profiles, "# 使用经验\n\n- deep 适合复杂任务");
 
   assert.equal(view.providers.length, 2);
@@ -132,7 +132,7 @@ test("createModelRuntime + buildModelsView 暴露 models.json 自定义 provider
       true,
     );
     assert.equal(
-      view.problems.some((p) => p.includes("broken-local")),
+      view.problems.some((p) => p.entry === "broken-local"),
       true,
     );
   } finally {

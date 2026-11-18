@@ -1,6 +1,6 @@
 # 设置
 
-这一页列出 `<数据目录>/settings.json` 的全部设置。所有字段都可以省略，省略时使用默认值。文件位置和生效时机见 [配置](configuration.md)。
+这一页列出 `~/.eevee/settings.json` 的全部设置。所有字段都可以省略，省略时使用默认值。文件位置和生效时机见 [配置](configuration.md)。
 
 用 `eevee model default` 和 `eevee role` 修改的设置立即生效；手动编辑后需要重启 Engine，细节见 [修改后什么时候生效](configuration.md#修改后什么时候生效)。读取和写入时都会按结构校验，格式不对时错误信息会指出具体字段。
 
@@ -14,7 +14,7 @@
   "models": {
     "default": { "provider": "anthropic", "modelId": "<model-id>" },
     "worker": { "provider": "deepseek", "modelId": "<model-id>" },
-    "dreamer": { "provider": "deepseek", "modelId": "<轻量模型>" }
+    "dreamer": { "provider": "deepseek", "modelId": "<model-id>" }
   },
   "roles": {
     "router": { "extensions": ["mcp.deepwiki"] },

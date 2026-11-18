@@ -25,6 +25,7 @@ import {
   type McpStdioServerConfig,
   validateMcpServerConfig,
 } from "@earendil-works/pi-mcp";
+import type { ConfigProblem } from "../../contracts/index.ts";
 import { readJson } from "../../shared/fs.ts";
 
 export const MCP_EXPOSURES = ["deferred", "direct", "codemode", "hidden"] as const;
@@ -44,26 +45,35 @@ export type McpServerEntry =
 
 export const mcpExtensionName = (server: string): string => `mcp.${server}`;
 
+const FILE = "mcp.json";
+const SHAPE = '{ "mcpServers": { "<name>": { ... } } }';
+
 export async function loadMcpConfig(
   path: string,
-): Promise<{ servers: McpServerEntry[]; problems: string[] }> {
+): Promise<{ servers: McpServerEntry[]; problems: ConfigProblem[] }> {
   const raw = await readJson<unknown>(path);
   if (raw === undefined) return { servers: [], problems: [] };
   const entries = isRecord(raw) ? raw.mcpServers : undefined;
   if (!isRecord(entries)) {
-    return { servers: [], problems: ['mcp.json 应为 { "mcpServers": { "<名字>": { ... } } }'] };
+    return { servers: [], problems: [{ file: FILE, code: "shape", expected: SHAPE }] };
   }
   const servers: McpServerEntry[] = [];
-  const problems: string[] = [];
+  const problems: ConfigProblem[] = [];
   for (const [name, entry] of Object.entries(entries)) {
     const result = validateMcpServerConfig(name, entry);
     if (result.kind === "invalid") {
-      problems.push(`mcp.json：${result.error}`);
+      problems.push({ file: FILE, entry: name, code: "failed", detail: result.error });
       continue;
     }
     const exposure = result.config.exposure ?? "deferred";
     if (!MCP_EXPOSURES.includes(exposure as McpExposure)) {
-      problems.push(`mcp.json：${name} 的 exposure 应为 ${MCP_EXPOSURES.join(" / ")}`);
+      problems.push({
+        file: FILE,
+        entry: name,
+        code: "invalid",
+        field: "exposure",
+        allowed: MCP_EXPOSURES,
+      });
       continue;
     }
     const common: Common = {

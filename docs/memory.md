@@ -6,7 +6,7 @@ Eevee 的记忆是跨会话长期有用的合作经验，不是对话摘要。�
 
 | 记忆库 | 位置 | 内容 | 谁写入 |
 |---|---|---|---|
-| 项目记忆库 | `~/.eevee/projects/<项目>/memory/` | `MEMORY.md` 索引和若干主题笔记 | Router、Dreaming、你 |
+| 项目记忆库 | `~/.eevee/projects/<project>/memory/` | `MEMORY.md` 索引和若干主题笔记 | Router、Dreaming、你 |
 | 全局记忆库 | `~/.eevee/memory/` | 只有一个 `MEMORY.md`，保持极短 | 你明确要求“记住”时由 Router 写入；你自己 |
 
 两个都是 Git 仓库，所有角色都能用 `read` 读取。
@@ -27,7 +27,7 @@ Eevee 的记忆是跨会话长期有用的合作经验，不是对话摘要。�
 
 ## 记忆怎样进入上下文
 
-全局和项目的 `MEMORY.md` 放在每个对话开篇的最前面，运行中途不变。主题笔记由模型根据索引用 `read memory://project/<文件>` 按需读取。
+全局和项目的 `MEMORY.md` 放在每个对话开篇的最前面，运行中途不变。主题笔记由模型根据索引用 `read memory://project/<file>` 按需读取。
 
 所以新写入的记忆从之后创建或重置的对话起生效，不影响正在进行的对话。
 
@@ -46,10 +46,10 @@ Router 用 `memory` 工具写入：`edit` 用原文替换，原文在磁盘上�
 ## 查看历史和撤销
 
 ```bash
-eevee memory log <项目>             # 项目记忆库最近 20 次提交
-eevee memory show <项目> <commit>   # 一次提交的改动
-eevee memory show <项目>            # 还没提交的改动（不含新建的文件）
-eevee memory revert <项目> <commit> # 撤销一次提交
+eevee memory log <project>             # 项目记忆库最近 20 次提交
+eevee memory show <project> <commit>   # 一次提交的改动
+eevee memory show <project>            # 还没提交的改动（不含新建的文件）
+eevee memory revert <project> <commit> # 撤销一次提交
 ```
 
 加 `-g` 或 `--global` 操作全局记忆库。例如：
@@ -61,7 +61,7 @@ e4f5a6b  2026-11-16 21:40  memory: create figures.md; edit MEMORY.md
 9c8d7e6  2026-11-16 18:03  user edit
 ```
 
-Router 的提交以 `memory` 开头，整理工单的提交以 `dreaming <工单>` 开头，后面列出这一轮改了哪些文件。
+Router 的提交以 `memory` 开头，整理工单的提交以 `dreaming <ticket>` 开头，后面列出这一轮改了哪些文件。
 
 `revert` 生成一个新的反向提交，不改写历史。撤销与之后的改动冲突时会放弃，仓库保持原样，命令报错。
 
@@ -96,7 +96,7 @@ Dreaming 只整理项目记忆库，不碰全局记忆库。
 在 `settings.json` 里把 `dreamIntervalMs` 设为 `0`，然后重启 Engine。没有可用于 `dreamer` 角色的模型时，Dreaming 也视为关闭。给它单独设置一个轻量模型：
 
 ```bash
-eevee model default <provider>/<轻量模型> --role dreamer
+eevee model default <provider>/<model-id> --role dreamer
 ```
 
 对话记录和记忆文件对整理工单来说都是数据，不是指令。

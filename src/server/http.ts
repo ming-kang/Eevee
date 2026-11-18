@@ -9,20 +9,9 @@ import {
   type RouteResponse,
   TOKEN_HEADER,
 } from "../api/contract.ts";
+import { type ProblemCode, ProblemError, problemOf } from "../contracts/index.ts";
 import { resolveInside } from "../shared/paths.ts";
 import { type Auth, type Caller, isLoopbackRequest } from "./auth.ts";
-
-export class HttpError extends Error {
-  override name = "HttpError";
-  readonly status: number;
-  readonly code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
 
 export type RouteContext<K extends RouteKey> = {
   params: RouteParams<K>;
@@ -61,7 +50,7 @@ export function createHttpServer(options: ServerOptions): Server {
 
   return createServer(async (request, response) => {
     try {
-      if (!isLoopbackRequest(request)) throw new HttpError(403, "forbidden_host", "只接受本机请求");
+      if (!isLoopbackRequest(request)) throw new ProblemError({ code: "forbidden_host" });
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
       if (url.pathname === "/" || url.pathname.startsWith("/ui")) {
         return await serveUi(options.uiDir, url.pathname, response);
@@ -69,15 +58,20 @@ export function createHttpServer(options: ServerOptions): Server {
       const route = compiled.find(
         (r) => r.method === request.method && r.pattern.test(url.pathname),
       );
-      if (route === undefined)
-        throw new HttpError(404, "not_found", `没有接口 ${request.method} ${url.pathname}`);
+      if (route === undefined) {
+        throw new ProblemError({
+          code: "no_route",
+          method: request.method ?? "",
+          path: url.pathname,
+        });
+      }
 
       const caller = options.auth.verify(header(request, TOKEN_HEADER));
       if (!route.definition.public && caller === undefined) {
-        throw new HttpError(401, "unauthorized", "需要授权，请用 eevee web 打开面板");
+        throw new ProblemError({ code: "unauthorized" });
       }
       if (route.definition.cliOnly && caller !== "cli") {
-        throw new HttpError(403, "cli_only", "只允许 CLI 调用");
+        throw new ProblemError({ code: "cli_only" });
       }
       const match = route.pattern.exec(url.pathname) ?? [];
       const params = Object.fromEntries(
@@ -91,33 +85,46 @@ export function createHttpServer(options: ServerOptions): Server {
       } as RouteContext<RouteKey>);
       sendJson(response, 200, result);
     } catch (error) {
-      const known = error instanceof HttpError ? error : fromDomainError(error);
-      if (!known) console.error(error);
-      const payload: ApiError = {
-        error: {
-          code: known?.code ?? "internal",
-          message: known?.message ?? (error instanceof Error ? error.message : String(error)),
-        },
-      };
-      sendJson(response, known?.status ?? 500, payload);
+      const problem = problemOf(error);
+      if (problem.code === "internal") console.error(error);
+      const message = error instanceof Error ? error.message : String(error);
+      const payload: ApiError = { error: { ...problem, message } };
+      sendJson(response, STATUS[problem.code], payload);
     }
   });
 }
 
-const DOMAIN_ERRORS: Record<string, [number, string]> = {
-  NotFound: [404, "not_found"],
-  Conflict: [409, "conflict"],
-  NoModelConfigured: [409, "no_model"],
-  UnknownModel: [404, "unknown_model"],
-  UnknownExtension: [404, "unknown_extension"],
-  MemoryHistoryError: [409, "memory_history"],
+/** The status each problem answers with; a new code has to pick one here. */
+const STATUS: Record<ProblemCode, number> = {
+  bad_json: 400,
+  required: 400,
+  invalid: 400,
+  unauthorized: 401,
+  bad_code: 401,
+  forbidden_host: 403,
+  cli_only: 403,
+  no_route: 404,
+  no_file: 404,
+  no_project: 404,
+  no_ticket: 404,
+  no_worker: 404,
+  no_question: 404,
+  no_job: 404,
+  no_memory_file: 404,
+  no_commit: 404,
+  no_model: 404,
+  no_provider: 404,
+  no_extension: 404,
+  model_unset: 409,
+  ticket_closed: 409,
+  answered: 409,
+  job_ended: 409,
+  running: 409,
+  not_failed: 409,
+  revert_failed: 409,
+  too_large: 413,
+  internal: 500,
 };
-
-function fromDomainError(error: unknown): HttpError | undefined {
-  if (!(error instanceof Error)) return undefined;
-  const mapped = DOMAIN_ERRORS[error.name];
-  return mapped === undefined ? undefined : new HttpError(mapped[0], mapped[1], error.message);
-}
 
 async function readBody(request: IncomingMessage): Promise<unknown> {
   if (request.method === "GET" || request.method === "HEAD") return undefined;
@@ -125,14 +132,14 @@ async function readBody(request: IncomingMessage): Promise<unknown> {
   let size = 0;
   for await (const chunk of request) {
     size += (chunk as Buffer).length;
-    if (size > MAX_BODY) throw new HttpError(413, "too_large", "请求体过大");
+    if (size > MAX_BODY) throw new ProblemError({ code: "too_large" });
     chunks.push(chunk as Buffer);
   }
   if (size === 0) return undefined;
   try {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
-    throw new HttpError(400, "bad_json", "请求体不是合法的 JSON");
+    throw new ProblemError({ code: "bad_json" });
   }
 }
 
@@ -156,7 +163,7 @@ async function serveUi(uiDir: string | undefined, pathname: string, response: Se
   try {
     file = resolveInside(uiDir, relative);
   } catch {
-    throw new HttpError(404, "not_found", "没有这个文件");
+    throw new ProblemError({ code: "no_file" });
   }
   const data = await readFile(file).catch(() => readFile(join(uiDir, "index.html")));
   const type = MIME[extname(file)] ?? MIME[".html"] ?? "text/html";

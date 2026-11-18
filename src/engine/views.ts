@@ -19,7 +19,7 @@ import type {
 import { Board, QuestionDoc, ReportLog, TicketDoc } from "../contracts/docs.ts";
 import {
   deriveStage,
-  describeRunFailure,
+  failureView,
   type Job,
   type Question,
   summarizeRun,
@@ -79,7 +79,7 @@ export async function conversationView(
   return {
     lines: await recentLines(conversation, limit, context),
     running: live?.run !== undefined,
-    ...(failure === undefined ? {} : { failure: describeRunFailure(failure) }),
+    ...(failure === undefined ? {} : { failure: failureView(failure) }),
   };
 }
 

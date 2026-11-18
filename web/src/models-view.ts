@@ -1,6 +1,7 @@
 import type { Client } from "@shared/api/client.ts";
 import type { ModelsView } from "@shared/api/contract.ts";
 import { ref, shallowRef } from "vue";
+import { errorText } from "./errors.ts";
 
 // One copy of the model catalog for the settings page and the composer, so a default changed in one
 // shows in the other without a second load.
@@ -15,7 +16,7 @@ export function useModelsView(client: Client) {
     try {
       view.value = await client.call("GET /api/models");
     } catch (err) {
-      error.value = err instanceof Error ? err.message : String(err);
+      error.value = errorText(err);
     } finally {
       loading.value = false;
     }

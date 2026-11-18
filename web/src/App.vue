@@ -18,6 +18,7 @@ import Toasts from "./components/Toasts.vue";
 import UsagePage from "./components/UsagePage.vue";
 import { useConversationWatch, useEngineData } from "./engine-data.ts";
 import { summarizeRun } from "@shared/contracts/index.ts";
+import { errorText } from "./errors.ts";
 import { t } from "./i18n.ts";
 import { buildPaletteItems, deriveProjectState, type PaletteItem } from "./projects.ts";
 import { formatRoute, type Route, resolveRoute } from "./router.ts";
@@ -96,7 +97,7 @@ async function connect(): Promise<void> {
     session.value = opened;
   } catch (error) {
     if (error instanceof Unauthorized) authError.value = error.message;
-    else networkError.value = error instanceof Error ? error.message : String(error);
+    else networkError.value = errorText(error);
   } finally {
     connecting.value = false;
   }

@@ -11,18 +11,56 @@ import {
   type TranscriptItem,
   UserEntry,
 } from "@earendil-works/pi-durable";
-import type { JobId, Question, QuestionId, Report, TicketId } from "../../src/contracts/index.ts";
+import type {
+  JobId,
+  Notice,
+  Question,
+  QuestionId,
+  Report,
+  ReportStatus,
+  TicketId,
+} from "../../src/contracts/index.ts";
+import { toSubmission } from "../../src/extensions/orchestration/deliver.ts";
 import { type Delivery, route } from "../../src/extensions/orchestration/delivery.ts";
 import { mapTranscript } from "./transcript-map.ts";
 
-const entry = (id: number, kind: string, model: EntryRecord["model"]): TranscriptItem => ({
+const entry = (
+  id: number,
+  kind: string,
+  model: EntryRecord["model"],
+  data?: unknown,
+): TranscriptItem => ({
   kind: "entry",
   entry: {
     id: id as EntryId,
     conversationId: 1 as never,
     kind,
     model,
+    ...(data === undefined ? {} : { data: data as never }),
   },
+});
+
+/** A notice entry as the Engine writes it: its text for the model, its facts in `data`. */
+const noticeEntry = (id: number, text: string, notice: Notice): TranscriptItem =>
+  entry(id, "eevee.notice", [{ role: "user", content: text, timestamp: id * 100 }], {
+    requestId: `r${id}`,
+    notice,
+  });
+
+const reportOf = (
+  ticketId: string,
+  seq: number,
+  status: ReportStatus,
+  summary: string,
+): Report => ({
+  ticketId: ticketId as TicketId,
+  seq,
+  status,
+  summary,
+  artifacts: [],
+  handled: false,
+  reminded: false,
+  at: 0,
 });
 
 test("折叠连续工具调用，合并连续的 ticket / ask_user 为调度行", () => {
@@ -103,6 +141,7 @@ test("折叠连续工具调用，合并连续的 ticket / ask_user 为调度行"
         toolCallId: "c3",
         toolName: "ticket",
         content: [{ type: "text", text: "已建单 t2，执行对话会在有空闲槽位时开始工作。" }],
+        details: { ticketId: "t2", conversationId: 3 },
         isError: false,
         timestamp: 410,
       },
@@ -113,6 +152,7 @@ test("折叠连续工具调用，合并连续的 ticket / ask_user 为调度行"
         toolCallId: "c4",
         toolName: "ask_user",
         content: [{ type: "text", text: "已提问 q1，用户回答后会作为新消息送达。" }],
+        details: { questionId: "q1" },
         isError: false,
         timestamp: 420,
       },
@@ -153,23 +193,24 @@ test("折叠连续工具调用，合并连续的 ticket / ask_user 为调度行"
 test("报告事件过滤 progress、保留终态报告，并识别 handoff reset 与失败状态", () => {
   const items: TranscriptItem[] = [
     { kind: "earlier" },
-    entry(10, "eevee.notice", [
-      {
-        role: "user",
-        content: "[t2「仿真」报告 · progress] 正在跑 3/13\n完整报告：report://t2#1",
-        timestamp: 100,
-      },
-    ]),
-    entry(11, "eevee.notice", [
-      {
-        role: "user",
-        content: "[t3「文献」报告 · blocked] 缺少 data.csv\n完整报告：report://t3#1",
-        timestamp: 200,
-      },
-    ]),
-    entry(12, "eevee.notice", [
-      { role: "user", content: "用户已回答 q2，答案已直接投给 t4。\n对数坐标", timestamp: 300 },
-    ]),
+    noticeEntry(10, "（给模型的文字）", {
+      type: "report",
+      ticketId: "t2",
+      title: "仿真",
+      report: reportOf("t2", 1, "progress", "正在跑 3/13"),
+    }),
+    noticeEntry(11, "（给模型的文字）", {
+      type: "report",
+      ticketId: "t3",
+      title: "文献",
+      report: reportOf("t3", 1, "blocked", "缺少 data.csv"),
+    }),
+    noticeEntry(12, "（给模型的文字）", {
+      type: "answer",
+      questionId: "q2",
+      answer: "对数坐标",
+      forwardedTo: "t4",
+    }),
     entry(13, ResetEntry.kind, [
       {
         role: "user",
@@ -268,9 +309,7 @@ test("实时运行中显示工具运行槽位与流式回复", () => {
 
 test("Worker 模式映射开篇、文件 diff、bash（运行与转入后台）及报告卡片", () => {
   const items: TranscriptItem[] = [
-    entry(1, "eevee.notice", [
-      { role: "user", content: "<ticket>t2: 运行仿真</ticket>", timestamp: 100 },
-    ]),
+    noticeEntry(1, "<ticket>t2: 运行仿真</ticket>", { type: "opening", ticketId: "t2" }),
     entry(2, UserEntry.kind, [{ role: "user", content: "网格用 λ/20", timestamp: 150 }]),
     entry(3, AssistantEntry.kind, [
       {
@@ -333,6 +372,7 @@ test("Worker 模式映射开篇、文件 diff、bash（运行与转入后台）�
             text: "命令仍在运行，已转入后台作业 job://j3。完整输出写入日志，可用 read job://j3 查看。",
           },
         ],
+        details: { jobId: "j3" },
         isError: false,
         timestamp: 220,
       },
@@ -432,6 +472,7 @@ test("Worker 模式实时运行 bash 与失败退出码映射", () => {
         toolCallId: "b1",
         toolName: "bash",
         content: [{ type: "text", text: "error line\n退出码 2" }],
+        details: { exitCode: 2 },
         isError: true,
         durationMs: 1200,
         timestamp: 1700,
@@ -448,8 +489,13 @@ test("Worker 模式实时运行 bash 与失败退出码映射", () => {
 });
 
 test("后端 route() 生成的通知都映射成一行，长内容折叠进 detail", () => {
-  const notice = (id: number, delivery: Delivery | undefined): TranscriptItem =>
-    entry(id, "eevee.notice", [{ role: "user", content: delivery?.text ?? "", timestamp: id }]);
+  // What the Engine actually persists for a delivery: the panel must read it without its prose.
+  const notice = (id: number, delivery: Delivery | undefined): TranscriptItem => {
+    const submission = delivery === undefined ? undefined : toSubmission(delivery);
+    const data = (submission as { entry?: { data?: unknown } } | undefined)?.entry?.data;
+    const text = delivery?.text ?? "";
+    return entry(id, "eevee.notice", [{ role: "user", content: text, timestamp: id }], data);
+  };
   const t2 = { id: "t2" as TicketId, role: "worker" as const, title: "跑仿真", deliverTo: [] };
   const report: Report = {
     ticketId: t2.id,
@@ -474,7 +520,7 @@ test("后端 route() 生成的通知都映射成一行，长内容折叠进 deta
     type: "job-finished",
     ticketId: t2.id,
     jobId: "j1" as JobId,
-    outcome: "退出码 0",
+    outcome: { status: "exited", exitCode: 0 },
     tail,
   });
   const [handover] = route({
@@ -538,4 +584,24 @@ test("还没送达的消息排在对话末尾，标为待送达；系统写入�
     ],
   );
   assert.equal(out.at(-1)?.kind, "user");
+});
+
+test("Engine 代写的报告按 origin 措辞，不显示 Engine 写给模型的摘要", () => {
+  const failed: Report = {
+    ...reportOf("t7", 2, "failed", "执行对话运行失败：模型调用失败：403（给模型的文字）"),
+    origin: { type: "run-failed", failure: { reason: "model_error", detail: "403 forbidden" } },
+  };
+  const [item] = mapTranscript(
+    [
+      noticeEntry(1, "（给模型的文字）", {
+        type: "report",
+        ticketId: "t7",
+        title: "插图",
+        report: failed,
+      }),
+    ],
+    { mode: "router" },
+  );
+  assert.ok(item?.kind === "event");
+  assert.equal(item.text, "执行对话运行失败：模型调用失败：403 forbidden");
 });

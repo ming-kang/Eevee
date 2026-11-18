@@ -6,7 +6,7 @@
 tail -f ~/.eevee/runtime/engine.log
 ```
 
-设置了 [`EEVEE_HOME`](environment-variables.md) 时，日志在 `<数据目录>/runtime/engine.log`。
+设置了 [`EEVEE_HOME`](environment-variables.md) 时，日志在 `$EEVEE_HOME/runtime/engine.log`。
 
 ## Engine
 
@@ -15,7 +15,7 @@ tail -f ~/.eevee/runtime/engine.log
 | `eevee start` 报“启动超时” | 先运行 `eevee status`：项目多或者要恢复的工作多时，Engine 可能超过 15 秒才开始监听，其实已经起来了。没有起来时看日志末尾，常见原因见下面三行 |
 | 日志里是“`settings.json` 格式不对”之类的字段错误 | 按错误里的文件和字段改好，再 `eevee start` |
 | 日志里是不带文件名的 JSON 语法错误，比如 `Expected double-quoted property name in JSON` | `settings.json`、`models.json`、`mcp.json` 或某个项目的 `project.json` 不是合法 JSON，任何一个都会让 Engine 无法启动。逐个检查这几个文件 |
-| 日志里是“Eevee 已经在运行（pid N）” | `runtime/engine.lock` 记录的进程 N 还活着，但没有响应，这时 `eevee stop` 也停不掉它。N 是卡住的 Engine 时，结束这个进程；N 不是 Eevee（进程号被别的程序复用了）时，删除 `<数据目录>/runtime/engine.lock`。然后重新 `eevee start` |
+| 日志里是“Eevee 已经在运行（pid N）” | `runtime/engine.lock` 记录的进程 N 还活着，但没有响应，这时 `eevee stop` 也停不掉它。N 是卡住的 Engine 时，结束这个进程；N 不是 Eevee（进程号被别的程序复用了）时，删除 `~/.eevee/runtime/engine.lock`。然后重新 `eevee start` |
 | 命令提示“Eevee 没有在运行” | 运行 `eevee start`。用了 `EEVEE_HOME` 时，确认每个终端设置的是同一个目录 |
 | 改了 `settings.json` 没有生效 | 手动编辑后要重启 Engine 才生效：`eevee stop && eevee start`。见 [修改后什么时候生效](configuration.md#修改后什么时候生效) |
 | 改了环境变量没有生效 | Engine 只读取启动时的环境变量。在运行 `eevee start` 的终端里设置好，再重启 Engine |
@@ -60,7 +60,7 @@ tail -f ~/.eevee/runtime/engine.log
 | 错误是“引用的环境变量没有设置” | 在运行 `eevee start` 的环境里设置这个变量，然后重启 Engine |
 | 服务器断开后工具消失 | 断开后不会自动重连，运行 `eevee mcp reload` |
 | `eevee role list` 里有 ✗ 开头的行 | `✗ mcp.json：` 开头的是 `mcp.json` 的配置问题，修好后运行 `eevee mcp reload`。其他 ✗ 行是扩展文件加载失败，行里写着文件和原因，修好后重启 Engine |
-| `eevee role enable` 报“没有安装扩展”，提到的却不是你这次写的名字 | 这个角色已启用的某个扩展已经不存在了，比如删掉了对应的 MCP 服务器。先用 `eevee role disable <角色> <名字>` 去掉它 |
+| `eevee role enable` 报“没有安装扩展”，提到的却不是你这次写的名字 | 这个角色已启用的某个扩展已经不存在了，比如删掉了对应的 MCP 服务器。先用 `eevee role disable <role> <name>` 去掉它 |
 
 ## 还是解决不了
 

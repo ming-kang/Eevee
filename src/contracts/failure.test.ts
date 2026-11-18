@@ -15,5 +15,8 @@ test("summarizeRun 忽略主动打断、交接重置和无事可答，只报告�
   const failed: LiveState = {
     runFailure: { taskId: 3 as never, inputs: [], reason: "model_error", detail: "timeout" },
   };
-  assert.deepEqual(summarizeRun(failed), { running: false, failure: "模型调用失败：timeout" });
+  assert.deepEqual(summarizeRun(failed), {
+    running: false,
+    failure: { reason: "model_error", detail: "timeout" },
+  });
 });

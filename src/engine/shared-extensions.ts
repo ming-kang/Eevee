@@ -3,6 +3,7 @@ import type { Extension } from "@earendil-works/pi-durable";
 import { createCodemodeExtension } from "@earendil-works/pi-durable/codemode";
 import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search";
 import type { McpServerView, UserExtensionView } from "../api/contract.ts";
+import type { ConfigProblem } from "../contracts/index.ts";
 import { McpHub, type McpHubOptions } from "../extensions/mcp/index.ts";
 import type { EeveePaths } from "../shared/paths.ts";
 import { loadUserExtensions } from "./user-extensions.ts";
@@ -67,7 +68,7 @@ export class SharedExtensions {
     return this.#userStatus;
   }
 
-  problems(): readonly string[] {
+  problems(): readonly ConfigProblem[] {
     return this.#hub.problems();
   }
 

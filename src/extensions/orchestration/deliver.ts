@@ -9,9 +9,9 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable";
 import { Board } from "../../contracts/docs.ts";
-import type { TicketId } from "../../contracts/index.ts";
+import type { NoticeData, TicketId } from "../../contracts/index.ts";
 import { conversationOf, type DocReader, maybeConversationOf, readTicket } from "./board.ts";
-import type { Delivery, Target } from "./delivery.ts";
+import { type Delivery, fromUser, type Target } from "./delivery.ts";
 
 export const NOTICE_KIND = "eevee.notice";
 
@@ -44,7 +44,7 @@ export type DeliveryContext = {
 };
 
 export const needsSlot = (delivery: Delivery): boolean =>
-  delivery.target.kind === "ticket" && delivery.mode === "wake" && !delivery.fromUser;
+  delivery.target.kind === "ticket" && delivery.mode === "wake" && !fromUser(delivery);
 
 export async function prepare(
   host: DeliveryContext,
@@ -146,9 +146,7 @@ export function toSubmission(delivery: Delivery): SubmissionDraft {
       requestId: delivery.requestId,
       content: delivery.text,
       whenBusy: delivery.whenBusy,
-      ...(delivery.fromUser
-        ? {}
-        : { entry: { kind: NOTICE_KIND, data: { requestId: delivery.requestId } } }),
+      ...(fromUser(delivery) ? {} : { entry: { kind: NOTICE_KIND, data: noticeData(delivery) } }),
     };
   }
   return {
@@ -156,11 +154,16 @@ export function toSubmission(delivery: Delivery): SubmissionDraft {
     requestId: delivery.requestId,
     entry: {
       kind: NOTICE_KIND,
-      data: { requestId: delivery.requestId },
+      data: noticeData(delivery),
       model: [{ role: "user", content: delivery.text, timestamp: Date.now() }],
     },
   };
 }
+
+const noticeData = (delivery: Delivery): NoticeData => ({
+  requestId: delivery.requestId,
+  ...(delivery.notice === undefined ? {} : { notice: delivery.notice }),
+});
 
 async function resolveHandle(
   host: DeliveryContext,

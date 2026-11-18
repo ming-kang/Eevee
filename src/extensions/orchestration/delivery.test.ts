@@ -72,3 +72,36 @@ test("requestId 由事件决定，重复提交可以被去重", () => {
   assert.equal(route(event)[0]?.requestId, route(event)[0]?.requestId);
   assert.equal(route(event)[0]?.requestId, "report:t1#3");
 });
+
+test("Engine 说的话带着通知数据，用户自己的话不带", () => {
+  const [wake] = route({ type: "report", ticket, report: report("ready") });
+  assert.deepEqual(wake?.notice, {
+    type: "report",
+    ticketId: "t1",
+    title: "仿真",
+    report: report("ready"),
+  });
+  const [toWorker, routerCopy] = route({
+    type: "panel-message",
+    id: "m1",
+    ticketId: "t1",
+    text: "先跑 45°",
+    whenBusy: "steer",
+  });
+  assert.equal(toWorker?.notice, undefined);
+  assert.deepEqual(routerCopy?.notice, { type: "panel-message", ticketId: "t1", text: "先跑 45°" });
+  const [job] = route({
+    type: "job-finished",
+    ticketId: "t1",
+    jobId: "j2",
+    outcome: { status: "exited", exitCode: 0 },
+    tail: "done",
+  });
+  assert.equal(job?.text, "后台作业 job://j2 已结束（退出码 0）。\n输出末尾：\ndone");
+  assert.deepEqual(job?.notice, {
+    type: "job-finished",
+    jobId: "j2",
+    outcome: { status: "exited", exitCode: 0 },
+    tail: "done",
+  });
+});

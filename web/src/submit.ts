@@ -1,4 +1,5 @@
 import { ref } from "vue";
+import { errorText } from "./errors.ts";
 
 export function useSubmit() {
   const busy = ref(false);
@@ -12,7 +13,7 @@ export function useSubmit() {
       error.value = undefined;
       return true;
     } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : String(cause);
+      error.value = errorText(cause);
       return false;
     } finally {
       busy.value = false;
