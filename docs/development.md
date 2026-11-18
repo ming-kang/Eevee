@@ -146,4 +146,4 @@ contracts ──► orchestration ─┐
 | `docs/design/` | 产品目标与行为契约 |
 | `docs/research/` | 外部资料与源码调研 |
 
-用户可见的行为变化要同步更新使用文档，并记进 `CHANGELOG.md`。
+用户可见的行为变化要同步更新使用文档。`CHANGELOG.md` 的 `## [Unreleased]` 只记相对上一个已发布版本的用户可见变化：改动尚未发布的功能时，修改它原有的条目，不另加一条；首个版本发布前这一节为空。

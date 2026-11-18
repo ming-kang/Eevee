@@ -30,7 +30,7 @@ Read as needed before making changes:
 
 ## Docs
 
-- Document user-visible changes in `docs/` and in `CHANGELOG.md` under `## [Unreleased]`.
+- Document user-visible changes in `docs/`. `CHANGELOG.md` lists under `## [Unreleased]` only user-visible changes relative to the last released version: a change to something not yet released edits its entry instead of adding one, and the section stays empty until the first release.
 - Docs describe only implemented behavior, with `src/` as the source of truth. Register new pages in `docs/docs.json`.
 - Docs don't cover Pi Durable internals; link to Durable's docs instead.
 
