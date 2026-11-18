@@ -13,6 +13,9 @@ export default defineConfig({
       "@shared": fileURLToPath(new URL("../src", import.meta.url)),
     },
   },
+  // The dependency scan misses this one (reached through `@shared`), so the first visit would optimize it and
+  // reload the page, which can swallow a one-time sign-in code.
+  optimizeDeps: { include: ["@earendil-works/pi-schema"] },
   build: {
     outDir: fileURLToPath(new URL("../dist/ui", import.meta.url)),
     emptyOutDir: true,
