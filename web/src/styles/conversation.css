@@ -20,6 +20,66 @@
   mask-image: linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
 }
 
+/* Back to the newest line: there only once the reader has scrolled away from it, pinned to the
+   bottom of the view without taking room from the conversation. */
+.to-latest-dock {
+  position: sticky;
+  bottom: 0;
+  height: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.to-latest {
+  position: absolute;
+  bottom: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  color: var(--ev-label-2);
+  background-color: var(--ev-raised);
+  background-image: var(--ev-sheen-raised);
+  box-shadow: var(--ev-shadow-float);
+  pointer-events: auto;
+  transition: color var(--ev-fast) var(--ev-ease);
+}
+
+.to-latest:hover {
+  color: var(--ev-label);
+}
+
+.to-latest:focus-visible {
+  outline: none;
+  box-shadow: var(--ev-shadow-float), var(--ev-ring);
+}
+
+/* While output is still arriving below, the button says so; pointing at it shows where it goes. */
+.to-latest.live > .ico,
+.to-latest.live:is(:hover, :focus-visible) > .glyph {
+  display: none;
+}
+
+.to-latest.live:is(:hover, :focus-visible) > .ico {
+  display: block;
+}
+
+.to-latest-enter-active,
+.to-latest-leave-active {
+  transition:
+    opacity var(--ev-fast) var(--ev-ease),
+    transform var(--ev-fast) var(--ev-ease);
+}
+
+.to-latest-enter-from,
+.to-latest-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
 .chat-inner {
   max-width: calc(var(--ev-chat-max) + 64px);
   margin: 0 auto;
@@ -385,6 +445,26 @@
 
 .proc > :not(summary) {
   animation: ev-fade var(--ev-regular) var(--ev-ease);
+}
+
+/* Where the browser can animate to a height of `auto`, a folded line also grows open instead of
+   jumping; the content is clipped while it grows. Elsewhere it only fades in. */
+@supports (interpolate-size: allow-keywords) and selector(::details-content) {
+  .proc {
+    interpolate-size: allow-keywords;
+  }
+
+  .proc::details-content {
+    block-size: 0;
+    overflow: hidden;
+    transition:
+      block-size var(--ev-regular) var(--ev-ease),
+      content-visibility var(--ev-regular) allow-discrete;
+  }
+
+  .proc[open]::details-content {
+    block-size: auto;
+  }
 }
 
 .note .glyph,

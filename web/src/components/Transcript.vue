@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { TicketView } from "@shared/api/contract.ts";
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import type { GapItem } from "../conversation.ts";
+import { isAtEnd } from "../dom-rules.ts";
 import { t } from "../i18n.ts";
 import { formatClockTime } from "../time.ts";
 import type { TranscriptDisplayItem } from "../transcript-map.ts";
@@ -15,6 +16,7 @@ import Icon from "./Icon.vue";
 import ProcessLine from "./ProcessLine.vue";
 import ReportCard from "./ReportCard.vue";
 import ResetMark from "./ResetMark.vue";
+import StageGlyph from "./StageGlyph.vue";
 import TicketRef from "./TicketRef.vue";
 import UserMessage from "./UserMessage.vue";
 
@@ -57,17 +59,54 @@ const tailKey = computed(() => {
   return last.key;
 });
 
-onMounted(() => {
-  const el = scroller.value;
-  if (el) el.scrollTop = el.scrollHeight;
+/**
+ * Whether the view keeps to the newest line. Only the reader's own scrolling changes it: content growing
+ * underneath never does, so a long tool output that lands while the view is at the end is followed, and
+ * one that lands while the reader is further up leaves them where they are.
+ */
+const following = ref(true);
+
+/** Something is being written at the end right now. */
+const live = computed(() => {
+  const last = props.items.at(-1);
+  if (!last) return false;
+  if (last.kind === "assistant") return last.streaming === true;
+  if (last.kind === "tools" || last.kind === "dispatch") return last.live === true;
+  return last.kind === "bash" && last.status === "run";
 });
 
-watch(tailKey, async () => {
+function toEnd(): void {
+  const el = scroller.value;
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+function onScroll(): void {
+  const el = scroller.value;
+  if (el) following.value = isAtEnd(el);
+}
+
+/** Back to the newest line, gliding unless the reader asked for less motion. */
+function toLatest(): void {
   const el = scroller.value;
   if (!el) return;
-  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  following.value = true;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
+}
+
+onMounted(() => {
+  scroller.value?.addEventListener("scroll", onScroll, { passive: true });
+  toEnd();
+  // Fonts and code blocks can still change heights after the first frame.
+  requestAnimationFrame(toEnd);
+});
+
+onUnmounted(() => scroller.value?.removeEventListener("scroll", onScroll));
+
+watch(tailKey, async () => {
+  if (!following.value) return;
   await nextTick();
-  if (nearBottom) el.scrollTop = el.scrollHeight;
+  toEnd();
 });
 </script>
 
@@ -186,6 +225,21 @@ watch(tailKey, async () => {
         />
       </template>
       <slot name="tail" />
+    </div>
+    <div class="to-latest-dock">
+      <Transition name="to-latest">
+        <button
+          v-if="!following"
+          type="button"
+          class="to-latest"
+          :class="{ live }"
+          :aria-label="t('回到最新')"
+          @click="toLatest"
+        >
+          <StageGlyph v-if="live" stage="working" />
+          <Icon name="chevD" size="sm" />
+        </button>
+      </Transition>
     </div>
   </div>
 </template>

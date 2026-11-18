@@ -12,6 +12,7 @@ import Icon from "./Icon.vue";
 import QuestionCard from "./QuestionCard.vue";
 import QuestionStrip from "./QuestionStrip.vue";
 import RouterModel from "./RouterModel.vue";
+import Skeleton from "./Skeleton.vue";
 import Transcript from "./Transcript.vue";
 
 const props = defineProps<{
@@ -87,7 +88,11 @@ async function answer(id: QuestionId, text: string): Promise<void> {
     <div v-if="empty" class="landing-hero">
       <h2 :title="project.workspace">{{ project.title }}</h2>
     </div>
-    <div v-else-if="displayItems.length === 0" class="chat" />
+    <div v-else-if="displayItems.length === 0" class="chat">
+      <div class="chat-inner">
+        <Skeleton :lines="5" />
+      </div>
+    </div>
     <Transcript
       v-else
       :items="displayItems"

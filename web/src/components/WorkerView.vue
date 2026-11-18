@@ -16,6 +16,7 @@ import Icon from "./Icon.vue";
 import QuestionCard from "./QuestionCard.vue";
 import QuestionStrip from "./QuestionStrip.vue";
 import StageGlyph from "./StageGlyph.vue";
+import Skeleton from "./Skeleton.vue";
 import Transcript from "./Transcript.vue";
 
 const props = defineProps<{
@@ -53,6 +54,15 @@ const displayItems = computed(() =>
     ticketStatus: props.view?.ticket.status,
     ticketStage: props.view?.stage,
   }),
+);
+
+/** Waiting on the first answer: neither the conversation nor a reason to show none has arrived. */
+const loading = computed(
+  () =>
+    conversation.view.value === undefined &&
+    conversation.error.value === undefined &&
+    props.view?.stage !== "queued" &&
+    (props.view !== undefined || !props.boardLoaded),
 );
 
 const runningJobIds = computed(
@@ -146,7 +156,12 @@ async function answer(id: QuestionId, text: string): Promise<void> {
       </button>
     </header>
 
-    <div v-if="displayItems.length === 0" class="chat">
+    <div v-if="displayItems.length === 0 && loading" class="chat">
+      <div class="chat-inner">
+        <Skeleton :lines="5" />
+      </div>
+    </div>
+    <div v-else-if="displayItems.length === 0" class="chat">
       <div class="empty">
         <p>
           {{

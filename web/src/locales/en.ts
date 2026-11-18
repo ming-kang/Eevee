@@ -206,6 +206,7 @@ export const en: Record<string, string> = {
   "已结单 {n}": "Done {n}",
   "正在加载…": "Loading…",
   更早的消息: "Earlier messages",
+  回到最新: "Jump to latest",
   "正在补全…": "Filling in…",
   补全缺失的记录: "Fill in missing history",
   "工单目标、输入、验收标准和项目记忆":
