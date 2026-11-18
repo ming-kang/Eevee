@@ -45,7 +45,7 @@ EEVEE_HOME=<同一个目录> npm run dev -- web
 
 ## 面板开发
 
-`npm run dev:scenario` 用 faux 模型启动一个 Engine，并预先造好几个项目，覆盖待回答的问题、执行中、后台作业、受阻、失败和 Router 失败等状态，不需要凭据，也不调用付费模型。没有设置 `EEVEE_HOME` 时它使用临时目录，退出时删除；`EEVEE_PORT` 可以指定端口。启动后终端里打印两个带授权码的地址，分别用于内置界面和 Vite 开发服务器：
+`npm run dev:scenario` 用 faux 模型启动一个 Engine，并预先造好几个项目，覆盖待回答的问题、执行中、后台作业、受阻、失败、Router 失败和角色启用了已卸载的扩展等状态，不需要凭据，也不调用付费模型。没有设置 `EEVEE_HOME` 时它使用临时目录，退出时删除；`EEVEE_PORT` 可以指定端口。启动后终端里打印两个带授权码的地址，分别用于内置界面和 Vite 开发服务器：
 
 ```bash
 EEVEE_PORT=19391 npm run dev:scenario

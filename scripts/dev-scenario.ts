@@ -133,7 +133,7 @@ const initialSettings: Settings = {
   dreamIntervalMs: 0,
   roles: {
     router: { extensions: ["notes"] },
-    worker: { extensions: ["notes", "mcp.weather"], maxTurns: 25 },
+    worker: { extensions: ["notes", "mcp.weather", "mcp.gone"], maxTurns: 25 },
   },
 };
 await mkdir(paths.home, { recursive: true });
@@ -494,7 +494,7 @@ faux.setResponses(Array.from({ length: 48 }, () => factory));
 
 const credentials = new FileCredentialStore(paths.auth);
 const buildModels = async () => {
-  const models = createModels();
+  const models = createModels({ credentials });
   models.setProvider(faux.provider);
   const problems: ConfigProblem[] = [];
   const custom = new Set<string>();
