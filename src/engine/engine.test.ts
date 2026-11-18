@@ -17,7 +17,7 @@ import { eeveePaths } from "../shared/paths.ts";
 import { SettingsStore } from "../shared/settings.ts";
 import { Engine } from "./engine.ts";
 
-test("Engine 汇总可启用的扩展；按角色启用要求已安装，写进 settings.json 并应用到各项目", async () => {
+test("the Engine collects the extensions that can be enabled; a role only gets what is installed, written to settings.json and applied to every project", async () => {
   const home = await mkdtemp(join(tmpdir(), "eevee-engine-"));
   const paths = eeveePaths(home);
   await mkdir(paths.extensions, { recursive: true });
@@ -35,7 +35,7 @@ test("Engine 汇总可启用的扩展；按角色启用要求已安装，写进 
   try {
     const workspace = join(home, "workspace");
     await mkdir(workspace);
-    await engine.createProject({ title: "测试", workspace });
+    await engine.createProject({ title: "Test", workspace });
 
     for (let i = 0; i < 100 && engine.capabilities().mcp[0]?.state !== "connected"; i++) {
       await sleep(10);
@@ -73,7 +73,7 @@ test("Engine 汇总可启用的扩展；按角色启用要求已安装，写进 
   }
 });
 
-test("角色已启用、后来卸载的扩展不挡住改动，可以逐个去掉；新启用的仍须已安装", async () => {
+test("an extension a role enabled and that was later uninstalled does not block edits and can be removed one by one; a newly enabled one still has to be installed", async () => {
   const home = await mkdtemp(join(tmpdir(), "eevee-engine-"));
   const paths = eeveePaths(home);
   await mkdir(paths.extensions, { recursive: true });
@@ -108,7 +108,7 @@ test("角色已启用、后来卸载的扩展不挡住改动，可以逐个去�
   }
 });
 
-test("HTTP 接口暴露结构化模型、项目 activeAt、Board.router 与嵌套记忆文件", async () => {
+test("the HTTP API exposes structured models, project activeAt, Board.router and nested memory files", async () => {
   const home = await mkdtemp(join(tmpdir(), "eevee-http-"));
   const paths = eeveePaths(home);
   const settings = await SettingsStore.open(paths.settings);
@@ -201,7 +201,7 @@ test("HTTP 接口暴露结构化模型、项目 activeAt、Board.router 与嵌�
         name: "ApiRequestError",
         status: 404,
         problem: { code: "no_memory_file", file: ".git/HEAD" },
-        message: "没有记忆文件 .git/HEAD",
+        message: "No memory file .git/HEAD",
       },
     );
     await assert.rejects(
@@ -248,7 +248,7 @@ async function serve(engine: Engine, paths: ReturnType<typeof eeveePaths>) {
   return { client, close: () => new Promise<void>((resolve) => server.close(() => resolve())) };
 }
 
-test("面板经本地接口编辑 provider：写入即生效，默认模型在用的不能删，删掉自定义 provider 连同它的 key", async () => {
+test("the panel edits providers over the local API: a write applies at once, the default model's provider cannot be deleted, and deleting a custom one takes its key", async () => {
   const home = await mkdtemp(join(tmpdir(), "eevee-providers-"));
   const paths = eeveePaths(home);
   const settings = await SettingsStore.open(paths.settings);
@@ -358,10 +358,10 @@ test("面板经本地接口编辑 provider：写入即生效，默认模型在�
   }
 });
 
-test("面板经本地接口编辑 MCP 服务器：只重连改动的那个，删除时从各角色去掉，文件其余内容保留", async () => {
+test("the panel edits MCP servers over the local API: only the changed one reconnects, deleting removes it from every role, and the rest of the file is kept", async () => {
   const home = await mkdtemp(join(tmpdir(), "eevee-mcp-edit-"));
   const paths = eeveePaths(home);
-  await writeFile(paths.mcp, JSON.stringify({ $comment: "我的服务器", mcpServers: {} }));
+  await writeFile(paths.mcp, JSON.stringify({ $comment: "my servers", mcpServers: {} }));
   const engine = await Engine.open({
     paths,
     settings: await SettingsStore.open(paths.settings),
@@ -405,7 +405,7 @@ test("面板经本地接口编辑 MCP 服务器：只重连改动的那个，删
     assert.deepEqual(view.mcp, []);
     assert.deepEqual(view.roles.find((r) => r.role === "worker")?.enabled, []);
     assert.deepEqual(JSON.parse((await readText(paths.mcp)) ?? "{}"), {
-      $comment: "我的服务器",
+      $comment: "my servers",
       mcpServers: {},
     });
   } finally {

@@ -228,7 +228,9 @@ export class McpHub {
         issue.code === "failed" && stderr.trim()
           ? { ...issue, detail: `${issue.detail}\n${stderr.trim()}` }
           : issue;
-      console.error(`[mcp] ${entry.name} 连接失败：${describeConfigIssue(connection.error)}`);
+      console.error(
+        `[mcp] ${entry.name} failed to connect: ${describeConfigIssue(connection.error)}`,
+      );
     }
     this.#options.onChange();
   }

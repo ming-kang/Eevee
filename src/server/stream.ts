@@ -73,7 +73,7 @@ export function attachStream(server: Server, options: StreamOptions): { close():
       try {
         serve(ws, options);
       } catch (error) {
-        console.error("实时流处理出错", error);
+        console.error("The live stream failed", error);
         ws.terminate();
       }
     });

@@ -81,55 +81,57 @@ function createMemoryTool(
     action: oneOf(["edit", "create", "log", "diff", "revert"]),
     scope: oneOf(scopes, {
       description: withGlobal
-        ? "global 只允许改 MEMORY.md，且只在用户明确要求记住时使用"
-        : "只能整理项目记忆",
+        ? "global only allows changing MEMORY.md, and only when the user explicitly asks to remember something"
+        : "only the project memory can be tidied up",
     }),
-    file: opt(str({ description: "edit / create：如 MEMORY.md 或 optics-sim.md" })),
-    oldText: opt(str({ description: "edit：要替换的原文，必须唯一匹配" })),
-    newText: opt(str({ description: "edit：替换成的内容" })),
-    content: opt(str({ description: "create：新文件内容" })),
-    commit: opt(str({ description: "diff / revert：目标 commit" })),
+    file: opt(str({ description: "edit / create: e.g. MEMORY.md or optics-sim.md" })),
+    oldText: opt(
+      str({ description: "edit: the original text to replace; it must match uniquely" }),
+    ),
+    newText: opt(str({ description: "edit: the replacement text" })),
+    content: opt(str({ description: "create: the new file's content" })),
+    commit: opt(str({ description: "diff / revert: the target commit" })),
   });
 
   return defineTool({
     name: MEMORY_TOOL,
     description:
-      "写记忆并管理它的 Git 历史。edit 用原文替换；create 只用于新建文件；log / diff 查看历史；revert 撤销一次提交。" +
-      "改动在本轮结束时自动提交。只记跨会话长期有用的经验，不记任务进度。",
+      "Write memory and manage its Git history. edit replaces the matching original text; create is only for new files; log / diff view history; revert undoes one commit." +
+      "Changes are committed automatically when the turn ends. Only record experience that stays useful across sessions; don't record task progress.",
     parameters: Parameters,
     replay: "unsafe",
     executionMode: "sequential",
     async execute(args, api) {
       const repo = repos[args.scope];
       if (args.scope === "global" && args.file !== undefined && args.file !== "MEMORY.md") {
-        return text("全局记忆只有 MEMORY.md 一个文件。", true);
+        return text("The global memory has only one file, MEMORY.md.", true);
       }
       const round = String(api.conversationId);
       try {
         switch (args.action) {
           case "edit":
             if (!args.file || args.oldText === undefined || args.newText === undefined) {
-              return text("edit 需要 file、oldText 和 newText。", true);
+              return text("edit needs file, oldText and newText.", true);
             }
             await repo.edit(args.file, args.oldText, args.newText, round);
-            return text(`已修改 ${args.file}，本轮结束时提交。`);
+            return text(`Modified ${args.file}; committed when the turn ends.`);
           case "create":
             if (!args.file || args.content === undefined)
-              return text("create 需要 file 和 content。", true);
+              return text("create needs file and content.", true);
             await repo.create(args.file, args.content, round);
-            return text(`已新建 ${args.file}，本轮结束时提交。`);
+            return text(`Created ${args.file}; committed when the turn ends.`);
           case "log":
-            return text((await repo.log()) || "还没有历史。");
+            return text((await repo.log()) || "No history yet.");
           case "diff":
-            return text((await repo.diff(args.commit)) || "没有差异。");
+            return text((await repo.diff(args.commit)) || "No differences.");
           case "revert":
-            if (!args.commit) return text("revert 需要 commit。", true);
+            if (!args.commit) return text("revert needs commit.", true);
             await repo.revert(args.commit);
-            return text(`已撤销 ${args.commit}。`);
+            return text(`Reverted ${args.commit}.`);
         }
       } catch (error) {
         if (error instanceof MemoryConflict) {
-          return text(`${error.message}\n\n当前内容：\n${error.current}`, true);
+          return text(`${error.message}\n\nCurrent content:\n${error.current}`, true);
         }
         if (error instanceof ProblemError) return text(error.message, true);
         throw error;

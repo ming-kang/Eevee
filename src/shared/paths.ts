@@ -6,7 +6,7 @@ export function resolveInside(root: string, path: string): string {
   const target = resolve(base, path);
   const rel = relative(base, target);
   if (rel === "" || rel.startsWith(`..${sep}`) || rel === ".." || resolve(base, rel) !== target) {
-    throw new Error(`路径必须位于 ${base} 之内：${path}`);
+    throw new Error(`The path must stay inside ${base}: ${path}`);
   }
   return target;
 }

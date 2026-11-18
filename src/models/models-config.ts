@@ -169,7 +169,7 @@ export function composeProvider(
   const streamsOf = (model: Model<Api>): ProviderStreams => {
     if (base !== undefined && supports(base, model)) return base;
     const api = APIS[model.api];
-    if (api === undefined) throw new Error(`模型 ${model.id} 的 api「${model.api}」不受支持`);
+    if (api === undefined) throw new Error(`Model ${model.id}: api “${model.api}” isn't supported`);
     return api();
   };
   const apiKey = composeApiKeyAuth(base, config);
@@ -353,11 +353,12 @@ async function withConfiguredAuth(
   const headers: Record<string, string> = {};
   for (const [name, raw] of Object.entries(config.headers ?? {})) {
     const value = await resolveConfigValue(raw, env);
-    if (value === undefined) throw new Error(`请求头 ${name} 引用的环境变量没有设置`);
+    if (value === undefined)
+      throw new Error(`Header ${name} refers to an environment variable that isn't set`);
     headers[name] = value;
   }
   if (config.authHeader) {
-    if (!auth.apiKey) throw new Error("authHeader 需要 API key");
+    if (!auth.apiKey) throw new Error("authHeader needs an API key");
     headers.Authorization = `Bearer ${auth.apiKey}`;
   }
   return Object.keys(headers).length === 0

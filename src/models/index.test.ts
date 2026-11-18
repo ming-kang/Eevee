@@ -34,7 +34,7 @@ const local = {
   models: [{ id: "qwen3", contextWindow: 32768 }],
 };
 
-test("写入一个 provider 只改它自己的条目，其余内容原样保留，并立即生效", async () => {
+test("writing one provider changes only its own entry, keeps the rest untouched, and takes effect at once", async () => {
   await withRuntime(async (runtime, file) => {
     await writeFile(
       file,
@@ -64,7 +64,7 @@ test("写入一个 provider 只改它自己的条目，其余内容原样保留�
   });
 });
 
-test("组不成 provider 或不合 schema 的条目不写入，原文件不变", async () => {
+test("entries that are not a provider or fail the schema are not written; the file is unchanged", async () => {
   await withRuntime(async (runtime, file) => {
     await assert.rejects(runtime.setProviderConfig("local", { ...local, models: [] }), {
       problem: {
@@ -94,7 +94,7 @@ test("组不成 provider 或不合 schema 的条目不写入，原文件不变",
   });
 });
 
-test("默认模型用着的模型不能被删掉或改名", async () => {
+test("a model used by a default cannot be deleted or renamed", async () => {
   await withRuntime(async (runtime) => {
     await runtime.setProviderConfig("local", local);
     await assert.rejects(

@@ -107,7 +107,7 @@ async function connect(protocols = [STREAM_PROTOCOL, `${TOKEN_PROTOCOL_PREFIX}${
   });
   await new Promise<void>((resolve, reject) => {
     ws.addEventListener("open", () => resolve(), { once: true });
-    ws.addEventListener("error", () => reject(new Error("连接被拒绝")), { once: true });
+    ws.addEventListener("error", () => reject(new Error("Connection refused")), { once: true });
   });
   return {
     ws,
@@ -116,7 +116,7 @@ async function connect(protocols = [STREAM_PROTOCOL, `${TOKEN_PROTOCOL_PREFIX}${
       new Promise<StreamEvent>((resolve, reject) => {
         const ready = events.shift();
         if (ready) return resolve(ready);
-        const timer = setTimeout(() => reject(new Error("等待事件超时")), 2000);
+        const timer = setTimeout(() => reject(new Error("Timed out waiting for an event")), 2000);
         waiting.push((event) => {
           clearTimeout(timer);
           resolve(event);
@@ -125,13 +125,13 @@ async function connect(protocols = [STREAM_PROTOCOL, `${TOKEN_PROTOCOL_PREFIX}${
   };
 }
 
-test("没有 token、token 不对或不带协议时拒绝连接", async () => {
-  await assert.rejects(connect([STREAM_PROTOCOL]), /拒绝/);
-  await assert.rejects(connect([STREAM_PROTOCOL, `${TOKEN_PROTOCOL_PREFIX}wrong`]), /拒绝/);
-  await assert.rejects(connect([`${TOKEN_PROTOCOL_PREFIX}${token}`]), /拒绝/);
+test("a connection is refused with no token, a wrong token or no protocol", async () => {
+  await assert.rejects(connect([STREAM_PROTOCOL]), /refused/);
+  await assert.rejects(connect([STREAM_PROTOCOL, `${TOKEN_PROTOCOL_PREFIX}wrong`]), /refused/);
+  await assert.rejects(connect([`${TOKEN_PROTOCOL_PREFIX}${token}`]), /refused/);
 });
 
-test("连上先收到 hello；对话 watch 先发 value 再转发 ops，源结束时发 end", async () => {
+test("on connect the client gets hello; a conversation watch sends value then forwards ops, and sends end when the source ends", async () => {
   watch = fakeWatch(view);
   const client = await connect();
   assert.equal(client.ws.protocol, STREAM_PROTOCOL);
@@ -153,7 +153,7 @@ test("连上先收到 hello；对话 watch 先发 value 再转发 ops，源结�
   client.ws.close();
 });
 
-test("看板 watch 先发当前看板，变化时再发；unwatch 后不再发", async () => {
+test("a board watch sends the current board then changes, and stops after unwatch", async () => {
   board = { tickets: [], openQuestions: [], router: emptyRouter };
   const client = await connect();
   await client.next();
@@ -188,7 +188,7 @@ test("看板 watch 先发当前看板，变化时再发；unwatch 后不再发",
   client.ws.close();
 });
 
-test("未知项目和坏消息回 error，连接不断", async () => {
+test("an unknown project and a bad message reply with error and keep the connection", async () => {
   const client = await connect();
   await client.next();
   client.send({ type: "watch", id: "x", topic: { kind: "board", project: "nope" } });
@@ -197,7 +197,7 @@ test("未知项目和坏消息回 error，连接不断", async () => {
   assert.deepEqual(error.type === "error" && error.error, {
     code: "no_project",
     projectId: "nope",
-    message: "没有项目 nope",
+    message: "No project nope",
   });
   client.ws.send("{");
   assert.equal((await client.next()).type, "error");

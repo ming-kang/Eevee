@@ -34,30 +34,50 @@ const TICKET_ID = "^t[1-9][0-9]*$";
 
 const Parameters = obj({
   action: oneOf(["create", "message", "interrupt", "review", "close", "model"]),
-  ticketId: opt(str({ pattern: TICKET_ID, description: "目标工单，如 t3；create 以外的动作必填" })),
-  title: opt(str({ description: "create：简短标题" })),
-  goal: opt(str({ description: "create：要达成什么" })),
-  inputs: opt(arr(str(), { description: "create：输入文件路径或资源地址" })),
-  acceptance: opt(arr(str(), { description: "create：验收标准" })),
-  output: opt(str({ description: "create：产物写到哪里" })),
+  ticketId: opt(
+    str({
+      pattern: TICKET_ID,
+      description: "The ticket to act on, e.g. t3; required for every action but create",
+    }),
+  ),
+  title: opt(str({ description: "create: a short title" })),
+  goal: opt(str({ description: "create: what the ticket should achieve" })),
+  inputs: opt(arr(str(), { description: "create: input file paths or resource addresses" })),
+  acceptance: opt(arr(str(), { description: "create: the acceptance criteria" })),
+  output: opt(str({ description: "create: where the artifacts are written" })),
   deliverTo: opt(
-    arr(str({ pattern: TICKET_ID }), { description: "create：验收后把结果投给这些工单" }),
+    arr(str({ pattern: TICKET_ID }), {
+      description: "create: tickets that receive the results after review",
+    }),
   ),
   provider: opt(
-    str({ description: "create / model：模型提供方，见 models://；建单时不填用默认模型" }),
+    str({
+      description:
+        "create / model: the model provider, see models://; leave it out on create to use the default model",
+    }),
   ),
-  modelId: opt(str({ description: "create / model：模型编号" })),
+  modelId: opt(str({ description: "create / model: the model id" })),
   thinkingLevel: opt(
     oneOf(THINKING_LEVELS, {
       description:
-        "create / model：思考档位，从 off 到 max，和 provider、modelId 一起填；不填为 off",
+        "create / model: the thinking level, from off to max, filled in together with provider and modelId; defaults to off",
     }),
   ),
-  modelReason: opt(str({ description: "create / model：选非默认模型时说明理由" })),
-  text: opt(str({ description: "message：追加的指令" })),
-  mode: opt(oneOf(["steer", "followUp"], { description: "message：引导或排队，默认排队" })),
-  verdict: opt(oneOf(["accept", "rework"], { description: "review：验收通过或打回" })),
-  note: opt(str({ description: "review accept 的证据 / rework 缺什么 / close 的原因" })),
+  modelReason: opt(
+    str({ description: "create / model: why this model instead of the default one" }),
+  ),
+  text: opt(str({ description: "message: the instruction to append" })),
+  mode: opt(
+    oneOf(["steer", "followUp"], { description: "message: steer or queue, queues by default" }),
+  ),
+  verdict: opt(
+    oneOf(["accept", "rework"], { description: "review: accept the report or send it back" }),
+  ),
+  note: opt(
+    str({
+      description: "review accept: the evidence / rework: what is missing / close: the reason",
+    }),
+  ),
 });
 
 type Args = {
@@ -83,18 +103,21 @@ export function createTicketTool(deps: OrchestrationDeps) {
   return defineTool({
     name: TICKET_TOOL,
     description:
-      "管理工单。create 建单并启动它的执行对话；message 给执行对话追加指令；interrupt 打断它当前这一轮；" +
-      "review 处理 ready 报告（accept 结单，rework 打回）；close 取消工单；model 给执行对话换模型。",
+      "Manage tickets. create makes one and starts its worker conversation; message appends an instruction to " +
+      "that conversation; interrupt aborts the turn it is on; review handles a ready report (accept closes " +
+      "the ticket, rework sends it back); close cancels a ticket; model switches the model of its worker conversation.",
     parameters: Parameters,
     replay: "unsafe",
     executionMode: "sequential",
     async execute(args, api, context) {
       if (args.action === "create") return create(deps, args, api, context);
-      if (args.ticketId === undefined) return fail(`${args.action} 需要 ticketId。`);
+      if (args.ticketId === undefined) return fail(`${args.action} needs a ticketId.`);
       const ticket = await readTicket(api, args.ticketId as TicketId, context);
-      if (ticket === undefined) return fail(`没有工单 ${args.ticketId}。`);
+      if (ticket === undefined) return fail(`No ticket ${args.ticketId}.`);
       if (ticket.status !== "open")
-        return fail(`${ticket.id} 已经${ticket.status === "done" ? "结单" : "取消"}。`);
+        return fail(
+          `${ticket.id} is already ${ticket.status === "done" ? "closed" : "cancelled"}.`,
+        );
       switch (args.action) {
         case "message":
           return message(ticket, args, api, context);
@@ -118,19 +141,24 @@ async function create(
   context: Context,
 ) {
   const absent = missing(args, ["title", "goal", "acceptance"]);
-  if (absent.length > 0) return fail(`create 缺少字段：${absent.join("、")}。`);
+  if (absent.length > 0) return fail(`create is missing fields: ${absent.join(", ")}.`);
   if ((args.provider === undefined) !== (args.modelId === undefined)) {
-    return fail("provider 和 modelId 要么都填，要么都不填（使用默认模型）。");
+    return fail(
+      "provider and modelId are filled in together or left out together (to use the default model).",
+    );
   }
   if (args.thinkingLevel !== undefined && args.provider === undefined) {
-    return fail("thinkingLevel 要和 provider、modelId 一起填，默认模型见 models://。");
+    return fail(
+      "thinkingLevel goes together with provider and modelId; see models:// for the default model.",
+    );
   }
   const model = chosenModel(args, api);
   if (typeof model === "string") return fail(model);
   const deliverTo = (args.deliverTo ?? []) as TicketId[];
   for (const to of deliverTo) {
     const target = await readTicket(api, to, context);
-    if (target?.status !== "open") return fail(`deliverTo 里的 ${to} 不存在或已结单。`);
+    if (target?.status !== "open")
+      return fail(`The ${to} in deliverTo does not exist or is already closed.`);
   }
 
   const ticket = await api.commit(
@@ -156,7 +184,7 @@ async function create(
     context,
   );
 
-  return ok(`已建单 ${ticket.id}，执行对话会在有空闲槽位时开始工作。`, {
+  return ok(`Created ${ticket.id}; its worker conversation starts once a slot is free.`, {
     ticketId: ticket.id,
     conversationId: ticket.conversationId,
   } satisfies TicketDetails & { conversationId: number });
@@ -166,7 +194,7 @@ async function create(
 function chosenModel(args: Args, api: ToolExecutionApi): ModelChoice | undefined | string {
   if (args.provider === undefined || args.modelId === undefined) return undefined;
   if (api.models.getModel(args.provider, args.modelId) === undefined) {
-    return `没有模型 ${args.provider}/${args.modelId}，可用模型见 models://。`;
+    return `No model ${args.provider}/${args.modelId}; see models:// for the available models.`;
   }
   return {
     provider: args.provider,
@@ -176,7 +204,7 @@ function chosenModel(args: Args, api: ToolExecutionApi): ModelChoice | undefined
 }
 
 async function message(ticket: Ticket, args: Args, api: ToolExecutionApi, context: Context) {
-  if (!args.text) return fail("message 需要 text。");
+  if (!args.text) return fail("message needs text.");
   const event = {
     type: "router-message",
     id: api.callId,
@@ -185,13 +213,13 @@ async function message(ticket: Ticket, args: Args, api: ToolExecutionApi, contex
     whenBusy: args.mode ?? "followUp",
   } as const;
   await deliver(api, route(event), context, (tx) => markHandled(tx, ticket.id));
-  return ok(`已发给 ${ticket.id}。`);
+  return ok(`Sent to ${ticket.id}.`);
 }
 
 async function interrupt(ticket: Ticket, api: ToolExecutionApi, context: Context) {
   await (await api.conversation(conversationOf(ticket), context))?.abort(context);
   await api.commit((tx) => markHandled(tx, ticket.id), context);
-  return ok(`已打断 ${ticket.id} 当前这一轮，工单仍为 open。`);
+  return ok(`Interrupted the current turn of ${ticket.id}; the ticket is still open.`);
 }
 
 async function review(
@@ -201,10 +229,10 @@ async function review(
   api: ToolExecutionApi,
   context: Context,
 ) {
-  if (args.verdict === undefined || !args.note) return fail("review 需要 verdict 和 note。");
+  if (args.verdict === undefined || !args.note) return fail("review needs verdict and note.");
   const latest = latestFinalReport(await readReports(api, ticket.id, context));
   if (latest?.status !== "ready" || latest.handled) {
-    return fail(`${ticket.id} 没有待验收的 ready 报告。`);
+    return fail(`${ticket.id} has no ready report waiting for review.`);
   }
 
   if (args.verdict === "rework") {
@@ -212,11 +240,11 @@ async function review(
       type: "router-message",
       id: api.callId,
       ticketId: ticket.id,
-      text: `验收未通过，需要返工：\n${args.note}`,
+      text: `Review did not pass, rework needed:\n${args.note}`,
       whenBusy: "followUp",
     } as const;
     await deliver(api, route(event), context, (tx) => markHandled(tx, ticket.id));
-    return ok(`已打回 ${ticket.id}。`);
+    return ok(`Sent ${ticket.id} back for rework.`);
   }
 
   const questions = (await readQuestions(api, context)).filter(
@@ -242,7 +270,7 @@ async function review(
   }
   deps.jobs.stop(ticket.id);
   await (await api.conversation(conversationOf(ticket), context))?.abort(context);
-  return ok(`${ticket.id} 已验收结单。`);
+  return ok(`${ticket.id} is accepted and closed.`);
 }
 
 async function close(
@@ -252,7 +280,7 @@ async function close(
   api: ToolExecutionApi,
   context: Context,
 ) {
-  if (!args.note) return fail("close 需要 note 写明原因。");
+  if (!args.note) return fail("close needs a note that says why.");
   const questions = (await readQuestions(api, context)).filter(
     (question) => question.ticketId === ticket.id,
   );
@@ -276,12 +304,12 @@ async function close(
   }
   deps.jobs.stop(ticket.id);
   await (await api.conversation(conversationOf(ticket), context))?.abort(context);
-  return ok(`${ticket.id} 已取消。`);
+  return ok(`${ticket.id} is cancelled.`);
 }
 
 async function retarget(ticket: Ticket, args: Args, api: ToolExecutionApi, context: Context) {
   if (args.provider === undefined || args.modelId === undefined) {
-    return fail("model 需要 provider 和 modelId。");
+    return fail("model needs provider and modelId.");
   }
   const model = chosenModel(args, api);
   if (typeof model === "string" || model === undefined) return fail(model ?? "");
@@ -295,14 +323,16 @@ async function retarget(ticket: Ticket, args: Args, api: ToolExecutionApi, conte
     await configure(tx, conversationOf(ticket), agentModel(model));
     await markHandled(tx, ticket.id);
   }, context);
-  const thinking = model.thinkingLevel === undefined ? "" : `，思考档位 ${model.thinkingLevel}`;
-  return ok(`${ticket.id} 改用 ${formatModel(model)}${thinking}，从下一次请求开始生效。`);
+  const thinking =
+    model.thinkingLevel === undefined ? "" : `, thinking level ${model.thinkingLevel}`;
+  return ok(`${ticket.id} now uses ${formatModel(model)}${thinking}, from its next request on.`);
 }
 
 /** Why a terminal transition could not be written, in the Router's words. */
 function settleRefusal(error: unknown, ticketId: TicketId): string {
   const code = problemOf(error).code;
-  if (code === "ticket_closed") return `${ticketId} 已经结单。`;
-  if (code === "report_changed") return `${ticketId} 待验收的报告已经变了，先看最新一报。`;
+  if (code === "ticket_closed") return `${ticketId} is already closed.`;
+  if (code === "report_changed")
+    return `The report waiting on ${ticketId} changed; read the latest one first.`;
   throw error;
 }

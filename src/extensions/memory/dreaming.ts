@@ -173,7 +173,7 @@ async function newRecords(
     { id: ROOT_CONVERSATION_ID, label: "Router" },
     ...tickets
       .filter((t) => t.status === "open" || (t.closedAt ?? 0) > (log.lastAt ?? 0))
-      .map((t) => ({ id: t.conversationId as ConversationId, label: `${t.id}「${t.title}」` })),
+      .map((t) => ({ id: t.conversationId as ConversationId, label: `${t.id}“${t.title}”` })),
   ];
 
   const inputs: string[] = [];
@@ -185,14 +185,14 @@ async function newRecords(
     if (newest === undefined) continue;
     seen[id] = newest;
     const address = formatAddress({ kind: "transcript", conversationId: id });
-    inputs.push(`${address}（${label}，从 offset ${from} 读起）`);
+    inputs.push(`${address} (${label}, read from offset ${from})`);
   }
   for (const ticket of tickets) {
     if (ticket.closedAt === undefined || ticket.closedAt <= (log.lastAt ?? 0)) continue;
     const note = ticket.closeNote ?? "";
     const short = note.length > NOTE_LIMIT ? `${note.slice(0, NOTE_LIMIT - 1)}…` : note;
     inputs.push(
-      `${formatAddress({ kind: "report", ticketId: ticket.id })}（${ticket.title}，${ticket.status}：${short}）`,
+      `${formatAddress({ kind: "report", ticketId: ticket.id })} (${ticket.title}, ${ticket.status}: ${short})`,
     );
   }
   return { inputs, seen };
@@ -200,13 +200,13 @@ async function newRecords(
 
 function draft(inputs: string[]): DreamDraft {
   return {
-    title: "整理记忆",
-    goal: "回顾输入里列出的新记录和报告（尤其是 lessons 与真实执行结果），整理项目记忆库。",
+    title: "Tidy up the memory store",
+    goal: "Review the new records and reports listed in the inputs (especially the lessons and real execution results), and keep the project's memory store in order.",
     inputs,
     acceptance: [
-      "重叠的笔记已合并，临时细节和失效条目已清理",
-      "被执行结果推翻的旧笔记已订正并注明来源",
-      "MEMORY.md 索引与主题文件一致，仍在 200 行以内",
+      "Overlapping notes have been merged, and temporary details and stale entries have been cleaned out",
+      "Old notes overridden by execution results have been corrected in place, with the source noted",
+      "The MEMORY.md index matches the topic files and is still within 200 lines",
     ],
   };
 }

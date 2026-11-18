@@ -99,10 +99,13 @@ export function createRoles(deps: RolesDeps) {
   const handoff = defineTool({
     name: HANDOFF_TOOL,
     description:
-      "交接：写下一段交接小结，然后从“记忆 + 工单一览 + 小结 + 最近几轮原文”重新开始。" +
-      "有长期价值的决策先用 memory 记下。",
+      "Handoff: write a handoff summary, then start over from “memory + ticket overview + summary + the last few rounds verbatim”." +
+      "Record decisions of lasting value with memory first.",
     parameters: obj({
-      summary: str({ description: "交接小结：正在做什么、做了哪些决定、接下来要做什么" }),
+      summary: str({
+        description:
+          "Handoff summary: what you're working on, what you've decided, what comes next",
+      }),
     }),
     replay: "safe",
     async execute(args, api, context) {
@@ -112,7 +115,7 @@ export function createRoles(deps: RolesDeps) {
       });
       const opening = routerRole.opening(subject, await deps.memory());
       return {
-        output: [{ type: "text", text: "已交接，从新的上下文继续。" }],
+        output: [{ type: "text", text: "Handed off; continuing from the new context." }],
         control: { handoff: opening, terminate: true },
       };
     },
@@ -137,5 +140,5 @@ async function ticketOverview(reader: DocReader, context: Context): Promise<stri
     const ticket = await reader.snapshot(TicketDoc, id, context);
     if (ticket?.status === "open") tickets.push(ticket);
   }
-  return tickets.map((t) => `${t.id}「${t.title}」 ticket://${t.id}`);
+  return tickets.map((t) => `${t.id}“${t.title}” ticket://${t.id}`);
 }

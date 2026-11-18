@@ -19,11 +19,11 @@ export function memoryBlocks(memory: MemorySnapshot): string[] {
 export function renderTicket(ticket: Ticket): string {
   const list = (items: readonly string[]) => items.map((item) => `- ${item}`).join("\n");
   return compose(
-    `${ticket.id}「${ticket.title}」 ${formatAddress({ kind: "ticket", id: ticket.id })}`,
-    `目标：${ticket.goal}`,
-    ticket.inputs.length ? `输入：\n${list(ticket.inputs)}` : undefined,
-    `验收标准：\n${list(ticket.acceptance)}`,
-    ticket.output ? `产物写到：${ticket.output}` : undefined,
+    `${ticket.id}“${ticket.title}” ${formatAddress({ kind: "ticket", id: ticket.id })}`,
+    `Goal: ${ticket.goal}`,
+    ticket.inputs.length ? `Inputs:\n${list(ticket.inputs)}` : undefined,
+    `Acceptance criteria:\n${list(ticket.acceptance)}`,
+    ticket.output ? `Artifacts go to: ${ticket.output}` : undefined,
   );
 }
 
@@ -32,6 +32,6 @@ export function renderLatestReport(report: Report | undefined): string | undefin
   return compose(
     `${formatAddress({ kind: "report", ticketId: report.ticketId, seq: report.seq })} · ${report.status}`,
     report.summary,
-    report.need ? `缺：${report.need}` : undefined,
+    report.need ? `Missing: ${report.need}` : undefined,
   );
 }

@@ -35,7 +35,7 @@ const catalog = [
   ref("openai", "gpt-5", "openai-responses", "GPT-5"),
 ];
 
-test("refOf 取出 models.json 能复制的字段，并标出分档价格；builtinCatalog 是 pi-ai 自带的目录", () => {
+test("refOf copies the fields models.json can hold and flags tiered pricing; builtinCatalog is pi-ai's own catalog", () => {
   const { provider } = fauxProvider({
     provider: "gw",
     models: [
@@ -73,12 +73,12 @@ test("refOf 取出 models.json 能复制的字段，并标出分档价格；buil
   assert.equal(sonnet?.api, "anthropic-messages");
 });
 
-test("normalizeId 去掉厂商前缀，忽略大小写和分隔符，保留版本", () => {
+test("normalizeId drops vendor prefixes, ignores case and separators, keeps the version", () => {
   assert.equal(normalizeId("anthropic/Claude_Sonnet.4.5"), "claude-sonnet-4-5");
   assert.equal(normalizeId("claude-sonnet-4-5-20250929"), "claude-sonnet-4-5-20250929");
 });
 
-test("先列 id 完全相同的，再列规范化后相同的，再列模糊匹配的；同组里调用方的 API 优先", () => {
+test("exact id matches first, then normalized matches, then fuzzy ones; within a group the caller's API wins", () => {
   const ids = (query: string, api?: string) =>
     matchBuiltinModels(catalog, query, api).map((m) => `${m.provider}/${m.id}`);
   assert.deepEqual(ids("claude-sonnet-4-5", "bedrock-converse-stream"), [

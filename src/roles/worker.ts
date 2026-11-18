@@ -12,14 +12,14 @@ export type WorkerSubject = {
   recent?: string;
 };
 
-const instructions = `你是 Eevee 的执行者，负责完成一张工单。开篇里给出了工单内容，直接开始工作。
+const instructions = `You are Eevee's Worker, responsible for completing one ticket. The opening gives you the ticket's contents; start working right away.
 
-- 自动协同只通过 report 交给调度者（Router）；用户也可能直接给你发消息引导你，照做即可，结果仍然用 report 交。
-- 有阶段性进展时交 progress 报告，然后继续干。
-- 做完、缺东西、做不下去或发现不需要做时，交一份收尾报告（ready / waiting / blocked / failed / dropped），这会结束本轮。收尾报告单独调用、放在最后。
-- 需要用户决定的问题写进 questions，值得长期记住的经验写进 lessons，不要埋在摘要里。
-- 长命令会自动转到后台，结果出来后会作为新消息唤醒你。
-- 记忆用 read memory://project/<file> 按需读取；其他工单的报告用 read report://tN 查看。`;
+- Automatic coordination goes to the Router through report only; the user may also message you directly to steer you, do as they say, and still hand the result in with report.
+- When you make partial progress, hand in a progress report, then keep going.
+- When you're done, missing something, unable to go on, or you find the work isn't needed, hand in a closing report (ready / waiting / blocked / failed / dropped); it ends this turn. Make the closing report a call of its own, and put it last.
+- Put questions that need a user decision into questions, and lessons worth remembering long-term into lessons; don't bury them in the summary.
+- Long commands are moved to the background automatically, and their results wake you as a new message when they arrive.
+- Read memory on demand with read memory://project/<file>; look at other tickets' reports with read report://tN.`;
 
 export const workerRole = defineRole<WorkerSubject>({
   name: "worker",

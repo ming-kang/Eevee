@@ -224,61 +224,61 @@ function speak(notice: WordedNotice): string {
     case "report":
       return renderReport({ id: notice.ticketId, title: notice.title }, notice.report);
     case "accepted": {
-      const head = `你等待的 ${notice.ticketId}「${notice.title}」已验收`;
-      if (notice.report === undefined) return `${head}。`;
-      return `${head}：\n${renderReport({ id: notice.ticketId, title: notice.title }, notice.report)}`;
+      const head = `${notice.ticketId} “${notice.title}”, which this waits on, was accepted`;
+      if (notice.report === undefined) return `${head}.`;
+      return `${head}:\n${renderReport({ id: notice.ticketId, title: notice.title }, notice.report)}`;
     }
     case "delivered":
-      return `已把 ${notice.ticketId} 的结果投递给 ${notice.to.join("、")}。`;
+      return `Delivered the result of ${notice.ticketId} to ${notice.to.join(", ")}.`;
     case "cancelled":
-      return `${notice.ticketId}「${notice.title}」已取消（${notice.reason}），但 ${notice.waiting.join("、")} 还在等它的结果，需要重新安排。`;
+      return `${notice.ticketId} “${notice.title}” was cancelled (${notice.reason}); ${notice.waiting.join(", ")} still waits on it and needs to be arranged again.`;
     case "answer": {
-      const answer = `用户回答了问题 ${notice.questionId}：\n${notice.answer}`;
+      const answer = `The user answered question ${notice.questionId}:\n${notice.answer}`;
       if (notice.forwardedTo === undefined) return answer;
-      return `用户已回答 ${notice.questionId}，答案已直接投给 ${notice.forwardedTo}。\n${answer}`;
+      return `The user has answered ${notice.questionId}; the answer went straight to ${notice.forwardedTo}.\n${answer}`;
     }
     case "job-finished":
-      return `后台作业 ${formatAddress({ kind: "job", id: notice.jobId })} 已结束（${describeJobOutcome(notice.outcome)}）。\n输出末尾：\n${notice.tail}`;
+      return `Background job ${formatAddress({ kind: "job", id: notice.jobId })} finished (${describeJobOutcome(notice.outcome)}).\nTail of its output:\n${notice.tail}`;
     case "jobs-interrupted":
-      return `引擎重启打断了后台作业：${notice.jobIds.join("、")}。请先检查工作目录和 git 状态，再决定是否重跑。`;
+      return `An Engine restart interrupted background jobs ${notice.jobIds.join(", ")}. Check the workspace and the git state first, then decide whether to run them again.`;
     case "panel-message":
-      return `用户直接给 ${notice.ticketId} 发了消息：\n${notice.text}`;
+      return `The user sent a message straight to ${notice.ticketId}:\n${notice.text}`;
     case "panel-interrupt":
-      return `用户在面板打断了 ${notice.ticketId} 当前这一轮。`;
+      return `The user interrupted the current turn of ${notice.ticketId} from the panel.`;
     case "handoff-nudge":
-      return "你的上下文已经很长了。请先用 memory 记下有长期价值的决策，再用 handoff 写一段交接小结，从新的上下文继续。";
+      return "Your context has grown very long. First record the decisions with long-term value in memory, then write a handoff summary with handoff and continue from a fresh context.";
     case "reminder": {
       const list = notice.reports
         .map(
           (r) =>
-            `- ${formatAddress({ kind: "report", ticketId: r.ticketId, seq: r.seq })}（${r.status}）`,
+            `- ${formatAddress({ kind: "report", ticketId: r.ticketId, seq: r.seq })} (${r.status})`,
         )
         .join("\n");
-      return `还有未处理的报告：\n${list}`;
+      return `Reports still unhandled:\n${list}`;
     }
   }
 }
 
 /** How a job ended, in the words the model and the job log read. */
 export function describeJobOutcome(outcome: JobOutcome): string {
-  if (outcome.status === "killed") return "已终止";
-  if (outcome.error === "timeout") return "超时终止";
-  if (outcome.error !== undefined) return `出错：${outcome.error}`;
-  return `退出码 ${outcome.exitCode}`;
+  if (outcome.status === "killed") return "Terminated";
+  if (outcome.error === "timeout") return "Terminated on timeout";
+  if (outcome.error !== undefined) return `Error: ${outcome.error}`;
+  return `Exit code ${outcome.exitCode}`;
 }
 
 export function renderReport(ticket: Pick<Ticket, "id" | "title">, report: Report): string {
-  const lines = [`[${ticket.id}「${ticket.title}」报告 · ${report.status}] ${report.summary}`];
-  if (report.need) lines.push(`缺：${report.need}`);
+  const lines = [`[${ticket.id} “${ticket.title}” report · ${report.status}] ${report.summary}`];
+  if (report.need) lines.push(`Missing: ${report.need}`);
   if (report.questions?.length) {
-    lines.push("需要决定的问题：", ...report.questions.map((q, i) => `${i + 1}. ${q.text}`));
+    lines.push("Questions to decide:", ...report.questions.map((q, i) => `${i + 1}. ${q.text}`));
   }
   if (report.artifacts.length) {
-    lines.push("产物：", ...report.artifacts.map((a) => `- ${a.path}（${a.note}）`));
+    lines.push("Artifacts:", ...report.artifacts.map((a) => `- ${a.path} (${a.note})`));
   }
-  if (report.lessons?.length) lines.push("经验：", ...report.lessons.map((l) => `- ${l}`));
+  if (report.lessons?.length) lines.push("Lessons:", ...report.lessons.map((l) => `- ${l}`));
   lines.push(
-    `完整报告：${formatAddress({ kind: "report", ticketId: ticket.id, seq: report.seq })}`,
+    `Full report: ${formatAddress({ kind: "report", ticketId: ticket.id, seq: report.seq })}`,
   );
   return lines.join("\n");
 }

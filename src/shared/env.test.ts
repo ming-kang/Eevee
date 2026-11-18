@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { scrubbedEnv } from "./env.ts";
 
-test("执行环境只保留白名单变量，凭据不会传给子进程", () => {
+test("the child environment keeps only allow-listed variables and never passes credentials", () => {
   const env = scrubbedEnv({
     PATH: "/usr/bin",
     HOME: "/home/me",

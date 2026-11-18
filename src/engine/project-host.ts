@@ -87,8 +87,10 @@ const TICK_MS = 250;
 const UPKEEP_MS = 5_000;
 const JOB_LOG_MAX_BYTES = 64 * 1024;
 const JOB_LOG_DEFAULT_LINES = 200;
-const INITIAL_MEMORY = "# 项目记忆\n\n每个对话都需要知道的核心约定，以及指向主题笔记的索引。\n";
-const INITIAL_GLOBAL_MEMORY = "# 全局记忆\n\n与用户本人有关的跨项目偏好，保持极短。\n";
+const INITIAL_MEMORY =
+  "# Project memory\n\nThe core conventions every conversation needs to know, plus an index pointing to the topic notes.\n";
+const INITIAL_GLOBAL_MEMORY =
+  "# Global memory\n\nCross-project preferences about the user themselves; keep it very short.\n";
 
 export type ProjectHostOptions = {
   paths: EeveePaths;
@@ -180,7 +182,7 @@ export class ProjectHost {
     let harness: Harness | undefined;
     let delivery: DeliveryContext | undefined;
     const late = <T>(value: T | undefined): T => {
-      if (value === undefined) throw new Error("Harness 尚未打开");
+      if (value === undefined) throw new Error("The Harness isn't open yet");
       return value;
     };
     const conversation = (id: ConversationId, ctx: Context) => late(harness).conversation(id, ctx);
@@ -208,7 +210,9 @@ export class ProjectHost {
         const fresh = missing.filter((name) => !reported.has(`${role}:${name}`));
         for (const name of fresh) reported.add(`${role}:${name}`);
         if (fresh.length > 0) {
-          console.error(`[${meta.id}] ${role} 启用的扩展没有安装，先不选：${fresh.join("、")}`);
+          console.error(
+            `[${meta.id}] ${role} enables extensions that aren't installed; not selecting them for now: ${fresh.join(", ")}`,
+          );
         }
       },
     });
@@ -573,7 +577,7 @@ export class ProjectHost {
         await this.#nudgeHandoff(host, settings.handoffThreshold);
       }
     } catch (error) {
-      console.error(`[${this.meta.id}] 调度出错`, error);
+      console.error(`[${this.meta.id}] dispatch error`, error);
     } finally {
       this.#ticking = false;
     }

@@ -66,7 +66,7 @@ export function toLine(entry: EntryRecord): ChatLine[] {
   if (UserEntry.is(entry)) return line("user", textOf(entry.model));
   if (AssistantEntry.is(entry)) return line("assistant", textOf(entry.model));
   if (ToolResultEntry.is(entry)) return line("tool", textOf(entry.model));
-  if (ResetEntry.is(entry)) return line("reset", textOf(entry.model) || "（上下文已重置）");
+  if (ResetEntry.is(entry)) return line("reset", textOf(entry.model) || "(context reset)");
   if (entry.kind === NOTICE_KIND) return line("notice", textOf(entry.model));
   return [];
 }
@@ -79,7 +79,7 @@ function textOf(messages: EntryRecord["model"]): string {
       if (!Array.isArray(content)) return [];
       return content.flatMap((part: { type?: string; text?: string; name?: string }) => {
         if (part.type === "text" && part.text) return [part.text];
-        if (part.type === "toolCall" && part.name) return [`[调用 ${part.name}]`];
+        if (part.type === "toolCall" && part.name) return [`[call ${part.name}]`];
         return [];
       });
     })
@@ -104,11 +104,11 @@ export async function entryText(
 }
 
 const SPEAKER: Record<ChatLine["role"], string> = {
-  user: "用户",
-  assistant: "你",
-  tool: "工具结果",
-  notice: "通知",
-  reset: "交接",
+  user: "user",
+  assistant: "you",
+  tool: "tool result",
+  notice: "notice",
+  reset: "handoff",
 };
 
 export async function recentRounds(
@@ -131,7 +131,7 @@ export async function recentRounds(
     .map((line) => {
       const text =
         line.role === "tool" ? trim(line.text, maxToolChars, conversation.id, line.id) : line.text;
-      return `${SPEAKER[line.role]}：${text}`;
+      return `${SPEAKER[line.role]}: ${text}`;
     })
     .join("\n\n");
 }
@@ -140,5 +140,5 @@ function trim(text: string, max: number, conversationId: number, entryId: number
   if (text.length <= max) return text;
   const keep = Math.floor(max / 2);
   const omitted = text.length - keep * 2;
-  return `${text.slice(0, keep)}\n…[省略 ${omitted} 字，完整内容见 transcript://${conversationId}/${entryId}]…\n${text.slice(-keep)}`;
+  return `${text.slice(0, keep)}\n…[omitted ${omitted} characters; full content at transcript://${conversationId}/${entryId}]…\n${text.slice(-keep)}`;
 }

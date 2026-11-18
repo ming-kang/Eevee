@@ -31,15 +31,15 @@ function formatCatalog(
   profiles: string | undefined,
 ): string {
   const defaults = Object.entries(defaultsMap).flatMap(([role, choice]) =>
-    choice === undefined ? [] : [`- ${role}：${formatChoice(choice)}`],
+    choice === undefined ? [] : [`- ${role}: ${formatChoice(choice)}`],
   );
   return [
-    "## 默认模型",
-    defaults.join("\n") || "（未设置）",
-    "## 可用模型",
-    available.map(describeModel).join("\n") || "（没有已配置凭据的 provider）",
-    "## 使用经验（~/.eevee/models.md）",
-    profiles?.trim() || "（还没有记录）",
+    "## Default models",
+    defaults.join("\n") || "(not set)",
+    "## Available models",
+    available.map(describeModel).join("\n") || "(no provider has configured credentials)",
+    "## Usage notes (~/.eevee/models.md)",
+    profiles?.trim() || "(nothing recorded yet)",
   ].join("\n\n");
 }
 
@@ -114,18 +114,19 @@ export async function buildModelsView(input: ModelsViewInput): Promise<ModelsVie
 }
 
 export function describeModel(model: Model<Api>): string {
-  const parts = [`上下文 ${compact(model.contextWindow)}`];
+  const parts = [`context ${compact(model.contextWindow)}`];
   const { cost } = model;
-  if (cost.input || cost.output) parts.push(`输入 $${cost.input}/M`, `输出 $${cost.output}/M`);
-  if (cost.cacheRead) parts.push(`缓存读 $${cost.cacheRead}/M`);
-  if (model.promptCache?.short) parts.push(`缓存 ${duration(model.promptCache.short)}`);
+  if (cost.input || cost.output) parts.push(`input $${cost.input}/M`, `output $${cost.output}/M`);
+  if (cost.cacheRead) parts.push(`cache read $${cost.cacheRead}/M`);
+  if (model.promptCache?.short) parts.push(`cache ${duration(model.promptCache.short)}`);
   const levels = getSupportedThinkingLevels(model).filter((level) => level !== "off");
-  if (levels.length > 0) parts.push(`思考档位 ${levels.join(" / ")}`);
-  return `- ${model.provider}/${model.id}（${model.name}）：${parts.join(" · ")}`;
+  if (levels.length > 0) parts.push(`thinking level ${levels.join(" / ")}`);
+  return `- ${model.provider}/${model.id} (${model.name}): ${parts.join(" · ")}`;
 }
 
 function formatChoice(choice: ModelChoice): string {
-  const thinking = choice.thinkingLevel === undefined ? "" : `，思考档位 ${choice.thinkingLevel}`;
+  const thinking =
+    choice.thinkingLevel === undefined ? "" : `, thinking level ${choice.thinkingLevel}`;
   return `${formatModel(choice)}${thinking}`;
 }
 
@@ -136,7 +137,5 @@ function compact(tokens: number): string {
 }
 
 function duration(seconds: number): string {
-  return seconds >= 3600
-    ? `${+(seconds / 3600).toFixed(1)} 小时`
-    : `${Math.round(seconds / 60)} 分钟`;
+  return seconds >= 3600 ? `${+(seconds / 3600).toFixed(1)}h` : `${Math.round(seconds / 60)}min`;
 }

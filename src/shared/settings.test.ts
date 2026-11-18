@@ -17,7 +17,7 @@ async function withFile(content: unknown, run: (path: string) => Promise<void>):
   }
 }
 
-test("没有 settings.json 时用默认值，写了的字段覆盖默认值", async () => {
+test("defaults apply with no settings.json, and written fields override them", async () => {
   await withFile(undefined, async (path) => {
     assert.deepEqual(await loadSettings(path), DEFAULT_SETTINGS);
   });
@@ -30,8 +30,8 @@ test("没有 settings.json 时用默认值，写了的字段覆盖默认值", as
   });
 });
 
-test("格式不对的 settings.json 指出字段", async () => {
-  await withFile({ maxActiveWorkers: 0, roles: { router: { maxTurns: "多" } } }, async (path) => {
+test("a malformed settings.json names the offending fields", async () => {
+  await withFile({ maxActiveWorkers: 0, roles: { router: { maxTurns: "lots" } } }, async (path) => {
     await assert.rejects(loadSettings(path), (error: unknown) => {
       assert.ok(error instanceof ConfigError);
       assert.match(error.message, /maxActiveWorkers/);
@@ -41,7 +41,7 @@ test("格式不对的 settings.json 指出字段", async () => {
   });
 });
 
-test("修改只写用户给的字段，写之前校验", async () => {
+test("an update writes only the given fields and validates before writing", async () => {
   await withFile({ port: 20000 }, async (path) => {
     const store = await SettingsStore.open(path);
     await store.update((stored) => ({ ...stored, dreamIntervalMs: 0 }));
@@ -55,7 +55,7 @@ test("修改只写用户给的字段，写之前校验", async () => {
   });
 });
 
-test("默认模型可以带思考档位，档位不在列表里时指出字段", async () => {
+test("a default model may carry a thinking level, and an unknown level names the field", async () => {
   const models = { router: { provider: "faux", modelId: "brain", thinkingLevel: "high" } };
   await withFile({ models }, async (path) => {
     assert.deepEqual((await loadSettings(path)).models, models);

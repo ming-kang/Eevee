@@ -1,16 +1,16 @@
 import type { LiveState, RunFailure, RunFailureReason } from "@earendil-works/pi-durable";
 
 const FAILURE_LABEL: Record<RunFailureReason, string> = {
-  model_error: "模型调用失败",
-  no_model: "没有配置模型",
-  aborted: "已中止",
-  reset: "上下文被重置",
-  faulted: "运行出错",
-  orphaned: "运行无法继续",
-  interrupted: "运行被中断",
-  restart_limit: "多次重启后放弃",
-  nothing_to_answer: "没有需要回答的内容",
-  turn_limit: "超出轮次上限",
+  model_error: "Model call failed",
+  no_model: "No model configured",
+  aborted: "Aborted",
+  reset: "Context was reset",
+  faulted: "The run failed",
+  orphaned: "The run cannot continue",
+  interrupted: "The run was interrupted",
+  restart_limit: "Gave up after repeated restarts",
+  nothing_to_answer: "Nothing left to answer",
+  turn_limit: "Turn limit reached",
 };
 
 /** Ends that are someone's decision, not a failure: an interrupt, a reset, a continue with nothing to do. */
@@ -26,7 +26,7 @@ export function isDeliberateEnd(reason: RunFailureReason): boolean {
 
 export function describeRunFailure(failure: Pick<RunFailure, "reason" | "detail">): string {
   const label = FAILURE_LABEL[failure.reason] ?? failure.reason;
-  return failure.detail === undefined ? label : `${label}：${failure.detail}`;
+  return failure.detail === undefined ? label : `${label}: ${failure.detail}`;
 }
 
 /** Why a run failed, and the provider's or runtime's own words for it, if any: each reader words the reason. */

@@ -65,7 +65,7 @@ export async function probeModels(options: ProbeOptions): Promise<ProbeResult> {
     try {
       return { ok: true, json: JSON.parse(text) };
     } catch {
-      return { ok: false, error: "返回的不是 JSON" };
+      return { ok: false, error: "The response isn't JSON" };
     }
   };
 
@@ -78,14 +78,16 @@ export async function probeModels(options: ProbeOptions): Promise<ProbeResult> {
       if (retry === undefined) throw fail(page.error);
       const retried = await getPage(retry.url, retry.headers);
       if (!retried.ok) {
-        throw fail(`${url.href} → ${page.error}；${retry.url.href} → ${retried.error}`);
+        throw fail(`${url.href} → ${page.error}; ${retry.url.href} → ${retried.error}`);
       }
       ({ url, headers } = retry);
       page = retried;
     }
     const models = parseCatalog(page.json);
     if (models === undefined) {
-      throw fail("返回内容里没有 data[] 或 models[] 形式的模型列表，可以手动添加模型");
+      throw fail(
+        "The response has no model list as data[] or models[]; you can add the model by hand",
+      );
     }
     let json = page.json;
     for (
@@ -116,7 +118,7 @@ export async function probeModels(options: ProbeOptions): Promise<ProbeResult> {
     };
   } catch (error) {
     if (error instanceof ProblemError) throw error;
-    if (controller.signal.aborted) throw fail(`${timeoutMs / 1000} 秒内没有响应`);
+    if (controller.signal.aborted) throw fail(`No response within ${timeoutMs / 1000}s`);
     throw fail(describeError(error));
   } finally {
     clearTimeout(timer);
@@ -203,7 +205,7 @@ async function readBounded(response: Response, maxBytes: number): Promise<string
     size += value.byteLength;
     if (size > maxBytes) {
       await reader.cancel().catch(() => undefined);
-      throw new Error(`返回内容超过 ${maxBytes} 字节`);
+      throw new Error(`The response is larger than ${maxBytes} bytes`);
     }
     chunks.push(value);
   }
@@ -214,7 +216,7 @@ async function readBounded(response: Response, maxBytes: number): Promise<string
 function describeError(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
   const cause = error.cause instanceof Error ? error.cause.message : undefined;
-  return cause && cause !== error.message ? `${error.message}（${cause}）` : error.message;
+  return cause && cause !== error.message ? `${error.message} (${cause})` : error.message;
 }
 
 function redact(text: string, auth: ModelAuth | undefined): string {

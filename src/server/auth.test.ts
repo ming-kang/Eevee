@@ -15,7 +15,7 @@ before(async () => {
 });
 after(() => rm(dir, { recursive: true, force: true }));
 
-test("授权码换到的就是 token 文件里的 token，重启后不变", async () => {
+test("the code exchanges for the token in the token file, unchanged across restarts", async () => {
   const auth = await open();
   const token = (await readFile(tokenPath(), "utf8")).trim();
   assert.equal(auth.exchange(auth.issueCode()), token);
@@ -23,7 +23,7 @@ test("授权码换到的就是 token 文件里的 token，重启后不变", asyn
   assert.equal((await open()).verify(token), true);
 });
 
-test("授权码只能用一次，过期作废", async () => {
+test("a code works once and expires when stale", async () => {
   const auth = await open();
   const code = auth.issueCode();
   assert.ok(auth.exchange(code));
@@ -34,14 +34,14 @@ test("授权码只能用一次，过期作废", async () => {
   assert.equal(auth.exchange(late), undefined);
 });
 
-test("错误的 token 和授权码本身都不被接受", async () => {
+test("a wrong token and a code itself are both rejected", async () => {
   const auth = await open();
   assert.equal(auth.verify("nope"), false);
   assert.equal(auth.verify(undefined), false);
   assert.equal(auth.verify(auth.issueCode()), false);
 });
 
-test("只接受回环地址的 Host 与 Origin", () => {
+test("only loopback Host and Origin are accepted", () => {
   const req = (headers: Record<string, string>) => ({ headers });
   assert.equal(isLoopbackRequest(req({ host: "127.0.0.1:19190" })), true);
   assert.equal(

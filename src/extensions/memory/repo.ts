@@ -98,10 +98,14 @@ export class MemoryRepo {
     return this.#serial(async () => {
       const path = resolveInside(this.dir, file);
       const current = await readText(path);
-      if (current === undefined) throw new MemoryConflict(`${file} 不存在，新建请用 create。`, "");
+      if (current === undefined)
+        throw new MemoryConflict(`${file} doesn't exist; use create to make a new one.`, "");
       const at = current.indexOf(oldText);
       if (at < 0 || current.indexOf(oldText, at + 1) >= 0) {
-        throw new MemoryConflict(`${file} 里找不到唯一匹配的原文，请按最新内容重试。`, current);
+        throw new MemoryConflict(
+          `No unique match for the original text in ${file}; retry against the latest content.`,
+          current,
+        );
       }
       await writeFileAtomic(
         path,
@@ -116,7 +120,7 @@ export class MemoryRepo {
       const path = resolveInside(this.dir, file);
       const current = await readText(path);
       if (current !== undefined)
-        throw new MemoryConflict(`${file} 已存在，修改请用 edit。`, current);
+        throw new MemoryConflict(`${file} already exists; use edit to change it.`, current);
       await writeFileAtomic(path, content);
       this.#note(round, file, `create ${file}`);
     });

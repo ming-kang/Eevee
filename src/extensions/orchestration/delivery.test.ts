@@ -6,21 +6,21 @@ import { route } from "./delivery.ts";
 const ticket = {
   id: "t1" as const,
   role: "worker" as const,
-  title: "仿真",
+  title: "Simulation",
   deliverTo: [] as TicketId[],
 };
 const report = (status: ReportStatus, seq = 1): Report => ({
   ticketId: "t1",
   seq,
   status,
-  summary: "完成",
-  artifacts: [{ path: "out/data.csv", note: "仿真数据" }],
+  summary: "Done",
+  artifacts: [{ path: "out/data.csv", note: "Simulation data" }],
   handled: false,
   reminded: false,
   at: 0,
 });
 
-test("收尾报告唤醒 Router，中途报告只记录", () => {
+test("A closing report wakes the Router, an interim one is only recorded", () => {
   const [final] = route({ type: "report", ticket, report: report("ready") });
   assert.deepEqual(
     [final?.target, final?.mode, final?.whenBusy],
@@ -32,7 +32,7 @@ test("收尾报告唤醒 Router，中途报告只记录", () => {
   assert.equal(progress?.mode, "record");
 });
 
-test("整理工单的报告不唤醒 Router", () => {
+test("A dreamer ticket's report does not wake the Router", () => {
   const [delivery] = route({
     type: "report",
     ticket: { ...ticket, role: "dreamer" },
@@ -41,7 +41,7 @@ test("整理工单的报告不唤醒 Router", () => {
   assert.equal(delivery?.mode, "record");
 });
 
-test("验收后把结果直接投给 deliverTo 里的工单，Router 只记录", () => {
+test("After review the result goes straight to the tickets in deliverTo, the Router only records it", () => {
   const deliveries = route({
     type: "ticket-accepted",
     ticket: { ...ticket, deliverTo: ["t2", "t3"] },
@@ -58,38 +58,42 @@ test("验收后把结果直接投给 deliverTo 里的工单，Router 只记录",
   assert.equal(route({ type: "ticket-accepted", ticket, report: undefined }).length, 0);
 });
 
-test("归属工单的问题答案直接投给执行对话", () => {
+test("The answer to a ticket's question goes straight to its worker conversation", () => {
   const deliveries = route({
     type: "question-answered",
-    question: { id: "q1", ticketId: "t1", items: [], answer: "用 1550nm", askedAt: 0 },
+    question: { id: "q1", ticketId: "t1", items: [], answer: "Use 1550nm", askedAt: 0 },
   });
   assert.deepEqual(deliveries[0]?.target, { kind: "ticket", id: "t1" });
   assert.equal(deliveries[1]?.mode, "record");
 });
 
-test("requestId 由事件决定，重复提交可以被去重", () => {
+test("The requestId comes from the event, so a repeated submit can be deduplicated", () => {
   const event = { type: "report", ticket, report: report("ready", 3) } as const;
   assert.equal(route(event)[0]?.requestId, route(event)[0]?.requestId);
   assert.equal(route(event)[0]?.requestId, "report:t1#3");
 });
 
-test("Engine 说的话带着通知数据，用户自己的话不带", () => {
+test("What the Engine says carries notice data, the user's own words do not", () => {
   const [wake] = route({ type: "report", ticket, report: report("ready") });
   assert.deepEqual(wake?.notice, {
     type: "report",
     ticketId: "t1",
-    title: "仿真",
+    title: "Simulation",
     report: report("ready"),
   });
   const [toWorker, routerCopy] = route({
     type: "panel-message",
     id: "m1",
     ticketId: "t1",
-    text: "先跑 45°",
+    text: "Run 45° first",
     whenBusy: "steer",
   });
   assert.equal(toWorker?.notice, undefined);
-  assert.deepEqual(routerCopy?.notice, { type: "panel-message", ticketId: "t1", text: "先跑 45°" });
+  assert.deepEqual(routerCopy?.notice, {
+    type: "panel-message",
+    ticketId: "t1",
+    text: "Run 45° first",
+  });
   const [job] = route({
     type: "job-finished",
     ticketId: "t1",
@@ -97,7 +101,10 @@ test("Engine 说的话带着通知数据，用户自己的话不带", () => {
     outcome: { status: "exited", exitCode: 0 },
     tail: "done",
   });
-  assert.equal(job?.text, "后台作业 job://j2 已结束（退出码 0）。\n输出末尾：\ndone");
+  assert.equal(
+    job?.text,
+    "Background job job://j2 finished (Exit code 0).\nTail of its output:\ndone",
+  );
   assert.deepEqual(job?.notice, {
     type: "job-finished",
     jobId: "j2",

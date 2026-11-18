@@ -14,7 +14,7 @@ import { createRegistry, Harness, MemoryStorage, type Report } from "@earendil-w
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { createResources } from "./index.ts";
 
-test("read 读取工作区文件时不触发 structuredOutput 契约错误", async () => {
+test("reading a workspace file with read does not trigger a structuredOutput contract error", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "eevee-read-"));
   try {
     await mkdir(workspace, { recursive: true });
@@ -25,7 +25,7 @@ test("read 读取工作区文件时不触发 structuredOutput 契约错误", asy
       fauxAssistantMessage(fauxToolCall("read", { path: "hello.txt" }), { stopReason: "toolUse" }),
       fauxAssistantMessage(fauxToolCall("read", { path: "ticket://" }), { stopReason: "toolUse" }),
       fauxAssistantMessage(fauxToolCall("read", { path: "bad://addr" }), { stopReason: "toolUse" }),
-      fauxAssistantMessage("读完了。"),
+      fauxAssistantMessage("Done reading."),
     ]);
     const models = createModels();
     models.setProvider(faux.provider);
@@ -58,7 +58,7 @@ test("read 读取工作区文件时不触发 structuredOutput 契约错误", asy
       const root = await harness.root(BACKGROUND_CONTEXT, {
         agent: { model: { provider: "faux", modelId: "m1" } },
       });
-      await root.submit({ type: "input", content: "读取 hello.txt" }, BACKGROUND_CONTEXT);
+      await root.submit({ type: "input", content: "Read hello.txt" }, BACKGROUND_CONTEXT);
       await root.waitForIdle(BACKGROUND_CONTEXT);
       assert.deepEqual(reports, []);
     } finally {

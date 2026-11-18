@@ -8,7 +8,7 @@ import { eeveePaths } from "../shared/paths.ts";
 import { buildModelsView } from "./catalog.ts";
 import { createModelRuntime } from "./index.ts";
 
-test("buildModelsView 返回角色默认模型、Router 生效模型、凭据状态、可用模型与兼容目录", async () => {
+test("buildModelsView returns role defaults, the effective Router model, credential state, available models and the compatibility catalog", async () => {
   const models = createModels();
   models.setProvider(
     fauxProvider({
@@ -40,9 +40,9 @@ test("buildModelsView 返回角色默认模型、Router 生效模型、凭据状
       default: { provider: "configured", modelId: "fast" },
       worker: { provider: "configured", modelId: "deep", thinkingLevel: "high" },
     },
-    profiles: "# 使用经验\n\n- deep 适合复杂任务\n",
+    profiles: "# Usage notes\n\n- deep suits complex tasks\n",
     customProviders: new Set(["configured"]),
-    problems: [{ file: "models.json", code: "failed", detail: "测试警告" }],
+    problems: [{ file: "models.json", code: "failed", detail: "test warning" }],
   });
 
   assert.deepEqual(view.routerModel, { provider: "configured", modelId: "fast" });
@@ -51,8 +51,10 @@ test("buildModelsView 返回角色默认模型、Router 生效模型、凭据状
     modelId: "deep",
     thinkingLevel: "high",
   });
-  assert.deepEqual(view.problems, [{ file: "models.json", code: "failed", detail: "测试警告" }]);
-  assert.equal(view.profiles, "# 使用经验\n\n- deep 适合复杂任务");
+  assert.deepEqual(view.problems, [
+    { file: "models.json", code: "failed", detail: "test warning" },
+  ]);
+  assert.equal(view.profiles, "# Usage notes\n\n- deep suits complex tasks");
 
   assert.equal(view.providers.length, 2);
   assert.equal(view.providers[0]?.id, "configured");
@@ -67,14 +69,14 @@ test("buildModelsView 返回角色默认模型、Router 生效模型、凭据状
   assert.equal(view.available[1]?.reasoning, true);
   assert.deepEqual(view.available[0]?.thinkingLevels, ["off"]);
   assert.deepEqual(view.available[1]?.thinkingLevels, ["off", "minimal", "low", "medium", "high"]);
-  assert.match(view.catalog, /worker：configured\/deep，思考档位 high/);
+  assert.match(view.catalog, /worker: configured\/deep, thinking level high/);
   assert.match(
     view.catalog,
-    /configured\/deep（Deep）：.*思考档位 minimal \/ low \/ medium \/ high/,
+    /configured\/deep \(Deep\):.*thinking level minimal \/ low \/ medium \/ high/,
   );
   assert.equal(view.available[1]?.contextWindow, 200_000);
   assert.match(view.catalog, /configured\/fast/);
-  assert.match(view.catalog, /deep 适合复杂任务/);
+  assert.match(view.catalog, /deep suits complex tasks/);
 
   const explicitRouter = await buildModelsView({
     models,
@@ -87,7 +89,7 @@ test("buildModelsView 返回角色默认模型、Router 生效模型、凭据状
   assert.deepEqual(explicitRouter.routerModel, { provider: "configured", modelId: "deep" });
 });
 
-test("createModelRuntime + buildModelsView 暴露 models.json 自定义 provider 凭据与错误", async () => {
+test("createModelRuntime + buildModelsView expose models.json custom-provider credentials and errors", async () => {
   const home = await mkdtemp(join(tmpdir(), "eevee-catalog-"));
   const prevKey = process.env.EEVEE_CATALOG_TEST_KEY;
   process.env.EEVEE_CATALOG_TEST_KEY = "test-secret";

@@ -40,7 +40,7 @@ const shutdown = async (code = 0) => {
 };
 
 const fail = (what: string, error: unknown) => {
-  console.error(`${what}，正在关闭：`, error);
+  console.error(`${what}, shutting down:`, error);
   void shutdown(1);
 };
 
@@ -63,12 +63,14 @@ await writeRuntimeRecord(paths.runtime.record, {
   bootId: engine.bootId,
   startedAt: Date.now(),
 });
-console.log(`Eevee ${version} 已启动：http://127.0.0.1:${port}/ui/（数据目录 ${paths.home}）`);
+console.log(
+  `Eevee ${version} started: http://127.0.0.1:${port}/ui/ (data directory ${paths.home})`,
+);
 
 process.on("SIGINT", () => void shutdown());
 process.on("SIGTERM", () => void shutdown());
-process.on("unhandledRejection", (error) => fail("有未处理的拒绝", error));
-process.on("uncaughtException", (error) => fail("有未捕获的异常", error));
+process.on("unhandledRejection", (error) => fail("Unhandled rejection", error));
+process.on("uncaughtException", (error) => fail("Uncaught exception", error));
 
 function listen(server: Server, preferred: number): Promise<number> {
   return new Promise((resolve, reject) => {

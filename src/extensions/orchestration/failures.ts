@@ -44,7 +44,7 @@ export async function reportRunFailures(
 
     const router = await host.conversation(ROOT_CONVERSATION_ID, context);
     if (router === undefined) continue;
-    const summary = `执行对话运行失败：${describeRunFailure(failure)}`;
+    const summary = `The Worker's run failed: ${describeRunFailure(failure)}`;
     const report = await host.commit(async (tx) => {
       const stored = await submitReport(tx, router, ticket, {
         ticketId: ticket.id,
@@ -53,7 +53,7 @@ export async function reportRunFailures(
           summary.length <= REPORT_SUMMARY_LIMIT
             ? summary
             : `${summary.slice(0, REPORT_SUMMARY_LIMIT - 1)}…`,
-        need: "排除原因后用 ticket message 让它继续，或者取消工单。",
+        need: "Once the cause is fixed, use ticket message to let it continue, or cancel the ticket.",
         origin: { type: "run-failed", failure: failureView(failure) },
         artifacts: [],
         handled: false,

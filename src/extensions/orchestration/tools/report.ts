@@ -19,33 +19,36 @@ export const REPORT_TOOL = "report";
 const Parameters = obj({
   status: oneOf(["progress", "waiting", "ready", "blocked", "failed", "dropped"], {
     description:
-      "progress：阶段性进展，继续干；waiting：缺东西；ready：做完了等验收；" +
-      "blocked / failed：做不下去 / 失败了；dropped：发现不需要做",
+      "progress: a step forward, keep working; waiting: something is missing; " +
+      "ready: done, waiting for review; blocked / failed: cannot go on / failed; dropped: found to be unnecessary",
   }),
-  summary: str({ maxLength: REPORT_SUMMARY_LIMIT, description: "给 Router 的摘要" }),
-  detail: opt(str({ description: "完整内容，Router 需要时再读" })),
-  artifacts: arr(obj({ path: str(), note: str() }), { description: "产物文件及一句说明" }),
-  need: opt(str({ description: "waiting 时写明缺什么" })),
+  summary: str({ maxLength: REPORT_SUMMARY_LIMIT, description: "A summary for the Router" }),
+  detail: opt(str({ description: "The full content, read when the Router needs it" })),
+  artifacts: arr(obj({ path: str(), note: str() }), {
+    description: "Artifact files with a one-line note each",
+  }),
+  need: opt(str({ description: "With waiting, what is missing" })),
   questions: opt(
     arr(obj({ text: str(), options: arr(str()), recommended: opt(str()) }), {
-      description: "需要用户决定的问题",
+      description: "Questions the user has to decide",
     }),
   ),
-  lessons: opt(arr(str(), { description: "值得长期记住的经验" })),
+  lessons: opt(arr(str(), { description: "Lessons worth remembering for the long term" })),
 });
 
 export function createReportTool(deps: OrchestrationDeps) {
   return defineTool({
     name: REPORT_TOOL,
     description:
-      "向 Router 提交报告。progress 之外的状态会结束本轮，所以收尾报告请单独调用、放在最后。",
+      "Submit a report to the Router. Every status but progress ends this turn, so call it on its own and last " +
+      "when you wrap up.",
     parameters: Parameters,
     replay: "unsafe",
     executionMode: "sequential",
     async execute(args, api, context) {
       const ticketId = await readBinding(api, api.conversationId, context);
       const ticket = ticketId && (await readTicket(api, ticketId, context));
-      if (!ticket) return fail("只有工单的执行对话才能提交报告。");
+      if (!ticket) return fail("Only a ticket's worker conversation can submit a report.");
 
       const draft: Omit<Report, "seq"> = {
         ticketId: ticket.id,
@@ -63,7 +66,8 @@ export function createReportTool(deps: OrchestrationDeps) {
       const final = isFinalReport(draft.status);
       const autoAccept = ticket.role === "dreamer" && draft.status === "ready";
       const router = await api.conversation(ROOT_CONVERSATION_ID, context);
-      if (router === undefined) return fail("找不到主对话，无法提交报告。");
+      if (router === undefined)
+        return fail("The root conversation is missing, the report cannot be submitted.");
 
       let report: Report;
       try {
@@ -76,7 +80,7 @@ export function createReportTool(deps: OrchestrationDeps) {
           if (autoAccept) {
             await settleTicket(tx, current, {
               status: "done",
-              note: "整理工单自动验收",
+              note: "Auto-accepted when the dreamer ticket finished tidying up",
               at: api.now(),
             });
             await purgeDeliveries(tx, current.id);
@@ -85,14 +89,14 @@ export function createReportTool(deps: OrchestrationDeps) {
         }, context);
       } catch (error) {
         if (problemOf(error).code === "ticket_closed") {
-          return fail(`${ticket.id} 已经结单，不能再提交报告。`);
+          return fail(`${ticket.id} is already closed and can no longer submit reports.`);
         }
         throw error;
       }
 
       if (autoAccept) deps.jobs.stop(ticket.id);
       const address = formatAddress({ kind: "report", ticketId: ticket.id, seq: report.seq });
-      if (!final) return ok(`已记录 ${address}，继续工作。`);
+      if (!final) return ok(`Recorded ${address}; keep working.`);
 
       const handoff = (await deps.handoff.shouldHandoff(api.conversationId, context))
         ? await deps.conversations.opening(ticket, context, {
@@ -100,7 +104,7 @@ export function createReportTool(deps: OrchestrationDeps) {
             latest: report,
           })
         : undefined;
-      return ok(`已提交 ${address}，本轮结束。`, undefined, {
+      return ok(`Submitted ${address}; this turn is over.`, undefined, {
         terminate: true,
         ...(handoff === undefined ? {} : { handoff }),
       });

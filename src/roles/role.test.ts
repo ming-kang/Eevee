@@ -28,13 +28,13 @@ function registry() {
 const names = (capability: ReturnType<typeof resolveCapability>) =>
   capability.extensions.map((e) => e.name);
 
-test("按名字解析扩展，去重，没安装的单独列出", () => {
+test("Resolves extensions by name, without duplicates, and lists the ones not installed separately", () => {
   const capability = resolveCapability(registry(), ["plain", "gone", "plain"]);
   assert.deepEqual(names(capability), ["plain"]);
   assert.deepEqual(capability.missing, ["gone"]);
 });
 
-test("有延迟加载的工具时带上 tool-search，只给脚本用的工具带上 codemode", () => {
+test("Brings tool-search along when there are deferred tools, and codemode for tools only scripts may call", () => {
   assert.deepEqual(names(resolveCapability(registry(), ["lazy"])), ["lazy", "tool-search"]);
   assert.deepEqual(names(resolveCapability(registry(), ["scripted"])), ["scripted", "codemode"]);
   assert.deepEqual(names(resolveCapability(registry(), ["codemode", "scripted"])), [
@@ -43,7 +43,7 @@ test("有延迟加载的工具时带上 tool-search，只给脚本用的工具�
   ]);
 });
 
-test("应用角色时选中全部扩展的全部工具，不动 tool_search 加载过的工具", () => {
+test("Applying a role selects every tool of every extension, and leaves the tools tool_search loaded alone", () => {
   const change = roleChange(workerRole, resolveCapability(registry(), ["plain"]), {
     cwd: "/work",
     maxTurns: 40,

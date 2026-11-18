@@ -41,8 +41,8 @@ export const FallbackReport = defineTask<FallbackInput, { phase: "report" }, nul
         await submitReport(tx, router, current, {
           ticketId: ticket.id,
           status: "waiting",
-          summary: truncate(text || "（本轮结束，但没有提交报告，也没有留下回答）"),
-          need: "执行对话没有提交收尾报告，请查看它的最后回答后决定下一步。",
+          summary: truncate(text || "(the turn ended without a report or a last answer)"),
+          need: "The worker conversation submitted no final report; read its last answer and decide what's next.",
           origin: { type: "no-report", answered: text !== "" },
           artifacts: [],
           handled: false,

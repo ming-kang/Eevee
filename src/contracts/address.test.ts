@@ -16,21 +16,21 @@ const roundTrips: [string, Address][] = [
   ["src/main.ts", { kind: "file", path: "src/main.ts" }],
 ];
 
-test("地址可以解析并原样格式化回去", () => {
+test("an address parses and formats back unchanged", () => {
   for (const [raw, address] of roundTrips) {
     assert.deepEqual(parseAddress(raw), address, raw);
     assert.equal(formatAddress(address), raw);
   }
 });
 
-test("Windows 盘符路径是文件，不是协议", () => {
+test("a Windows drive path is a file, not a scheme", () => {
   assert.deepEqual(parseAddress("C:\\work\\paper.tex"), {
     kind: "file",
     path: "C:\\work\\paper.tex",
   });
 });
 
-test("非法地址给出明确错误", () => {
+test("an invalid address raises a clear error", () => {
   for (const raw of [
     "ticket://12",
     "transcript://conv-1",

@@ -12,7 +12,7 @@ function modelsWithFaux() {
   return models;
 }
 
-test("新增的 provider 可以选用，apiKey 从环境变量解析并按 authHeader 带上", async () => {
+test("a new provider becomes usable, its apiKey resolves from the environment and is sent per authHeader", async () => {
   process.env.EEVEE_TEST_KEY = "secret";
   const models = modelsWithFaux();
   const problems = applyModelsConfig(models, {
@@ -38,7 +38,7 @@ test("新增的 provider 可以选用，apiKey 从环境变量解析并按 authH
   assert.equal(auth?.auth.headers?.["x-team"], "secret-team");
 });
 
-test("modelOverrides 只改指定字段，cost 逐字段合并", () => {
+test("modelOverrides change only the named fields and merge cost field by field", () => {
   const models = modelsWithFaux();
   const before = models.getModel("faux", "brain");
   applyModelsConfig(models, {
@@ -51,7 +51,7 @@ test("modelOverrides 只改指定字段，cost 逐字段合并", () => {
   assert.equal(after?.maxTokens, before?.maxTokens);
 });
 
-test("一个 provider 配错只影响它自己", () => {
+test("a misconfigured provider affects only itself", () => {
   const models = modelsWithFaux();
   const problems = applyModelsConfig(models, {
     providers: {
@@ -66,7 +66,7 @@ test("一个 provider 配错只影响它自己", () => {
   assert.equal(models.getModel("faux", "brain")?.contextWindow, 42);
 });
 
-test("格式不对的 models.json 给出具体位置", () => {
+test("a malformed models.json gives the exact location", () => {
   assert.throws(
     () => parseConfig(ModelsConfigSchema, { providers: { a: { models: [{}] } } }, "models.json"),
     (error: unknown) =>

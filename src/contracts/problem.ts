@@ -60,67 +60,67 @@ export function problemOf(error: unknown): Problem {
 export function describeProblem(problem: Problem): string {
   switch (problem.code) {
     case "unauthorized":
-      return "需要授权，请运行 eevee 打开面板";
+      return "Not authorized: run eevee to open the panel";
     case "bad_code":
-      return "授权码无效或已过期，请重新运行 eevee";
+      return "The authorization code is invalid or expired; run eevee again";
     case "forbidden_host":
-      return "只接受本机请求";
+      return "Only requests from this machine are accepted";
     case "no_route":
-      return `没有接口 ${problem.method} ${problem.path}`;
+      return `No endpoint ${problem.method} ${problem.path}`;
     case "no_file":
-      return "没有这个文件";
+      return "No such file";
     case "bad_json":
-      return "请求体不是合法的 JSON";
+      return "The request body is not valid JSON";
     case "too_large":
-      return "请求体过大";
+      return "The request body is too large";
     case "required":
-      return `${problem.field} 不能为空`;
+      return `${problem.field} cannot be empty`;
     case "invalid":
       return problem.allowed === undefined
-        ? `${problem.field} 不合法`
-        : `${problem.field} 只能是 ${problem.allowed.join(" / ")}`;
+        ? `${problem.field} is not valid`
+        : `${problem.field} must be one of ${problem.allowed.join(" / ")}`;
     case "no_project":
-      return `没有项目 ${problem.projectId}`;
+      return `No project ${problem.projectId}`;
     case "no_ticket":
-      return `没有工单 ${problem.ticketId}`;
+      return `No ticket ${problem.ticketId}`;
     case "no_worker":
-      return `找不到 ${problem.ticketId} 的执行对话`;
+      return `No worker conversation for ${problem.ticketId}`;
     case "no_question":
-      return `没有问题 ${problem.questionId}`;
+      return `No question ${problem.questionId}`;
     case "no_job":
-      return `没有作业 ${problem.jobId}`;
+      return `No job ${problem.jobId}`;
     case "no_memory_file":
-      return `没有记忆文件 ${problem.file}`;
+      return `No memory file ${problem.file}`;
     case "no_commit":
-      return `没有 commit ${problem.commit}`;
+      return `No commit ${problem.commit}`;
     case "no_model":
-      return `没有模型 ${problem.provider}/${problem.modelId}`;
+      return `No model ${problem.provider}/${problem.modelId}`;
     case "no_provider":
-      return `没有 provider ${problem.provider}`;
+      return `No provider ${problem.provider}`;
     case "no_extension":
-      return `没有安装扩展：${problem.names.join("、")}`;
+      return `Extensions not installed: ${problem.names.join(", ")}`;
     case "model_unset":
-      return `${problem.role} 没有可用的模型：在 settings.json 的 models 里设置 default 或 ${problem.role}，或建单时指定 provider 与 modelId。`;
+      return `${problem.role} has no model: set default or ${problem.role} under models in settings.json, or name a provider and modelId when creating the ticket.`;
     case "ticket_closed":
-      return `${problem.ticketId} 已经结单`;
+      return `${problem.ticketId} is already closed`;
     case "report_changed":
-      return `${problem.ticketId} 待验收的报告已经变了，请先看最新一报`;
+      return `The report ${problem.ticketId} is waiting on has changed; read the latest one first`;
     case "answered":
-      return `${problem.questionId} 已经回答过了`;
+      return `${problem.questionId} was already answered`;
     case "job_ended":
-      return `作业 ${problem.jobId} 已经结束`;
+      return `Job ${problem.jobId} has already ended`;
     case "running":
-      return "对话正在运行";
+      return "The conversation is running";
     case "not_failed":
-      return "上一轮没有失败，不需要重试";
+      return "The last turn did not fail; there is nothing to retry";
     case "revert_failed":
-      return `撤销 ${problem.commit} 失败：没有这个 commit，或后来的改动（含还没提交的）与它冲突。`;
+      return `Could not revert ${problem.commit}: no such commit, or later changes (including uncommitted ones) conflict with it.`;
     case "bad_config":
       return problem.problems.map(describeConfigProblem).join("\n");
     case "model_in_use":
-      return `${problem.provider}/${problem.modelId} 正被默认模型使用，先换掉再改`;
+      return `${problem.provider}/${problem.modelId} is in use as the default model; change that first`;
     case "probe_failed":
-      return `获取模型列表失败：${problem.detail}`;
+      return `Could not list the models: ${problem.detail}`;
     case "internal":
       return problem.detail;
   }
@@ -152,39 +152,39 @@ export type ConfigProblem = ConfigIssue & { file: string; entry?: string };
 export function describeConfigIssue(issue: ConfigIssue): string {
   switch (issue.code) {
     case "schema":
-      return `${issue.path}：${issue.detail}`;
+      return `${issue.path}: ${issue.detail}`;
     case "shape":
-      return `应为 ${issue.expected}`;
+      return `Expected ${issue.expected}`;
     case "invalid":
       return issue.allowed === undefined
-        ? `${issue.field} 不合法`
-        : `${issue.field} 应为 ${issue.allowed.join(" / ")}`;
+        ? `${issue.field} is not valid`
+        : `${issue.field} must be one of ${issue.allowed.join(" / ")}`;
     case "needs_models":
-      return "新增的 provider 需要 models";
+      return "A new provider needs models";
     case "unsupported_api":
-      return `模型 ${issue.model} 的 api「${issue.api}」不受支持`;
+      return `Model ${issue.model}: api “${issue.api}” is not supported`;
     case "needs_api":
-      return `模型 ${issue.model} 没有指定 api`;
+      return `Model ${issue.model} does not name an api`;
     case "needs_base_url":
-      return `模型 ${issue.model} 没有 baseUrl`;
+      return `Model ${issue.model} has no baseUrl`;
     case "no_auth":
-      return "没有可用的认证方式";
+      return "No way to authenticate";
     case "env_unset":
-      return `${issue.name} 引用的环境变量没有设置`;
+      return `${issue.name} refers to an environment variable that is not set`;
     case "name_taken":
-      return `扩展名 ${issue.name} 已被另一个文件使用`;
+      return `Extension name ${issue.name} is already used by another file`;
     case "name_reserved":
-      return `扩展名 ${issue.name} 是 Eevee 保留的`;
+      return `Extension name ${issue.name} is reserved by Eevee`;
     case "bad_export":
-      return "默认导出应为 extension（带 name 的对象），或返回 extension 的函数";
+      return "The default export should be an extension (an object with a name), or a function returning one";
     case "disconnected":
-      return "连接已断开";
+      return "Disconnected";
     case "failed":
       return issue.detail;
   }
 }
 
 export function describeConfigProblem(problem: ConfigProblem): string {
-  const where = problem.entry === undefined ? problem.file : `${problem.file} 的 ${problem.entry}`;
+  const where = problem.entry === undefined ? problem.file : `${problem.file} · ${problem.entry}`;
   return `${where}：${describeConfigIssue(problem)}`;
 }

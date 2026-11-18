@@ -31,21 +31,32 @@ export type BashDeps = {
 const BUFFER_LIMIT = 2 * 1024 * 1024;
 
 const Parameters = obj({
-  command: str({ description: "要执行的 bash 命令" }),
-  timeout: opt(int({ minimum: 1, description: "超时秒数，超时后终止命令；转入后台后同样生效" })),
-  background: opt(bool({ description: "直接转入后台，不等待前台输出" })),
+  command: str({ description: "The bash command to run" }),
+  timeout: opt(
+    int({
+      minimum: 1,
+      description:
+        "Timeout in seconds; the command is killed when it runs out. It still applies once the command has moved to the background",
+    }),
+  ),
+  background: opt(
+    bool({
+      description: "Move to the background right away, without waiting for foreground output",
+    }),
+  ),
 });
 
 export function createBashTool(deps: BashDeps) {
   return defineTool({
     name: "bash",
     description:
-      "在工作目录执行 bash 命令，返回合并的 stdout 与 stderr。" +
-      "命令运行较久时会自动转入后台作业（job://jN），结束后结果作为新消息送达；此时可以先结束本轮或继续做别的。",
+      "Run a bash command in the workspace and return stdout and stderr combined." +
+      "A command that runs for a while moves to a background job (job://jN) on its own, and its result arrives " +
+      "as a new message once it ends; you can end this turn or do something else meanwhile.",
     parameters: Parameters,
     outputLimits: { retain: "tail" },
     async execute(args, api, context) {
-      if (api.env === undefined) throw new Error("没有执行环境");
+      if (api.env === undefined) throw new Error("No execution environment");
       const running = startCommand(api.env, args.command, deps.env(), args.timeout);
       let foreground = true;
       running.onOutput((chunk) => {
@@ -62,7 +73,11 @@ export function createBashTool(deps: BashDeps) {
         if (context.abortSignal?.aborted) {
           running.kill();
           const details: BashDetails = { stopped: true };
-          return { isError: true, output: [{ type: "text", text: "命令已中止" }], details };
+          return {
+            isError: true,
+            output: [{ type: "text", text: "The command was aborted" }],
+            details,
+          };
         }
         const jobId = await deps.jobs.adopt(api, running, context);
         if (jobId === undefined) return finish(await running.done, args.timeout);
@@ -75,8 +90,8 @@ export function createBashTool(deps: BashDeps) {
             {
               type: "text",
               text:
-                `命令仍在运行，已转入后台作业 ${address}。完整输出写入日志，可用 read ${address} 查看。` +
-                "作业结束后会作为新消息通知你；可以先做别的，或者直接结束本轮。",
+                `The command is still running and moved to background job ${address}. Its full output goes to the log; read it with read ${address}.` +
+                "You will be notified with a new message once the job ends; do something else meanwhile, or end this turn now.",
             },
           ],
         };
@@ -88,7 +103,7 @@ export function createBashTool(deps: BashDeps) {
 }
 
 function finish(result: CommandResult, timeout: number | undefined) {
-  if (result.error === "timeout") throw new Error(`命令超时（${timeout} 秒）`);
+  if (result.error === "timeout") throw new Error(`The command timed out (${timeout} s)`);
   if (result.error !== undefined) throw new Error(result.error);
   const details: BashDetails = result.exitCode === undefined ? {} : { exitCode: result.exitCode };
   if (result.exitCode === 0) return { details };
@@ -96,7 +111,7 @@ function finish(result: CommandResult, timeout: number | undefined) {
     isError: true,
     details,
     diagnostics: [
-      { severity: "error" as const, code: "exit_code", message: `退出码 ${result.exitCode}` },
+      { severity: "error" as const, code: "exit_code", message: `Exit code ${result.exitCode}` },
     ],
   };
 }

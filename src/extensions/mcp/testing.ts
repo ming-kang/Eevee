@@ -36,6 +36,6 @@ function describeCall(params: unknown): string {
 
 export const weatherTool: Tool = {
   name: "get-weather",
-  description: "查天气",
+  description: "Check the weather",
   inputSchema: { type: "object", properties: { city: { type: "string" } } },
 };

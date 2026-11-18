@@ -6,47 +6,47 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { eeveePaths } from "../shared/paths.ts";
 import { type Brain, call, openTestProject, say, textOf, toolName } from "./testing.ts";
 
-test("Router 建单，Worker 交 ready，Router 验收结单", async () => {
+test("the Router creates a ticket, the Worker submits ready, the Router accepts and closes it", async () => {
   const brain: Brain = ({ role, last }) => {
     if (role === "router") {
-      if (last?.role === "user" && textOf(last).includes("写一个 hello.txt")) {
+      if (last?.role === "user" && textOf(last).includes("write a hello.txt")) {
         return call("ticket", {
           action: "create",
-          title: "写问候文件",
-          goal: "在工作目录写 hello.txt",
-          acceptance: ["hello.txt 内容为 hi"],
+          title: "write a greeting",
+          goal: "write hello.txt in the working directory",
+          acceptance: ["hello.txt contains hi"],
         });
       }
-      if (last?.role === "user" && textOf(last).includes("报告 · ready")) {
+      if (last?.role === "user" && textOf(last).includes("report · ready")) {
         return call("ticket", {
           action: "review",
           ticketId: "t1",
           verdict: "accept",
-          note: "hello.txt 已写好",
+          note: "hello.txt has been written",
         });
       }
-      return say("好的。");
+      return say("OK.");
     }
     if (toolName(last) === "write") {
       return call("report", {
         status: "ready",
-        summary: "写好了",
-        artifacts: [{ path: "hello.txt", note: "问候" }],
+        summary: "done",
+        artifacts: [{ path: "hello.txt", note: "greeting" }],
       });
     }
     if (last?.role === "user") return call("write", { path: "hello.txt", content: "hi" });
-    return say("收到。");
+    return say("Got it.");
   };
 
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("帮我写一个 hello.txt");
+    await project.host.sendUserMessage("write a hello.txt for me");
     const done = await project.until(async () => {
       const board = await project.host.board();
       const ticket = board.tickets[0]?.ticket;
       return ticket?.status === "done" && board.tickets[0];
     });
-    assert.equal(done.ticket.closeNote, "hello.txt 已写好");
+    assert.equal(done.ticket.closeNote, "hello.txt has been written");
     assert.deepEqual(
       done.reports.map((r) => [r.status, r.handled]),
       [["ready", true]],
@@ -57,79 +57,90 @@ test("Router 建单，Worker 交 ready，Router 验收结单", async () => {
   }
 });
 
-test("Worker 不交报告就结束时，引擎补一份 waiting", async () => {
+test("when a Worker ends without submitting a report, the Engine files a waiting one", async () => {
   const brain: Brain = ({ role, last }) => {
-    if (role === "router" && last?.role === "user" && textOf(last).includes("开工")) {
-      return call("ticket", { action: "create", title: "沉默", goal: "随便", acceptance: ["无"] });
+    if (role === "router" && last?.role === "user" && textOf(last).includes("start work")) {
+      return call("ticket", {
+        action: "create",
+        title: "silent",
+        goal: "whatever",
+        acceptance: ["none"],
+      });
     }
-    return say(role === "worker" ? "我做完了但忘了交报告" : "好的。");
+    return say(role === "worker" ? "I finished but forgot to submit a report" : "OK.");
   };
 
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("开工");
+    await project.host.sendUserMessage("start work");
     const report = await project.until(async () => {
       const board = await project.host.board();
       return board.tickets[0]?.reports[0];
     });
     assert.equal(report.status, "waiting");
-    assert.match(report.summary, /忘了交报告/);
+    assert.match(report.summary, /forgot to submit a report/);
     assert.deepEqual(report.origin, { type: "no-report", answered: true });
     await project.until(async () =>
-      project.calls.some((c) => c.role === "router" && textOf(c.last).includes("报告 · waiting")),
+      project.calls.some((c) => c.role === "router" && textOf(c.last).includes("report · waiting")),
     );
   } finally {
     await project.close();
   }
 });
 
-test("验收后结果直接投给 deliverTo 的工单", async () => {
+test("an accepted result goes straight to the ticket in deliverTo", async () => {
   const brain: Brain = ({ role, last, messages }) => {
     const opening = textOf(
       messages.find((m) => m.role === "user" && textOf(m).includes("<ticket>")),
     );
     if (role === "router") {
-      if (last?.role === "user" && textOf(last).includes("开两张")) {
+      if (last?.role === "user" && textOf(last).includes("open two")) {
         return call("ticket", {
           action: "create",
-          title: "论文",
-          goal: "等数据",
-          acceptance: ["无"],
+          title: "paper",
+          goal: "waiting for data",
+          acceptance: ["none"],
         });
       }
       if (toolName(last) === "ticket" && textOf(last).includes("t1")) {
         return call("ticket", {
           action: "create",
-          title: "仿真",
-          goal: "出数据",
-          acceptance: ["有数据"],
+          title: "simulation",
+          goal: "produce data",
+          acceptance: ["has data"],
           deliverTo: ["t1"],
         });
       }
-      if (last?.role === "user" && textOf(last).includes("「仿真」报告 · ready")) {
+      if (last?.role === "user" && textOf(last).includes("“simulation” report · ready")) {
         return call("ticket", { action: "review", ticketId: "t2", verdict: "accept", note: "ok" });
       }
-      return say("好的。");
+      return say("OK.");
     }
-    if (opening.includes("「仿真」") && last?.role === "user") {
-      return call("report", { status: "ready", summary: "数据好了", artifacts: [] });
+    if (opening.includes("“simulation”") && last?.role === "user") {
+      return call("report", { status: "ready", summary: "data is ready", artifacts: [] });
     }
-    if (opening.includes("「论文」") && last?.role === "user" && !textOf(last).includes("已验收")) {
+    if (
+      opening.includes("“paper”") &&
+      last?.role === "user" &&
+      !textOf(last).includes("was accepted")
+    ) {
       return call("report", {
         status: "waiting",
-        summary: "等数据",
-        need: "仿真数据",
+        summary: "waiting for data",
+        need: "simulation data",
         artifacts: [],
       });
     }
-    return say("收到数据。");
+    return say("Got the data.");
   };
 
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("开两张单");
+    await project.host.sendUserMessage("open two tickets");
     await project.until(async () =>
-      project.calls.some((c) => c.role === "worker" && textOf(c.last).includes("你等待的 t2")),
+      project.calls.some(
+        (c) => c.role === "worker" && textOf(c.last).includes("which this waits on"),
+      ),
     );
     const board = await project.host.board();
     assert.equal(board.tickets[1]?.ticket.status, "done");
@@ -138,30 +149,30 @@ test("验收后结果直接投给 deliverTo 的工单", async () => {
   }
 });
 
-test("长命令转入后台，作业结束后唤醒 Worker", async () => {
+test("a long command moves to the background, and the Worker is woken when the job ends", async () => {
   const brain: Brain = ({ role, last }) => {
     if (role === "router") {
-      if (last?.role === "user" && textOf(last).includes("跑仿真")) {
+      if (last?.role === "user" && textOf(last).includes("run simulation")) {
         return call("ticket", {
           action: "create",
-          title: "仿真",
-          goal: "跑",
-          acceptance: ["跑完"],
+          title: "simulation",
+          goal: "run",
+          acceptance: ["done running"],
         });
       }
-      return say("好的。");
+      return say("OK.");
     }
-    if (last?.role === "user" && textOf(last).includes("后台作业 job://j1 已结束")) {
+    if (last?.role === "user" && textOf(last).includes("Background job job://j1 finished")) {
       return call("report", { status: "ready", summary: textOf(last), artifacts: [] });
     }
-    if (toolName(last) === "bash") return say("作业在后台跑，先结束本轮。");
+    if (toolName(last) === "bash") return say("The job runs in the background; ending this turn.");
     if (last?.role === "user") return call("bash", { command: "sleep 1; echo finished" });
     return say("…");
   };
 
   const project = await openTestProject(brain, { backgroundAfterMs: 200 });
   try {
-    await project.host.sendUserMessage("跑仿真");
+    await project.host.sendUserMessage("run simulation");
     const jobs = await project.until(async () => {
       const ticket = (await project.host.board()).tickets[0];
       return ticket?.stage === "jobs" && ticket;
@@ -171,7 +182,7 @@ test("长命令转入后台，作业结束后唤醒 Worker", async () => {
       async () => (await project.host.board()).tickets[0]?.reports[0],
     );
     assert.equal(report.status, "ready");
-    assert.match(report.summary, /退出码 0[\s\S]*finished/);
+    assert.match(report.summary, /Exit code 0[\s\S]*finished/);
     const log = await readFile(
       join(project.home, "projects", project.host.meta.id, "jobs", "j1.log"),
       "utf8",
@@ -182,30 +193,37 @@ test("长命令转入后台，作业结束后唤醒 Worker", async () => {
   }
 });
 
-test("引擎重启打断后台作业时，提醒 Worker 先检查现场", async () => {
+test("when an Engine restart interrupts a background job, the Worker is told to check the scene first", async () => {
   const brain: Brain = ({ role, last }) => {
     if (role === "router") {
-      if (last?.role === "user" && textOf(last).includes("跑很久")) {
+      if (last?.role === "user" && textOf(last).includes("run a long job")) {
         return call("ticket", {
           action: "create",
-          title: "长跑",
-          goal: "跑",
-          acceptance: ["跑完"],
+          title: "long run",
+          goal: "run",
+          acceptance: ["done running"],
         });
       }
-      return say("好的。");
+      return say("OK.");
     }
-    if (last?.role === "user" && textOf(last).includes("引擎重启打断了后台作业")) {
-      return call("report", { status: "blocked", summary: "作业被打断", artifacts: [] });
+    if (
+      last?.role === "user" &&
+      textOf(last).includes("An Engine restart interrupted background jobs")
+    ) {
+      return call("report", {
+        status: "blocked",
+        summary: "the job was interrupted",
+        artifacts: [],
+      });
     }
-    if (toolName(last) === "bash") return say("等作业。");
+    if (toolName(last) === "bash") return say("Waiting for the job.");
     if (last?.role === "user") return call("bash", { command: "sleep 30" });
     return say("…");
   };
 
   const project = await openTestProject(brain, { backgroundAfterMs: 100 });
   try {
-    await project.host.sendUserMessage("跑很久的东西");
+    await project.host.sendUserMessage("run a long job");
     await project.until(async () => (await project.host.board()).tickets[0]?.stage === "jobs");
     await project.reopen();
     const report = await project.until(
@@ -217,7 +235,7 @@ test("引擎重启打断后台作业时，提醒 Worker 先检查现场", async 
   }
 });
 
-test("超过并发上限的工单排队，前一张空出槽位后才开始", async () => {
+test("tickets beyond the concurrency limit queue, and the next one starts only after a slot frees up", async () => {
   let release: () => void = () => {};
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -227,21 +245,31 @@ test("超过并发上限的工单排队，前一张空出槽位后才开始", as
       messages.find((m) => m.role === "user" && textOf(m).includes("<ticket>")),
     );
     if (role === "router") {
-      if (last?.role === "user" && textOf(last).includes("两件事")) {
-        return call("ticket", { action: "create", title: "甲", goal: "甲", acceptance: ["甲"] });
+      if (last?.role === "user" && textOf(last).includes("two things")) {
+        return call("ticket", {
+          action: "create",
+          title: "alpha",
+          goal: "alpha",
+          acceptance: ["alpha"],
+        });
       }
       if (toolName(last) === "ticket" && textOf(last).includes("t1")) {
-        return call("ticket", { action: "create", title: "乙", goal: "乙", acceptance: ["乙"] });
+        return call("ticket", {
+          action: "create",
+          title: "beta",
+          goal: "beta",
+          acceptance: ["beta"],
+        });
       }
-      return say("好的。");
+      return say("OK.");
     }
-    if (opening.includes("「甲」")) await gate;
-    return call("report", { status: "ready", summary: "完成", artifacts: [] });
+    if (opening.includes("“alpha”")) await gate;
+    return call("report", { status: "ready", summary: "done", artifacts: [] });
   };
 
   const project = await openTestProject(brain, { maxActiveWorkers: 1 });
   try {
-    await project.host.sendUserMessage("帮我做两件事");
+    await project.host.sendUserMessage("do two things for me");
     const stages = await project.until(async () => {
       const board = await project.host.board();
       const ready = board.tickets.length === 2 && board.tickets[0]?.stage === "working";
@@ -251,7 +279,7 @@ test("超过并发上限的工单排队，前一张空出槽位后才开始", as
     assert.equal(
       project.calls.filter((c) => c.role === "worker").length,
       1,
-      "乙不应在甲占着槽位时开始",
+      "beta should not start while alpha holds the slot",
     );
     release();
     await project.until(async () =>
@@ -267,30 +295,32 @@ const createOn =
   (keyword: string, title: string): Brain =>
   ({ role, last }) => {
     if (role === "router" && last?.role === "user" && textOf(last).includes(keyword)) {
-      return call("ticket", { action: "create", title, goal: title, acceptance: ["无"] });
+      return call("ticket", { action: "create", title, goal: title, acceptance: ["none"] });
     }
-    return say("好的。");
+    return say("OK.");
   };
 
-test("收尾报告一直没处理时，引擎提醒 Router 一次", async () => {
-  const base = createOn("开工", "卡住");
+test("when a closing report goes unhandled, the Engine reminds the Router once", async () => {
+  const base = createOn("start work", "stuck");
   const brain: Brain = (turn) => {
     if (turn.role === "worker" && turn.last?.role === "user") {
-      return call("report", { status: "blocked", summary: "缺权限", artifacts: [] });
+      return call("report", { status: "blocked", summary: "missing permissions", artifacts: [] });
     }
     return base(turn);
   };
   const project = await openTestProject(brain, { reminderAfterMs: 0 });
   try {
-    await project.host.sendUserMessage("开工");
+    await project.host.sendUserMessage("start work");
     await project.until(async () =>
-      project.calls.some((c) => c.role === "router" && textOf(c.last).includes("还有未处理的报告")),
+      project.calls.some(
+        (c) => c.role === "router" && textOf(c.last).includes("Reports still unhandled"),
+      ),
     );
     const report = (await project.host.board()).tickets[0]?.reports[0];
     assert.equal(report?.reminded, true);
     const reminders = () =>
       project.calls.filter(
-        (c) => c.role === "router" && textOf(c.last).includes("还有未处理的报告"),
+        (c) => c.role === "router" && textOf(c.last).includes("Reports still unhandled"),
       );
     const count = reminders().length;
     await new Promise((resolve) => setTimeout(resolve, 400));
@@ -300,17 +330,22 @@ test("收尾报告一直没处理时，引擎提醒 Router 一次", async () => 
   }
 });
 
-test("Worker 上下文超过阈值时，交收尾报告顺带重置上下文", async () => {
-  const base = createOn("开工", "长活");
+test("when a Worker's context passes the threshold, its closing report also resets the context", async () => {
+  const base = createOn("start work", "long job");
   const brain: Brain = (turn) => {
     if (turn.role === "worker" && turn.last?.role === "user") {
-      return call("report", { status: "waiting", summary: "等材料", need: "数据", artifacts: [] });
+      return call("report", {
+        status: "waiting",
+        summary: "waiting for materials",
+        need: "data",
+        artifacts: [],
+      });
     }
     return base(turn);
   };
   const project = await openTestProject(brain, { contextWindow: 200, handoffThreshold: 0.1 });
   try {
-    await project.host.sendUserMessage("开工");
+    await project.host.sendUserMessage("start work");
     const lines = await project.until(async () => {
       const board = await project.host.board();
       if (board.tickets[0]?.reports.length !== 1) return undefined;
@@ -324,31 +359,35 @@ test("Worker 上下文超过阈值时，交收尾报告顺带重置上下文", a
   }
 });
 
-test("用户在面板直接引导 Worker，Router 只记录这次介入", async () => {
-  const base = createOn("开工", "可引导");
+test("a user steers a Worker from the panel, and the Router only records the intervention", async () => {
+  const base = createOn("start work", "steerable");
   const brain: Brain = (turn) => {
-    if (turn.role === "worker" && textOf(turn.last).includes("换个思路")) {
-      return call("report", { status: "ready", summary: "按新思路做完了", artifacts: [] });
+    if (turn.role === "worker" && textOf(turn.last).includes("try another approach")) {
+      return call("report", {
+        status: "ready",
+        summary: "finished with the new approach",
+        artifacts: [],
+      });
     }
-    if (turn.role === "worker") return say("先这样。");
+    if (turn.role === "worker") return say("Leave it here for now.");
     return base(turn);
   };
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("开工");
+    await project.host.sendUserMessage("start work");
     await project.until(async () => (await project.host.board()).tickets[0]?.reports[0]);
     const routerCalls = project.calls.filter((c) => c.role === "router").length;
-    await project.host.messageWorker("t1", "换个思路", "steer");
+    await project.host.messageWorker("t1", "try another approach", "steer");
     const ready = await project.until(async () => {
       const reports = (await project.host.board()).tickets[0]?.reports ?? [];
       return reports.find((r) => r.status === "ready");
     });
-    assert.equal(ready.summary, "按新思路做完了");
+    assert.equal(ready.summary, "finished with the new approach");
     const { lines: transcript } = await project.host.ticketConversation("t1");
-    assert.ok(transcript.some((l) => l.role === "user" && l.text === "换个思路"));
+    assert.ok(transcript.some((l) => l.role === "user" && l.text === "try another approach"));
     await project.until(async () =>
       (await project.host.conversation()).lines.some((l) =>
-        l.text.includes("用户直接给 t1 发了消息"),
+        l.text.includes("The user sent a message straight to t1"),
       ),
     );
     assert.ok(project.calls.filter((c) => c.role === "router").length > routerCalls);
@@ -357,15 +396,15 @@ test("用户在面板直接引导 Worker，Router 只记录这次介入", async 
   }
 });
 
-test("模型调用失败时暴露原因，修好后可以重试", async () => {
+test("a failed model call exposes the reason, and it can be retried once fixed", async () => {
   let broken = true;
   const brain: Brain = () => {
     if (broken) throw new Error("403 forbidden");
-    return say("恢复了。");
+    return say("Recovered.");
   };
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("你好");
+    await project.host.sendUserMessage("hello");
     const view = await project.until(async () => {
       const current = await project.host.conversation();
       return current.failure !== undefined && current;
@@ -374,7 +413,7 @@ test("模型调用失败时暴露原因，修好后可以重试", async () => {
     broken = false;
     await project.host.retry();
     await project.until(async () =>
-      (await project.host.conversation()).lines.some((l) => l.text === "恢复了。"),
+      (await project.host.conversation()).lines.some((l) => l.text === "Recovered."),
     );
     assert.equal((await project.host.conversation()).failure, undefined);
   } finally {
@@ -382,11 +421,11 @@ test("模型调用失败时暴露原因，修好后可以重试", async () => {
   }
 });
 
-test("read transcript:// 按条目分页，给出前后翻页的位置", async () => {
+test("read transcript:// pages by entry and gives the positions to page back and forth", async () => {
   const pages: string[] = [];
   const brain: Brain = ({ role, last }) => {
-    if (role !== "router") return say("好的。");
-    if (last?.role === "user" && textOf(last).includes("翻记录")) {
+    if (role !== "router") return say("OK.");
+    if (last?.role === "user" && textOf(last).includes("page the transcript")) {
       return call("read", { path: "transcript://1", offset: 0, limit: 2 });
     }
     if (toolName(last) === "read" && pages.length === 0) {
@@ -395,40 +434,41 @@ test("read transcript:// 按条目分页，给出前后翻页的位置", async (
     }
     if (toolName(last) === "read") {
       pages.push(textOf(last));
-      return say("翻完了。");
+      return say("Done paging.");
     }
-    return say("好的。");
+    return say("OK.");
   };
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("先说一句");
+    await project.host.sendUserMessage("say something first");
     await project.until(async () => project.calls.length >= 1);
-    await project.host.sendUserMessage("翻记录");
+    await project.host.sendUserMessage("page the transcript");
     await project.until(async () => pages.length === 2);
     const [fromStart, newest] = pages;
-    assert.match(fromStart ?? "", /还有更新的条目：read\("transcript:\/\/1", offset: \d+\)/);
-    assert.match(newest ?? "", /更早的条目：read\("transcript:\/\/1", offset: \d+\)/);
+    assert.match(fromStart ?? "", /Newer entries: read\("transcript:\/\/1", offset: \d+\)/);
+    assert.match(newest ?? "", /Earlier entries: read\("transcript:\/\/1", offset: \d+\)/);
     assert.match(newest ?? "", /#\d+ tool: /);
   } finally {
     await project.close();
   }
 });
 
-test("读取后台作业日志尾部并在运行中终止作业", async () => {
+test("read the tail of a background job's log and kill the job while it runs", async () => {
   const brain: Brain = ({ role, last }) => {
     if (role === "router") {
-      if (last?.role === "user" && textOf(last).includes("跑长作业")) {
+      if (last?.role === "user" && textOf(last).includes("run a long job")) {
         return call("ticket", {
           action: "create",
-          title: "长作业",
-          goal: "跑",
-          acceptance: ["跑完"],
+          title: "long job",
+          goal: "run",
+          acceptance: ["done running"],
         });
       }
-      return say("好的。");
+      return say("OK.");
     }
-    if (toolName(last) === "bash") return say("等作业。");
-    if (last?.role === "user" && textOf(last).includes("已终止")) return say("作业被终止了。");
+    if (toolName(last) === "bash") return say("Waiting for the job.");
+    if (last?.role === "user" && textOf(last).includes("Terminated"))
+      return say("The job was terminated.");
     if (last?.role === "user") {
       return call("bash", {
         command: "echo row-1; echo row-2; echo row-3; echo row-4; sleep 30",
@@ -439,7 +479,7 @@ test("读取后台作业日志尾部并在运行中终止作业", async () => {
 
   const project = await openTestProject(brain, { backgroundAfterMs: 100 });
   try {
-    await project.host.sendUserMessage("跑长作业");
+    await project.host.sendUserMessage("run a long job");
     const jobsTicket = await project.until(async () => {
       const ticket = (await project.host.board()).tickets[0];
       return ticket?.stage === "jobs" && ticket;
@@ -462,12 +502,12 @@ test("读取后台作业日志尾部并在运行中终止作业", async () => {
 
     const afterKill = await project.host.jobLog(jobId);
     assert.equal(afterKill.job.status, "killed");
-    assert.match(afterKill.content, /\[已终止\]/);
+    assert.match(afterKill.content, /\[Terminated\]/);
     assert.equal((await project.host.board()).tickets[0]?.jobs.length, 0);
     // The ticket is still open: its Worker hears about the kill instead of waiting forever.
     await project.until(async () => {
       const worker = await project.host.ticketConversation(jobsTicket.ticket.id);
-      return worker.lines.some((line) => line.text.includes("作业被终止了。"));
+      return worker.lines.some((line) => line.text.includes("The job was terminated."));
     });
 
     await assert.rejects(project.host.killJob(jobId), { problem: { code: "job_ended", jobId } });
@@ -479,12 +519,12 @@ test("读取后台作业日志尾部并在运行中终止作业", async () => {
   }
 });
 
-test("memoryFiles 和 memoryFile 列出并安全读取项目与全局记忆文件", async () => {
-  const project = await openTestProject(() => say("好的。"));
+test("memoryFiles and memoryFile list and safely read project and global memory files", async () => {
+  const project = await openTestProject(() => say("OK."));
   try {
     const projectMemoryDir = join(project.home, "projects", project.host.meta.id, "memory");
     await mkdir(join(projectMemoryDir, "topics"), { recursive: true });
-    await writeFile(join(projectMemoryDir, "topics", "sim.md"), "# 仿真\n- dt = 0.01\n");
+    await writeFile(join(projectMemoryDir, "topics", "sim.md"), "# simulation\n- dt = 0.01\n");
 
     const files = await project.host.memoryFiles("project");
     assert.equal(files[0]?.path, "MEMORY.md");
@@ -514,7 +554,7 @@ test("memoryFiles 和 memoryFile 列出并安全读取项目与全局记忆文�
   }
 });
 
-test("BoardView 反映 Router 运行状态与失败原因，ProjectSummary.activeAt 跨重启持久", async () => {
+test("BoardView reflects the Router's run state and failure reason, and ProjectSummary.activeAt persists across restarts", async () => {
   let enteredGate = false;
   let releaseGate: () => void = () => {};
   const gate = new Promise<void>((resolve) => {
@@ -523,11 +563,11 @@ test("BoardView 反映 Router 运行状态与失败原因，ProjectSummary.activ
   let shouldFail = false;
   const brain: Brain = async ({ last }) => {
     if (shouldFail) throw new Error("403 forbidden");
-    if (last?.role === "user" && textOf(last).includes("慢一点")) {
+    if (last?.role === "user" && textOf(last).includes("reply slowly")) {
       enteredGate = true;
       await gate;
     }
-    return say("完成。");
+    return say("Done.");
   };
 
   const project = await openTestProject(brain);
@@ -537,7 +577,7 @@ test("BoardView 反映 Router 运行状态与失败原因，ProjectSummary.activ
     assert.deepEqual((await project.host.board()).router, { running: false });
 
     await sleep(20);
-    await project.host.sendUserMessage("慢一点回复");
+    await project.host.sendUserMessage("reply slowly");
     const whileRunning = await project.until(async () => {
       if (!enteredGate) return false;
       const b = await project.host.board();
@@ -553,7 +593,7 @@ test("BoardView 反映 Router 运行状态与失败原因，ProjectSummary.activ
     assert.ok(initial.activeAt !== undefined && afterTurn > initial.activeAt);
 
     shouldFail = true;
-    await project.host.sendUserMessage("触发失败");
+    await project.host.sendUserMessage("trigger a failure");
     const failedBoard = await project.until(async () => {
       const b = await project.host.board();
       return b.router.failure !== undefined && b;
@@ -570,20 +610,20 @@ test("BoardView 反映 Router 运行状态与失败原因，ProjectSummary.activ
   }
 });
 
-test("项目给 Router 选的模型和思考档位写进 project.json，下一轮起生效；建单也能指定档位", async () => {
+test("the model and thinking level chosen for the Router are written to project.json and take effect next turn; creating a ticket can also set a level", async () => {
   const brain: Brain = ({ role, last }) => {
-    if (role === "router" && last?.role === "user" && textOf(last).includes("建单")) {
+    if (role === "router" && last?.role === "user" && textOf(last).includes("create a ticket")) {
       return call("ticket", {
         action: "create",
-        title: "查资料",
-        goal: "查一下",
-        acceptance: ["有结论"],
+        title: "research",
+        goal: "look it up",
+        acceptance: ["has a conclusion"],
         provider: "faux",
         modelId: "deep",
         thinkingLevel: "low",
       });
     }
-    return say("好。");
+    return say("OK.");
   };
   const project = await openTestProject(brain, { extraModels: ["deep"] });
   const lastTurn = (role: string) => project.calls.findLast((turn) => turn.role === role);
@@ -594,11 +634,11 @@ test("项目给 Router 选的模型和思考档位写进 project.json，下一�
     const meta = eeveePaths(project.home).project(project.host.meta.id).meta;
     assert.deepEqual(JSON.parse(await readFile(meta, "utf8")).models, { router });
 
-    await project.host.sendUserMessage("你好");
+    await project.host.sendUserMessage("hello");
     const first = await project.until(async () => lastTurn("router"));
     assert.deepEqual([first.model, first.thinking], ["deep", "high"]);
 
-    await project.host.sendUserMessage("建单");
+    await project.host.sendUserMessage("create a ticket");
     const worker = await project.until(async () => lastTurn("worker"));
     assert.deepEqual([worker.model, worker.thinking], ["deep", "low"]);
     await project.until(async () => !(await project.host.board()).router.running);
@@ -606,7 +646,7 @@ test("项目给 Router 选的模型和思考档位写进 project.json，下一�
     await project.host.setProjectModel("router", null);
     assert.equal(project.host.summary().models, undefined);
     const before = project.calls.length;
-    await project.host.sendUserMessage("换回默认");
+    await project.host.sendUserMessage("switch back to default");
     const after = await project.until(async () =>
       project.calls.slice(before).findLast((turn) => turn.role === "router"),
     );
@@ -616,23 +656,23 @@ test("项目给 Router 选的模型和思考档位写进 project.json，下一�
   }
 });
 
-test("同一个问题并发回答只有一个生效", async () => {
+test("when the same question is answered concurrently, only one takes effect", async () => {
   const brain: Brain = ({ role, last }) => {
-    if (role === "router" && last?.role === "user" && textOf(last).includes("问我")) {
+    if (role === "router" && last?.role === "user" && textOf(last).includes("ask me")) {
       return call("ask_user", {
-        items: [{ text: "选哪个", options: ["甲", "乙"], recommended: "甲" }],
+        items: [{ text: "which one", options: ["alpha", "beta"], recommended: "alpha" }],
       });
     }
-    return say("好的。");
+    return say("OK.");
   };
 
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("问我一个问题");
+    await project.host.sendUserMessage("ask me a question");
     const question = await project.until(async () => (await project.host.board()).openQuestions[0]);
     const results = await Promise.allSettled([
-      project.host.answerQuestion(question.id, "甲"),
-      project.host.answerQuestion(question.id, "乙"),
+      project.host.answerQuestion(question.id, "alpha"),
+      project.host.answerQuestion(question.id, "beta"),
     ]);
     assert.deepEqual(
       results.map((result) => result.status),
@@ -646,47 +686,47 @@ test("同一个问题并发回答只有一个生效", async () => {
   }
 });
 
-test("取消工单撤下它待回答的问题，并停掉执行对话", async () => {
+test("cancelling a ticket removes its pending question and stops its worker conversation", async () => {
   const brain: Brain = ({ role, last }) => {
     if (role === "router") {
-      if (last?.role === "user" && textOf(last).includes("开一单")) {
+      if (last?.role === "user" && textOf(last).includes("open a ticket")) {
         return call("ticket", {
           action: "create",
-          title: "问一下",
-          goal: "需要用户决定",
-          acceptance: ["有决定"],
+          title: "ask about it",
+          goal: "needs a user decision",
+          acceptance: ["has a decision"],
         });
       }
-      if (textOf(last).includes("报告 · waiting")) {
+      if (textOf(last).includes("report · waiting")) {
         return call("ask_user", {
-          items: [{ text: "要不要继续", options: ["要", "不要"], recommended: "不要" }],
+          items: [{ text: "should we continue", options: ["yes", "no"], recommended: "no" }],
           ticketId: "t1",
         });
       }
       if (toolName(last) === "ask_user") {
-        return call("ticket", { action: "close", ticketId: "t1", note: "不需要了" });
+        return call("ticket", { action: "close", ticketId: "t1", note: "no longer needed" });
       }
-      return say("好的。");
+      return say("OK.");
     }
     if (last?.role === "user") {
       return call("report", {
         status: "waiting",
-        summary: "需要用户决定",
-        need: "要不要继续",
-        questions: [{ text: "要不要继续", options: ["要", "不要"], recommended: "不要" }],
+        summary: "needs a user decision",
+        need: "should we continue",
+        questions: [{ text: "should we continue", options: ["yes", "no"], recommended: "no" }],
       });
     }
-    return say("等你的回答。");
+    return say("Waiting for your answer.");
   };
 
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("开一单");
+    await project.host.sendUserMessage("open a ticket");
     const closed = await project.until(async () => {
       const ticket = (await project.host.board()).tickets[0]?.ticket;
       return ticket?.status === "cancelled" ? ticket : undefined;
     });
-    assert.equal(closed.closeNote, "不需要了");
+    assert.equal(closed.closeNote, "no longer needed");
     const stopped = await project.until(async () => {
       const ticket = (await project.host.board()).tickets[0]?.ticket;
       return ticket?.stoppedAt === undefined ? undefined : ticket;
@@ -694,7 +734,7 @@ test("取消工单撤下它待回答的问题，并停掉执行对话", async ()
     assert.ok(stopped.stoppedAt !== undefined);
     assert.deepEqual((await project.host.board()).openQuestions, []);
     await assert.rejects(
-      project.host.answerQuestion("q1" as never, "要"),
+      project.host.answerQuestion("q1" as never, "yes"),
       (error: unknown) =>
         (error as { problem?: { code?: string } }).problem?.code === "no_question",
     );
@@ -703,29 +743,29 @@ test("取消工单撤下它待回答的问题，并停掉执行对话", async ()
   }
 });
 
-test("建单时开篇就写进执行对话，不等槽位", async () => {
+test("the opening is written into the worker conversation when the ticket is created, without waiting for a slot", async () => {
   const brain: Brain = ({ role, last }) => {
-    if (role === "router" && last?.role === "user" && textOf(last).includes("开一单")) {
+    if (role === "router" && last?.role === "user" && textOf(last).includes("open a ticket")) {
       return call("ticket", {
         action: "create",
-        title: "写文件",
-        goal: "在工作目录写 hello.txt",
-        acceptance: ["内容是 hi"],
+        title: "write a file",
+        goal: "write hello.txt in the working directory",
+        acceptance: ["contents are hi"],
       });
     }
-    return say("好的。");
+    return say("OK.");
   };
 
   const project = await openTestProject(brain, { maxActiveWorkers: 1 });
   try {
-    await project.host.sendUserMessage("开一单");
+    await project.host.sendUserMessage("open a ticket");
     await project.until(async () => (await project.host.board()).tickets[0]?.ticket.id);
     const entries = await project.host.entries("t1", {}, 50);
     const opening = entries.find(
       (entry) => (entry.data as { requestId?: string } | undefined)?.requestId === "opening:t1",
     );
     assert.ok(opening !== undefined);
-    assert.match(textOf(opening.model?.[0]), /在工作目录写 hello\.txt/);
+    assert.match(textOf(opening.model?.[0]), /write hello\.txt in the working directory/);
   } finally {
     await project.close();
   }

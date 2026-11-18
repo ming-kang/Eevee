@@ -16,7 +16,7 @@ function fakeFetch(answers: Record<string, { status: number; body: unknown }>) {
   return { fetch, seen };
 }
 
-test("目录按常见字段名带回元数据，字段冲突时取较小的上限", () => {
+test("the catalog reads metadata by common field names and takes the smaller limit on conflict", () => {
   const models = parseCatalog({
     data: [
       {
@@ -50,7 +50,7 @@ test("目录按常见字段名带回元数据，字段冲突时取较小的上�
   assert.equal(parseCatalog({ data: [{ name: "x" }] }), undefined);
 });
 
-test("OpenAI 风格的端点用 Bearer 取 {baseUrl}/models，结果去重排序", async () => {
+test("an OpenAI-style endpoint is fetched at {baseUrl}/models with Bearer, results deduped and sorted", async () => {
   const { fetch, seen } = fakeFetch({
     "https://gw.example/v1/models": {
       status: 200,
@@ -67,7 +67,7 @@ test("OpenAI 风格的端点用 Bearer 取 {baseUrl}/models，结果去重排序
   assert.equal(seen[0]?.headers.get("authorization"), "Bearer sk-test");
 });
 
-test("Anthropic 端点先用 x-api-key 取 /v1/models，被拒后去掉 /anthropic 用 Bearer 重试一次", async () => {
+test("an Anthropic endpoint is fetched at /v1/models with x-api-key, retried once with Bearer after dropping /anthropic on rejection", async () => {
   const { fetch, seen } = fakeFetch({
     "https://gw.example/anthropic/v1/models": { status: 401, body: { error: "use bearer" } },
     "https://gw.example/v1/models": { status: 200, body: { data: [{ id: "claude-x" }] } },
@@ -84,7 +84,7 @@ test("Anthropic 端点先用 x-api-key 取 /v1/models，被拒后去掉 /anthrop
   assert.equal(seen[1]?.headers.get("authorization"), "Bearer sk-ant");
 });
 
-test("Anthropic 目录顺着 has_more 翻页", async () => {
+test("the Anthropic catalog pages through has_more", async () => {
   const { fetch } = fakeFetch({
     "https://api.example/v1/models": {
       status: 200,
@@ -103,7 +103,7 @@ test("Anthropic 目录顺着 has_more 翻页", async () => {
   assert.deepEqual(result, { models: [{ id: "m1" }, { id: "m2" }], truncated: false });
 });
 
-test("失败时说明原因，并且不复述凭据", async () => {
+test("a failure states the reason without echoing the credential", async () => {
   const { fetch } = fakeFetch({
     "https://gw.example/v1/models": { status: 403, body: { error: "bad key sk-secret" } },
   });
@@ -126,21 +126,21 @@ test("失败时说明原因，并且不复述凭据", async () => {
   });
 });
 
-test("端点不响应时按时限放弃", async () => {
+test("an unresponsive endpoint is abandoned at the timeout", async () => {
   const fetch = ((_input: string | URL | Request, init?: RequestInit) =>
     new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
     })) as typeof globalThis.fetch;
   await assert.rejects(probeModels({ baseUrl: "http://127.0.0.1:9/v1", fetch, timeoutMs: 20 }), {
-    problem: { code: "probe_failed", detail: "0.02 秒内没有响应" },
+    problem: { code: "probe_failed", detail: "No response within 0.02s" },
   });
 });
 
-test("连不上时带出底层原因，而不只是 fetch failed", async () => {
+test("a connection failure surfaces the underlying cause, not just fetch failed", async () => {
   const fetch = (async () => {
     throw new TypeError("fetch failed", { cause: new Error("connect ECONNREFUSED 127.0.0.1:1") });
   }) as typeof globalThis.fetch;
   await assert.rejects(probeModels({ baseUrl: "http://127.0.0.1:1/v1", fetch }), {
-    problem: { code: "probe_failed", detail: "fetch failed（connect ECONNREFUSED 127.0.0.1:1）" },
+    problem: { code: "probe_failed", detail: "fetch failed (connect ECONNREFUSED 127.0.0.1:1)" },
   });
 });

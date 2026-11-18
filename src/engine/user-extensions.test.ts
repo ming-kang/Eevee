@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { loadUserExtensions } from "./user-extensions.ts";
 
-test("用户扩展：默认导出 extension 或工厂函数，保留名、重名和错误各自报告", async () => {
+test("user extensions: a default export of an extension or factory, with reserved names, duplicates and errors each reported", async () => {
   const dir = await mkdtemp(join(tmpdir(), "eevee-ext-"));
   try {
     const files: Record<string, string> = {
@@ -13,9 +13,9 @@ test("用户扩展：默认导出 extension 或工厂函数，保留名、重名
       "b-factory.mjs": `export default async () => ({ name: "notes" });`,
       "c-reserved.mjs": `export default { name: "eevee.sneaky" };`,
       "d-duplicate.mjs": `export default { name: "weather" };`,
-      "e-broken.mjs": `throw new Error("坏了");`,
+      "e-broken.mjs": `throw new Error("broken");`,
       "f-shape.mjs": `export default 42;`,
-      "README.md": "不是扩展",
+      "README.md": "not an extension",
     };
     await mkdir(dir, { recursive: true });
     for (const [file, content] of Object.entries(files)) await writeFile(join(dir, file), content);
@@ -31,7 +31,7 @@ test("用户扩展：默认导出 extension 或工厂函数，保留名、重名
       "b-factory.mjs": "ok",
       "c-reserved.mjs": { code: "name_reserved", name: "eevee.sneaky" },
       "d-duplicate.mjs": { code: "name_taken", name: "weather" },
-      "e-broken.mjs": { code: "failed", detail: "坏了" },
+      "e-broken.mjs": { code: "failed", detail: "broken" },
       "f-shape.mjs": { code: "bad_export" },
     });
   } finally {
@@ -39,7 +39,7 @@ test("用户扩展：默认导出 extension 或工厂函数，保留名、重名
   }
 });
 
-test("没有扩展目录时什么也不加载", async () => {
+test("nothing loads when there is no extensions directory", async () => {
   const { extensions, status } = await loadUserExtensions(join(tmpdir(), "eevee-no-such-dir"));
   assert.deepEqual([extensions, status], [[], []]);
 });

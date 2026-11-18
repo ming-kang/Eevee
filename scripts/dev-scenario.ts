@@ -61,7 +61,7 @@ async function until<T>(
     if (value !== undefined && value !== false) return value as T;
     await sleep(30);
   }
-  throw new Error(`场景等待超时：${label}`);
+  throw new Error(`Timed out waiting for the scenario: ${label}`);
 }
 
 function listen(server: Server, preferred: number): Promise<number> {
@@ -98,9 +98,9 @@ await writeFile(
   tools: [
     {
       name: "note_search",
-      description: "在实验笔记里按关键词检索",
+      description: "Search the experiment notes by keyword",
       parameters: { type: "object", properties: { q: { type: "string" } }, required: ["q"] },
-      async execute(args) { return { output: [{ type: "text", text: "找到 3 条关于 " + args.q + " 的记录" }] }; },
+      async execute(args) { return { output: [{ type: "text", text: "Found 3 notes about " + args.q }] }; },
     },
   ],
 };\n`,
@@ -109,11 +109,11 @@ await writeFile(paths.mcp, JSON.stringify({ mcpServers: { weather: { command: "u
 await writeFile(
   paths.modelProfiles,
   [
-    "# 模型目录说明",
+    "# Model catalog notes",
     "",
-    "- `faux/sonnet-faux`：日常调度与多轮对话（性价比均衡）",
-    "- `faux/opus-faux`：复杂论文推导、重构与仿真分析",
-    "- `faux/haiku-faux`：轻量整理记忆与摘要",
+    "- `faux/sonnet-faux`: everyday dispatch and multi-turn chat (balanced cost)",
+    "- `faux/opus-faux`: complex paper derivation, refactoring and simulation analysis",
+    "- `faux/haiku-faux`: lightweight memory tidy-up and summaries",
   ].join("\n"),
 );
 
@@ -173,33 +173,40 @@ const brain: FauxResponseFactory = (context) => {
   const serialized = JSON.stringify(messages.filter((m) => m.role !== "toolResult"));
   const last = messages.findLast((m) => m.role !== "system");
   const lastText = textOf(last);
-  const role = serialized.includes("你是 Eevee 的调度者")
+  const role = serialized.includes("You are Eevee's Router")
     ? "router"
-    : serialized.includes("你负责整理项目的记忆库")
+    : serialized.includes("You keep the project's memory store")
       ? "dreamer"
       : "worker";
 
   if (role === "router") {
-    if (serialized.includes("Eevee 面板联调")) {
+    if (serialized.includes("Eevee panel integration")) {
       if (!failedP2Once) {
         failedP2Once = true;
         throw new Error("403 forbidden: simulated router failure");
       }
-      return say("已从失败恢复：流协议重连与缺口补全检查就绪，需要我开单吗？");
+      return say(
+        "Recovered from the failure: the stream reconnection and gap backfill checks are ready. Shall I open a ticket?",
+      );
     }
 
-    if (last?.role === "user" && lastText.includes("「搭建论文模板与目录结构」报告 · ready")) {
+    if (
+      last?.role === "user" &&
+      lastText.includes("“Build the paper template and directory structure” report · ready")
+    ) {
       return call("ticket", {
         action: "review",
         ticketId: "t1",
         verdict: "accept",
-        note: "main.tex 与第 3 章结构完整",
+        note: "main.tex and the chapter 3 structure are complete",
       });
     }
-    if (toolName(last) === "ticket" && lastText.includes("t1 已验收结单")) {
-      return say("模板已经搭好并验收结单（**t1**）。接下来可以继续推进仿真和文献。");
+    if (toolName(last) === "ticket" && lastText.includes("t1 is accepted and closed")) {
+      return say(
+        "The template is in place and **t1** is accepted and closed. Next we can move on to the simulation and the references.",
+      );
     }
-    if (last?.role === "user" && lastText.includes("先搭建论文模板")) {
+    if (last?.role === "user" && lastText.includes("First build the paper template")) {
       return call("read", { path: "chapters/03-sim.tex" });
     }
     if (
@@ -210,29 +217,29 @@ const brain: FauxResponseFactory = (context) => {
     ) {
       return call("ticket", {
         action: "create",
-        title: "搭建论文模板与目录结构",
-        goal: "创建 main.tex 主模板并梳理第 3 章结构",
+        title: "Build the paper template and directory structure",
+        goal: "Create the main.tex master template and sort out the chapter 3 structure",
         inputs: ["chapters/03-sim.tex"],
-        acceptance: ["生成 main.tex", "更新第 3 章小节标题"],
+        acceptance: ["main.tex is generated", "the chapter 3 subsection titles are updated"],
         output: "main.tex",
       });
     }
 
-    if (last?.role === "user" && lastText.includes("请并行推进仿真扫描")) {
+    if (last?.role === "user" && lastText.includes("Please push the simulation scan")) {
       return calls([
         {
           name: "ask_user",
           args: {
             items: [
               {
-                text: "目标投稿期刊样式按哪个模板导出？",
-                options: ["ACS Photonics（双栏）", "Optica（单栏草稿）"],
-                recommended: "ACS Photonics（双栏）",
+                text: "Which template should the target journal style export use?",
+                options: ["ACS Photonics (two-column)", "Optica (single-column draft)"],
+                recommended: "ACS Photonics (two-column)",
               },
               {
-                text: "主图配色是否全部切换为 Okabe-Ito 色盲友好调色板？",
-                options: ["是，全部切换", "保留 legacy 目录原配色"],
-                recommended: "是，全部切换",
+                text: "Should the main figures all switch to the Okabe-Ito colorblind-friendly palette?",
+                options: ["Yes, switch all of them", "Keep the legacy directory's colors"],
+                recommended: "Yes, switch all of them",
               },
             ],
           },
@@ -241,10 +248,10 @@ const brain: FauxResponseFactory = (context) => {
           name: "ticket",
           args: {
             action: "create",
-            title: "多角度 FDTD 扫描仿真",
-            goal: "运行 0°–60° 入射角偏振扫描并输出误差统计",
+            title: "Multi-angle FDTD scan simulation",
+            goal: "Run the 0°–60° incidence angle polarization scan and output the error statistics",
             inputs: ["sim/run.mjs"],
-            acceptance: ["13 个角度全部收敛", "能量守恒误差 < 1%"],
+            acceptance: ["all 13 angles converge", "the energy conservation error stays under 1%"],
             output: "sim/out/",
           },
         },
@@ -252,20 +259,20 @@ const brain: FauxResponseFactory = (context) => {
           name: "ticket",
           args: {
             action: "create",
-            title: "补充 2023–2026 年对比实验数据",
-            goal: "接入基线测量 CSV 并生成对比表",
+            title: "Add 2023–2026 comparison experiment data",
+            goal: "Wire in the baseline measurement CSV and generate the comparison table",
             inputs: ["data/baseline.csv"],
-            acceptance: ["表 2 数值核对通过"],
+            acceptance: ["the table 2 numbers check out"],
           },
         },
         {
           name: "ticket",
           args: {
             action: "create",
-            title: "统一参考文献样式（ACS）",
-            goal: "补全 refs.bib 的 DOI 与期刊缩写",
+            title: "Unify the reference style (ACS)",
+            goal: "Fill in the DOIs and journal abbreviations in refs.bib",
             inputs: ["refs.bib"],
-            acceptance: ["bibtex 编译无警告"],
+            acceptance: ["bibtex compiles without warnings"],
             output: "refs.bib",
           },
         },
@@ -273,10 +280,10 @@ const brain: FauxResponseFactory = (context) => {
           name: "ticket",
           args: {
             action: "create",
-            title: "重绘偏振对比图",
-            goal: "核对参考文献中的对比曲线并刷新脚本",
+            title: "Redraw the polarization comparison figure",
+            goal: "Check the comparison curves against the references and refresh the script",
             inputs: ["refs.bib", "sim/run.mjs"],
-            acceptance: ["曲线与标注核对一致"],
+            acceptance: ["the curves and their labels agree"],
             output: "figs/polar-compare.pdf",
           },
         },
@@ -284,10 +291,10 @@ const brain: FauxResponseFactory = (context) => {
           name: "ticket",
           args: {
             action: "create",
-            title: "撰写引言与仿真分析草稿",
-            goal: "补齐第 3 章仿真分析段落并持续校验公式引用",
+            title: "Draft the introduction and the simulation analysis",
+            goal: "Fill in the chapter 3 simulation analysis paragraphs and keep checking the formula references",
             inputs: ["chapters/03-sim.tex"],
-            acceptance: ["第 3 章结构与公式编号完整"],
+            acceptance: ["the chapter 3 structure and formula numbering are complete"],
             output: "chapters/03-sim.tex",
           },
         },
@@ -295,13 +302,13 @@ const brain: FauxResponseFactory = (context) => {
           name: "ticket",
           args: {
             action: "create",
-            title: "导出高分辨率矢量插图",
-            goal: "批量导出提交版本 PDF/SVG 插图",
+            title: "Export high-resolution vector figures",
+            goal: "Batch export the submission version's PDF/SVG figures",
             inputs: ["chapters/03-sim.tex"],
-            acceptance: ["字体嵌入检查通过"],
+            acceptance: ["the font embedding check passes"],
             provider: "faux",
             modelId: "sonnet-faux",
-            modelReason: "脚本导出只需轻量模型",
+            modelReason: "scripted export only needs a light model",
           },
         },
       ]);
@@ -309,7 +316,7 @@ const brain: FauxResponseFactory = (context) => {
 
     if (
       last?.role === "user" &&
-      lastText.includes("「统一参考文献样式（ACS）」报告 · waiting") &&
+      lastText.includes("“Unify the reference style (ACS)” report · waiting") &&
       !askedT4
     ) {
       askedT4 = true;
@@ -317,9 +324,12 @@ const brain: FauxResponseFactory = (context) => {
         ticketId: "t4",
         items: [
           {
-            text: "refs.bib 中有 9 条文献缺少标准期刊缩写，怎么处理？",
-            options: ["按 ISO4 规则自动生成", "先保留全称并标出待补清单"],
-            recommended: "按 ISO4 规则自动生成",
+            text: "9 references in refs.bib lack standard journal abbreviations; how should we handle them?",
+            options: [
+              "Generate them automatically with the ISO4 rules",
+              "Keep the full names for now and list what is missing",
+            ],
+            recommended: "Generate them automatically with the ISO4 rules",
           },
         ],
       });
@@ -327,26 +337,38 @@ const brain: FauxResponseFactory = (context) => {
 
     if (
       last?.role === "user" &&
-      lastText.includes("「补充 2023–2026 年对比实验数据」报告 · blocked")
+      lastText.includes("“Add 2023–2026 comparison experiment data” report · blocked")
     ) {
-      return say("收到 **t3** 的受阻报告，等确认数据源后再安排继续。");
+      return say(
+        "Got **t3**'s blocked report; we will arrange the rest once the data source is confirmed.",
+      );
     }
-    if (last?.role === "user" && lastText.includes("「重绘偏振对比图」报告 · ready")) {
-      return say("**t5** 已提交完成报告，待验收。");
+    if (
+      last?.role === "user" &&
+      lastText.includes("“Redraw the polarization comparison figure” report · ready")
+    ) {
+      return say("**t5** handed in a ready report, waiting for review.");
     }
-    if (last?.role === "user" && lastText.includes("「导出高分辨率矢量插图」报告 · failed")) {
-      return say("**t7** 在本轮调用模型时遇到配额限制失败，待处理或重试。");
+    if (
+      last?.role === "user" &&
+      lastText.includes("“Export high-resolution vector figures” report · failed")
+    ) {
+      return say("**t7** failed this round on a model quota limit; it needs handling or a retry.");
     }
     if (seeded && last?.role === "user") {
-      return say(`收到：${lastText.slice(0, 120)}。我可以继续调整工单、验收报告或补充问题。`);
+      return say(
+        `Got it: ${lastText.slice(0, 120)}. I can keep adjusting tickets, reviewing reports or asking questions.`,
+      );
     }
-    return say("好的，已将任务拆成工单并在后台并行推进，有要你拍板的地方再通知你。");
+    return say(
+      "Sure, I have split the work into tickets and am pushing them in parallel in the background; I will speak up where a decision is needed.",
+    );
   }
 
   // Worker / Dreamer turns
   const opening = textOf(messages.find((m) => m.role === "user" && textOf(m).includes("<ticket>")));
 
-  if (opening.includes("搭建论文模板与目录结构")) {
+  if (opening.includes("Build the paper template and directory structure")) {
     if (last?.role === "user") {
       return call("write", {
         path: "main.tex",
@@ -368,80 +390,84 @@ const brain: FauxResponseFactory = (context) => {
     if (toolName(last) === "edit") {
       return call("report", {
         status: "ready",
-        summary: "已搭建 main.tex 与第 3 章框架",
+        summary: "main.tex and the chapter 3 skeleton are in place",
         artifacts: [
-          { path: "main.tex", note: "论文主模板" },
-          { path: "chapters/03-sim.tex", note: "更新章节标题" },
+          { path: "main.tex", note: "the paper's master template" },
+          { path: "chapters/03-sim.tex", note: "updated the section title" },
         ],
-        lessons: ["第 3 章标题统一使用 FDTD Polarization Simulation"],
+        lessons: ["chapter 3 titles use FDTD Polarization Simulation throughout"],
       });
     }
-    return say("模板任务已完成。");
+    return say("The template task is done.");
   }
 
-  if (opening.includes("多角度 FDTD 扫描仿真")) {
-    if (last?.role === "user" && !lastText.includes("后台作业")) {
+  if (opening.includes("Multi-angle FDTD scan simulation")) {
+    if (last?.role === "user" && !lastText.includes("Background job")) {
       return call("bash", { command: "node sim/run.mjs", background: true });
     }
     if (toolName(last) === "bash") {
-      return say("FDTD 多角度扫描已转入后台作业，完成后会自动唤醒我提交报告。");
+      return say(
+        "The multi-angle FDTD scan has moved to a background job; it will wake me to file the report once it ends.",
+      );
     }
-    if (last?.role === "user" && lastText.includes("后台作业")) {
+    if (last?.role === "user" && lastText.includes("Background job")) {
       return call("report", {
         status: "ready",
-        summary: "13 个角度仿真已全部完成",
-        artifacts: [{ path: "sim/out/", note: "扫描输出目录" }],
+        summary: "all 13 angles of the simulation are done",
+        artifacts: [{ path: "sim/out/", note: "scan output directory" }],
       });
     }
-    return say("等待后台作业结果。");
+    return say("Waiting for the background job.");
   }
 
-  if (opening.includes("补充 2023–2026 年对比实验数据")) {
+  if (opening.includes("Add 2023–2026 comparison experiment data")) {
     if (last?.role === "user" && !seeded) {
       return call("report", {
         status: "blocked",
-        summary: "工作区缺少 data/baseline.csv，无法生成对比实验表",
-        need: "请提供 data/baseline.csv 或指定改用公开数据集",
+        summary:
+          "the workspace has no data/baseline.csv, so the comparison table cannot be generated",
+        need: "provide data/baseline.csv or name a public dataset to use instead",
         artifacts: [],
       });
     }
-    return say("收到指示，继续处理对比数据。");
+    return say("Understood, carrying on with the comparison data.");
   }
 
-  if (opening.includes("统一参考文献样式（ACS）")) {
-    if (last?.role === "user" && lastText.includes("用户回答了问题")) {
+  if (opening.includes("Unify the reference style (ACS)")) {
+    if (last?.role === "user" && lastText.includes("The user answered question")) {
       return call("report", {
         status: "ready",
-        summary: `已按用户选择（${lastText.split("\n").slice(1).join(" ")}）更新 refs.bib`,
-        artifacts: [{ path: "refs.bib", note: "ACS 样式文献库" }],
+        summary: `updated refs.bib with the user's choice (${lastText.split("\n").slice(1).join(" ")})`,
+        artifacts: [{ path: "refs.bib", note: "the ACS style bibliography" }],
       });
     }
     if (last?.role === "user") {
       return call("report", {
         status: "waiting",
-        summary: "refs.bib 有 9 条文献缺少标准期刊缩写，需要确认处理规则",
-        need: "确认是否按 ISO4 自动生成期刊缩写",
+        summary:
+          "9 references in refs.bib lack standard journal abbreviations; the rule needs confirming",
+        need: "confirm whether to generate the journal abbreviations with ISO4",
         artifacts: [],
       });
     }
-    return say("等待文献规则确认。");
+    return say("Waiting for the reference rule to be confirmed.");
   }
 
-  if (opening.includes("重绘偏振对比图")) {
+  if (opening.includes("Redraw the polarization comparison figure")) {
     if (last?.role === "user") {
       return call("read", { path: "refs.bib" });
     }
     if (toolName(last) === "read") {
       return call("report", {
         status: "ready",
-        summary: "已核对 12 条文献基线参数并更新绘图脚本",
-        artifacts: [{ path: "sim/run.mjs", note: "偏振对比脚本" }],
+        summary: "checked the baseline parameters of 12 references and updated the plotting script",
+        artifacts: [{ path: "sim/run.mjs", note: "the polarization comparison script" }],
       });
     }
-    return say("等待 Router 验收。");
+    return say("Waiting for the Router's review.");
   }
 
-  if (opening.includes("撰写引言与仿真分析草稿")) {
+  if (opening.includes("Draft the introduction and the simulation analysis")) {
     if (last?.role === "user" && !seeded) {
       return call("edit", {
         path: "chapters/03-sim.tex",
@@ -456,22 +482,22 @@ const brain: FauxResponseFactory = (context) => {
     if (toolName(last) === "edit") {
       return call("bash", { command: "node sim/draft-watch.mjs" });
     }
-    return say(`草稿校验已更新（最新输入：${lastText.slice(0, 60)}）。`);
+    return say(`The draft check is updated (latest input: ${lastText.slice(0, 60)}).`);
   }
 
-  if (opening.includes("导出高分辨率矢量插图")) {
+  if (opening.includes("Export high-resolution vector figures")) {
     if (!failedT7Once) {
       failedT7Once = true;
       throw new Error("403 forbidden: model quota exceeded");
     }
     return call("report", {
       status: "ready",
-      summary: "重试成功，已导出高分辨率矢量插图",
-      artifacts: [{ path: "figs/overview.svg", note: "矢量插图" }],
+      summary: "the retry worked, the high-resolution vector figures are exported",
+      artifacts: [{ path: "figs/overview.svg", note: "vector figures" }],
     });
   }
 
-  return say("收到。");
+  return say("Got it.");
 };
 
 // Once seeded, every answer takes a moment as a real model's would, so the panel's running state
@@ -510,11 +536,11 @@ const engine = await Engine.open({
 
 // Seed global memory
 const globalRepo = new MemoryRepo(paths.globalMemory);
-await globalRepo.ensure("# 全局记忆\n");
+await globalRepo.ensure("# Global memory\n");
 await globalRepo.edit(
   "MEMORY.md",
-  "# 全局记忆\n",
-  "# 全局记忆\n\n- 偏好中文回复，单位与数字之间保留空格\n",
+  "# Global memory\n",
+  "# Global memory\n\n- Prefer replies in English, and keep a space between numbers and units\n",
   "seed-global",
 );
 await globalRepo.commitRound("seed-global", "memory");
@@ -556,35 +582,38 @@ const timer = setInterval(() => {
 `,
 );
 
-const p1 = await engine.createProject({ title: "光学论文《超表面偏振成像》", workspace: ws1 });
+const p1 = await engine.createProject({
+  title: "Optics paper “Metasurface Polarization Imaging”",
+  workspace: ws1,
+});
 const host1 = engine.project(p1.id);
-if (!host1) throw new Error(`找不到项目 ${p1.id}`);
+if (!host1) throw new Error(`No project ${p1.id}`);
 
 const p1Repo = new MemoryRepo(paths.project(p1.id).memory);
 await p1Repo.create(
   "optics-sim.md",
-  "## FDTD 仿真\n- 网格默认 λ/15\n- > 45° 需加厚 PML 到 12 层\n",
+  "## FDTD simulation\n- the mesh defaults to λ/15\n- above 45° the PML needs 12 layers\n",
   "seed-p1",
 );
 await p1Repo.commitRound("seed-p1", "dreaming t0");
 await p1Repo.create(
   "writing-style.md",
-  "# 写作偏好\n- 每段先给结论，再给证据\n- 少用被动语态\n",
+  "# Writing preferences\n- give the conclusion first, then the evidence\n- use the passive voice sparingly\n",
   "seed-p1-2",
 );
 await p1Repo.commitRound("seed-p1-2", "memory");
 
 // Round 1 on p1: t1 created & accepted
-await host1.sendUserMessage("先搭建论文模板，然后验收结单。");
+await host1.sendUserMessage("First build the paper template, then review and close the ticket.");
 await until(async () => {
   const board = await host1.board();
   const conv = await host1.conversation();
   return board.tickets.find((t) => t.ticket.id === "t1")?.ticket.status === "done" && !conv.running;
-}, "t1 验收结单");
+}, "t1 accepted and closed");
 
 // Round 2 on p1: t2 (jobs), t3 (blocked), t4 (answer), t5 (review), t6 (working), t7 (failed) + q1
 await host1.sendUserMessage(
-  "请并行推进仿真扫描、对比实验数据、文献样式整理、图表重绘、引言撰写与矢量图导出。",
+  "Please push the simulation scan, the comparison experiment data, the reference style, the figure redraw, the introduction draft and the vector figure export in parallel.",
 );
 await until(async () => {
   const board = await host1.board();
@@ -601,30 +630,30 @@ await until(async () => {
     !conv.running &&
     board
   );
-}, "p1 全部工单进入目标状态");
+}, "every p1 ticket reaches its target stage");
 
 // Leave an uncommitted manual edit in project memory
 await writeFile(
   join(paths.project(p1.id).memory, "writing-style.md"),
-  "# 写作偏好\n- 每段先给结论，再给证据\n- 少用被动语态\n- 图例放在图内右上角（本地未提交手改）\n",
+  "# Writing preferences\n- give the conclusion first, then the evidence\n- use the passive voice sparingly\n- legends go in the top right of the figure (local uncommitted edit)\n",
 );
 
 // Project 2: Router failure state
 const ws2 = join(home, "workspaces", "eevee-demo");
 await mkdir(ws2, { recursive: true });
-const p2 = await engine.createProject({ title: "Eevee 面板联调", workspace: ws2 });
+const p2 = await engine.createProject({ title: "Eevee panel integration", workspace: ws2 });
 const host2 = engine.project(p2.id);
-if (!host2) throw new Error(`找不到项目 ${p2.id}`);
-await host2.sendUserMessage("检查流协议重连与契约边界");
+if (!host2) throw new Error(`No project ${p2.id}`);
+await host2.sendUserMessage("Check the stream reconnection and the contract boundaries");
 await until(async () => {
   const conv = await host2.conversation();
   return !conv.running && conv.failure !== undefined;
-}, "p2 Router 失败状态");
+}, "p2 reaches the Router failure state");
 
 // Project 3: Empty project
 const ws3 = join(home, "workspaces", "empty");
 await mkdir(ws3, { recursive: true });
-await engine.createProject({ title: "空白实验记录", workspace: ws3 });
+await engine.createProject({ title: "Blank experiment log", workspace: ws3 });
 
 seeded = true;
 
@@ -632,12 +661,12 @@ if (checkOnly) {
   const board1 = await host1.board();
   const conv2 = await host2.conversation();
   const diff1 = await host1.memoryDiff("project");
-  console.log("场景自检通过：", {
+  console.log("Scenario self-check passed:", {
     projects: engine.projects().map((p) => p.title),
     p1Stages: board1.tickets.map((t) => `${t.ticket.id}:${t.stage}`),
     openQuestions: board1.openQuestions.map((q) => `${q.id}${q.ticketId ? `->${q.ticketId}` : ""}`),
     p2Failure: conv2.failure,
-    hasUncommittedMemoryDiff: diff1.includes("本地未提交手改"),
+    hasUncommittedMemoryDiff: diff1.includes("local uncommitted edit"),
   });
   await engine.close();
   if (ownHome) await rm(home, { recursive: true, force: true, maxRetries: 5 });
@@ -682,16 +711,16 @@ await writeRuntimeRecord(paths.runtime.record, {
 const codeUi = auth.issueCode();
 const codeVite = auth.issueCode();
 console.log("");
-console.log(`Eevee 开发场景 Engine 已启动（port ${port}，EEVEE_HOME=${home}）`);
+console.log(`Eevee dev-scenario Engine started (port ${port}, EEVEE_HOME=${home})`);
 console.log(
-  `  已建项目：${engine
+  `  Projects:  ${engine
     .projects()
-    .map((p) => `${p.id}「${p.title}」`)
+    .map((p) => `${p.id} “${p.title}”`)
     .join(" / ")}`,
 );
-console.log(`  内置界面：http://127.0.0.1:${port}/ui/#code=${encodeURIComponent(codeUi)}`);
-console.log(`  Vite开发：http://127.0.0.1:5173/ui/#code=${encodeURIComponent(codeVite)}`);
-console.log("  按 Ctrl+C 停止并清理临时目录。");
+console.log(`  Built-in UI: http://127.0.0.1:${port}/ui/#code=${encodeURIComponent(codeUi)}`);
+console.log(`  Vite dev:    http://127.0.0.1:5173/ui/#code=${encodeURIComponent(codeVite)}`);
+console.log("  Press Ctrl+C to stop and clean up the temporary directory.");
 
 process.on("SIGINT", () => void shutdown());
 process.on("SIGTERM", () => void shutdown());

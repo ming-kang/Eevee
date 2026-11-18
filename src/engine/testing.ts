@@ -109,9 +109,11 @@ export async function openTestProject(
   });
   const factory: FauxResponseFactory = (context, options, _state, model) => {
     const serialized = JSON.stringify(context.messages.filter((m) => m.role !== "toolResult"));
-    const role = serialized.includes("你是 Eevee 的调度者")
+    const role = serialized.includes(
+      "You are Eevee's Router, the user's only conversation partner.",
+    )
       ? "router"
-      : serialized.includes("你负责整理项目的记忆库")
+      : serialized.includes("You keep the project's memory store in order.")
         ? "dreamer"
         : "worker";
     const turn: Turn = {
@@ -135,7 +137,7 @@ export async function openTestProject(
     dreamIntervalMs: 0,
     ...overrides,
   };
-  const meta = await createProjectMeta(paths, { title: "测试项目", workspace });
+  const meta = await createProjectMeta(paths, { title: "Test project", workspace });
   const open = () =>
     ProjectHost.open({
       paths,
@@ -161,7 +163,7 @@ export async function openTestProject(
         if (value !== undefined && value !== false) return value as never;
         await sleep(20);
       }
-      throw new Error("等待超时");
+      throw new Error("Timed out waiting");
     },
     async reopen() {
       await project.host.close();

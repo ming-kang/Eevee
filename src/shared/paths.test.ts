@@ -5,13 +5,13 @@ import { resolveInside } from "./paths.ts";
 
 const root = resolve("memory-root");
 
-test("目录内的相对路径可以解析", () => {
+test("a relative path inside the directory resolves", () => {
   assert.equal(resolveInside(root, "MEMORY.md"), join(root, "MEMORY.md"));
   assert.equal(resolveInside(root, "topics/sim.md"), join(root, "topics", "sim.md"));
 });
 
-test("越界路径一律拒绝", () => {
+test("a path outside the directory is always refused", () => {
   for (const path of ["../secret", "topics/../../x", resolve("elsewhere"), "."]) {
-    assert.throws(() => resolveInside(root, path), /之内/, path);
+    assert.throws(() => resolveInside(root, path), /must stay inside/, path);
   }
 });

@@ -148,7 +148,9 @@ const MIME: Record<string, string> = {
 async function serveUi(uiDir: string | undefined, pathname: string, response: ServerResponse) {
   if (uiDir === undefined) {
     response.writeHead(503, { "content-type": "text/plain; charset=utf-8" });
-    response.end("WebUI 尚未构建：运行 npm run build，或用 npm run web:dev 启动开发服务器。");
+    response.end(
+      "The WebUI is not built yet: run npm run build, or npm run web:dev for a dev server.",
+    );
     return;
   }
   const relative = pathname.replace(/^\/(ui\/?)?/, "") || "index.html";

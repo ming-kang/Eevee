@@ -21,55 +21,58 @@ before(async () => {
 
 after(() => rm(dir, { recursive: true, force: true }));
 
-test("本轮的改动合成一个 commit，用户手改单独提交", async () => {
-  await repo.create("sim.md", "- 仿真步长用 0.1\n", "0");
-  await repo.edit("MEMORY.md", "# Memory\n", "# Memory\n- [[sim]] 仿真经验\n", "0");
-  await writeFile(join(dir, "notes.md"), "用户自己写的\n");
+test("this round's changes become one commit, and a user's own edit is committed separately", async () => {
+  await repo.create("sim.md", "- simulation step 0.1\n", "0");
+  await repo.edit("MEMORY.md", "# Memory\n", "# Memory\n- [[sim]] simulation lessons\n", "0");
+  await writeFile(join(dir, "notes.md"), "written by the user\n");
   await repo.commitRound("0", "memory");
   assert.deepEqual(log().slice(0, 2), ["memory: edit MEMORY.md; create sim.md", "user edit"]);
 });
 
-test("各对话的改动分别提交，没结束的那一轮留在工作区", async () => {
-  await repo.create("dream.md", "- 整理过的经验\n", "7");
-  await repo.create("router.md", "- 用户偏好\n", "0");
+test("each conversation commits its own changes, and an unfinished round stays in the workspace", async () => {
+  await repo.create("dream.md", "- tidied lessons\n", "7");
+  await repo.create("router.md", "- user preferences\n", "0");
   await repo.commitRound("7", "dreaming t2");
   assert.equal(log()[0], "dreaming t2: create dream.md");
   await repo.commitRound("0", "memory");
   assert.equal(log()[0], "memory: create router.md");
 });
 
-test("没有改动时提交什么也不做", async () => {
+test("committing does nothing when there are no changes", async () => {
   const before = log().length;
   await repo.commitRound("0", "memory");
   assert.equal(log().length, before);
 });
 
-test("原文对不上时拒绝修改并返回最新内容", async () => {
-  await assert.rejects(repo.edit("sim.md", "不存在的原文", "x", "0"), (error: unknown) => {
-    assert.ok(error instanceof MemoryConflict);
-    assert.match(error.current, /仿真步长/);
-    return true;
-  });
+test("an edit is refused when the original text does not match, and the latest content comes back", async () => {
+  await assert.rejects(
+    repo.edit("sim.md", "text that is not there", "x", "0"),
+    (error: unknown) => {
+      assert.ok(error instanceof MemoryConflict);
+      assert.match(error.current, /simulation step/);
+      return true;
+    },
+  );
 });
 
-test("路径不能越出记忆库", async () => {
-  await assert.rejects(repo.create("../escape.md", "x", "0"), /之内/);
+test("a path cannot escape the memory store", async () => {
+  await assert.rejects(repo.create("../escape.md", "x", "0"), /must stay inside/);
 });
 
-test("历史按提交列出，撤销一次提交生成反向提交", async () => {
-  await repo.create("revert-me.md", "临时\n", "r");
+test("history lists by commit, and reverting one creates the reverse commit", async () => {
+  await repo.create("revert-me.md", "temporary\n", "r");
   await repo.commitRound("r", "memory");
   const [latest] = await repo.history(1);
   assert.equal(latest?.subject, "memory: create revert-me.md");
   assert.match(latest?.at ?? "", /^\d{4}-\d{2}-\d{2}T/);
-  assert.match(await repo.diff(latest?.commit), /\+临时/);
+  assert.match(await repo.diff(latest?.commit), /\+temporary/);
 
   await repo.revert(latest?.commit ?? "");
   assert.equal(await repo.read("revert-me.md"), undefined);
   assert.match(log()[0] ?? "", /^Revert "memory: create revert-me.md"/);
 });
 
-test("不是 commit 编号或撤销不了时给出明确错误，不改动仓库", async () => {
+test("something that is not a commit, or cannot be reverted, gives a clear error and leaves the store alone", async () => {
   const before = log().length;
   await assert.rejects(repo.revert("--hard"), { problem: { code: "no_commit", commit: "--hard" } });
   await assert.rejects(repo.diff("HEAD~1"), { problem: { code: "no_commit", commit: "HEAD~1" } });
@@ -79,8 +82,8 @@ test("不是 commit 编号或撤销不了时给出明确错误，不改动仓库
   assert.equal(log().length, before);
 });
 
-test("listFiles 列出所有记忆文件，MEMORY.md 排第一并排除 .git", async () => {
-  await repo.create("topics/optics.md", "- 光学经验\n", "r2");
+test("listFiles lists every memory file, MEMORY.md first and .git excluded", async () => {
+  await repo.create("topics/optics.md", "- optics lessons\n", "r2");
   const files = await repo.listFiles();
   assert.equal(files[0]?.path, "MEMORY.md");
   assert.equal(
@@ -91,5 +94,5 @@ test("listFiles 列出所有记忆文件，MEMORY.md 排第一并排除 .git", a
     files.some((f) => f.path.startsWith(".git")),
     false,
   );
-  assert.equal(await repo.read("topics/optics.md"), "- 光学经验\n");
+  assert.equal(await repo.read("topics/optics.md"), "- optics lessons\n");
 });

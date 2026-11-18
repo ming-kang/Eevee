@@ -51,17 +51,23 @@ export type ResourceDeps = {
 
 const Parameters = obj({
   path: str({
-    description: "文件路径或资源地址，如 ticket://t3、report://t3#2、memory://project/MEMORY.md",
+    description:
+      "A file path or a resource address, e.g. ticket://t3, report://t3#2, memory://project/MEMORY.md",
   }),
   offset: opt(
     int({
       minimum: 0,
       description:
-        "从哪里开始读：文件为行号，ticket:// 为第几项，transcript:// 为条目编号，其余为字符",
+        "Where to start reading: a line number for files, an item index for ticket://, an entry id for transcript://, a character offset otherwise",
     }),
   ),
-  limit: opt(int({ minimum: 1, description: "读多少" })),
-  query: opt(str({ description: "只返回包含该文本的行，比如 ticket:// 加 [open] 只看未结的工单" })),
+  limit: opt(int({ minimum: 1, description: "How much to read" })),
+  query: opt(
+    str({
+      description:
+        "Return only the lines that contain this text, e.g. [open] with ticket:// to see just the open tickets",
+    }),
+  ),
 });
 
 /** The one `read` every role shares: files and every resource address, always paged. */
@@ -71,7 +77,7 @@ export function createResources(deps: ResourceDeps) {
   const read = defineTool({
     name: READ_TOOL,
     description:
-      "按地址读取：文件路径，或 ticket:// report:// transcript:// memory:// job:// models://。一律分页。",
+      "Read by address: a file path, or ticket:// report:// transcript:// memory:// job:// models://. Always paged.",
     parameters: Parameters,
     ...(fileRead.structuredOutputSchema === undefined
       ? {}
@@ -107,7 +113,7 @@ export function createResources(deps: ResourceDeps) {
       }
 
       const body = await resolve(deps, address, api, context);
-      if (body === undefined) return text(`没有找到 ${args.path}`, true);
+      if (body === undefined) return text(`Nothing found at ${args.path}`, true);
       const filtered = args.query === undefined ? body : grep(body, args.query);
       const page = pageText(filtered, args.offset, args.limit);
       return text(page.text + continuation(formatAddress(address), page));
@@ -143,7 +149,7 @@ async function resolve(
       const log = await readText(deps.jobLog(address.id));
       if (job === undefined && log === undefined) return undefined;
       const status = job === undefined ? "" : `${describeJob(job)}\n\n`;
-      return status + (log ?? "（还没有输出）");
+      return status + (log ?? "(no output yet)");
     }
     case "models":
       return deps.models(context);
@@ -156,10 +162,11 @@ async function resolve(
 
 async function searchFile(api: ToolExecutionApi, path: string, args: Args, context: Context) {
   const read = await api.env?.readTextFile(path, context);
-  if (read === undefined) return text("没有执行环境，读不了文件", true);
-  if (!read.ok) return text(`读不了 ${path}：${read.error.message}`, true);
+  if (read === undefined)
+    return text("There is no execution environment, so files cannot be read", true);
+  if (!read.ok) return text(`Cannot read ${path}: ${read.error.message}`, true);
   const page = pageText(grep(read.value, args.query ?? ""), args.offset, args.limit);
-  return text((page.text || "没有匹配的行。") + continuation(path, page));
+  return text((page.text || "No matching lines.") + continuation(path, page));
 }
 
 async function listTickets(api: ToolExecutionApi, args: Args, context: Context) {
@@ -172,7 +179,7 @@ async function listTickets(api: ToolExecutionApi, args: Args, context: Context) 
   const matching =
     args.query === undefined ? lines : lines.filter((l) => l.includes(args.query ?? ""));
   const page = pageList(matching, args.offset, args.limit);
-  const empty = lines.length === 0 ? "还没有工单。" : "没有匹配的工单。";
+  const empty = lines.length === 0 ? "No tickets yet." : "No tickets match.";
   return text((page.items.join("\n") || empty) + continuation("ticket://", page));
 }
 
@@ -187,7 +194,7 @@ async function readTranscript(
   const range = args.offset === undefined ? { limit } : { from: args.offset, limit };
   const page = await source.page(conversationId, range, context);
   const address = formatAddress({ kind: "transcript", conversationId });
-  if (page === undefined) return text(`没有找到 ${address}`, true);
+  if (page === undefined) return text(`Nothing found at ${address}`, true);
   const { lines } = page;
   const matching =
     args.query === undefined ? lines : lines.filter((l) => l.text.includes(args.query ?? ""));
@@ -195,13 +202,13 @@ async function readTranscript(
   const first = lines[0]?.id;
   const hints: string[] = [];
   if (page.earlier && first !== undefined) {
-    hints.push(`更早的条目：read("${address}", offset: ${Math.max(0, first - limit)})`);
+    hints.push(`Earlier entries: read("${address}", offset: ${Math.max(0, first - limit)})`);
   }
   if (page.next !== undefined) {
-    hints.push(`还有更新的条目：read("${address}", offset: ${page.next})`);
+    hints.push(`Newer entries: read("${address}", offset: ${page.next})`);
   }
-  hints.push(`单条全文：read("${address}/<entry>")`);
-  return text(`${body || "没有条目。"}\n\n[${hints.join("；")}]`);
+  hints.push(`One entry in full: read("${address}/<entry>")`);
+  return text(`${body || "No entries."}\n\n[${hints.join("; ")}]`);
 }
 
 const LINE_PREVIEW = 200;
@@ -213,7 +220,7 @@ function oneLine(value: string): string {
 
 function describeJob(job: Job): string {
   const parts = [`${job.id} · ${job.ticketId} · ${job.status}`];
-  if (job.exitCode !== undefined) parts.push(`退出码 ${job.exitCode}`);
+  if (job.exitCode !== undefined) parts.push(`Exit code ${job.exitCode}`);
   if (job.error !== undefined) parts.push(job.error);
   return parts.join(" · ");
 }

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { LiveState } from "@earendil-works/pi-durable";
 import { summarizeRun } from "./failure.ts";
 
-test("summarizeRun 忽略主动打断、交接重置和无事可答，只报告真实失败", () => {
+test("summarizeRun ignores deliberate breaks, handoff resets and nothing to answer, reporting only real failures", () => {
   assert.deepEqual(summarizeRun(undefined), { running: false });
   assert.deepEqual(summarizeRun({ run: { taskId: 1 as never, inputs: [], turns: 1 } }), {
     running: true,

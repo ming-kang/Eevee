@@ -17,7 +17,7 @@ after(async () => {
   for (const dir of dirs) await rm(dir, { recursive: true, force: true });
 });
 
-test("并发获取实例锁只有一个成功，其余看到持有者", async () => {
+test("only one of many concurrent lock attempts wins; the rest see the holder", async () => {
   const path = join(await temporary(), "instance.lock");
   const results = await Promise.allSettled(Array.from({ length: 24 }, () => acquireLock(path)));
   const won = results.filter((result) => result.status === "fulfilled");
@@ -30,7 +30,7 @@ test("并发获取实例锁只有一个成功，其余看到持有者", async ()
   assert.equal(owner.pid, process.pid);
 });
 
-test("释放后可以重新获取", async () => {
+test("the lock can be reacquired after release", async () => {
   const path = join(await temporary(), "instance.lock");
   const release = await acquireLock(path);
   await release();
@@ -39,7 +39,7 @@ test("释放后可以重新获取", async () => {
   await again();
 });
 
-test("释放只删自己的锁", async () => {
+test("release deletes only its own lock", async () => {
   const path = join(await temporary(), "instance.lock");
   const release = await acquireLock(path);
   const other = JSON.stringify({ pid: process.pid, host: hostname(), token: "other" });
@@ -48,7 +48,7 @@ test("释放只删自己的锁", async () => {
   assert.equal(await readFile(path, "utf8"), other);
 });
 
-test("进程已经不在了的锁会被回收", async () => {
+test("a lock whose process is gone is reclaimed", async () => {
   const path = join(await temporary(), "instance.lock");
   await writeFile(path, JSON.stringify({ pid: 2 ** 22 + 7919, host: hostname(), token: "dead" }));
   const release = await acquireLock(path);

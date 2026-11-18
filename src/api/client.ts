@@ -39,7 +39,7 @@ export function createClient(options: ClientOptions) {
     const [method, template] = route.split(" ") as [string, string];
     const path = template.replace(/:([a-z]+)/g, (_, name: string) => {
       const value = (params as Record<string, string>)[name];
-      if (value === undefined) throw new Error(`缺少路径参数 ${name}`);
+      if (value === undefined) throw new Error(`Missing path parameter ${name}`);
       return encodeURIComponent(value);
     });
     const response = await doFetch(new URL(path, options.baseUrl), {

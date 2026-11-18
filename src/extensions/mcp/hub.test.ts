@@ -29,7 +29,7 @@ async function withHub(
     },
     open: (entry) => {
       const server = servers[entry.name];
-      if (server === undefined) throw new Error(`没有 ${entry.name}`);
+      if (server === undefined) throw new Error(`No server ${entry.name}`);
       return server.client;
     },
   });
@@ -48,14 +48,14 @@ async function connected(hub: McpHub, name: string): Promise<void> {
     if (state === "connected" || state === "failed") return;
     await sleep(10);
   }
-  throw new Error(`${name} 没有连上`);
+  throw new Error(`${name} did not connect`);
 }
 
 const execute = (tool: ToolRegistration | undefined, args: unknown) =>
   tool?.execute(args as never, {} as ToolExecutionApi, { abortSignal: undefined } as never);
 
-test("MCP 服务器变成 mcp.<name> 扩展，工具默认延迟加载，调用转给服务器", async () => {
-  const servers = { weather: fakeServer([weather], "天气服务\n第二行") };
+test("an MCP server becomes an mcp.<name> extension, tools load lazily by default and calls go to the server", async () => {
+  const servers = { weather: fakeServer([weather], "Weather service\nsecond line") };
   const config = { mcpServers: { weather: { command: "unused" } } };
   await withHub(config, servers, async (hub, changes) => {
     assert.deepEqual(
@@ -68,10 +68,10 @@ test("MCP 服务器变成 mcp.<name> 扩展，工具默认延迟加载，调用�
     const tool = extension?.tools?.[0];
     assert.equal(tool?.name, "mcp__weather__get_weather");
     assert.equal(tool?.deferred, true);
-    const result = await execute(tool, { city: "杭州" });
-    assert.deepEqual(result?.output, [{ type: "text", text: 'get-weather {"city":"杭州"}' }]);
+    const result = await execute(tool, { city: "Hangzhou" });
+    assert.deepEqual(result?.output, [{ type: "text", text: 'get-weather {"city":"Hangzhou"}' }]);
     assert.deepEqual(hub.namespaces(), [
-      { name: "mcp__weather", prefix: "mcp__weather__", description: "天气服务" },
+      { name: "mcp__weather", prefix: "mcp__weather__", description: "Weather service" },
     ]);
     assert.deepEqual(
       hub.status().map((s) => [s.state, s.tools, s.exposure]),
@@ -80,7 +80,7 @@ test("MCP 服务器变成 mcp.<name> 扩展，工具默认延迟加载，调用�
   });
 });
 
-test("exposure 决定工具怎样给模型，停用的服务器不连接", async () => {
+test("exposure decides how tools reach the model; a disabled server does not connect", async () => {
   const servers = {
     direct: fakeServer([weather]),
     scripted: fakeServer([weather]),
@@ -115,7 +115,7 @@ test("exposure 决定工具怎样给模型，停用的服务器不连接", async
   });
 });
 
-test("连接断开后扩展失去工具，reload 重新连接", async () => {
+test("after a connection drops the extension loses its tools; reload reconnects", async () => {
   let server = fakeServer([weather]);
   const servers = {
     get weather() {
@@ -136,7 +136,7 @@ test("连接断开后扩展失去工具，reload 重新连接", async () => {
   });
 });
 
-test("save 改写一个服务器的条目，只重连它，其他服务器保持连接", async () => {
+test("save rewrites one server's entry and reconnects only it; the others stay connected", async () => {
   const opened: string[] = [];
   const servers = {
     get weather() {
@@ -149,7 +149,7 @@ test("save 改写一个服务器的条目，只重连它，其他服务器保持
     },
   };
   const config = {
-    $comment: "保留",
+    $comment: "preserve",
     mcpServers: { weather: { command: "w" }, docs: { url: "https://docs.example/mcp" } },
   };
   await withHub(config, servers, async (hub) => {

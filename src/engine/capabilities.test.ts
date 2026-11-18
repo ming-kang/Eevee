@@ -10,33 +10,33 @@ const research = defineExtension({
   tools: [
     defineTool({
       name: "lookup",
-      description: "查资料",
+      description: "look things up",
       parameters: obj({ q: str() }),
       deferred: true,
       replay: "safe",
-      execute: async (args) => ({ output: [{ type: "text", text: `查到 ${args.q}` }] }),
+      execute: async (args) => ({ output: [{ type: "text", text: `found ${args.q}` }] }),
     }),
   ],
 });
 
-test("settings 为角色启用的扩展生效，延迟加载的工具经 tool_search 找到", async () => {
+test("settings-enabled extensions take effect for a role, and deferred tools are found through tool_search", async () => {
   const brain: Brain = ({ role, last }) => {
-    if (role !== "router") return say("好的。");
-    if (last?.role === "user" && textOf(last).includes("查一下")) {
-      return call("tool_search", { query: "查资料" });
+    if (role !== "router") return say("OK.");
+    if (last?.role === "user" && textOf(last).includes("look up")) {
+      return call("tool_search", { query: "look things up" });
     }
-    if (toolName(last) === "tool_search") return call("lookup", { q: "光学" });
-    if (toolName(last) === "lookup") return say(`结果：${textOf(last)}`);
-    return say("好的。");
+    if (toolName(last) === "tool_search") return call("lookup", { q: "optics" });
+    if (toolName(last) === "lookup") return say(`result: ${textOf(last)}`);
+    return say("OK.");
   };
   const project = await openTestProject(brain, {
     shared: [createToolSearchExtension(), research],
     roles: { router: { extensions: ["research"] } },
   });
   try {
-    await project.host.sendUserMessage("查一下光学");
+    await project.host.sendUserMessage("look up optics");
     await project.until(async () =>
-      (await project.host.conversation()).lines.some((l) => l.text === "结果：查到 光学"),
+      (await project.host.conversation()).lines.some((l) => l.text === "result: found optics"),
     );
     const turns = project.calls.filter((c) => c.role === "router");
     assert.ok(turns[0]?.tools.includes("tool_search"));
@@ -47,20 +47,20 @@ test("settings 为角色启用的扩展生效，延迟加载的工具经 tool_se
   }
 });
 
-test("停用扩展后重新应用角色，工具不再提供；没安装的扩展先跳过", async () => {
-  const brain: Brain = () => say("好的。");
+test("after disabling extensions and reapplying a role, its tools are gone; uninstalled extensions are skipped", async () => {
+  const brain: Brain = () => say("OK.");
   const project = await openTestProject(brain, {
     shared: [createToolSearchExtension(), research],
     roles: { router: { extensions: ["research", "mcp.gone"] } },
   });
   try {
-    await project.host.sendUserMessage("第一句");
+    await project.host.sendUserMessage("first line");
     await project.until(async () => project.calls.length >= 1);
     assert.ok(project.calls[0]?.tools.includes("tool_search"));
 
     project.settings.roles = {};
     await project.host.refreshExtensions();
-    await project.host.sendUserMessage("第二句");
+    await project.host.sendUserMessage("second line");
     await project.until(async () => project.calls.length >= 2);
     assert.ok(!project.calls[1]?.tools.includes("tool_search"));
   } finally {
@@ -68,54 +68,54 @@ test("停用扩展后重新应用角色，工具不再提供；没安装的扩�
   }
 });
 
-test("Router 用 ticket model 中途给工单换模型，下一次请求起生效", async () => {
+test("the Router switches a ticket's model midway with ticket model, effective from its next request", async () => {
   const brain: Brain = ({ role, last }) => {
     if (role === "router") {
-      if (last?.role === "user" && textOf(last).includes("开工")) {
+      if (last?.role === "user" && textOf(last).includes("start work")) {
         return call("ticket", {
           action: "create",
-          title: "换模型",
-          goal: "试试",
-          acceptance: ["无"],
+          title: "switch model",
+          goal: "give it a try",
+          acceptance: ["none"],
         });
       }
-      if (last?.role === "user" && textOf(last).includes("报告 · waiting")) {
+      if (last?.role === "user" && textOf(last).includes("report · waiting")) {
         return call("ticket", {
           action: "model",
           ticketId: "t1",
           provider: "faux",
           modelId: "brain-pro",
-          modelReason: "需要更强的推理",
+          modelReason: "needs stronger reasoning",
         });
       }
-      if (toolName(last) === "ticket" && textOf(last).includes("改用")) {
-        return call("ticket", { action: "message", ticketId: "t1", text: "继续" });
+      if (toolName(last) === "ticket" && textOf(last).includes("now uses")) {
+        return call("ticket", { action: "message", ticketId: "t1", text: "keep going" });
       }
-      return say("好的。");
+      return say("OK.");
     }
-    if (textOf(last).includes("继续")) {
-      return call("report", { status: "ready", summary: "换完了", artifacts: [] });
+    if (textOf(last).includes("keep going")) {
+      return call("report", { status: "ready", summary: "switched", artifacts: [] });
     }
     if (last?.role === "user") {
       return call("report", {
         status: "waiting",
-        summary: "做了一半",
-        need: "更强的模型",
+        summary: "halfway done",
+        need: "a stronger model",
         artifacts: [],
       });
     }
-    return say("等待。");
+    return say("standing by.");
   };
   const project = await openTestProject(brain, { extraModels: ["brain-pro"] });
   try {
-    await project.host.sendUserMessage("开工");
+    await project.host.sendUserMessage("start work");
     const ticket = await project.until(async () => {
       const board = await project.host.board();
       const found = board.tickets[0];
       return found?.reports.some((r) => r.status === "ready") && found.ticket;
     });
     assert.deepEqual(ticket.model, { provider: "faux", modelId: "brain-pro" });
-    assert.equal(ticket.modelReason, "需要更强的推理");
+    assert.equal(ticket.modelReason, "needs stronger reasoning");
     const workerModels = project.calls.filter((c) => c.role === "worker").map((c) => c.model);
     assert.equal(workerModels[0], "brain");
     assert.equal(workerModels.at(-1), "brain-pro");

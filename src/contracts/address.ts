@@ -47,18 +47,18 @@ export function parseAddress(raw: string): Address {
       const file = rest.slice(slash + 1);
       if (slash < 0 || (scope !== "project" && scope !== "global") || file === "") {
         throw new AddressError(
-          `记忆地址应为 memory://project/<file> 或 memory://global/MEMORY.md：${raw}`,
+          `A memory address should be memory://project/<file> or memory://global/MEMORY.md: ${raw}`,
         );
       }
       return { kind: "memory", scope, file };
     }
     case "job":
-      if (!JOB.test(rest)) throw new AddressError(`无效的作业编号：${raw}`);
+      if (!JOB.test(rest)) throw new AddressError(`Invalid job id: ${raw}`);
       return { kind: "job", id: rest as JobId };
     case "models":
       return { kind: "models" };
     default:
-      throw new AddressError(`未知的地址协议：${scheme}://`);
+      throw new AddressError(`Unknown address scheme: ${scheme}://`);
   }
 }
 
@@ -88,17 +88,17 @@ export function formatAddress(address: Address): string {
 }
 
 function ticket(value: string, raw: string): TicketId {
-  if (!TICKET.test(value)) throw new AddressError(`无效的工单编号：${raw}`);
+  if (!TICKET.test(value)) throw new AddressError(`Invalid ticket id: ${raw}`);
   return value as TicketId;
 }
 
 function natural(value: string, raw: string): number {
-  if (!/^\d+$/.test(value)) throw new AddressError(`无效的对话或条目编号：${raw}`);
+  if (!/^\d+$/.test(value)) throw new AddressError(`Invalid conversation or entry id: ${raw}`);
   return Number(value);
 }
 
 function positive(value: string, raw: string): number {
   const n = Number(value);
-  if (!Number.isInteger(n) || n < 1) throw new AddressError(`无效的报告序号：${raw}`);
+  if (!Number.isInteger(n) || n < 1) throw new AddressError(`Invalid report number: ${raw}`);
   return n;
 }
