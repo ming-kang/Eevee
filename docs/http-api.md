@@ -43,6 +43,7 @@
 | 404 | `no_extension` | `names` | 要启用的扩展没有安装 |
 | 409 | `model_unset` | `role` | 角色没有可用的模型 |
 | 409 | `ticket_closed` | `ticketId` | 工单已经结单 |
+| 409 | `report_changed` | `ticketId` | 待验收的报告已经被新的报告取代 |
 | 409 | `answered` | `questionId` | 问题已经回答过 |
 | 409 | `job_ended` | `jobId` | 后台作业已经结束 |
 | 409 | `running` | — | 对话正在运行 |

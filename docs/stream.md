@@ -49,6 +49,8 @@ const ws = new WebSocket(`ws://127.0.0.1:${port}/api/stream`, ["eevee.v1", `toke
 
 同一条连接上的订阅 `id` 不能重复。
 
+Engine 先按结构校验每条消息：`type`、`id`、`topic` 和 `limit` 不对时直接回 `error`（`code` 为 `invalid`，`field` 指出位置），不会交给后面的处理逻辑，连接保持不断。
+
 ### Engine 发送
 
 | `type` | 字段 | 含义 |
@@ -56,7 +58,7 @@ const ws = new WebSocket(`ws://127.0.0.1:${port}/api/stream`, ["eevee.v1", `toke
 | `hello` | `bootId` | 连接建立 |
 | `value` | `id`、`value` | 对话订阅的第一个值 |
 | `ops` | `id`、`ops` | 把上一个值变成下一个值的增量操作 |
-| `board` | `id`、`board` | 看板变化后的完整看板 |
+| `board` | `id`、`board` | 看板变化后的完整看板（由这个项目的持久状态变化触发，不是定时推送）|
 | `entries` | `id`、`items` | `entries` 请求的结果 |
 | `end` | `id`、`reason` | 订阅自行结束：`ended`（来源已关闭）、`failed` 或 `listener_error` |
 | `error` | 可选 `id`、`error` | 请求失败；`error` 与 HTTP 的[错误](http-api.md#错误)格式相同，比如 `{ code: "no_project", projectId, message }` |
