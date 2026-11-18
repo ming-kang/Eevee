@@ -32,14 +32,19 @@ const auth = await Auth.open({
 
 let port = settings.port;
 let stopping = false;
-const shutdown = async () => {
+const shutdown = async (code = 0) => {
   if (stopping) return;
   stopping = true;
   await stream.close();
   server.close();
   await engine.close();
   await release();
-  process.exit(0);
+  process.exit(code);
+};
+
+const fail = (what: string, error: unknown) => {
+  console.error(`${what}，正在关闭：`, error);
+  void shutdown(1);
 };
 
 const server = createHttpServer({
@@ -65,6 +70,8 @@ console.log(`Eevee ${version} 已启动：http://127.0.0.1:${port}/ui/（数据�
 
 process.on("SIGINT", () => void shutdown());
 process.on("SIGTERM", () => void shutdown());
+process.on("unhandledRejection", (error) => fail("有未处理的拒绝", error));
+process.on("uncaughtException", (error) => fail("有未捕获的异常", error));
 
 function listen(server: Server, preferred: number): Promise<number> {
   return new Promise((resolve, reject) => {

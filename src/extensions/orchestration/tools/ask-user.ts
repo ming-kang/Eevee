@@ -1,6 +1,7 @@
 import { defineTool } from "@earendil-works/pi-durable";
 import { arr, obj, opt, str } from "@earendil-works/pi-schema";
-import type { AskDetails, TicketId } from "../../../contracts/index.ts";
+import { TicketDoc } from "../../../contracts/docs.ts";
+import { type AskDetails, ProblemError, type TicketId } from "../../../contracts/index.ts";
 import { addQuestion, markHandled, readTicket } from "../board.ts";
 import { fail, ok } from "../result.ts";
 
@@ -29,10 +30,15 @@ export const askUserTool = defineTool({
   replay: "unsafe",
   async execute(args, api, context) {
     const ticketId = args.ticketId as TicketId | undefined;
-    if (ticketId !== undefined && (await readTicket(api, ticketId, context)) === undefined) {
-      return fail(`没有工单 ${ticketId}。`);
-    }
+    const seed = ticketId === undefined ? undefined : await readTicket(api, ticketId, context);
+    if (ticketId !== undefined && seed === undefined) return fail(`没有工单 ${ticketId}。`);
     const question = await api.commit(async (tx) => {
+      if (seed !== undefined) {
+        const current = await tx.doc(TicketDoc, seed.id, seed);
+        if (current.status !== "open") {
+          throw new ProblemError({ code: "ticket_closed", ticketId: seed.id });
+        }
+      }
       const created = await addQuestion(tx, {
         ...(ticketId === undefined ? {} : { ticketId }),
         items: args.items,

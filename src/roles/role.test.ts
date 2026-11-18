@@ -56,8 +56,8 @@ test("应用角色时选中全部扩展的全部工具，不动 tool_search 加�
   assert.equal(change.tools, null);
   assert.equal("modelTools" in change, false);
   assert.equal(change.maxTurns, 40);
-  assert.equal(change.model, undefined);
-  assert.equal("thinkingLevel" in change, false);
+  // Without a choice the stored model is cleared, not left behind.
+  assert.deepEqual([change.model, change.thinkingLevel], [null, null]);
   const model = { provider: "faux", modelId: "brain" };
   const thinking = roleChange(
     workerRole,

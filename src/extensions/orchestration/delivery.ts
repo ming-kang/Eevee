@@ -13,10 +13,12 @@ export type Target = { kind: "router" } | { kind: "ticket"; id: TicketId };
 
 export type Delivery = {
   target: Target;
-  mode: "wake" | "record";
+  mode: "wake" | "record" | "start";
   whenBusy: "steer" | "followUp";
   text: string;
   requestId: string;
+  /** Set on a wake that must not wait for a free slot, such as a user's answer to a question. */
+  direct?: true;
   /** What the Engine says, as data. Absent when the text is the user's own words. */
   notice?: Notice;
 };
@@ -39,7 +41,7 @@ export type EngineEvent =
       whenBusy: Delivery["whenBusy"];
     }
   | { type: "panel-interrupt"; id: string; ticketId: TicketId }
-  | { type: "ticket-opened"; ticketId: TicketId; opening: string }
+  | { type: "ticket-start"; ticketId: TicketId }
   | { type: "handoff-nudge"; epoch: number }
   | {
       type: "router-message";
@@ -112,7 +114,10 @@ export function route(event: EngineEvent): Delivery[] {
       const id = `answer:${question.id}`;
       if (question.ticketId === undefined) return [tell(ROUTER, "steer", answer, id)];
       return [
-        tell(ticketTarget(question.ticketId), "steer", answer, id),
+        {
+          ...tell(ticketTarget(question.ticketId), "steer", answer, id),
+          direct: true,
+        },
         record(ROUTER, { ...answer, forwardedTo: question.ticketId }, `${id}:router`),
       ];
     }
@@ -145,16 +150,14 @@ export function route(event: EngineEvent): Delivery[] {
     case "handoff-nudge":
       return [tell(ROUTER, "followUp", { type: "handoff-nudge" }, `handoff:${event.epoch}`)];
 
-    case "ticket-opened":
+    case "ticket-start":
       return [
         {
-          ...wake(
-            ticketTarget(event.ticketId),
-            "followUp",
-            event.opening,
-            `opening:${event.ticketId}`,
-          ),
-          notice: { type: "opening", ticketId: event.ticketId },
+          target: ticketTarget(event.ticketId),
+          mode: "start",
+          whenBusy: "followUp",
+          text: "",
+          requestId: `opening:${event.ticketId}`,
         },
       ];
 

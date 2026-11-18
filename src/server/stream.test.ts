@@ -49,8 +49,18 @@ let board: BoardView = { tickets: [], openQuestions: [], router: emptyRouter };
 let watch = fakeWatch(view);
 const watched: unknown[] = [];
 
+const boardListeners = new Set<() => void>();
+const setBoard = (next: BoardView) => {
+  board = next;
+  for (const listener of boardListeners) listener();
+};
+
 const project: ProjectStream = {
   board: async () => board,
+  subscribeBoard: (listener) => {
+    boardListeners.add(listener);
+    return () => boardListeners.delete(listener);
+  },
   watch: async (ticket, _context, window) => {
     watched.push({ ticket, window });
     return watch.handle;
@@ -75,7 +85,6 @@ before(async () => {
   stream = attachStream(server, {
     source: { bootId: "boot-1", project: (id) => (id === "p1" ? project : undefined) },
     auth,
-    boardPollMs: 20,
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -154,7 +163,7 @@ test("看板 watch 先发当前看板，变化时再发；unwatch 后不再发",
   client.send({ type: "watch", id: "b", topic: { kind: "board", project: "p1" } });
   assert.deepEqual(await client.next(), { type: "board", id: "b", board });
 
-  board = { tickets: [], openQuestions: [{ id: "q1" } as never], router: emptyRouter };
+  setBoard({ tickets: [], openQuestions: [{ id: "q1" } as never], router: emptyRouter });
   assert.deepEqual(await client.next(), { type: "board", id: "b", board });
 
   client.send({ type: "unwatch", id: "b" });
@@ -165,12 +174,20 @@ test("看板 watch 先发当前看板，变化时再发；unwatch 后不再发",
     query: { minEntryId: 3 as never },
     limit: 9999,
   });
-  board = { tickets: [], openQuestions: [], router: emptyRouter };
   assert.deepEqual(await client.next(), {
     type: "entries",
     id: "e",
     items: [{ id: 3, limit: 200 }],
   });
+  setBoard({ tickets: [], openQuestions: [], router: emptyRouter });
+  client.send({
+    type: "entries",
+    id: "e2",
+    topic: { kind: "conversation", project: "p1" },
+    query: {},
+    limit: 1,
+  });
+  assert.equal((await client.next()).type, "entries");
   client.ws.close();
 });
 
@@ -187,5 +204,11 @@ test("未知项目和坏消息回 error，连接不断", async () => {
   });
   client.ws.send("{");
   assert.equal((await client.next()).type, "error");
+  for (const bad of ["[]", "null", '{"type":"entries"}', '{"type":"watch","id":"y"}']) {
+    client.ws.send(bad);
+    const refused = await client.next();
+    assert.equal(refused.type, "error");
+    assert.equal(refused.type === "error" && refused.error.code, "invalid");
+  }
   client.ws.close();
 });

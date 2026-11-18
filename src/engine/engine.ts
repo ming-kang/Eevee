@@ -86,7 +86,7 @@ export class Engine {
       ...stored,
       models: { ...stored.models, [role]: choice },
     }));
-    await this.#refreshProjects();
+    await this.#applyModels();
   }
 
   /** A project's own model for a role over the settings' default; `null` follows the settings again. */
@@ -96,8 +96,7 @@ export class Engine {
     choice: ModelChoice | null,
   ): Promise<ProjectSummary> {
     if (choice !== null) this.#requireModel(choice);
-    const { [role]: _, ...others } = host.meta.models ?? {};
-    await host.setModels(choice === null ? others : { ...others, [role]: choice });
+    await host.setProjectModel(role, choice);
     return host.summary();
   }
 
@@ -181,6 +180,16 @@ export class Engine {
   #requireShared(): SharedExtensions {
     if (this.#shared === undefined) throw new Error("Engine 尚未打开");
     return this.#shared;
+  }
+
+  async #applyModels(): Promise<void> {
+    await Promise.all(
+      [...this.#projects.values()].map((host) =>
+        host.applyModels().catch((error: unknown) => {
+          console.error(`[${host.meta.id}] 应用模型失败`, error);
+        }),
+      ),
+    );
   }
 
   async #refreshProjects(): Promise<void> {

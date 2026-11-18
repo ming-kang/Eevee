@@ -6,14 +6,23 @@ import { askUserTool } from "./tools/ask-user.ts";
 import { createReportTool } from "./tools/report.ts";
 import { createTicketTool } from "./tools/ticket.ts";
 
-export { conversationOf, type DocReader, readBinding, readTicket } from "./board.ts";
+export {
+  answerQuestion,
+  conversationOf,
+  type DocReader,
+  readBinding,
+  readTicket,
+} from "./board.ts";
 export {
   type DeliveryContext,
   deliver,
   flush,
   NOTICE_KIND,
   pump,
+  purgeDeliveries,
   queuedTickets,
+  submitReport,
+  toSubmission,
 } from "./deliver.ts";
 export type { EngineEvent } from "./delivery.ts";
 export { describeJobOutcome, route } from "./delivery.ts";

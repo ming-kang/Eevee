@@ -1,5 +1,5 @@
 import type { Context } from "@earendil-works/chord/context";
-import { defineDoc, LiveDoc, type TaskId } from "@earendil-works/pi-durable";
+import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID, type TaskId } from "@earendil-works/pi-durable";
 import { Board } from "../../contracts/docs.ts";
 import {
   describeRunFailure,
@@ -8,9 +8,8 @@ import {
   REPORT_SUMMARY_LIMIT,
   type Report,
 } from "../../contracts/index.ts";
-import { appendReport, conversationOf, nextSeq, readReports, readTicket } from "./board.ts";
-import { type DeliveryContext, deliver } from "./deliver.ts";
-import { route } from "./delivery.ts";
+import { conversationOf, readTicket } from "./board.ts";
+import { type DeliveryContext, submitReport } from "./deliver.ts";
 
 /** The run failure of a ticket conversation that already has its `failed` report. */
 const ReportedFailure = defineDoc<{ taskId: TaskId | null }>({
@@ -43,26 +42,27 @@ export async function reportRunFailures(
     const marked = await host.snapshot(ReportedFailure, conversationId, context);
     if (marked?.taskId === failure.taskId) continue;
 
+    const router = await host.conversation(ROOT_CONVERSATION_ID, context);
+    if (router === undefined) continue;
     const summary = `执行对话运行失败：${describeRunFailure(failure)}`;
-    const report: Report = {
-      ticketId: ticket.id,
-      seq: nextSeq(await readReports(host, ticket.id, context)),
-      status: "failed",
-      summary:
-        summary.length <= REPORT_SUMMARY_LIMIT
-          ? summary
-          : `${summary.slice(0, REPORT_SUMMARY_LIMIT - 1)}…`,
-      need: "排除原因后用 ticket message 让它继续，或者取消工单。",
-      origin: { type: "run-failed", failure: failureView(failure) },
-      artifacts: [],
-      handled: false,
-      reminded: false,
-      at: now,
-    };
-    await deliver(host, route({ type: "report", ticket, report }), context, async (tx) => {
-      await appendReport(tx, report);
+    const report = await host.commit(async (tx) => {
+      const stored = await submitReport(tx, router, ticket, {
+        ticketId: ticket.id,
+        status: "failed",
+        summary:
+          summary.length <= REPORT_SUMMARY_LIMIT
+            ? summary
+            : `${summary.slice(0, REPORT_SUMMARY_LIMIT - 1)}…`,
+        need: "排除原因后用 ticket message 让它继续，或者取消工单。",
+        origin: { type: "run-failed", failure: failureView(failure) },
+        artifacts: [],
+        handled: false,
+        reminded: false,
+        at: now,
+      });
       (await tx.doc(ReportedFailure, conversationId)).taskId = failure.taskId;
-    });
+      return stored;
+    }, context);
     reported.push(report);
   }
   return reported;

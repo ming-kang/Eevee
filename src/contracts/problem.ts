@@ -28,6 +28,7 @@ export type Problem =
   | { code: "no_extension"; names: readonly string[] }
   | { code: "model_unset"; role: RoleName }
   | { code: "ticket_closed"; ticketId: string }
+  | { code: "report_changed"; ticketId: string }
   | { code: "answered"; questionId: string }
   | { code: "job_ended"; jobId: string }
   | { code: "running" }
@@ -102,6 +103,8 @@ export function describeProblem(problem: Problem): string {
       return `${problem.role} 没有可用的模型：在 settings.json 的 models 里设置 default 或 ${problem.role}，或建单时指定 provider 与 modelId。`;
     case "ticket_closed":
       return `${problem.ticketId} 已经结单`;
+    case "report_changed":
+      return `${problem.ticketId} 待验收的报告已经变了，请先看最新一报`;
     case "answered":
       return `${problem.questionId} 已经回答过了`;
     case "job_ended":

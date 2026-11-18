@@ -1,5 +1,6 @@
 import type { Context } from "@earendil-works/chord/context";
 import {
+  ConversationBusy,
   type ConversationHandle,
   type ConversationId,
   defineDoc,
@@ -8,10 +9,16 @@ import {
   type SubmissionDraft,
   type Tx,
 } from "@earendil-works/pi-durable";
-import { Board } from "../../contracts/docs.ts";
-import type { NoticeData, TicketId } from "../../contracts/index.ts";
-import { conversationOf, type DocReader, maybeConversationOf, readTicket } from "./board.ts";
-import { type Delivery, fromUser, type Target } from "./delivery.ts";
+import { Board, TicketDoc } from "../../contracts/docs.ts";
+import type { NoticeData, Report, Ticket, TicketId } from "../../contracts/index.ts";
+import {
+  appendReport,
+  conversationOf,
+  type DocReader,
+  maybeConversationOf,
+  readTicket,
+} from "./board.ts";
+import { type Delivery, fromUser, route, type Target } from "./delivery.ts";
 
 export const NOTICE_KIND = "eevee.notice";
 
@@ -40,11 +47,16 @@ export type PreparedDelivery = {
 export type DeliveryContext = {
   snapshot: DocReader["snapshot"];
   conversation(id: ConversationId, context: Context): Promise<ConversationHandle | undefined>;
-  commit(change: (tx: Tx) => Promise<void>, context: Context): Promise<unknown>;
+  commit<T>(change: (tx: Tx) => Promise<T>, context: Context): Promise<T>;
 };
 
-export const needsSlot = (delivery: Delivery): boolean =>
-  delivery.target.kind === "ticket" && delivery.mode === "wake" && !fromUser(delivery);
+/** A delivery that waits for a free slot: only the start of an engine-run ticket does. */
+export const needsSlot = (delivery: Delivery): boolean => delivery.mode === "start";
+
+export const startOf = (delivery: Delivery): SubmissionDraft => ({
+  type: "continue",
+  requestId: delivery.requestId,
+});
 
 export async function prepare(
   host: DeliveryContext,
@@ -71,13 +83,30 @@ export async function submit(tx: Tx, prepared: PreparedDelivery): Promise<void> 
   if (prepared.queued.length > 0) (await tx.doc(WorkerQueue)).pending.push(...prepared.queued);
 }
 
+/** Drops every delivery waiting for a ticket, so closing it leaves nothing queued behind. */
+export async function purgeDeliveries(tx: Tx, id: TicketId): Promise<Delivery[]> {
+  const dropped: Delivery[] = [];
+  for (const token of [Outbox, WorkerQueue]) {
+    const queue = await tx.doc(token);
+    const going = queue.pending.filter((d) => d.target.kind === "ticket" && d.target.id === id);
+    if (going.length === 0) continue;
+    dropped.push(...going);
+    const keys = new Set(going.map((d) => d.requestId));
+    queue.pending = queue.pending.filter((d) => !keys.has(d.requestId));
+  }
+  return dropped;
+}
+
 export async function flush(host: DeliveryContext, context: Context): Promise<void> {
   for (;;) {
     const next = (await host.snapshot(Outbox, context))?.pending[0];
     if (next === undefined) return;
     const handle = await resolveHandle(host, next.target, context);
+    const ticket = await seedTicket(host, next.target, context);
     await host.commit(async (tx) => {
-      if (handle !== undefined) await handle.submit(tx, toSubmission(next));
+      if (handle !== undefined && (await stillOpen(tx, ticket))) {
+        await handle.submit(tx, toSubmission(next));
+      }
       const outbox = await tx.doc(Outbox);
       outbox.pending = outbox.pending.filter((d) => d.requestId !== next.requestId);
     }, context);
@@ -96,6 +125,20 @@ export async function deliver(
     await change?.(tx);
   }, context);
   await flush(host, context);
+}
+
+/** Appends a report to its ticket and hands its notice to the Router, in the caller's commit. */
+export async function submitReport(
+  tx: Tx,
+  router: ConversationHandle,
+  ticket: Ticket,
+  draft: Omit<Report, "seq">,
+): Promise<Report> {
+  const report = await appendReport(tx, draft);
+  for (const delivery of route({ type: "report", ticket, report })) {
+    await router.submit(tx, toSubmission(delivery));
+  }
+  return report;
 }
 
 export async function queuedTickets(reader: DocReader, context: Context): Promise<Set<TicketId>> {
@@ -118,28 +161,33 @@ export async function pump(host: DeliveryContext, limit: number, context: Contex
       ticket?.status === "open"
         ? await host.conversation(conversationOf(ticket), context)
         : undefined;
-    await host.commit(async (tx) => {
-      if (handle !== undefined) await handle.submit(tx, toSubmission(delivery));
+    const started = await host.commit(async (tx) => {
+      if (handle === undefined) {
+        const queue = await tx.doc(WorkerQueue);
+        queue.pending = queue.pending.filter((d) => d.requestId !== delivery.requestId);
+        return false;
+      }
+      if (delivery.mode === "start" && busy) return false;
+      let submitted = false;
+      if (await stillOpen(tx, ticket)) {
+        try {
+          await handle.submit(tx, toSubmission(delivery));
+          submitted = true;
+        } catch (error) {
+          if (error instanceof ConversationBusy) return false;
+          throw error;
+        }
+      }
       const queue = await tx.doc(WorkerQueue);
       queue.pending = queue.pending.filter((d) => d.requestId !== delivery.requestId);
+      return submitted;
     }, context);
-    if (handle !== undefined && !busy) active += 1;
+    if (started) active += 1;
   }
-}
-
-async function activeWorkers(host: DeliveryContext, context: Context): Promise<number> {
-  let active = 0;
-  for (const id of (await host.snapshot(Board, context))?.tickets ?? []) {
-    const ticket = await readTicket(host, id, context);
-    if (ticket?.status !== "open") continue;
-    if ((await host.snapshot(LiveDoc, conversationOf(ticket), context))?.run !== undefined) {
-      active += 1;
-    }
-  }
-  return active;
 }
 
 export function toSubmission(delivery: Delivery): SubmissionDraft {
+  if (delivery.mode === "start") return startOf(delivery);
   if (delivery.mode === "wake") {
     return {
       type: "input",
@@ -164,6 +212,32 @@ const noticeData = (delivery: Delivery): NoticeData => ({
   requestId: delivery.requestId,
   ...(delivery.notice === undefined ? {} : { notice: delivery.notice }),
 });
+
+async function activeWorkers(host: DeliveryContext, context: Context): Promise<number> {
+  let active = 0;
+  for (const id of (await host.snapshot(Board, context))?.tickets ?? []) {
+    const ticket = await readTicket(host, id, context);
+    if (ticket?.status !== "open") continue;
+    if ((await host.snapshot(LiveDoc, conversationOf(ticket), context))?.run !== undefined) {
+      active += 1;
+    }
+  }
+  return active;
+}
+
+async function seedTicket(
+  host: DeliveryContext,
+  target: Target,
+  context: Context,
+): Promise<Ticket | undefined> {
+  return target.kind === "ticket" ? readTicket(host, target.id, context) : undefined;
+}
+
+/** Whether a ticket is still open, re-read in the committing transaction; anything without a ticket passes. */
+async function stillOpen(tx: Tx, seed: Ticket | undefined): Promise<boolean> {
+  if (seed === undefined) return true;
+  return (await tx.doc(TicketDoc, seed.id, seed)).status === "open";
+}
 
 async function resolveHandle(
   host: DeliveryContext,

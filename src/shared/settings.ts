@@ -9,6 +9,13 @@ const ModelChoiceSchema = obj({
   thinkingLevel: opt(oneOf(THINKING_LEVELS)),
 });
 
+export const ModelDefaultsSchema = obj({
+  default: opt(ModelChoiceSchema),
+  router: opt(ModelChoiceSchema),
+  worker: opt(ModelChoiceSchema),
+  dreamer: opt(ModelChoiceSchema),
+});
+
 const RoleSettingsSchema = obj({
   /** Extensions enabled on top of the role's own, by name: MCP servers (`mcp.<name>`), user extensions. */
   extensions: opt(arr(str({ minLength: 1 }))),
@@ -25,14 +32,7 @@ export const StoredSettingsSchema = obj({
   reminderAfterMs: opt(int({ minimum: 0 })),
   /** Least time between two Dreaming runs; 0 turns Dreaming off. */
   dreamIntervalMs: opt(int({ minimum: 0 })),
-  models: opt(
-    obj({
-      default: opt(ModelChoiceSchema),
-      router: opt(ModelChoiceSchema),
-      worker: opt(ModelChoiceSchema),
-      dreamer: opt(ModelChoiceSchema),
-    }),
-  ),
+  models: opt(ModelDefaultsSchema),
   roles: opt(
     obj({
       router: opt(RoleSettingsSchema),

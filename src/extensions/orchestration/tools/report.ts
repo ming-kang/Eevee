@@ -1,21 +1,16 @@
-import { defineTool } from "@earendil-works/pi-durable";
+import { defineTool, ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
 import { arr, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
+import { TicketDoc } from "../../../contracts/docs.ts";
 import {
   formatAddress,
   isFinalReport,
+  ProblemError,
+  problemOf,
   REPORT_SUMMARY_LIMIT,
   type Report,
 } from "../../../contracts/index.ts";
-import {
-  appendReport,
-  closeTicket,
-  nextSeq,
-  readBinding,
-  readReports,
-  readTicket,
-} from "../board.ts";
-import { deliver } from "../deliver.ts";
-import { route } from "../delivery.ts";
+import { readBinding, readTicket, settleTicket } from "../board.ts";
+import { purgeDeliveries, submitReport } from "../deliver.ts";
 import type { OrchestrationDeps } from "../ports.ts";
 import { fail, ok } from "../result.ts";
 
@@ -52,9 +47,8 @@ export function createReportTool(deps: OrchestrationDeps) {
       const ticket = ticketId && (await readTicket(api, ticketId, context));
       if (!ticket) return fail("只有工单的执行对话才能提交报告。");
 
-      const report: Report = {
+      const draft: Omit<Report, "seq"> = {
         ticketId: ticket.id,
-        seq: nextSeq(await readReports(api, ticket.id, context)),
         status: args.status,
         summary: args.summary,
         artifacts: args.artifacts,
@@ -66,19 +60,35 @@ export function createReportTool(deps: OrchestrationDeps) {
         ...(args.questions === undefined ? {} : { questions: args.questions }),
         ...(args.lessons === undefined ? {} : { lessons: args.lessons }),
       };
-      const final = isFinalReport(report.status);
-      const autoAccept = ticket.role === "dreamer" && report.status === "ready";
+      const final = isFinalReport(draft.status);
+      const autoAccept = ticket.role === "dreamer" && draft.status === "ready";
+      const router = await api.conversation(ROOT_CONVERSATION_ID, context);
+      if (router === undefined) return fail("找不到主对话，无法提交报告。");
 
-      await deliver(api, route({ type: "report", ticket, report }), context, async (tx) => {
-        await appendReport(tx, report);
-        if (autoAccept) {
-          await closeTicket(tx, ticket, {
-            status: "done",
-            note: "整理工单自动验收",
-            at: api.now(),
-          });
+      let report: Report;
+      try {
+        report = await api.commit(async (tx) => {
+          const current = await tx.doc(TicketDoc, ticket.id, ticket);
+          if (current.status !== "open") {
+            throw new ProblemError({ code: "ticket_closed", ticketId: ticket.id });
+          }
+          const stored = await submitReport(tx, router, current, draft);
+          if (autoAccept) {
+            await settleTicket(tx, current, {
+              status: "done",
+              note: "整理工单自动验收",
+              at: api.now(),
+            });
+            await purgeDeliveries(tx, current.id);
+          }
+          return stored;
+        }, context);
+      } catch (error) {
+        if (problemOf(error).code === "ticket_closed") {
+          return fail(`${ticket.id} 已经结单，不能再提交报告。`);
         }
-      });
+        throw error;
+      }
 
       if (autoAccept) deps.jobs.stop(ticket.id);
       const address = formatAddress({ kind: "report", ticketId: ticket.id, seq: report.seq });

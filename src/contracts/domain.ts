@@ -62,6 +62,8 @@ export type Ticket = {
   closeNote?: string;
   createdAt: number;
   closedAt?: number;
+  /** When the Engine stopped its conversation and background jobs for good. */
+  stoppedAt?: number;
 };
 
 export type ReportStatus = "progress" | "waiting" | "ready" | "blocked" | "failed" | "dropped";
@@ -136,4 +138,6 @@ export type Question = {
   answer?: string;
   askedAt: number;
   answeredAt?: number;
+  /** Set when the ticket closed before the user answered; the question can no longer be answered. */
+  withdrawnAt?: number;
 };

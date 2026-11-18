@@ -12,6 +12,7 @@ import { type WebSocket, WebSocketServer } from "ws";
 import type { BoardView } from "../api/contract.ts";
 import {
   type ConversationTopic,
+  parseStreamRequest,
   STREAM_PATH,
   STREAM_PROTOCOL,
   type StreamEvent,
@@ -40,16 +41,15 @@ export type ProjectStream = {
     limit: number,
   ): Promise<EntryRecord[]>;
   board(): Promise<BoardView>;
+  /** Calls `listener` after the board changed; without it a board watch only sends its first value. */
+  subscribeBoard?(listener: () => void): () => void;
 };
 
 export type StreamOptions = {
   source: StreamSource;
   auth: Auth;
-  /** How often a board watch looks for changes. */
-  boardPollMs?: number;
 };
 
-const BOARD_POLL_MS = 500;
 const PING_MS = 30_000;
 const MAX_ENTRIES = 200;
 /** A watch waits for the socket to drain past this many buffered bytes; Durable folds changes meanwhile. */
@@ -69,7 +69,14 @@ export function attachStream(server: Server, options: StreamOptions): { close():
       socket.end(`HTTP/1.1 ${refusal}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
       return;
     }
-    wss.handleUpgrade(request, socket, head, (ws) => serve(ws, options));
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      try {
+        serve(ws, options);
+      } catch (error) {
+        console.error("实时流处理出错", error);
+        ws.terminate();
+      }
+    });
   };
   server.on("upgrade", onUpgrade);
   return {
@@ -134,13 +141,18 @@ function serve(ws: WebSocket, options: StreamOptions): void {
   });
 
   ws.on("message", (data) => {
-    let request: StreamRequest;
+    let value: unknown;
     try {
-      request = JSON.parse(String(data)) as StreamRequest;
+      value = JSON.parse(String(data));
     } catch {
       return fail(undefined, new ProblemError({ code: "bad_json" }));
     }
-    void handle(request).catch((error: unknown) => fail(request.id, error));
+    try {
+      const request = parseStreamRequest(value);
+      void handle(request).catch((error: unknown) => fail(request.id, error));
+    } catch (error) {
+      fail(idOf(value), error);
+    }
   });
 
   async function handle(request: StreamRequest): Promise<void> {
@@ -184,10 +196,12 @@ function serve(ws: WebSocket, options: StreamOptions): void {
       throw error;
     }
     if (watches.get(id) !== abandon) {
-      await handle.stop();
+      await handle.stop().catch(() => undefined);
       return;
     }
-    const stop = () => void handle.stop();
+    const stop = () => {
+      handle.stop().catch((error: unknown) => fail(id, error));
+    };
     watches.set(id, stop);
     send({ type: "value", id, value: handle.value });
     handle.start(async (call) => {
@@ -204,26 +218,24 @@ function serve(ws: WebSocket, options: StreamOptions): void {
 
   async function watchBoard(id: string, host: ProjectStream): Promise<void> {
     let last = "";
-    let timer: NodeJS.Timeout | undefined;
     let stopped = false;
-    watches.set(id, () => {
-      stopped = true;
-      clearTimeout(timer);
-    });
-    const poll = async () => {
+    const push = async () => {
       try {
         const board = await host.board();
         const serialized = JSON.stringify(board);
-        if (serialized !== last && !stopped) {
-          last = serialized;
-          send({ type: "board", id, board });
-        }
+        if (serialized === last || stopped) return;
+        last = serialized;
+        send({ type: "board", id, board });
       } catch (error) {
         fail(id, error);
       }
-      if (!stopped) timer = setTimeout(() => void poll(), options.boardPollMs ?? BOARD_POLL_MS);
     };
-    await poll();
+    const unsubscribe = host.subscribeBoard?.(() => void push());
+    watches.set(id, () => {
+      stopped = true;
+      unsubscribe?.();
+    });
+    await push();
   }
 
   send({ type: "hello", bootId: source.bootId });
@@ -233,4 +245,11 @@ async function drained(ws: WebSocket): Promise<void> {
   while (ws.readyState === ws.OPEN && ws.bufferedAmount > HIGH_WATER) {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
+}
+
+/** The `id` of a decoded message, if it carries one; never trusts the rest of an unvalidated value. */
+function idOf(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const id = (value as { id?: unknown }).id;
+  return typeof id === "string" && id !== "" ? id : undefined;
 }

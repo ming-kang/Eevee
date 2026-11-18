@@ -589,7 +589,7 @@ test("项目给 Router 选的模型和思考档位写进 project.json，下一�
   const lastTurn = (role: string) => project.calls.findLast((turn) => turn.role === role);
   try {
     const router = { provider: "faux", modelId: "deep", thinkingLevel: "high" } as const;
-    await project.host.setModels({ router });
+    await project.host.setProjectModel("router", router);
     assert.deepEqual(project.host.summary().models, { router });
     const meta = eeveePaths(project.home).project(project.host.meta.id).meta;
     assert.deepEqual(JSON.parse(await readFile(meta, "utf8")).models, { router });
@@ -603,7 +603,7 @@ test("项目给 Router 选的模型和思考档位写进 project.json，下一�
     assert.deepEqual([worker.model, worker.thinking], ["deep", "low"]);
     await project.until(async () => !(await project.host.board()).router.running);
 
-    await project.host.setModels({});
+    await project.host.setProjectModel("router", null);
     assert.equal(project.host.summary().models, undefined);
     const before = project.calls.length;
     await project.host.sendUserMessage("换回默认");
@@ -611,6 +611,121 @@ test("项目给 Router 选的模型和思考档位写进 project.json，下一�
       project.calls.slice(before).findLast((turn) => turn.role === "router"),
     );
     assert.deepEqual([after.model, after.thinking], ["brain", "off"]);
+  } finally {
+    await project.close();
+  }
+});
+
+test("同一个问题并发回答只有一个生效", async () => {
+  const brain: Brain = ({ role, last }) => {
+    if (role === "router" && last?.role === "user" && textOf(last).includes("问我")) {
+      return call("ask_user", {
+        items: [{ text: "选哪个", options: ["甲", "乙"], recommended: "甲" }],
+      });
+    }
+    return say("好的。");
+  };
+
+  const project = await openTestProject(brain);
+  try {
+    await project.host.sendUserMessage("问我一个问题");
+    const question = await project.until(async () => (await project.host.board()).openQuestions[0]);
+    const results = await Promise.allSettled([
+      project.host.answerQuestion(question.id, "甲"),
+      project.host.answerQuestion(question.id, "乙"),
+    ]);
+    assert.deepEqual(
+      results.map((result) => result.status),
+      ["fulfilled", "rejected"],
+    );
+    const refused = results[1] as PromiseRejectedResult;
+    assert.equal((refused.reason as { problem?: { code?: string } }).problem?.code, "answered");
+    assert.deepEqual((await project.host.board()).openQuestions, []);
+  } finally {
+    await project.close();
+  }
+});
+
+test("取消工单撤下它待回答的问题，并停掉执行对话", async () => {
+  const brain: Brain = ({ role, last }) => {
+    if (role === "router") {
+      if (last?.role === "user" && textOf(last).includes("开一单")) {
+        return call("ticket", {
+          action: "create",
+          title: "问一下",
+          goal: "需要用户决定",
+          acceptance: ["有决定"],
+        });
+      }
+      if (textOf(last).includes("报告 · waiting")) {
+        return call("ask_user", {
+          items: [{ text: "要不要继续", options: ["要", "不要"], recommended: "不要" }],
+          ticketId: "t1",
+        });
+      }
+      if (toolName(last) === "ask_user") {
+        return call("ticket", { action: "close", ticketId: "t1", note: "不需要了" });
+      }
+      return say("好的。");
+    }
+    if (last?.role === "user") {
+      return call("report", {
+        status: "waiting",
+        summary: "需要用户决定",
+        need: "要不要继续",
+        questions: [{ text: "要不要继续", options: ["要", "不要"], recommended: "不要" }],
+      });
+    }
+    return say("等你的回答。");
+  };
+
+  const project = await openTestProject(brain);
+  try {
+    await project.host.sendUserMessage("开一单");
+    const closed = await project.until(async () => {
+      const ticket = (await project.host.board()).tickets[0]?.ticket;
+      return ticket?.status === "cancelled" ? ticket : undefined;
+    });
+    assert.equal(closed.closeNote, "不需要了");
+    const stopped = await project.until(async () => {
+      const ticket = (await project.host.board()).tickets[0]?.ticket;
+      return ticket?.stoppedAt === undefined ? undefined : ticket;
+    });
+    assert.ok(stopped.stoppedAt !== undefined);
+    assert.deepEqual((await project.host.board()).openQuestions, []);
+    await assert.rejects(
+      project.host.answerQuestion("q1" as never, "要"),
+      (error: unknown) =>
+        (error as { problem?: { code?: string } }).problem?.code === "no_question",
+    );
+  } finally {
+    await project.close();
+  }
+});
+
+test("建单时开篇就写进执行对话，不等槽位", async () => {
+  const brain: Brain = ({ role, last }) => {
+    if (role === "router" && last?.role === "user" && textOf(last).includes("开一单")) {
+      return call("ticket", {
+        action: "create",
+        title: "写文件",
+        goal: "在工作目录写 hello.txt",
+        acceptance: ["内容是 hi"],
+      });
+    }
+    return say("好的。");
+  };
+
+  const project = await openTestProject(brain, { maxActiveWorkers: 1 });
+  try {
+    await project.host.sendUserMessage("开一单");
+    await project.until(async () => (await project.host.board()).tickets[0]?.ticket.id);
+    const entries = await project.host.entries("t1", {}, 50);
+    const opening = entries.find(
+      (entry) => (entry.data as { requestId?: string } | undefined)?.requestId === "opening:t1",
+    );
+    assert.ok(opening !== undefined);
+    assert.match(textOf(opening.model?.[0]), /在工作目录写 hello\.txt/);
   } finally {
     await project.close();
   }

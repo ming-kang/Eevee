@@ -58,6 +58,8 @@ export function problemText(problem: Problem): string {
       return t("{role} 没有可用的模型", { role: ROLE_LABEL[problem.role] });
     case "ticket_closed":
       return t("{ticketId} 已经结单", problem);
+    case "report_changed":
+      return t("{ticketId} 待验收的报告已经变了，请先看最新一报", problem);
     case "answered":
       return t("{questionId} 已经回答过了", problem);
     case "job_ended":

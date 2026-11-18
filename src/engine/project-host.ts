@@ -42,7 +42,7 @@ import {
   type JobId,
   jobId,
   type MemoryScope,
-  type ModelDefaults,
+  type ModelChoice,
   ProblemError,
   pickModel,
   type QuestionId,
@@ -65,6 +65,7 @@ import {
   openTicket,
   pump,
   readTicket,
+  answerQuestion as recordAnswer,
   remindRouter,
   reportRunFailures,
   route,
@@ -78,7 +79,7 @@ import { isNotFound, readText } from "../shared/fs.ts";
 import { type EeveePaths, resolveInside } from "../shared/paths.ts";
 import { enabledExtensions, type Settings } from "../shared/settings.ts";
 import { JobHost } from "./jobs.ts";
-import { type ProjectMeta, saveProjectMeta } from "./project.ts";
+import { type ProjectMeta, ProjectStore } from "./project.ts";
 import { recentRounds, transcriptSource } from "./transcript.ts";
 import { boardView, conversationView, usageView } from "./views.ts";
 
@@ -103,8 +104,8 @@ export type ProjectHostOptions = {
 
 type Parts = {
   options: ProjectHostOptions;
-  /** The meta as it is now; the roles read its models on every apply. */
-  live: { meta: ProjectMeta };
+  /** `project.json` as it is now; the roles read its models on every apply. */
+  store: ProjectStore;
   harness: Harness;
   root: Conversation;
   registry: Registry;
@@ -121,7 +122,7 @@ type Parts = {
  * root conversation, and the loop that hands queued work to free slots and keeps the board moving.
  */
 export class ProjectHost {
-  readonly #live: { meta: ProjectMeta };
+  readonly #store: ProjectStore;
   readonly #options: ProjectHostOptions;
   readonly #harness: Harness;
   readonly #root: Conversation;
@@ -137,9 +138,18 @@ export class ProjectHost {
   readonly #timer: NodeJS.Timeout;
   #ticking = false;
   #lastUpkeep = 0;
+  #board: { view?: BoardView; dirty: boolean; generation: number; revision: number } = {
+    dirty: true,
+    generation: 0,
+    revision: -1,
+  };
+  #boardGeneration = 0;
+  #boardBuilding: Promise<BoardView> | undefined;
+  readonly #boardWatchers = new Set<() => void>();
+  readonly #stopping = new Set<TicketId>();
 
   private constructor(parts: Parts) {
-    this.#live = parts.live;
+    this.#store = parts.store;
     this.#options = parts.options;
     this.#harness = parts.harness;
     this.#root = parts.root;
@@ -157,7 +167,7 @@ export class ProjectHost {
 
   static async open(options: ProjectHostOptions): Promise<ProjectHost> {
     const { meta, context } = options;
-    const live = { meta };
+    const store = ProjectStore.open(options.paths, meta);
     const paths = options.paths.project(meta.id);
     const repos: Record<MemoryScope, MemoryRepo> = {
       project: new MemoryRepo(paths.memory),
@@ -175,7 +185,7 @@ export class ProjectHost {
     };
     const conversation = (id: ConversationId, ctx: Context) => late(harness).conversation(id, ctx);
     const defaultModel = (role: RoleName) =>
-      pickModel(role, live.meta.models, options.settings().models);
+      pickModel(role, store.current.models, options.settings().models);
 
     const jobLog = (id: string) => join(paths.jobs, `${id}.log`);
     const jobs = new JobHost({ logPath: jobLog, delivery: () => late(delivery), context });
@@ -276,7 +286,7 @@ export class ProjectHost {
     const activeAt = await initialActiveAt(harness, root, meta.createdAt, context);
     const host = new ProjectHost({
       options,
-      live,
+      store,
       harness,
       root,
       registry,
@@ -293,6 +303,8 @@ export class ProjectHost {
       await root.reset(await roles.routerOpening(harness, context), context);
     await flush(delivery, context);
     await jobs.recover();
+    await host.#seedStopping();
+    await host.#reap();
     await ensureDreamTimer(harness, root, memory.timer, context);
     host.#watchActivity();
     harness.resume();
@@ -306,14 +318,12 @@ export class ProjectHost {
   }
 
   async answerQuestion(id: QuestionId, answer: string): Promise<void> {
-    const question = await this.#harness.snapshot(QuestionDoc, id, this.#context);
-    if (question === undefined) throw new ProblemError({ code: "no_question", questionId: id });
-    if (question.answer !== undefined) throw new ProblemError({ code: "answered", questionId: id });
-    const answered = { ...question, answer, answeredAt: Date.now() };
+    const seed = await this.#harness.snapshot(QuestionDoc, id, this.#context);
+    if (seed === undefined) throw new ProblemError({ code: "no_question", questionId: id });
+    const now = Date.now();
+    const answered = { ...seed, answer, answeredAt: now };
     await this.#dispatch({ type: "question-answered", question: answered }, async (tx) => {
-      Object.assign(await tx.doc(QuestionDoc, id, answered), answered);
-      const board = await tx.doc(Board);
-      board.openQuestions = board.openQuestions.filter((q) => q !== id);
+      await recordAnswer(tx, seed, answer, now);
     });
   }
 
@@ -346,19 +356,27 @@ export class ProjectHost {
   }
 
   get meta(): ProjectMeta {
-    return this.#live.meta;
+    return this.#store.current;
   }
 
   /**
-   * The project's own default models over the settings' (`project.json`); empty leaves the settings alone. The Router
-   * and the open tickets that chose no model take them at once, from their next request.
+   * The project's own model for one role over the settings' default; `null` drops it. The Router and the open tickets
+   * that chose no model take the result at once, from their next request.
    */
-  async setModels(models: ModelDefaults): Promise<void> {
-    const { models: _, ...rest } = this.#live.meta;
-    const meta = Object.keys(models).length === 0 ? rest : { ...rest, models };
-    await saveProjectMeta(this.#options.paths, meta);
-    this.#live.meta = meta;
+  async setProjectModel(role: RoleName | "default", choice: ModelChoice | null): Promise<void> {
+    await this.#store.update((meta) => {
+      const { models: own, ...rest } = meta;
+      const models = { ...own };
+      if (choice === null) delete models[role];
+      else models[role] = choice;
+      return Object.keys(models).length === 0 ? rest : { ...rest, models };
+    });
     await this.#applyRoles();
+  }
+
+  /** Re-derives the agents of the Router and the open tickets, after a change to the settings' defaults. */
+  applyModels(): Promise<void> {
+    return this.#applyRoles();
   }
 
   // ── Views ──────────────────────────────────────────────────────────────────
@@ -367,8 +385,34 @@ export class ProjectHost {
     return { ...this.meta, activeAt: this.#activeAt };
   }
 
-  board(): Promise<BoardView> {
-    return boardView(this.#harness, (id) => this.#jobs.running(id), this.#context);
+  async board(): Promise<BoardView> {
+    const cache = this.#board;
+    if (cache.view !== undefined && !cache.dirty && cache.revision === this.#jobs.revision) {
+      return cache.view;
+    }
+    if (this.#boardBuilding !== undefined) return this.#boardBuilding;
+    const generation = this.#boardGeneration;
+    this.#boardBuilding = this.#buildBoard(generation).finally(() => {
+      this.#boardBuilding = undefined;
+    });
+    return this.#boardBuilding;
+  }
+
+  subscribeBoard(listener: () => void): () => void {
+    this.#boardWatchers.add(listener);
+    return () => this.#boardWatchers.delete(listener);
+  }
+
+  async #buildBoard(generation: number): Promise<BoardView> {
+    const view = await boardView(this.#harness, (id) => this.#jobs.running(id), this.#context);
+    this.#board = {
+      view,
+      dirty: this.#boardGeneration !== generation,
+      generation,
+      revision: this.#jobs.revision,
+    };
+    for (const notify of this.#boardWatchers) notify();
+    return view;
   }
 
   async killJob(id: JobId): Promise<void> {
@@ -492,8 +536,17 @@ export class ProjectHost {
   #watchActivity(): void {
     this.#activityWatch = this.#harness.observeCommits({
       advance: (pub) => {
-        if (isActivityCommit(pub)) {
-          this.#activeAt = Math.max(this.#activeAt, Date.now());
+        if (!isActivityCommit(pub)) return;
+        this.#activeAt = Math.max(this.#activeAt, Date.now());
+        this.#boardGeneration += 1;
+        this.#board.dirty = true;
+        for (const change of pub.changes) {
+          if (change.type !== "document" || change.kind !== "change") continue;
+          if (change.record.kind !== TicketDoc.definition.kind) continue;
+          const ticket = change.value as unknown as Ticket;
+          if (ticket.status !== "open" && ticket.stoppedAt === undefined) {
+            this.#stopping.add(ticket.id);
+          }
         }
       },
       end: () => {},
@@ -510,6 +563,7 @@ export class ProjectHost {
     try {
       const host = deliveryHost(this.#harness, this.#root);
       const settings = this.#options.settings();
+      await this.#reap();
       await pump(host, settings.maxActiveWorkers, this.#context);
       const now = Date.now();
       if (now - this.#lastUpkeep >= (this.#options.upkeepMs ?? UPKEEP_MS)) {
@@ -522,6 +576,36 @@ export class ProjectHost {
       console.error(`[${this.meta.id}] 调度出错`, error);
     } finally {
       this.#ticking = false;
+    }
+  }
+
+  /** Stops the conversation and background jobs of every settled ticket whose stop has not been recorded yet. */
+  async #reap(): Promise<void> {
+    if (this.#stopping.size === 0) return;
+    for (const id of [...this.#stopping]) {
+      this.#stopping.delete(id);
+      const ticket = await readTicket(this.#harness, id, this.#context);
+      if (ticket === undefined || ticket.status === "open" || ticket.stoppedAt !== undefined) {
+        continue;
+      }
+      this.#jobs.stop(ticket.id);
+      const conversation = await this.#harness.conversation(conversationOf(ticket), this.#context);
+      await conversation?.abort(this.#context);
+      await this.#harness.commit(async (tx) => {
+        Object.assign(await tx.doc(TicketDoc, ticket.id, ticket), { stoppedAt: Date.now() });
+      }, this.#context);
+    }
+  }
+
+  /** Collects the tickets an earlier process settled but could not stop. */
+  async #seedStopping(): Promise<void> {
+    for (const id of ((await this.#harness.snapshot(Board, this.#context))?.tickets ??
+      []) as TicketId[]) {
+      const ticket = await readTicket(this.#harness, id, this.#context);
+      if (ticket === undefined || ticket.status === "open" || ticket.stoppedAt !== undefined) {
+        continue;
+      }
+      this.#stopping.add(ticket.id);
     }
   }
 
@@ -601,6 +685,8 @@ const ACTIVITY_DOC_KINDS = new Set([
   ReportLog.definition.kind,
   QuestionDoc.definition.kind,
   JobDoc.definition.kind,
+  JobBoard.definition.kind,
+  LiveDoc.definition.kind,
 ]);
 
 function isActivityCommit(pub: CommitPublication): boolean {

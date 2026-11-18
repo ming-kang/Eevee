@@ -4,6 +4,7 @@ import { Board, QuestionDoc, ReportLog, TicketBinding, TicketDoc } from "../../c
 import {
   isFinalReport,
   latestFinalReport,
+  ProblemError,
   type Question,
   questionId,
   type Report,
@@ -37,6 +38,16 @@ export async function readReports(
   return (await reader.snapshot(ReportLog, id, context))?.reports ?? [];
 }
 
+export async function readQuestions(reader: DocReader, context: Context): Promise<Question[]> {
+  const ids = (await reader.snapshot(Board, context))?.openQuestions ?? [];
+  const questions: Question[] = [];
+  for (const id of ids) {
+    const question = await reader.snapshot(QuestionDoc, id, context);
+    if (question !== undefined) questions.push(question);
+  }
+  return questions;
+}
+
 export async function readBinding(
   reader: DocReader,
   conversationId: ConversationId,
@@ -65,8 +76,12 @@ export async function bindConversation(
   (await tx.doc(TicketBinding, conversationId)).ticketId = id;
 }
 
-export async function appendReport(tx: Tx, report: Report): Promise<void> {
-  (await tx.doc(ReportLog, report.ticketId, null)).reports.push(report);
+/** Appends `draft` with the next sequence of its ticket, which only this commit decides. */
+export async function appendReport(tx: Tx, draft: Omit<Report, "seq">): Promise<Report> {
+  const log = await tx.doc(ReportLog, draft.ticketId, null);
+  const report: Report = { ...draft, seq: nextSeq(log.reports) };
+  log.reports.push(report);
+  return report;
 }
 
 export async function markHandled(tx: Tx, id: TicketId): Promise<void> {
@@ -75,18 +90,71 @@ export async function markHandled(tx: Tx, id: TicketId): Promise<void> {
   if (latest !== undefined) latest.handled = true;
 }
 
-export async function closeTicket(
+export type TicketClose = {
+  status: "done" | "cancelled";
+  note: string;
+  at: number;
+};
+
+/**
+ * The only way a ticket leaves `open`: it re-reads the ticket and, for an acceptance, the report the Router saw, and
+ * withdraws the questions that were waiting on it.
+ */
+export async function settleTicket(
   tx: Tx,
   ticket: Ticket,
-  close: { status: "done" | "cancelled"; note: string; at: number },
+  close: TicketClose,
+  options: { reportSeq?: number; questions?: readonly Question[] } = {},
 ): Promise<void> {
-  await saveTicket(tx, {
-    ...ticket,
+  const stored = await tx.doc(TicketDoc, ticket.id, ticket);
+  if (stored.status !== "open")
+    throw new ProblemError({ code: "ticket_closed", ticketId: ticket.id });
+  const log = await tx.doc(ReportLog, ticket.id, null);
+  const latest = latestFinalReport(log.reports);
+  if (options.reportSeq !== undefined) {
+    const ready = latest?.seq === options.reportSeq && latest.status === "ready" && !latest.handled;
+    if (!ready) throw new ProblemError({ code: "report_changed", ticketId: ticket.id });
+  }
+  Object.assign(stored, {
     status: close.status,
     closeNote: close.note,
     closedAt: close.at,
   });
-  await markHandled(tx, ticket.id);
+  if (latest !== undefined) latest.handled = true;
+  const board = await tx.doc(Board);
+  for (const seed of options.questions ?? []) {
+    const question = await tx.doc(QuestionDoc, seed.id, seed);
+    if (
+      question.ticketId !== ticket.id ||
+      question.answer !== undefined ||
+      question.withdrawnAt !== undefined
+    ) {
+      continue;
+    }
+    question.withdrawnAt = close.at;
+    board.openQuestions = board.openQuestions.filter((id) => id !== seed.id);
+  }
+}
+
+/** Records `answer` for a question nobody answered yet; a second answer fails instead of overwriting. */
+export async function answerQuestion(
+  tx: Tx,
+  seed: Question,
+  answer: string,
+  at: number,
+): Promise<Question> {
+  const stored = await tx.doc(QuestionDoc, seed.id, seed);
+  if (stored.answer !== undefined) {
+    throw new ProblemError({ code: "answered", questionId: seed.id });
+  }
+  if (stored.withdrawnAt !== undefined) {
+    throw new ProblemError({ code: "no_question", questionId: seed.id });
+  }
+  const answered: Question = { ...stored, answer, answeredAt: at };
+  Object.assign(stored, answered);
+  const board = await tx.doc(Board);
+  board.openQuestions = board.openQuestions.filter((id) => id !== seed.id);
+  return answered;
 }
 
 export async function addQuestion(tx: Tx, question: Omit<Question, "id">): Promise<Question> {

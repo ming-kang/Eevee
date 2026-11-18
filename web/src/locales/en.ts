@@ -411,6 +411,8 @@ export const en: Record<string, string> = {
   "没有安装扩展：{names}": "Not installed: {names}",
   "{role} 没有可用的模型": "{role} has no model",
   "{ticketId} 已经结单": "{ticketId} is already closed",
+  "{ticketId} 待验收的报告已经变了，请先看最新一报":
+    "The report waiting on {ticketId} changed; read the latest one first",
   "{questionId} 已经回答过了": "{questionId} is already answered",
   "作业 {jobId} 已经结束": "Job {jobId} has already ended",
   对话正在运行: "The conversation is running",

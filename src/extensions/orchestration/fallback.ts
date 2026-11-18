@@ -1,17 +1,16 @@
-import type { Context } from "@earendil-works/chord/context";
 import {
   AssistantEntry,
   defineTask,
   type EntryId,
   GenerationTask,
   hook,
+  ROOT_CONVERSATION_ID,
   runEndTask,
-  type Tx,
 } from "@earendil-works/pi-durable";
-import { REPORT_SUMMARY_LIMIT, type Report } from "../../contracts/index.ts";
-import { appendReport, nextSeq, readBinding, readReports, readTicket } from "./board.ts";
-import { flush, prepare, submit } from "./deliver.ts";
-import { route } from "./delivery.ts";
+import { TicketDoc } from "../../contracts/docs.ts";
+import { REPORT_SUMMARY_LIMIT } from "../../contracts/index.ts";
+import { readBinding, readTicket } from "./board.ts";
+import { submitReport } from "./deliver.ts";
 import { runningJobs } from "./jobs.ts";
 
 type FallbackInput = { answer: number };
@@ -33,34 +32,25 @@ export const FallbackReport = defineTask<FallbackInput, { phase: "report" }, nul
 
       const entry = await runtime.entry(AssistantEntry, task.input.answer as EntryId, context);
       const text = textOf(entry?.model?.[0]);
-      const report: Report = {
-        ticketId: ticket.id,
-        seq: nextSeq(await readReports(runtime, ticket.id, context)),
-        status: "waiting",
-        summary: truncate(text || "（本轮结束，但没有提交报告，也没有留下回答）"),
-        need: "执行对话没有提交收尾报告，请查看它的最后回答后决定下一步。",
-        origin: { type: "no-report", answered: text !== "" },
-        artifacts: [],
-        handled: false,
-        reminded: false,
-        at: runtime.now(),
-      };
-      const host = {
-        snapshot: runtime.snapshot.bind(runtime),
-        conversation: runtime.conversation.bind(runtime),
-        commit: (change: (tx: Tx) => Promise<void>, ctx: Context) =>
-          runtime.commit(async (tx) => {
-            await change(tx);
-            return undefined;
-          }, ctx),
-      };
-      const prepared = await prepare(host, route({ type: "report", ticket, report }), context);
+      const router = await runtime.conversation(ROOT_CONVERSATION_ID, context);
+      if (router === undefined) return runtime.commit(done, context);
+
       await runtime.commit(async (tx) => {
-        await submit(tx, prepared);
-        await appendReport(tx, report);
+        const current = await tx.doc(TicketDoc, ticket.id, ticket);
+        if (current.status !== "open") return done();
+        await submitReport(tx, router, current, {
+          ticketId: ticket.id,
+          status: "waiting",
+          summary: truncate(text || "（本轮结束，但没有提交报告，也没有留下回答）"),
+          need: "执行对话没有提交收尾报告，请查看它的最后回答后决定下一步。",
+          origin: { type: "no-report", answered: text !== "" },
+          artifacts: [],
+          handled: false,
+          reminded: false,
+          at: runtime.now(),
+        });
         return done();
       }, context);
-      await flush(host, context);
     },
   },
   abort: (_task, runtime, context) =>

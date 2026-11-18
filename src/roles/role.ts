@@ -62,7 +62,8 @@ export function resolveCapability(
 }
 
 /**
- * The agent change that applies a role: exactly its extensions, every tool they bring, its instructions.
+ * The agent change that applies a role: exactly its extensions, every tool they bring, its instructions, and the
+ * model it runs on. The model is always written: no choice clears the stored one instead of leaving it behind.
  * `modelTools` stays as it is, so tools `tool_search` loaded keep being offered.
  */
 export function roleChange(
@@ -76,6 +77,8 @@ export function roleChange(
     instructions: role.instructions,
     cwd: options.cwd,
     maxTurns: options.maxTurns ?? null,
-    ...(options.model === undefined ? {} : agentModel(options.model)),
+    ...(options.model === undefined
+      ? { model: null, thinkingLevel: null }
+      : agentModel(options.model)),
   };
 }

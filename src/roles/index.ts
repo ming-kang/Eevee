@@ -83,7 +83,7 @@ export function createRoles(deps: RolesDeps) {
   const ticketConversations: TicketConversations = {
     async configure(tx, conversationId, ticket, registry) {
       const change = agent(ticket.role, registry, ticket.model);
-      if (change.model === undefined)
+      if (change.model === undefined || change.model === null)
         throw new ProblemError({ code: "model_unset", role: ticket.role });
       await configure(tx, conversationId, change);
     },

@@ -6,6 +6,7 @@ import {
   formatModel,
   latestFinalReport,
   type ModelChoice,
+  problemOf,
   THINKING_LEVELS,
   type ThinkingLevel,
   type Ticket,
@@ -13,14 +14,15 @@ import {
   type TicketId,
 } from "../../../contracts/index.ts";
 import {
-  closeTicket,
   conversationOf,
   markHandled,
+  readQuestions,
   readReports,
   readTicket,
   saveTicket,
+  settleTicket,
 } from "../board.ts";
-import { deliver } from "../deliver.ts";
+import { deliver, purgeDeliveries } from "../deliver.ts";
 import { route } from "../delivery.ts";
 import { openTicket } from "../open.ts";
 import type { OrchestrationDeps } from "../ports.ts";
@@ -217,10 +219,29 @@ async function review(
     return ok(`已打回 ${ticket.id}。`);
   }
 
-  await deliver(api, route({ type: "ticket-accepted", ticket, report: latest }), context, (tx) =>
-    closeTicket(tx, ticket, { status: "done", note: args.note ?? "", at: api.now() }),
+  const questions = (await readQuestions(api, context)).filter(
+    (question) => question.ticketId === ticket.id,
   );
+  try {
+    await deliver(
+      api,
+      route({ type: "ticket-accepted", ticket, report: latest }),
+      context,
+      async (tx) => {
+        await settleTicket(
+          tx,
+          ticket,
+          { status: "done", note: args.note ?? "", at: api.now() },
+          { reportSeq: latest.seq, questions },
+        );
+        await purgeDeliveries(tx, ticket.id);
+      },
+    );
+  } catch (error) {
+    return fail(settleRefusal(error, ticket.id));
+  }
   deps.jobs.stop(ticket.id);
+  await (await api.conversation(conversationOf(ticket), context))?.abort(context);
   return ok(`${ticket.id} 已验收结单。`);
 }
 
@@ -232,12 +253,27 @@ async function close(
   context: Context,
 ) {
   if (!args.note) return fail("close 需要 note 写明原因。");
-  await deliver(
-    api,
-    route({ type: "ticket-cancelled", ticket, reason: args.note }),
-    context,
-    (tx) => closeTicket(tx, ticket, { status: "cancelled", note: args.note ?? "", at: api.now() }),
+  const questions = (await readQuestions(api, context)).filter(
+    (question) => question.ticketId === ticket.id,
   );
+  try {
+    await deliver(
+      api,
+      route({ type: "ticket-cancelled", ticket, reason: args.note }),
+      context,
+      async (tx) => {
+        await settleTicket(
+          tx,
+          ticket,
+          { status: "cancelled", note: args.note ?? "", at: api.now() },
+          { questions },
+        );
+        await purgeDeliveries(tx, ticket.id);
+      },
+    );
+  } catch (error) {
+    return fail(settleRefusal(error, ticket.id));
+  }
   deps.jobs.stop(ticket.id);
   await (await api.conversation(conversationOf(ticket), context))?.abort(context);
   return ok(`${ticket.id} 已取消。`);
@@ -261,4 +297,12 @@ async function retarget(ticket: Ticket, args: Args, api: ToolExecutionApi, conte
   }, context);
   const thinking = model.thinkingLevel === undefined ? "" : `，思考档位 ${model.thinkingLevel}`;
   return ok(`${ticket.id} 改用 ${formatModel(model)}${thinking}，从下一次请求开始生效。`);
+}
+
+/** Why a terminal transition could not be written, in the Router's words. */
+function settleRefusal(error: unknown, ticketId: TicketId): string {
+  const code = problemOf(error).code;
+  if (code === "ticket_closed") return `${ticketId} 已经结单。`;
+  if (code === "report_changed") return `${ticketId} 待验收的报告已经变了，先看最新一报。`;
+  throw error;
 }

@@ -117,6 +117,7 @@ const STATUS: Record<ProblemCode, number> = {
   no_extension: 404,
   model_unset: 409,
   ticket_closed: 409,
+  report_changed: 409,
   answered: 409,
   job_ended: 409,
   running: 409,
