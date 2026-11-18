@@ -217,7 +217,7 @@ async function answer(id: QuestionId, text: string): Promise<void> {
                   v-seg
                   class="seg sm"
                   role="group"
-                  :aria-label="t('Delivery')"
+                  :aria-label="t('Delivery timing')"
                 >
                   <button
                     type="button"

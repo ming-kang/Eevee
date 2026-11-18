@@ -182,7 +182,7 @@ test("a long command moves to the background, and the Worker is woken when the j
       async () => (await project.host.board()).tickets[0]?.reports[0],
     );
     assert.equal(report.status, "ready");
-    assert.match(report.summary, /Exit code 0[\s\S]*finished/);
+    assert.match(report.summary, /exit code 0[\s\S]*finished/);
     const log = await readFile(
       join(project.home, "projects", project.host.meta.id, "jobs", "j1.log"),
       "utf8",
@@ -467,8 +467,7 @@ test("read the tail of a background job's log and kill the job while it runs", a
       return say("OK.");
     }
     if (toolName(last) === "bash") return say("Waiting for the job.");
-    if (last?.role === "user" && textOf(last).includes("Terminated"))
-      return say("The job was terminated.");
+    if (last?.role === "user" && textOf(last).includes("killed")) return say("The job was killed.");
     if (last?.role === "user") {
       return call("bash", {
         command: "echo row-1; echo row-2; echo row-3; echo row-4; sleep 30",
@@ -502,12 +501,12 @@ test("read the tail of a background job's log and kill the job while it runs", a
 
     const afterKill = await project.host.jobLog(jobId);
     assert.equal(afterKill.job.status, "killed");
-    assert.match(afterKill.content, /\[Terminated\]/);
+    assert.match(afterKill.content, /\[killed\]/);
     assert.equal((await project.host.board()).tickets[0]?.jobs.length, 0);
     // The ticket is still open: its Worker hears about the kill instead of waiting forever.
     await project.until(async () => {
       const worker = await project.host.ticketConversation(jobsTicket.ticket.id);
-      return worker.lines.some((line) => line.text.includes("The job was terminated."));
+      return worker.lines.some((line) => line.text.includes("The job was killed."));
     });
 
     await assert.rejects(project.host.killJob(jobId), { problem: { code: "job_ended", jobId } });

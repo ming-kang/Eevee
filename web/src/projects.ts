@@ -124,14 +124,14 @@ export function buildPaletteItems(input: {
     go(
       "nav:settings:general",
       t("Settings · General"),
-      `${t("theme font size language")} settings general theme font size language`,
+      "settings general theme font size language",
       { name: "settings", section: "general" },
       "sliders",
     ),
     go(
       "nav:settings:models",
       t("Settings · Models"),
-      `${t("Thinking")} settings models thinking`,
+      "settings models thinking",
       { name: "settings", section: "models" },
       "cpu",
     ),

@@ -41,7 +41,7 @@ export async function loadUserExtensions(
       status.push({ file, name: extension.name, tools: extension.tools?.length ?? 0 });
     } catch (error) {
       const issue = configIssue(error);
-      console.error(`[extensions] ${file} failed to load: ${describeConfigIssue(issue)}`);
+      console.error(`[extensions] Could not load ${file}: ${describeConfigIssue(issue)}`);
       status.push({ file, tools: 0, error: issue });
     }
   }

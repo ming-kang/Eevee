@@ -149,7 +149,7 @@ async function serveUi(uiDir: string | undefined, pathname: string, response: Se
   if (uiDir === undefined) {
     response.writeHead(503, { "content-type": "text/plain; charset=utf-8" });
     response.end(
-      "The WebUI is not built yet: run npm run build, or npm run web:dev for a dev server.",
+      "The panel is not built yet. Run npm run build, or npm run web:dev for a development server.",
     );
     return;
   }

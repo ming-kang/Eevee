@@ -201,12 +201,12 @@ async function newRecords(
 function draft(inputs: string[]): DreamDraft {
   return {
     title: "Tidy up the memory store",
-    goal: "Review the new records and reports listed in the inputs (especially the lessons and real execution results), and keep the project's memory store in order.",
+    goal: "Review the new records and reports listed in the inputs, especially the lessons and the actual execution results. Keep the project's memory store in order.",
     inputs,
     acceptance: [
-      "Overlapping notes have been merged, and temporary details and stale entries have been cleaned out",
-      "Old notes overridden by execution results have been corrected in place, with the source noted",
-      "The MEMORY.md index matches the topic files and is still within 200 lines",
+      "Overlapping notes are merged. Temporary details and stale entries are removed.",
+      "Old notes that execution results override are corrected in place, with the source noted.",
+      "The MEMORY.md index matches the topic files and stays within 200 lines.",
     ],
   };
 }

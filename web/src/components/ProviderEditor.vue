@@ -139,7 +139,7 @@ function draftErrorText(error: DraftError): string {
         field: error.field === "contextWindow" ? t("Context window") : t("Max output"),
       });
     case "price":
-      return t("Prices of {model} must be numbers of 0 or more", { model: error.model });
+      return t("Prices for {model} must be 0 or more", { model: error.model });
   }
 }
 
@@ -154,9 +154,9 @@ function blocker(): string | undefined {
     }
   }
   if (!builtIn.value) {
-    if (draft.api.trim() === "") return t("Choose an API type");
+    if (draft.api.trim() === "") return t("Select an API type");
     if (draft.baseUrl.trim() === "") return t("Enter a base URL");
-    if (draft.models.length === 0) return t("Add at least one model");
+    if (draft.models.length === 0) return t("Add at least one model to the provider");
   }
   return undefined;
 }
@@ -522,7 +522,7 @@ function probedMeta(model: ProbedModelView): string {
         <label for="pv-api">{{ t("API type") }}</label>
         <div class="f-ctrl">
           <select id="pv-api" v-model="draft.api" class="input mono">
-            <option value="" disabled>{{ t("Choose a protocol") }}</option>
+            <option value="" disabled>{{ t("Select an API type") }}</option>
             <option v-for="api in apiChoices" :key="api" :value="api">
               {{ API_ENDPOINT[api] ? `${api} · ${API_ENDPOINT[api]}` : api }}
             </option>
@@ -617,7 +617,7 @@ function probedMeta(model: ProbedModelView): string {
           {{ t("Select all") }}
         </button>
         <button type="button" class="btn sm primary" :disabled="picked.size === 0" @click="importPicked">
-          {{ t("Add {n}", { n: picked.size }) }}
+          {{ t("Add {n} model|Add {n} models", { n: picked.size }) }}
         </button>
         <button type="button" class="btn ghost sm icon" :aria-label="t('Close')" @click="probed = undefined">
           <Icon name="x" size="xs" />
@@ -718,7 +718,7 @@ function probedMeta(model: ProbedModelView): string {
                 </button>
                 <span class="r-main">
                   <span class="r-t mono ellipsis">{{ refPicked.provider }} / {{ refPicked.id }}</span>
-                  <span class="r-d">{{ t("Check the fields to copy; the model's ID and API stay") }}</span>
+                  <span class="r-d">{{ t("Pick the fields to copy; the model's ID and API won't change") }}</span>
                 </span>
               </div>
               <label
@@ -740,7 +740,7 @@ function probedMeta(model: ProbedModelView): string {
                     {{ currentText(model, change.field) }} → <span class="m-ref-new">{{ referenceText(refPicked, change.field) }}</span>
                   </span>
                   <span v-if="change.field === 'cost' && refPicked.costTiers" class="r-d">
-                    {{ t("It also prices by input length; those tiers are not copied") }}
+                    {{ t("It also prices by input length; those tiers aren't copied") }}
                   </span>
                 </span>
               </label>
@@ -826,7 +826,7 @@ function probedMeta(model: ProbedModelView): string {
               :aria-pressed="draft.authHeader"
               @click="draft.authHeader = !draft.authHeader"
             />
-            <span>{{ t("Also send the key as Authorization: Bearer") }}</span>
+            <span>{{ t("Also send the key as a Bearer token") }}</span>
           </label>
         </div>
         <div class="f-row">
@@ -841,7 +841,7 @@ function probedMeta(model: ProbedModelView): string {
               autocomplete="off"
               placeholder="$ENV_NAME"
             />
-            <span class="f-note">{{ t("Written to models.json and may reference environment variables; a key saved above wins") }}</span>
+            <span class="f-note">{{ t("Written to models.json and may reference environment variables; a key set above takes precedence") }}</span>
           </div>
         </div>
       </div>

@@ -133,3 +133,17 @@ test("buildPaletteItems and filterPaletteItems build and filter pages, tickets, 
   assert.equal(filterPaletteItems(items, "t4").length, 1);
   assert.equal(filterPaletteItems(items, "eevee").length, 1);
 });
+
+test("a palette page is found by plain English keywords, never a translated keyword bag", () => {
+  const items = buildPaletteItems({ projects: [], boards: {} });
+  const search = (id: string): string => items.find((i) => i.id === id)?.search ?? "";
+  // The keywords sit next to the label in the reader's language, so they must stay plain
+  // English. Wrapping one in t() translates it for a Chinese reader, which both drops the
+  // English keyword the search needs and repeats the words already in the bag.
+  assert.equal(
+    search("nav:settings:general"),
+    "Settings · General settings general theme font size language",
+  );
+  assert.equal(search("nav:settings:models"), "Settings · Models settings models thinking");
+  assert.equal(search("nav:settings:roles"), "Settings · Roles settings roles");
+});

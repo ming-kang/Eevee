@@ -99,7 +99,7 @@ export class MemoryRepo {
       const path = resolveInside(this.dir, file);
       const current = await readText(path);
       if (current === undefined)
-        throw new MemoryConflict(`${file} doesn't exist; use create to make a new one.`, "");
+        throw new MemoryConflict(`${file} does not exist; use create to make a new one.`, "");
       const at = current.indexOf(oldText);
       if (at < 0 || current.indexOf(oldText, at + 1) >= 0) {
         throw new MemoryConflict(

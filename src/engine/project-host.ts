@@ -182,7 +182,7 @@ export class ProjectHost {
     let harness: Harness | undefined;
     let delivery: DeliveryContext | undefined;
     const late = <T>(value: T | undefined): T => {
-      if (value === undefined) throw new Error("The Harness isn't open yet");
+      if (value === undefined) throw new Error("The Harness is not open yet");
       return value;
     };
     const conversation = (id: ConversationId, ctx: Context) => late(harness).conversation(id, ctx);
@@ -211,7 +211,7 @@ export class ProjectHost {
         for (const name of fresh) reported.add(`${role}:${name}`);
         if (fresh.length > 0) {
           console.error(
-            `[${meta.id}] ${role} enables extensions that aren't installed; not selecting them for now: ${fresh.join(", ")}`,
+            `[${meta.id}] The ${role} enables extensions that are not installed. Skipping them for now: ${fresh.join(", ")}`,
           );
         }
       },
@@ -577,7 +577,7 @@ export class ProjectHost {
         await this.#nudgeHandoff(host, settings.handoffThreshold);
       }
     } catch (error) {
-      console.error(`[${this.meta.id}] dispatch error`, error);
+      console.error(`[${this.meta.id}] The dispatch loop hit an error.`, error);
     } finally {
       this.#ticking = false;
     }

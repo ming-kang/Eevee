@@ -40,7 +40,7 @@ const shutdown = async (code = 0) => {
 };
 
 const fail = (what: string, error: unknown) => {
-  console.error(`${what}, shutting down:`, error);
+  console.error(`${what}. Shutting down.`, error);
   void shutdown(1);
 };
 
@@ -64,13 +64,13 @@ await writeRuntimeRecord(paths.runtime.record, {
   startedAt: Date.now(),
 });
 console.log(
-  `Eevee ${version} started: http://127.0.0.1:${port}/ui/ (data directory ${paths.home})`,
+  `Eevee ${version} is running.\nPanel: http://127.0.0.1:${port}/ui/\nData directory: ${paths.home}`,
 );
 
 process.on("SIGINT", () => void shutdown());
 process.on("SIGTERM", () => void shutdown());
-process.on("unhandledRejection", (error) => fail("Unhandled rejection", error));
-process.on("uncaughtException", (error) => fail("Uncaught exception", error));
+process.on("unhandledRejection", (error) => fail("An unhandled promise rejection occurred", error));
+process.on("uncaughtException", (error) => fail("An uncaught exception occurred", error));
 
 function listen(server: Server, preferred: number): Promise<number> {
   return new Promise((resolve, reject) => {

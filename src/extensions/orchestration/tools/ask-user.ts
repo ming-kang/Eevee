@@ -29,9 +29,9 @@ const Parameters = obj({
 export const askUserTool = defineTool({
   name: ASK_USER_TOOL,
   description:
-    "Ask the user a round of structured questions. Return immediately, do not wait; the answer arrives " +
-    "as a new message once the user replies. Use it only when the user has to decide; look up what the " +
-    "files and the memory can tell you first.",
+    "Ask the user a round of structured questions. Return right away without waiting; the answer arrives " +
+    "as a new message once the user replies. Use it only when the user has to decide, and look up what the " +
+    "files and memory can tell you first.",
   parameters: Parameters,
   replay: "unsafe",
   async execute(args, api, context) {

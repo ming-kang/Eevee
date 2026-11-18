@@ -322,7 +322,7 @@ export class Engine {
   }
 
   #requireShared(): SharedExtensions {
-    if (this.#shared === undefined) throw new Error("The Engine isn't open yet");
+    if (this.#shared === undefined) throw new Error("The Engine is not open yet");
     return this.#shared;
   }
 
@@ -330,7 +330,7 @@ export class Engine {
     await Promise.all(
       [...this.#projects.values()].map((host) =>
         host.applyModels().catch((error: unknown) => {
-          console.error(`[${host.meta.id}] failed to apply models`, error);
+          console.error(`[${host.meta.id}] Could not apply the new models.`, error);
         }),
       ),
     );
@@ -340,7 +340,7 @@ export class Engine {
     await Promise.all(
       [...this.#projects.values()].map((host) =>
         host.refreshExtensions().catch((error: unknown) => {
-          console.error(`[${host.meta.id}] failed to refresh extensions`, error);
+          console.error(`[${host.meta.id}] Could not refresh the extensions.`, error);
         }),
       ),
     );

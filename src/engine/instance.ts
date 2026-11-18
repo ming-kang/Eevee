@@ -46,11 +46,11 @@ export async function acquireLock(path: string): Promise<() => Promise<void>> {
     }
     const owner = await readOwner(path);
     if (owner !== undefined && holdsLock(owner)) {
-      throw new InstanceLocked(`Eevee is already running (pid ${owner.pid})`);
+      throw new InstanceLocked(`The Engine is already running (pid ${owner.pid})`);
     }
     await retire(path);
   }
-  throw new InstanceLocked("Could not acquire the instance lock");
+  throw new InstanceLocked("Could not acquire the Engine's lock");
 }
 
 /**

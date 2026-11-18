@@ -34,9 +34,9 @@ const emit = defineEmits<{ changed: [view: CapabilitiesView] }>();
 const LIST = formatRoute({ name: "settings", section: "mcp" });
 
 const EXPOSURE_LABEL: Record<McpExposure, { label: string; detail: string }> = {
-  deferred: { label: t("On demand"), detail: t("Usable once the model finds them with tool_search; suits servers with many tools") },
-  direct: { label: t("Direct"), detail: t("Offered like any other tool; suits small, frequently used servers") },
-  codemode: { label: t("Code mode"), detail: t("Callable only from codemode scripts; suits batched, combined calls") },
+  deferred: { label: t("On demand"), detail: t("Found on demand with tool_search; best when there are many tools") },
+  direct: { label: t("Direct"), detail: t("Offered up front like any other tool; best when there are only a few tools") },
+  codemode: { label: t("Code mode"), detail: t("Called only from codemode scripts; best for batched or combined calls") },
   hidden: { label: t("Hidden"), detail: t("Stays connected but offers no tools") },
 };
 

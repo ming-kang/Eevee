@@ -100,7 +100,7 @@ export function describeProblem(problem: Problem): string {
     case "no_extension":
       return `Extensions not installed: ${problem.names.join(", ")}`;
     case "model_unset":
-      return `${problem.role} has no model: set default or ${problem.role} under models in settings.json, or name a provider and modelId when creating the ticket.`;
+      return `${problem.role} has no model. Under models in settings.json, set a default or the ${problem.role} model. You can also name a provider and modelId when you create the ticket.`;
     case "ticket_closed":
       return `${problem.ticketId} is already closed`;
     case "report_changed":
@@ -186,5 +186,5 @@ export function describeConfigIssue(issue: ConfigIssue): string {
 
 export function describeConfigProblem(problem: ConfigProblem): string {
   const where = problem.entry === undefined ? problem.file : `${problem.file} · ${problem.entry}`;
-  return `${where}：${describeConfigIssue(problem)}`;
+  return `${where}: ${describeConfigIssue(problem)}`;
 }

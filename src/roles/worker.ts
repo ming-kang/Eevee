@@ -12,14 +12,14 @@ export type WorkerSubject = {
   recent?: string;
 };
 
-const instructions = `You are Eevee's Worker, responsible for completing one ticket. The opening gives you the ticket's contents; start working right away.
+const instructions = `You are Eevee's Worker. You complete one ticket. The opening gives you the ticket's contents. Start working right away.
 
-- Automatic coordination goes to the Router through report only; the user may also message you directly to steer you, do as they say, and still hand the result in with report.
+- You coordinate with the Router only through report. The user may also message you directly to steer you. Do as they say, and still hand the result in with report.
 - When you make partial progress, hand in a progress report, then keep going.
-- When you're done, missing something, unable to go on, or you find the work isn't needed, hand in a closing report (ready / waiting / blocked / failed / dropped); it ends this turn. Make the closing report a call of its own, and put it last.
-- Put questions that need a user decision into questions, and lessons worth remembering long-term into lessons; don't bury them in the summary.
-- Long commands are moved to the background automatically, and their results wake you as a new message when they arrive.
-- Read memory on demand with read memory://project/<file>; look at other tickets' reports with read report://tN.`;
+- When you're done, missing something, unable to go on, or the work turns out to be unnecessary, hand in a closing report (ready, waiting, blocked, failed or dropped). It ends this turn, so make it a call of its own and put it last.
+- Put questions that need a user decision into questions, and lessons worth keeping long-term into lessons. Don't bury them in the summary.
+- Long commands move to the background on their own. When one finishes, its result wakes you as a new message.
+- Read memory on demand with read memory://project/<file>. Look at other tickets' reports with read report://tN.`;
 
 export const workerRole = defineRole<WorkerSubject>({
   name: "worker",

@@ -231,11 +231,11 @@ function speak(notice: WordedNotice): string {
     case "delivered":
       return `Delivered the result of ${notice.ticketId} to ${notice.to.join(", ")}.`;
     case "cancelled":
-      return `${notice.ticketId} “${notice.title}” was cancelled (${notice.reason}); ${notice.waiting.join(", ")} still waits on it and needs to be arranged again.`;
+      return `${notice.ticketId} “${notice.title}” was cancelled (${notice.reason}); the tickets waiting on it (${notice.waiting.join(", ")}) will need to be arranged again.`;
     case "answer": {
       const answer = `The user answered question ${notice.questionId}:\n${notice.answer}`;
       if (notice.forwardedTo === undefined) return answer;
-      return `The user has answered ${notice.questionId}; the answer went straight to ${notice.forwardedTo}.\n${answer}`;
+      return `The user answered ${notice.questionId}; the answer went straight to ${notice.forwardedTo}.\n${answer}`;
     }
     case "job-finished":
       return `Background job ${formatAddress({ kind: "job", id: notice.jobId })} finished (${describeJobOutcome(notice.outcome)}).\nTail of its output:\n${notice.tail}`;
@@ -261,10 +261,10 @@ function speak(notice: WordedNotice): string {
 
 /** How a job ended, in the words the model and the job log read. */
 export function describeJobOutcome(outcome: JobOutcome): string {
-  if (outcome.status === "killed") return "Terminated";
-  if (outcome.error === "timeout") return "Terminated on timeout";
-  if (outcome.error !== undefined) return `Error: ${outcome.error}`;
-  return `Exit code ${outcome.exitCode}`;
+  if (outcome.status === "killed") return "killed";
+  if (outcome.error === "timeout") return "timed out";
+  if (outcome.error !== undefined) return `error: ${outcome.error}`;
+  return `exit code ${outcome.exitCode}`;
 }
 
 export function renderReport(ticket: Pick<Ticket, "id" | "title">, report: Report): string {

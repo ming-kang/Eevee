@@ -12,12 +12,13 @@ export type CliActions = {
 export function createProgram(actions: CliActions): Command {
   const program = new Command()
     .name("eevee")
-    .description("A proactive agent. With no command it starts the Engine and opens the panel")
+    .description("Start the Engine and open the panel")
     .version(version)
     .allowExcessArguments()
     .action(async (_options: unknown, command: Command) => {
       const [unknown] = command.args;
-      if (unknown !== undefined) command.error(`No command ${unknown}; see eevee --help`);
+      if (unknown !== undefined)
+        command.error(`No command ${unknown}. Run eevee --help to see the commands.`);
       await actions.start();
       await actions.web();
     });

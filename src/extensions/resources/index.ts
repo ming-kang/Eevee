@@ -58,10 +58,16 @@ const Parameters = obj({
     int({
       minimum: 0,
       description:
-        "Where to start reading: a line number for files, an item index for ticket://, an entry id for transcript://, a character offset otherwise",
+        "Where to start reading: a line number for a file, an item index for ticket://, an entry id for transcript://, a character offset otherwise",
     }),
   ),
-  limit: opt(int({ minimum: 1, description: "How much to read" })),
+  limit: opt(
+    int({
+      minimum: 1,
+      description:
+        "How much to read: a line count for a file, an item count for ticket://, an entry count for transcript://, a character count otherwise",
+    }),
+  ),
   query: opt(
     str({
       description:
@@ -77,7 +83,8 @@ export function createResources(deps: ResourceDeps) {
   const read = defineTool({
     name: READ_TOOL,
     description:
-      "Read by address: a file path, or ticket:// report:// transcript:// memory:// job:// models://. Always paged.",
+      "Read a file path or a resource address: ticket://, report://, transcript://, memory://, job:// or models://." +
+      "Results are always paged, with a hint at the end when there is more to read.",
     parameters: Parameters,
     ...(fileRead.structuredOutputSchema === undefined
       ? {}
@@ -113,7 +120,7 @@ export function createResources(deps: ResourceDeps) {
       }
 
       const body = await resolve(deps, address, api, context);
-      if (body === undefined) return text(`Nothing found at ${args.path}`, true);
+      if (body === undefined) return text(`Nothing found at ${args.path}.`, true);
       const filtered = args.query === undefined ? body : grep(body, args.query);
       const page = pageText(filtered, args.offset, args.limit);
       return text(page.text + continuation(formatAddress(address), page));
@@ -149,7 +156,7 @@ async function resolve(
       const log = await readText(deps.jobLog(address.id));
       if (job === undefined && log === undefined) return undefined;
       const status = job === undefined ? "" : `${describeJob(job)}\n\n`;
-      return status + (log ?? "(no output yet)");
+      return status + (log ?? "The job has not produced any output yet.");
     }
     case "models":
       return deps.models(context);
@@ -163,7 +170,7 @@ async function resolve(
 async function searchFile(api: ToolExecutionApi, path: string, args: Args, context: Context) {
   const read = await api.env?.readTextFile(path, context);
   if (read === undefined)
-    return text("There is no execution environment, so files cannot be read", true);
+    return text("There is no execution environment, so files cannot be read.", true);
   if (!read.ok) return text(`Cannot read ${path}: ${read.error.message}`, true);
   const page = pageText(grep(read.value, args.query ?? ""), args.offset, args.limit);
   return text((page.text || "No matching lines.") + continuation(path, page));
@@ -194,7 +201,7 @@ async function readTranscript(
   const range = args.offset === undefined ? { limit } : { from: args.offset, limit };
   const page = await source.page(conversationId, range, context);
   const address = formatAddress({ kind: "transcript", conversationId });
-  if (page === undefined) return text(`Nothing found at ${address}`, true);
+  if (page === undefined) return text(`Nothing found at ${address}.`, true);
   const { lines } = page;
   const matching =
     args.query === undefined ? lines : lines.filter((l) => l.text.includes(args.query ?? ""));

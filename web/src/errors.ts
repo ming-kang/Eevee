@@ -99,7 +99,7 @@ export function configIssueText(issue: ConfigIssue): string {
             allowed: issue.allowed.join(" / "),
           });
     case "needs_models":
-      return t("A new provider needs models");
+      return t("A new provider needs at least one model");
     case "unsupported_api":
       return t("Model {model}: api “{api}” isn't supported", issue);
     case "needs_api":

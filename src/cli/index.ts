@@ -29,19 +29,21 @@ const program = createProgram({
       const connection = await findEngine(paths);
       if (connection) return console.log(`Started: ${connection.baseUrl}/ui/`);
     }
-    throw new Error(`Timed out starting; see the log: ${join(paths.runtime.dir, "engine.log")}`);
+    throw new Error(
+      `Timed out waiting for the Engine to start. See the log: ${join(paths.runtime.dir, "engine.log")}`,
+    );
   },
 
   async stop() {
     const running = await findEngine(paths);
-    if (!running) return console.log("Not running.");
+    if (!running) return console.log("The Engine is not running.");
     await running.client.call("POST /api/shutdown");
     console.log("Stopped.");
   },
 
   async status() {
     const running = await findEngine(paths);
-    if (!running) return console.log("Not running.");
+    if (!running) return console.log("The Engine is not running.");
     const status = await running.client.call("GET /api/status");
     console.log(`Eevee ${status.version} · ${running.baseUrl}/ui/ · pid ${running.record.pid}`);
     for (const p of status.projects) console.log(`  ${p.id}  ${p.title}  ${p.workspace}`);
@@ -52,7 +54,9 @@ const program = createProgram({
     const { code } = await client.call("POST /api/session/code");
     const url = `${baseUrl}/ui/#code=${encodeURIComponent(code)}`;
     openBrowser(url);
-    console.log(`Opened in the browser (the authorization code is valid for 90 seconds): ${url}`);
+    console.log(
+      `Opened the panel in your browser: ${url}\nThe authorization code is valid for 90 seconds.`,
+    );
   },
 });
 

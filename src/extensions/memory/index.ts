@@ -78,54 +78,63 @@ function createMemoryTool(
 ) {
   const withGlobal = scopes.includes("global");
   const Parameters = obj({
-    action: oneOf(["edit", "create", "log", "diff", "revert"]),
+    action: oneOf(["edit", "create", "log", "diff", "revert"], {
+      description: "Which action to run: edit, create, log, diff or revert",
+    }),
     scope: oneOf(scopes, {
       description: withGlobal
-        ? "global only allows changing MEMORY.md, and only when the user explicitly asks to remember something"
-        : "only the project memory can be tidied up",
+        ? "Use global only when the user explicitly asks to remember something; it can change MEMORY.md only"
+        : "Only the project memory store can be tidied up",
     }),
-    file: opt(str({ description: "edit / create: e.g. MEMORY.md or optics-sim.md" })),
-    oldText: opt(
-      str({ description: "edit: the original text to replace; it must match uniquely" }),
+    file: opt(
+      str({ description: "For edit and create: a file name such as MEMORY.md or optics-sim.md" }),
     ),
-    newText: opt(str({ description: "edit: the replacement text" })),
-    content: opt(str({ description: "create: the new file's content" })),
-    commit: opt(str({ description: "diff / revert: the target commit" })),
+    oldText: opt(
+      str({
+        description:
+          "For edit: the original text to replace; it must appear exactly once in the file",
+      }),
+    ),
+    newText: opt(str({ description: "For edit: the text that replaces oldText" })),
+    content: opt(str({ description: "For create: the full content of the new file" })),
+    commit: opt(str({ description: "For diff and revert: the target commit" })),
   });
 
   return defineTool({
     name: MEMORY_TOOL,
     description:
-      "Write memory and manage its Git history. edit replaces the matching original text; create is only for new files; log / diff view history; revert undoes one commit." +
-      "Changes are committed automatically when the turn ends. Only record experience that stays useful across sessions; don't record task progress.",
+      "Write to the memory store and manage its Git history." +
+      "Use edit to replace matching text, create to add a new file, log to view the history, diff to view a commit's changes, and revert to undo one commit." +
+      "Changes are committed automatically when the turn ends." +
+      "Record only experience that stays useful across sessions. Do not record task progress.",
     parameters: Parameters,
     replay: "unsafe",
     executionMode: "sequential",
     async execute(args, api) {
       const repo = repos[args.scope];
       if (args.scope === "global" && args.file !== undefined && args.file !== "MEMORY.md") {
-        return text("The global memory has only one file, MEMORY.md.", true);
+        return text("The global memory store has only one file, MEMORY.md.", true);
       }
       const round = String(api.conversationId);
       try {
         switch (args.action) {
           case "edit":
             if (!args.file || args.oldText === undefined || args.newText === undefined) {
-              return text("edit needs file, oldText and newText.", true);
+              return text("The edit action needs file, oldText and newText.", true);
             }
             await repo.edit(args.file, args.oldText, args.newText, round);
-            return text(`Modified ${args.file}; committed when the turn ends.`);
+            return text(`Modified ${args.file}. The change is committed when the turn ends.`);
           case "create":
             if (!args.file || args.content === undefined)
-              return text("create needs file and content.", true);
+              return text("The create action needs file and content.", true);
             await repo.create(args.file, args.content, round);
-            return text(`Created ${args.file}; committed when the turn ends.`);
+            return text(`Created ${args.file}. The change is committed when the turn ends.`);
           case "log":
             return text((await repo.log()) || "No history yet.");
           case "diff":
             return text((await repo.diff(args.commit)) || "No differences.");
           case "revert":
-            if (!args.commit) return text("revert needs commit.", true);
+            if (!args.commit) return text("The revert action needs commit.", true);
             await repo.revert(args.commit);
             return text(`Reverted ${args.commit}.`);
         }

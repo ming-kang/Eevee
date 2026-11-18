@@ -35,5 +35,5 @@ export function continuation(
 ): string {
   return page.nextOffset === undefined
     ? ""
-    : `\n\n[More content: ${page.total} in total, continue with read("${address}", offset: ${page.nextOffset})]`;
+    : `\n\n[More content: ${page.total} in total. Continue with read("${address}", offset: ${page.nextOffset}).]`;
 }

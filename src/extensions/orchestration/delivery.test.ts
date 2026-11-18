@@ -103,7 +103,7 @@ test("What the Engine says carries notice data, the user's own words do not", ()
   });
   assert.equal(
     job?.text,
-    "Background job job://j2 finished (Exit code 0).\nTail of its output:\ndone",
+    "Background job job://j2 finished (exit code 0).\nTail of its output:\ndone",
   );
   assert.deepEqual(job?.notice, {
     type: "job-finished",

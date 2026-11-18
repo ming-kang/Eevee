@@ -37,45 +37,53 @@ const Parameters = obj({
   ticketId: opt(
     str({
       pattern: TICKET_ID,
-      description: "The ticket to act on, e.g. t3; required for every action but create",
+      description: "The ticket to act on, e.g. t3. Every action except create requires it.",
     }),
   ),
-  title: opt(str({ description: "create: a short title" })),
+  title: opt(str({ description: "create: a short title for the ticket" })),
   goal: opt(str({ description: "create: what the ticket should achieve" })),
-  inputs: opt(arr(str(), { description: "create: input file paths or resource addresses" })),
-  acceptance: opt(arr(str(), { description: "create: the acceptance criteria" })),
+  inputs: opt(arr(str(), { description: "create: the input file paths or resource addresses" })),
+  acceptance: opt(
+    arr(str(), { description: "create: the acceptance criteria the work must meet" }),
+  ),
   output: opt(str({ description: "create: where the artifacts are written" })),
   deliverTo: opt(
     arr(str({ pattern: TICKET_ID }), {
-      description: "create: tickets that receive the results after review",
+      description: "create: tickets that receive the result after review",
     }),
   ),
   provider: opt(
     str({
       description:
-        "create / model: the model provider, see models://; leave it out on create to use the default model",
+        "create and model: the model provider; see models://. On create, leave it out to use the default model.",
     }),
   ),
-  modelId: opt(str({ description: "create / model: the model id" })),
+  modelId: opt(str({ description: "create and model: the model ID" })),
   thinkingLevel: opt(
     oneOf(THINKING_LEVELS, {
       description:
-        "create / model: the thinking level, from off to max, filled in together with provider and modelId; defaults to off",
+        "create and model: the thinking level, from off to max. Set it together with provider and modelId; it defaults to off.",
     }),
   ),
   modelReason: opt(
-    str({ description: "create / model: why this model instead of the default one" }),
+    str({ description: "create and model: why this model instead of the default one" }),
   ),
-  text: opt(str({ description: "message: the instruction to append" })),
+  text: opt(str({ description: "message: the instruction to append to the conversation" })),
   mode: opt(
-    oneOf(["steer", "followUp"], { description: "message: steer or queue, queues by default" }),
+    oneOf(["steer", "followUp"], {
+      description:
+        "message: steer to cut in on the current turn, or followUp to queue behind it. followUp is the default.",
+    }),
   ),
   verdict: opt(
-    oneOf(["accept", "rework"], { description: "review: accept the report or send it back" }),
+    oneOf(["accept", "rework"], {
+      description: "review: accept approves the report, or rework sends it back",
+    }),
   ),
   note: opt(
     str({
-      description: "review accept: the evidence / rework: what is missing / close: the reason",
+      description:
+        "review accept: the evidence that it passed; review rework: what is missing; close: the reason for cancelling",
     }),
   ),
 });
@@ -103,9 +111,13 @@ export function createTicketTool(deps: OrchestrationDeps) {
   return defineTool({
     name: TICKET_TOOL,
     description:
-      "Manage tickets. create makes one and starts its worker conversation; message appends an instruction to " +
-      "that conversation; interrupt aborts the turn it is on; review handles a ready report (accept closes " +
-      "the ticket, rework sends it back); close cancels a ticket; model switches the model of its worker conversation.",
+      "Manage tickets:\n" +
+      "- create: make a ticket and start its worker conversation\n" +
+      "- message: append an instruction to that conversation\n" +
+      "- interrupt: abort the turn it is on\n" +
+      "- review: handle a ready report (accept closes the ticket; rework sends it back)\n" +
+      "- close: cancel a ticket\n" +
+      "- model: switch the model of its worker conversation",
     parameters: Parameters,
     replay: "unsafe",
     executionMode: "sequential",
@@ -325,7 +337,9 @@ async function retarget(ticket: Ticket, args: Args, api: ToolExecutionApi, conte
   }, context);
   const thinking =
     model.thinkingLevel === undefined ? "" : `, thinking level ${model.thinkingLevel}`;
-  return ok(`${ticket.id} now uses ${formatModel(model)}${thinking}, from its next request on.`);
+  return ok(
+    `${ticket.id} now uses ${formatModel(model)}${thinking}, starting from its next request.`,
+  );
 }
 
 /** Why a terminal transition could not be written, in the Router's words. */

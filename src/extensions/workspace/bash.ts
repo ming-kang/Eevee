@@ -31,7 +31,7 @@ export type BashDeps = {
 const BUFFER_LIMIT = 2 * 1024 * 1024;
 
 const Parameters = obj({
-  command: str({ description: "The bash command to run" }),
+  command: str({ description: "The bash command to run in the workspace" }),
   timeout: opt(
     int({
       minimum: 1,
@@ -50,9 +50,9 @@ export function createBashTool(deps: BashDeps) {
   return defineTool({
     name: "bash",
     description:
-      "Run a bash command in the workspace and return stdout and stderr combined." +
-      "A command that runs for a while moves to a background job (job://jN) on its own, and its result arrives " +
-      "as a new message once it ends; you can end this turn or do something else meanwhile.",
+      "Run a bash command in the workspace and return its stdout and stderr combined." +
+      "A command that runs for a while moves to a background job (job://jN) on its own." +
+      "Its result arrives as a new message once it ends, so end this turn or do something else until then.",
     parameters: Parameters,
     outputLimits: { retain: "tail" },
     async execute(args, api, context) {
@@ -75,7 +75,7 @@ export function createBashTool(deps: BashDeps) {
           const details: BashDetails = { stopped: true };
           return {
             isError: true,
-            output: [{ type: "text", text: "The command was aborted" }],
+            output: [{ type: "text", text: "The command was aborted." }],
             details,
           };
         }
@@ -90,8 +90,8 @@ export function createBashTool(deps: BashDeps) {
             {
               type: "text",
               text:
-                `The command is still running and moved to background job ${address}. Its full output goes to the log; read it with read ${address}.` +
-                "You will be notified with a new message once the job ends; do something else meanwhile, or end this turn now.",
+                `The command is still running as a background job (${address}). Read its full output with read ${address}.` +
+                "You will get a new message once the job ends. Do something else meanwhile, or end this turn now.",
             },
           ],
         };
@@ -103,7 +103,10 @@ export function createBashTool(deps: BashDeps) {
 }
 
 function finish(result: CommandResult, timeout: number | undefined) {
-  if (result.error === "timeout") throw new Error(`The command timed out (${timeout} s)`);
+  if (result.error === "timeout")
+    throw new Error(
+      `The command timed out after ${timeout} s and was killed. Run it in the background, or set a longer timeout, if it needs more time.`,
+    );
   if (result.error !== undefined) throw new Error(result.error);
   const details: BashDetails = result.exitCode === undefined ? {} : { exitCode: result.exitCode };
   if (result.exitCode === 0) return { details };

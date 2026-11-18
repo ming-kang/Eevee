@@ -308,7 +308,7 @@ async function performRevert(): Promise<void> {
     confirmCommit.value = undefined;
     commitDiffs.value = {};
     fileContents.value = {};
-    showToast(t("Reverted {commit} · added a revert commit", { commit: target.commit }));
+    showToast(t("Reverted {commit}", { commit: target.commit }));
     await loadScope();
     if (tab.value === "files") await loadFiles();
     else files.value = [];
@@ -535,7 +535,7 @@ async function performRevert(): Promise<void> {
         </div>
         <div class="modal-b">
           <p class="muted">
-            {{ t("Adds a revert commit that undoes") }} <span class="mono">{{ confirmCommit.commit }}</span>{{ t("; history isn't rewritten.") }}
+            {{ t("This adds a commit that reverses") }} <span class="mono">{{ confirmCommit.commit }}</span>{{ t(", leaving the earlier history untouched.") }}
           </p>
           <div class="codeline">
             <code>{{ confirmCommit.subject }}</code>

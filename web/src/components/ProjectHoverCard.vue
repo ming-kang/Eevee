@@ -59,7 +59,7 @@ defineProps<{
         </div>
       </div>
       <div v-if="state.activeAt !== undefined" class="hc-foot">
-        {{ t("Active {time}", { time: formatRelativeTime(state.activeAt) }) }}
+        {{ t("Last active {time}", { time: formatRelativeTime(state.activeAt) }) }}
       </div>
     </template>
   </div>

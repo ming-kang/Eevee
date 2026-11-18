@@ -99,12 +99,11 @@ export function createRoles(deps: RolesDeps) {
   const handoff = defineTool({
     name: HANDOFF_TOOL,
     description:
-      "Handoff: write a handoff summary, then start over from “memory + ticket overview + summary + the last few rounds verbatim”." +
-      "Record decisions of lasting value with memory first.",
+      "Write a handoff summary, then start fresh from memory, the ticket overview, the summary and the last few rounds verbatim." +
+      " Record decisions of lasting value in memory first.",
     parameters: obj({
       summary: str({
-        description:
-          "Handoff summary: what you're working on, what you've decided, what comes next",
+        description: "What you're working on, what you've decided and what comes next",
       }),
     }),
     replay: "safe",
