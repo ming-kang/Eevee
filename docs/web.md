@@ -120,12 +120,12 @@ Router 上一轮失败时，对话末尾显示失败原因和“重试”按钮�
 | 页面 | 内容 |
 |:-:|:-:|
 | 通用 | 界面语言（简体中文或 English，切换后页面重新载入）；界面主题（跟随系统、浅色或深色）；字体，填字体名，多个用逗号隔开，留空用自带的 Inter；字号，12 到 20 的整数，默认 14，文字和图标一起缩放。只保存在这个浏览器里 |
-| 模型 | 全局和每个角色的默认模型与思考档位、各 provider 的凭据状态、可用模型目录、`models.md` 里的使用经验 |
+| 模型 | 全局和每个角色的默认模型与思考档位；各 provider 的凭据状态，可以在这里填写或更换 API Key；可用模型目录；`models.md` 里的使用经验 |
 | 角色能力 | 每个扩展在 Router、Worker、Dreamer 上的开关，以及各角色的轮次上限 |
 | MCP 与扩展 | 每个 MCP 服务器的连接状态和错误、用户扩展的加载结果，“重新加载”按钮 |
 | Engine | 实时连接状态、版本、地址，以及停止或重启 Engine 的命令 |
 
-登录 provider 仍需在终端运行 `eevee model login <provider>`。各项设置的含义见 [选择模型](models.md)、[配置角色能力](capabilities.md) 和 [接入 MCP 服务器](mcp.md)。
+在“模型”页的 provider 一行点“填写 API Key”，输入后按 `Enter` 或“保存”，key 保存到 `auth.json`，立即生效；已配置 API Key 的 provider 用旁边的铅笔按钮更换。各项设置的含义见 [选择模型](models.md)、[配置角色能力](capabilities.md) 和 [接入 MCP 服务器](mcp.md)。
 
 ## 快捷键
 

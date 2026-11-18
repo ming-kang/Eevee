@@ -1,80 +1,53 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
-import { readJson, readText, writeFileAtomic, writeJsonAtomic } from "../shared/fs.ts";
+import { readText, writeFileAtomic } from "../shared/fs.ts";
 
 export const CODE_TTL_MS = 90_000;
-export const SESSION_IDLE_MS = 12 * 60 * 60 * 1000;
-
-export type Caller = "cli" | "browser";
-
-type StoredSession = { hash: string; lastSeen: number };
 
 export type AuthOptions = {
-  cliTokenPath: string;
-  sessionsPath: string;
+  tokenPath: string;
   now?: () => number;
 };
 
+/**
+ * One token guards the local interface: the CLI reads it from its file, and the browser receives it by trading a
+ * one-time code, so the token itself never travels in a URL.
+ */
 export class Auth {
-  readonly #cliToken: string;
-  readonly #sessionsPath: string;
-  readonly #sessions: Map<string, number>;
+  readonly #token: string;
   readonly #codes = new Map<string, number>();
   readonly #now: () => number;
 
-  private constructor(cliToken: string, sessions: StoredSession[], options: AuthOptions) {
-    this.#cliToken = cliToken;
-    this.#sessionsPath = options.sessionsPath;
+  private constructor(token: string, options: AuthOptions) {
+    this.#token = token;
     this.#now = options.now ?? Date.now;
-    this.#sessions = new Map(sessions.map((s) => [s.hash, s.lastSeen]));
   }
 
   static async open(options: AuthOptions): Promise<Auth> {
-    let cliToken = (await readText(options.cliTokenPath))?.trim();
-    if (!cliToken) {
-      cliToken = token();
-      await writeFileAtomic(options.cliTokenPath, cliToken, { mode: 0o600 });
+    let token = (await readText(options.tokenPath))?.trim();
+    if (!token) {
+      token = randomToken();
+      await writeFileAtomic(options.tokenPath, token, { mode: 0o600 });
     }
-    const sessions = (await readJson<StoredSession[]>(options.sessionsPath)) ?? [];
-    return new Auth(cliToken, sessions, options);
+    return new Auth(token, options);
   }
 
-  verify(presented: string | undefined): Caller | undefined {
-    if (!presented) return undefined;
-    if (safeEqual(presented, this.#cliToken)) return "cli";
-    const hash = sha256(presented);
-    const lastSeen = this.#sessions.get(hash);
-    if (lastSeen === undefined) return undefined;
-    if (this.#now() - lastSeen > SESSION_IDLE_MS) {
-      this.#sessions.delete(hash);
-      return undefined;
-    }
-    this.#sessions.set(hash, this.#now());
-    return "browser";
+  verify(presented: string | undefined): boolean {
+    return presented !== undefined && safeEqual(presented, this.#token);
   }
 
   issueCode(): string {
-    const code = token();
+    const code = randomToken();
     this.#codes.set(code, this.#now() + CODE_TTL_MS);
     return code;
   }
 
-  async exchange(code: string): Promise<string | undefined> {
+  /** The token for a code that is unused and not expired; every code works at most once. */
+  exchange(code: string): string | undefined {
     const expires = this.#codes.get(code);
     this.#codes.delete(code);
     if (expires === undefined || this.#now() > expires) return undefined;
-    const session = token();
-    this.#sessions.set(sha256(session), this.#now());
-    await this.#save();
-    return session;
-  }
-
-  async #save(): Promise<void> {
-    const now = this.#now();
-    const live = [...this.#sessions]
-      .filter(([, lastSeen]) => now - lastSeen <= SESSION_IDLE_MS)
-      .map(([hash, lastSeen]) => ({ hash, lastSeen }));
-    await writeJsonAtomic(this.#sessionsPath, live, { mode: 0o600 });
+    return this.#token;
   }
 }
 
@@ -96,8 +69,7 @@ function hostname(host: string): string {
   return host.startsWith("[") ? host.slice(0, host.indexOf("]") + 1) : (host.split(":")[0] ?? "");
 }
 
-const token = () => randomBytes(32).toString("base64url");
-const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
+const randomToken = () => randomBytes(32).toString("base64url");
 
 function safeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a);

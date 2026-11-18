@@ -25,10 +25,7 @@ const engine = await Engine.open({
   context,
   client: { name: "eevee", version },
 });
-const auth = await Auth.open({
-  cliTokenPath: paths.runtime.cliToken,
-  sessionsPath: paths.runtime.sessions,
-});
+const auth = await Auth.open({ tokenPath: paths.runtime.token });
 
 let port = settings.port;
 let stopping = false;

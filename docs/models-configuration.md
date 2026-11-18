@@ -2,7 +2,7 @@
 
 这一页列出 `~/.eevee/models.json` 的全部字段。它的格式是 pi coding agent `models.json` 的一个子集，常见场景见 [选择模型](models.md#接入兼容端点)。
 
-`models.json` 在 Engine 启动和 `eevee model login` 时读取，问题写进 Engine 日志：
+`models.json` 在 Engine 启动和保存 API Key 时读取，问题写进 Engine 日志：
 
 - 字段类型或结构不符合下面的定义时，整个文件都不生效，日志里给出字段路径；
 - 结构正确但组不成 provider（比如新增的 provider 缺 `baseUrl` 或 `api`，或 `api` 不认识）时，只影响那一个 provider：内置 provider 保持原样，新增的 provider 不会出现；
@@ -52,7 +52,7 @@
 
 同一个 provider 按这个顺序取第一个可用的凭据：
 
-1. `eevee model login` 保存在 `auth.json` 里的凭据；
+1. 在面板里保存、存在 `auth.json` 里的凭据；
 2. 这里的 `apiKey`；
 3. 内置 provider 自己的方式，通常是环境变量，见 [环境变量](environment-variables.md#provider-凭据)。
 

@@ -18,20 +18,11 @@ Eevee 可以连接 [Model Context Protocol](https://modelcontextprotocol.io) 服
    }
    ```
 
-2. 重新读取配置并连接，然后检查状态：
+2. 在面板左栏底部打开“设置”，在“MCP 与扩展”页点“重新加载”，确认服务器显示为“已连接”。
 
-   ```bash
-   eevee mcp reload
-   eevee mcp list
-   ```
+3. 在“角色能力”页为角色打开 `mcp.deepwiki`、`mcp.filesystem` 的开关。
 
-3. 为角色启用服务器：
-
-   ```bash
-   eevee role enable worker mcp.deepwiki mcp.filesystem
-   ```
-
-Engine 启动时会自动读取 `mcp.json`；之后修改它，需要运行 `eevee mcp reload`。
+Engine 启动时会自动读取 `mcp.json`；之后修改它，需要在“MCP 与扩展”页点“重新加载”。
 
 ## 配置服务器
 
@@ -84,7 +75,7 @@ HTTP 服务器：
 }
 ```
 
-引用的变量没有设置时，这个服务器连接失败并说明原因。变量要在运行 `eevee start` 的环境里设置。
+引用的变量没有设置时，这个服务器连接失败并说明原因。变量要在启动 Engine 的环境里设置。
 
 stdio 服务器只继承 `bash` 也能拿到的那些基础环境变量（见 [环境变量](environment-variables.md#子进程继承的变量)），再加上 `env` 里写明的变量。需要的凭据都要在 `env` 里显式传入。
 
@@ -92,7 +83,7 @@ stdio 服务器只继承 `bash` 也能拿到的那些基础环境变量（见 [�
 
 - 服务器名字只能包含字母、数字、`_` 和 `-`。
 - 工具名为 `mcp__<server>__<tool>`，字母、数字和 `_` 以外的字符换成 `_`；名字过长或转换后重名时加上哈希后缀。代码模式的分组名为 `mcp__<server>`，其中 `-` 换成 `_`，所以不要同时配置只差 `-` 和 `_` 的两个服务器名。
-- 配错的条目会被跳过，不影响其他服务器连接，问题显示在 `eevee mcp list` 和 `eevee role list` 里。整个文件不是合法 JSON 时除外：Engine 启动时会因此无法启动；运行中执行 `eevee mcp reload` 会先断开全部服务器再报错，改好文件后要再运行一次。
+- 配错的条目会被跳过，不影响其他服务器连接，问题显示在“MCP 与扩展”页。整个文件不是合法 JSON 时除外：Engine 启动时会因此无法启动；运行中点“重新加载”会先断开全部服务器再报错，改好文件后要再加载一次。
 - 暂不支持 OAuth 登录，也不支持用 `!command` 生成配置值。需要认证的 HTTP 服务器请在 `headers` 里带上 token。
 
 ## 控制工具暴露
@@ -110,18 +101,18 @@ stdio 服务器只继承 `bash` 也能拿到的那些基础环境变量（见 [�
 
 ## 连接与诊断
 
-Engine 启动时在后台连接全部启用的服务器，不会等它们连上才开始工作。`eevee mcp list` 显示每个服务器的状态：
+Engine 启动时在后台连接全部启用的服务器，不会等它们连上才开始工作。“MCP 与扩展”页显示每个服务器的状态，`GET /api/capabilities` 里是括号中的值：
 
 | 状态 | 含义 |
 |:-:|:-:|
-| `connecting` | 正在连接 |
-| `connected` | 已连接，工具可用 |
-| `failed` | 连接失败或连接已断开，附带错误信息 |
-| `disabled` | `enabled` 为 `false` |
+| 连接中（`connecting`） | 正在连接 |
+| 已连接（`connected`） | 已连接，工具可用 |
+| 失败（`failed`） | 连接失败或连接已断开，附带错误信息 |
+| 已停用（`disabled`） | `enabled` 为 `false` |
 
 stdio 服务器连接失败时，错误信息会附上它 stderr 的最后一段。
 
-服务器没连上或断开时，它的扩展仍然存在，只是没有工具，角色的配置不受影响。断开后不会自动重连，运行 `eevee mcp reload` 会重新读取 `mcp.json` 并重连全部服务器；重连成功后，工具自动回到启用了它的角色。
+服务器没连上或断开时，它的扩展仍然存在，只是没有工具，角色的配置不受影响。断开后不会自动重连，点“重新加载”会重新读取 `mcp.json` 并重连全部服务器；重连成功后，工具自动回到启用了它的角色。
 
 MCP 工具的输出太长时，Eevee 保留开头和结尾交给模型，完整内容保存到 `~/.eevee/runtime/mcp-output/`，模型可以用 `read` 打开。
 

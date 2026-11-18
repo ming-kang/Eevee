@@ -1,13 +1,13 @@
 # 接入本地接口
 
-命令行和面板都通过 Engine 的本地接口工作。你也可以用同样的接口写脚本或自己的客户端：发请求用 HTTP 接口，接收实时更新用 WebSocket 实时流。
+面板和命令行都通过 Engine 的本地接口工作。你也可以用同样的接口写脚本或自己的客户端：发请求用 HTTP 接口，接收实时更新用 WebSocket 实时流。
 
 ## 选择方式
 
 | 需要 | 使用 |
 |:-:|:-:|
-| 在 shell 脚本里管理项目、模型和记忆 | [命令行](cli.md) |
-| 从其他程序发消息、回答问题、读取看板 | [HTTP 接口](http-api.md) |
+| 启动、停止 Engine，打开面板 | [命令行](cli.md) |
+| 从脚本或其他程序管理项目、模型和记忆，发消息、回答问题、读取看板 | [HTTP 接口](http-api.md) |
 | 实时显示对话和看板的变化 | [实时流](stream.md) |
 
 ## 找到 Engine
@@ -22,21 +22,18 @@ Engine 把实际端口写在 `~/.eevee/runtime/engine.json` 里：
 
 ## 鉴权
 
-除了健康检查和授权码兑换，所有请求都要在 `x-eevee-token` 请求头里带 token。有两种 token：
+除了健康检查和授权码兑换，所有请求都要在 `x-eevee-token` 请求头里带鉴权 token，保存在 `~/.eevee/runtime/token`。Engine 第一次启动时生成它，之后一直不变。
 
-| token | 从哪里来 | 能做什么 |
-|:-:|---|:-:|
-| CLI token | `~/.eevee/runtime/cli-token` 文件 | 全部接口 |
-| 会话 token | 用 `eevee web` 的一次性授权码换取 | 除停止 Engine、生成授权码、保存凭据以外的接口 |
+本机脚本直接读这个文件。浏览器类客户端读不到文件，要走授权码流程：用 token 调用 `POST /api/session/code` 生成授权码（`eevee web` 就是这样做的），客户端再用 `POST /api/session` 把授权码换成 token。授权码 90 秒内有效、只能用一次，这样 token 本身不会出现在地址栏和浏览历史里。
 
-本机脚本直接读 CLI token 即可。浏览器类客户端应当走授权码流程：CLI 调用 `POST /api/session/code` 生成授权码，客户端用 `POST /api/session` 把它换成会话 token。授权码 90 秒内有效、只能用一次；会话 12 小时无操作后过期。
+要作废 token，先停止 Engine，删除 `runtime/token`，再启动：Engine 会生成新的 token，已经打开的面板要重新授权。
 
 请求必须发往回环地址，`Host` 和 `Origin` 请求头（如果有）也必须是回环地址，否则返回 `403`。
 
 ## 发一个请求
 
 ```bash
-TOKEN=$(cat ~/.eevee/runtime/cli-token)
+TOKEN=$(cat ~/.eevee/runtime/token)
 PORT=$(node -p 'require(require("os").homedir() + "/.eevee/runtime/engine.json").port')
 
 curl -s -H "x-eevee-token: $TOKEN" "http://127.0.0.1:$PORT/api/status"

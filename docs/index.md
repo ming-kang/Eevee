@@ -30,7 +30,6 @@ Eevee 适合持续一段时间、由许多性质不同的子任务组成的工�
 ## 基于 Eevee 开发
 
 - [编写扩展](extensions.md)：给 Eevee 加你自己的工具。
-- 用 [命令行](cli.md) 在脚本里管理 Engine、项目、模型和记忆。
 - 用 [HTTP 接口](http-api.md) 和 [实时流](stream.md) 写自己的客户端，见 [接入本地接口](integration.md)。
 - 想修改 Eevee 本身，见 [参与开发](development.md)。
 

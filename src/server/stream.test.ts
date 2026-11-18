@@ -76,11 +76,8 @@ let url: string;
 
 before(async () => {
   dir = await mkdtemp(join(tmpdir(), "eevee-stream-"));
-  const auth = await Auth.open({
-    cliTokenPath: join(dir, "cli-token"),
-    sessionsPath: join(dir, "sessions.json"),
-  });
-  token = (await readFile(join(dir, "cli-token"), "utf8")).trim();
+  const auth = await Auth.open({ tokenPath: join(dir, "token") });
+  token = (await readFile(join(dir, "token"), "utf8")).trim();
   server = createServer((_request, response) => response.end());
   stream = attachStream(server, {
     source: { bootId: "boot-1", project: (id) => (id === "p1" ? project : undefined) },

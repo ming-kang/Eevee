@@ -34,12 +34,10 @@ Eevee 的扩展就是 Pi Durable 扩展，可以提供工具、系统提示词�
    { "type": "module" }
    ```
 
-3. 重启 Engine，确认扩展已加载，并为 Worker 启用它：
+3. 重启 Engine，然后在面板的“设置 · MCP 与扩展”里确认它已加载，再在“角色能力”页为 Worker 打开 `clock` 的开关：
 
    ```bash
    eevee stop && eevee start
-   eevee role list
-   eevee role enable worker clock
    ```
 
 Node.js 26 直接运行 `.ts` 文件，无需编译。Node 只是去掉类型标注，所以 `enum`、`namespace`、构造函数参数属性这类需要编译的 TypeScript 语法不能使用。
@@ -52,7 +50,7 @@ Node.js 26 直接运行 `.ts` 文件，无需编译。Node 只是去掉类型标
 | 文件类型 | `.ts`、`.js`、`.mjs`；`.d.ts` 会被忽略 |
 | 默认导出 | 一个扩展对象，或者返回扩展的函数（可以是 async 函数） |
 | 加载时机 | Engine 启动时加载一次；修改后需要重启 Engine |
-| 加载失败 | 只影响这一个文件；错误显示在 `eevee role list` 里，也写进 Engine 日志 |
+| 加载失败 | 只影响这一个文件；错误显示在“设置 · MCP 与扩展”里，也写进 Engine 日志 |
 
 一个文件只提供一个扩展。需要多个文件组织代码时，把辅助模块放进子目录，再从顶层文件导入。
 
@@ -80,8 +78,8 @@ Eevee 升级这些包时，扩展目录里的版本也要跟着升级。
 
 ## 启用与调试
 
-- 用 `eevee role enable <role> <extension>` 启用，见 [配置角色能力](capabilities.md)。
-- 用 `eevee role list` 查看加载结果和每个扩展的工具数。加载失败的原因（语法错误、默认导出不对、重名、保留名）显示在可启用列表下方。
+- 在“设置 · 角色能力”里启用，见 [配置角色能力](capabilities.md)；那里也列出每个扩展的工具数。
+- 在“设置 · MCP 与扩展”里查看加载结果。加载失败的原因（语法错误、默认导出不对、重名、保留名）显示在对应文件那一行。
 - 扩展里 `console.log` 的输出写进 Engine 日志 `~/.eevee/runtime/engine.log`。
 - 修改扩展后重启 Engine。已经启用它的角色不需要重新启用。
 - 扩展提供的提示词段落不要包含当前时间这类会变的内容，否则这个角色的缓存前缀每次请求都会失效。

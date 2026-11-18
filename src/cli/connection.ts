@@ -12,14 +12,14 @@ export type Connection = {
 export class NotRunning extends Error {
   override name = "NotRunning";
   constructor() {
-    super("Eevee 没有在运行，先执行 eevee start。");
+    super("Eevee 没有在运行：运行 eevee 启动并打开面板。");
   }
 }
 
 export async function findEngine(paths: EeveePaths): Promise<Connection | undefined> {
   const record = await readRuntimeRecord(paths.runtime.record);
   if (record === undefined || !isAlive(record.pid)) return undefined;
-  const token = (await readText(paths.runtime.cliToken))?.trim();
+  const token = (await readText(paths.runtime.token))?.trim();
   const baseUrl = `http://127.0.0.1:${record.port}`;
   const client = createClient({ baseUrl, ...(token ? { token } : {}) });
   try {

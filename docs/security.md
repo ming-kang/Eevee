@@ -7,9 +7,8 @@ Eevee 采用 YOLO 权限工作，无需审批命令。
 Engine 的本地接口能让 Worker 执行任意命令，出于安全考虑，Eevee 为此做了这些限制：
 
 - **监听回环地址**：只绑定 `127.0.0.1`，并要求请求的 `Host` 和 `Origin`（如果有）都是回环地址，防止 DNS 重绑定和网页跨站请求。
-- **接口需要鉴权**：只有健康检查和授权码兑换不需要 token。命令行使用 `runtime/cli-token` 里的 token，浏览器使用会话 token，两者都放在 `x-eevee-token` 请求头里。
-- **敏感操作通过终端**：停止 Engine、生成授权码、保存凭据等操作只接受 CLI token。
-- **浏览器授权**：`eevee web` 生成的授权码 90 秒内有效，会话 12 小时无操作后过期，Engine 只保存会话 token 的哈希。
+- **接口需要鉴权**：只有健康检查和授权码兑换不需要 token。token 保存在 `runtime/token`，放在 `x-eevee-token` 请求头里。拿到它就能让 Worker 以你的身份执行任意命令，像保管密码一样保管这个文件。
+- **浏览器授权**：`eevee web` 生成一次性授权码放在地址里，面板用它换到 token，存在浏览器的 localStorage 里；授权码 90 秒内有效，token 本身不出现在地址栏和浏览历史里。要作废 token，停止 Engine 后删除 `runtime/token` 再启动。
 - **实时流**：Token 放在子协议里，Engine 只回应 `eevee.v1`，不会回显 Token。
 
 ## 子进程的环境变量
@@ -18,7 +17,7 @@ Engine 的本地接口能让 Worker 执行任意命令，出于安全考虑，Ee
 
 ## 私有文件
 
-`auth.json`、`settings.json`、`runtime/cli-token`、`runtime/sessions.json` 等私有文件都先写临时文件再改名，原子替换；在 POSIX 系统上权限为 `0600`。
+`auth.json`、`settings.json`、`runtime/token` 等私有文件都先写临时文件再改名，原子替换；在 POSIX 系统上权限为 `0600`。
 
 ## 扩展与 MCP 服务器
 

@@ -664,10 +664,7 @@ if (checkOnly) {
   process.exit(0);
 }
 
-const auth = await Auth.open({
-  cliTokenPath: paths.runtime.cliToken,
-  sessionsPath: paths.runtime.sessions,
-});
+const auth = await Auth.open({ tokenPath: paths.runtime.token });
 
 let port = Number(process.env.EEVEE_PORT ?? initialSettings.port);
 let stopping = false;

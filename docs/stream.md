@@ -8,7 +8,7 @@
 const ws = new WebSocket(`ws://127.0.0.1:${port}/api/stream`, ["eevee.v1", `token.${token}`]);
 ```
 
-- 子协议必须包含 `eevee.v1`，以及 `token.` 加上 CLI token 或浏览器会话 token。浏览器无法给 WebSocket 设置请求头，所以 token 放在子协议里。
+- 子协议必须包含 `eevee.v1`，以及 `token.` 加上 [token](integration.md#鉴权)。浏览器无法给 WebSocket 设置请求头，所以 token 放在子协议里。
 - Engine 只回应 `eevee.v1`，不会回显 token。
 - 和 HTTP 接口一样，`Host` 和 `Origin` 必须是回环地址。
 

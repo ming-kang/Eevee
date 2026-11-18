@@ -21,7 +21,7 @@
   }
   ```
 
-  用内置 provider 的名字是修改它（`baseUrl`、`headers`、追加模型、`modelOverrides`），其他名字是新增 provider，需要 `baseUrl` 和 `api`。`apiKey`、`headers` 的值可以引用环境变量（`$NAME`、`${NAME}`）；`eevee model login` 保存的凭据优先于 `apiKey`。某个 provider 配错只影响它自己，问题写进日志。
+  用内置 provider 的名字是修改它（`baseUrl`、`headers`、追加模型、`modelOverrides`），其他名字是新增 provider，需要 `baseUrl` 和 `api`。`apiKey`、`headers` 的值可以引用环境变量（`$NAME`、`${NAME}`）；`auth.json` 里保存的凭据优先于 `apiKey`。某个 provider 配错只影响它自己，问题写进日志。
 - 组装出的 `Models` 以函数形式传给 Durable 的 `HarnessOptions.models`，修改配置后不用重新打开 Harness。
 
 模型选择分为两层：

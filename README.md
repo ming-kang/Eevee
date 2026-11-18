@@ -12,7 +12,7 @@ Eevee 是基于 [Pi Durable](https://github.com/earendil-works/pi) 构建的主�
 ```bash
 npm install
 npm run build
-node dist/cli/index.js start
+node dist/cli/index.js
 ```
 
 ## 文档

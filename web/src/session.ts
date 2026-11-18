@@ -16,7 +16,7 @@ export type SessionInfo = {
   status: EngineStatus;
 };
 
-export type SessionStorageLike = {
+export type TokenStorage = {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
@@ -28,7 +28,7 @@ export type SessionEnv = {
   search: string;
   hash: string;
   clearHash: () => void;
-  storage: SessionStorageLike;
+  storage: TokenStorage;
   createClient?: typeof createClient;
 };
 
@@ -58,7 +58,7 @@ export async function openSessionWith(env: SessionEnv): Promise<SessionInfo> {
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 401) {
       env.storage.removeItem(STORAGE_KEY);
-      throw new Unauthorized(t("会话已过期"));
+      throw new Unauthorized(t("授权已失效"));
     }
     throw error;
   }
@@ -67,7 +67,7 @@ export async function openSessionWith(env: SessionEnv): Promise<SessionInfo> {
 type BrowserGlobals = {
   location: { origin: string; pathname: string; search: string; hash: string };
   history: { replaceState(data: unknown, unused: string, url: string): void };
-  sessionStorage: SessionStorageLike;
+  localStorage: TokenStorage;
 };
 
 function browserEnv(): SessionEnv {
@@ -80,7 +80,7 @@ function browserEnv(): SessionEnv {
     clearHash: () => {
       g.history.replaceState(null, "", g.location.pathname + g.location.search);
     },
-    storage: g.sessionStorage,
+    storage: g.localStorage,
   };
 }
 

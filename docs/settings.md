@@ -2,7 +2,7 @@
 
 这一页列出 `~/.eevee/settings.json` 的全部设置。所有字段都可以省略，省略时使用默认值。文件位置和生效时机见 [配置](configuration.md)。
 
-用 `eevee model default` 和 `eevee role` 修改的设置立即生效；手动编辑后需要重启 Engine，细节见 [修改后什么时候生效](configuration.md#修改后什么时候生效)。读取和写入时都会按结构校验，格式不对时错误信息会指出具体字段。
+在面板的设置里修改的默认模型和角色能力立即生效；手动编辑后需要重启 Engine，细节见 [修改后什么时候生效](configuration.md#修改后什么时候生效)。读取和写入时都会按结构校验，格式不对时错误信息会指出具体字段。
 
 ## 示例
 
@@ -45,7 +45,7 @@
 | `models.worker` | 工单没有指定模型时使用 |
 | `models.dreamer` | 整理记忆的工单使用；没有可用模型时 Dreaming 视为关闭 |
 
-项目可以在 `project.json` 里覆盖这些设置，见 [选择模型](models.md#项目的默认模型)。用 `eevee model default` 修改时会检查模型是否存在。
+项目可以在 `project.json` 里覆盖这些设置，见 [选择模型](models.md#项目的默认模型)。在面板里或通过接口修改时会检查模型是否存在。
 
 ## 角色
 

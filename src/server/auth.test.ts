@@ -1,50 +1,44 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { Auth, CODE_TTL_MS, isLoopbackRequest, SESSION_IDLE_MS } from "./auth.ts";
+import { Auth, CODE_TTL_MS, isLoopbackRequest } from "./auth.ts";
 
 let dir: string;
 let now = 0;
-const open = () =>
-  Auth.open({
-    cliTokenPath: join(dir, "cli-token"),
-    sessionsPath: join(dir, "sessions.json"),
-    now: () => now,
-  });
+const tokenPath = () => join(dir, "token");
+const open = () => Auth.open({ tokenPath: tokenPath(), now: () => now });
 
 before(async () => {
   dir = await mkdtemp(join(tmpdir(), "eevee-auth-"));
 });
 after(() => rm(dir, { recursive: true, force: true }));
 
+test("授权码换到的就是 token 文件里的 token，重启后不变", async () => {
+  const auth = await open();
+  const token = (await readFile(tokenPath(), "utf8")).trim();
+  assert.equal(auth.exchange(auth.issueCode()), token);
+  assert.equal(auth.verify(token), true);
+  assert.equal((await open()).verify(token), true);
+});
+
 test("授权码只能用一次，过期作废", async () => {
   const auth = await open();
   const code = auth.issueCode();
-  const session = await auth.exchange(code);
-  assert.ok(session);
-  assert.equal(await auth.exchange(code), undefined);
+  assert.ok(auth.exchange(code));
+  assert.equal(auth.exchange(code), undefined);
 
   const late = auth.issueCode();
   now += CODE_TTL_MS + 1;
-  assert.equal(await auth.exchange(late), undefined);
+  assert.equal(auth.exchange(late), undefined);
 });
 
-test("会话 12 小时无操作过期，使用会续期；重启后仍然有效", async () => {
+test("错误的 token 和授权码本身都不被接受", async () => {
   const auth = await open();
-  const session = (await auth.exchange(auth.issueCode())) ?? "";
-  now += SESSION_IDLE_MS - 1000;
-  assert.equal(auth.verify(session), "browser");
-  assert.equal((await open()).verify(session), "browser");
-  now += SESSION_IDLE_MS + 1;
-  assert.equal(auth.verify(session), undefined);
-});
-
-test("错误的 token 不被接受", async () => {
-  const auth = await open();
-  assert.equal(auth.verify("nope"), undefined);
-  assert.equal(auth.verify(undefined), undefined);
+  assert.equal(auth.verify("nope"), false);
+  assert.equal(auth.verify(undefined), false);
+  assert.equal(auth.verify(auth.issueCode()), false);
 });
 
 test("只接受回环地址的 Host 与 Origin", () => {

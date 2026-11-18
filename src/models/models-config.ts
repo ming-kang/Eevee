@@ -18,7 +18,7 @@
  *
  * A built-in provider id changes that provider; any other id adds one, which needs `baseUrl` and `api`.
  * `apiKey` and `headers` values may reference environment variables (`$NAME`, `${NAME}`); a key stored
- * with `eevee model login` wins over `apiKey`. `modelOverrides` changes fields of existing models, merging
+ * in `auth.json` wins over `apiKey`. `modelOverrides` changes fields of existing models, merging
  * `cost` and `promptCache` field by field.
  */
 import {

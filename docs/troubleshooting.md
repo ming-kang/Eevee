@@ -12,31 +12,30 @@ tail -f ~/.eevee/runtime/engine.log
 
 | 现象 | 原因与解决办法 |
 |---|---|
-| `eevee start` 报“启动超时” | 先运行 `eevee status`：项目多或者要恢复的工作多时，Engine 可能超过 15 秒才开始监听，其实已经起来了。没有起来时看日志末尾，常见原因见下面三行 |
-| 日志里是“`settings.json` 格式不对”之类的字段错误 | 按错误里的文件和字段改好，再 `eevee start` |
+| `eevee` 或 `eevee start` 报“启动超时” | 先运行 `eevee status`：项目多或者要恢复的工作多时，Engine 可能超过 15 秒才开始监听，其实已经起来了。没有起来时看日志末尾，常见原因见下面三行 |
+| 日志里是“`settings.json` 格式不对”之类的字段错误 | 按错误里的文件和字段改好，再运行 `eevee` |
 | 日志里是不带文件名的 JSON 语法错误，比如 `Expected double-quoted property name in JSON` | `settings.json`、`models.json`、`mcp.json` 或某个项目的 `project.json` 不是合法 JSON，任何一个都会让 Engine 无法启动。逐个检查这几个文件 |
-| 日志里是“Eevee 已经在运行（pid N）” | `runtime/engine.lock` 记录的进程 N 还活着，但没有响应，这时 `eevee stop` 也停不掉它。N 是卡住的 Engine 时，结束这个进程；N 不是 Eevee（进程号被别的程序复用了）时，删除 `~/.eevee/runtime/engine.lock`。然后重新 `eevee start` |
-| 命令提示“Eevee 没有在运行” | 运行 `eevee start`。用了 `EEVEE_HOME` 时，确认每个终端设置的是同一个目录 |
+| 日志里是“Eevee 已经在运行（pid N）” | `runtime/engine.lock` 记录的进程 N 还活着，但没有响应，这时 `eevee stop` 也停不掉它。N 是卡住的 Engine 时，结束这个进程；N 不是 Eevee（进程号被别的程序复用了）时，删除 `~/.eevee/runtime/engine.lock`。然后重新运行 `eevee` |
+| `eevee web` 提示“Eevee 没有在运行” | 运行 `eevee`，它会先启动 Engine。用了 `EEVEE_HOME` 时，确认每个终端设置的是同一个目录 |
 | 改了 `settings.json` 没有生效 | 手动编辑后要重启 Engine 才生效：`eevee stop && eevee start`。见 [修改后什么时候生效](configuration.md#修改后什么时候生效) |
-| 改了环境变量没有生效 | Engine 只读取启动时的环境变量。在运行 `eevee start` 的终端里设置好，再重启 Engine |
+| 改了环境变量没有生效 | Engine 只读取启动时的环境变量。在终端里设置好，再在同一个终端里重启 Engine |
 
 ## 模型
 
 | 现象 | 原因与解决办法 |
 |---|---|
-| Router 不回应，对话显示“没有配置模型” | 用 `eevee model default` 设置默认模型，然后在面板上重试那一轮 |
+| Router 不回应，对话显示“没有配置模型” | 在“设置 · 模型”里选一个默认模型，然后在面板上重试那一轮 |
 | 对话以其他原因失败 | 面板会显示失败原因，常见的是凭据无效或 provider 报错。修好后在面板上重试 |
-| `eevee model list` 里没有某个 provider 的模型 | 只列出已经配置凭据的 provider。用 `eevee model login` 保存 API key，或在运行 `eevee start` 的环境里设置它的环境变量 |
-| `eevee model default` 报“没有模型” | provider 或模型编号写错了，用 `eevee model list` 查看确切的写法 |
-| 改了 `models.json` 没有生效 | `models.json` 在 Engine 启动和 `eevee model login` 时读取，问题写进日志。字段类型或结构写错时整个文件都不生效；结构正确但组不成 provider（比如缺 `baseUrl`）时只影响那一个 provider |
+| “可用模型”里没有某个 provider 的模型 | 只列出已经配置凭据的 provider。在“设置 · 模型”里为它填写 API Key，或在启动 Engine 的环境里设置它的环境变量 |
+| 改了 `models.json` 没有生效 | `models.json` 在 Engine 启动和保存 API Key 时读取，问题写进日志。字段类型或结构写错时整个文件都不生效；结构正确但组不成 provider（比如缺 `baseUrl`）时只影响那一个 provider |
 
 ## 面板
 
 | 现象 | 原因与解决办法 |
 |---|---|
-| 页面提示“还没有授权” | 这个标签页里没有会话：直接打开了不带授权码的地址，或者是新开的标签页（会话只保存在当前标签页）。重新运行 `eevee web` |
-| 页面提示“授权码无效或已过期” | 授权码只能用一次，90 秒内有效。重新运行 `eevee web` |
-| 页面提示“需要授权” | 会话超过 12 小时无操作，已经过期。重新运行 `eevee web` |
+| 页面提示“还没有授权” | 这个浏览器还没授权过，或者 Engine 换了端口（token 按地址保存）。运行 `eevee` |
+| 页面提示“授权码无效或已过期” | 授权码只能用一次，90 秒内有效。重新运行 `eevee` |
+| 页面提示“授权已失效”或“需要授权” | `runtime/token` 被删除或换过，浏览器里记的 token 不再有效。运行 `eevee` 重新授权 |
 | 页面返回“WebUI 尚未构建” | 在源码目录里运行 `npm run build` |
 | 面板上没有输入框 | 有待回答的问题时，问题卡片代替了输入框。先回答问题，或者点“稍后”把卡片收起来再发消息 |
 | 左栏底部显示“正在重新连接…” | 面板和 Engine 之间的实时连接断了，期间看到的可能不是最新状态。面板会自动重连；一直连不上时用 `eevee status` 确认 Engine 还在运行 |
@@ -55,12 +54,12 @@ tail -f ~/.eevee/runtime/engine.log
 
 | 现象 | 原因与解决办法 |
 |---|---|
-| `eevee mcp list` 显示 `failed` | 看它附带的错误和 stderr。修好后运行 `eevee mcp reload` |
-| `eevee mcp reload` 报错后所有服务器都不见了 | `mcp.json` 不是合法 JSON。重新读取之前会先断开全部连接，所以改好文件后再运行一次 `eevee mcp reload` |
-| 错误是“引用的环境变量没有设置” | 在运行 `eevee start` 的环境里设置这个变量，然后重启 Engine |
-| 服务器断开后工具消失 | 断开后不会自动重连，运行 `eevee mcp reload` |
-| `eevee role list` 里有 ✗ 开头的行 | `✗ mcp.json：` 开头的是 `mcp.json` 的配置问题，修好后运行 `eevee mcp reload`。其他 ✗ 行是扩展文件加载失败，行里写着文件和原因，修好后重启 Engine |
-| `eevee role enable` 报“没有安装扩展”，提到的却不是你这次写的名字 | 这个角色已启用的某个扩展已经不存在了，比如删掉了对应的 MCP 服务器。先用 `eevee role disable <role> <name>` 去掉它 |
+| “设置 · MCP 与扩展”里服务器显示“失败” | 看它附带的错误和 stderr。修好后点“重新加载” |
+| 点“重新加载”报错后所有服务器都不见了 | `mcp.json` 不是合法 JSON。重新读取之前会先断开全部连接，所以改好文件后再点一次“重新加载” |
+| 错误是“引用的环境变量没有设置” | 在启动 Engine 的环境里设置这个变量，然后重启 Engine |
+| 服务器断开后工具消失 | 断开后不会自动重连，点“重新加载” |
+| “MCP 与扩展”页顶部列出配置问题，或某个用户扩展显示“加载失败” | `mcp.json` 的问题修好后点“重新加载”；扩展文件加载失败时，按显示的原因修好文件后重启 Engine |
+| “角色能力”页有标着“未安装”的扩展 | 角色启用过它，但它已经不存在了，比如删掉了对应的 MCP 服务器。不需要时关掉它的开关 |
 
 ## 还是解决不了
 

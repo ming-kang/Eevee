@@ -8,7 +8,7 @@
 
 - 地址为 `http://127.0.0.1:<port>`，端口见 `runtime/engine.json`。`Host` 和 `Origin`（若有）必须是回环地址。
 - 请求体和响应体都是 JSON，请求体最大 1 MB。
-- token 放在 `x-eevee-token` 请求头里。下表“访问”一列：**公开**不需要 token；**CLI** 只接受 CLI token；**任意**接受 CLI token 或浏览器会话 token。
+- 除 `GET /api/health` 和 `POST /api/session`，所有接口都要在 `x-eevee-token` 请求头中携带鉴权 token，见 [鉴权](integration.md#鉴权)。
 - 路径里的 `:project` 是项目编号（如 `p3f9a1c2e`），`:ticket` 是工单编号（如 `t3`），`:question` 是问题编号（如 `q2`），`:job` 是后台作业编号（如 `j7`），`:scope` 是 `project` 或 `global`，`:role` 是 `router`、`worker` 或 `dreamer`。路径参数要做 URL 编码，比如记忆文件 `notes/sim.md` 写成 `notes%2Fsim.md`。
 - 没有数据要返回的接口，响应为 `{ "ok": true }`，下表写作 `{ ok }`。
 
@@ -28,7 +28,6 @@
 | 401 | `unauthorized` | — | 缺少 token 或 token 无效 |
 | 401 | `bad_code` | — | 授权码无效或已过期 |
 | 403 | `forbidden_host` | — | 请求不是发往回环地址，或 `Origin` 不是回环地址 |
-| 403 | `cli_only` | — | 这个接口只接受 CLI token |
 | 404 | `no_route` | `method`、`path` | 没有这个接口 |
 | 404 | `no_file` | — | 面板没有这个文件 |
 | 404 | `no_project` | `projectId` | 项目不存在 |
@@ -54,28 +53,28 @@
 
 ## Engine
 
-| 接口 | 访问 | 请求体 | 响应 |
-|:-:|:-:|:-:|:-:|
-| `GET /api/health` | 公开 | — | `{ ok }` |
-| `GET /api/status` | 任意 | — | `{ bootId, version, port, projects }` |
-| `POST /api/shutdown` | CLI | — | `{ ok }`，随后 Engine 退出 |
+| 接口 | 请求体 | 响应 |
+|:-:|:-:|:-:|
+| `GET /api/health` | — | `{ ok }` |
+| `GET /api/status` | — | `{ bootId, version, port, projects }` |
+| `POST /api/shutdown` | — | `{ ok }`，随后 Engine 退出 |
 
 `projects` 是项目摘要的数组：`{ id, title, workspace, createdAt, activeAt, models? }`。`activeAt` 是项目最近一次活动（对话、工单、报告、问题或后台作业的变化）的毫秒时间戳。
 
 ## 授权
 
-| 接口 | 访问 | 请求体 | 响应 |
-|:-:|:-:|:-:|:-:|
-| `POST /api/session/code` | CLI | — | `{ code }`：90 秒内有效的一次性授权码 |
-| `POST /api/session` | 公开 | `{ code }` | `{ token }`：会话 token，12 小时无操作后过期 |
+| 接口 | 请求体 | 响应 |
+|:-:|:-:|:-:|
+| `POST /api/session/code` | — | `{ code }`：90 秒内有效的一次性授权码 |
+| `POST /api/session` | `{ code }` | `{ token }`：与 `runtime/token` 相同的 token |
 
 ## 模型
 
-| 接口 | 访问 | 请求体 | 响应 |
-|:-:|:-:|:-:|:-:|
-| `GET /api/models` | 任意 | — | 模型视图 |
-| `POST /api/settings/models` | 任意 | `{ role?, provider, modelId, thinkingLevel? }` | `{ ok }` |
-| `POST /api/auth/:provider` | CLI | `{ key }` | `{ ok }` |
+| 接口 | 请求体 | 响应 |
+|:-:|:-:|:-:|
+| `GET /api/models` | — | 模型视图 |
+| `POST /api/settings/models` | `{ role?, provider, modelId, thinkingLevel? }` | `{ ok }` |
+| `POST /api/auth/:provider` | `{ key }` | `{ ok }` |
 
 `role` 为 `router`、`worker`、`dreamer` 或 `default`，省略时为 `default`。`thinkingLevel` 为 `off`、`minimal`、`low`、`medium`、`high`、`xhigh` 或 `max`，省略时为 `off`。
 
@@ -83,7 +82,7 @@
 
 | 字段 | 内容 |
 |:-:|:-:|
-| `catalog` | 与 `eevee model list` 相同的文本 |
+| `catalog` | 默认模型、可用模型和使用经验的文本，格式与 `read models://` 相同，但默认模型一栏是全局设置 |
 | `defaults` | `settings.json` 里的默认模型：`{ default?, router?, worker?, dreamer? }`，每项为 `{ provider, modelId }` |
 | `routerModel` | Router 实际使用的模型，没有配置时省略 |
 | `providers` | 每个 provider：`{ id, name, configured, authType?, source?, custom, modelCount }`。`configured` 表示有可用的凭据，`authType` 为 `api_key` 或 `oauth`，`source` 说明凭据从哪里来，`custom` 表示来自 `models.json` |
@@ -93,11 +92,11 @@
 
 ## 角色能力与 MCP
 
-| 接口 | 访问 | 请求体 | 响应 |
-|---|---|:-:|:-:|
-| `GET /api/capabilities` | 任意 | — | 能力视图 |
-| `POST /api/capabilities/roles/:role` | 任意 | `{ extensions?, maxTurns? }` | 能力视图 |
-| `POST /api/mcp/reload` | 任意 | — | 能力视图 |
+| 接口 | 请求体 | 响应 |
+|---|:-:|:-:|
+| `GET /api/capabilities` | — | 能力视图 |
+| `POST /api/capabilities/roles/:role` | `{ extensions?, maxTurns? }` | 能力视图 |
+| `POST /api/mcp/reload` | — | 能力视图 |
 
 `extensions` 是角色在自带扩展之外启用的完整列表，会替换原来的列表；名字必须已经安装。`maxTurns` 为正整数，`null` 恢复默认（不限制）。省略的字段保持不变。
 
@@ -134,12 +133,12 @@
 
 ## 项目
 
-| 接口 | 访问 | 请求体 | 响应 |
-|:-:|:-:|:-:|:-:|
-| `POST /api/projects` | 任意 | `{ title, workspace }` | 项目摘要 |
-| `POST /api/projects/:project/models` | 任意 | `{ role?, model }` | 项目摘要 |
-| `GET /api/projects/:project/board` | 任意 | — | 看板 |
-| `GET /api/projects/:project/usage` | 任意 | — | 花费 |
+| 接口 | 请求体 | 响应 |
+|:-:|:-:|:-:|
+| `POST /api/projects` | `{ title, workspace }` | 项目摘要 |
+| `POST /api/projects/:project/models` | `{ role?, model }` | 项目摘要 |
+| `GET /api/projects/:project/board` | — | 看板 |
+| `GET /api/projects/:project/usage` | — | 花费 |
 
 `POST /api/projects` 原样保存 `workspace`，不转换为绝对路径，也不检查目录是否存在；请传入已存在目录的绝对路径。
 
@@ -151,16 +150,16 @@
 
 ## 对话
 
-| 接口 | 访问 | 请求体 | 响应 |
-|:-:|:-:|:-:|:-:|
-| `GET /api/projects/:project/conversation` | 任意 | — | Router 的对话视图 |
-| `POST /api/projects/:project/messages` | 任意 | `{ text }` | `{ ok }` |
-| `POST /api/projects/:project/conversation/retry` | 任意 | — | `{ ok }` |
-| `GET /api/projects/:project/tickets/:ticket/conversation` | 任意 | — | Worker 的对话视图 |
-| `POST /api/projects/:project/tickets/:ticket/messages` | 任意 | `{ text, mode? }` | `{ ok }` |
-| `POST /api/projects/:project/tickets/:ticket/interrupt` | 任意 | — | `{ ok }` |
-| `POST /api/projects/:project/tickets/:ticket/retry` | 任意 | — | `{ ok }` |
-| `POST /api/projects/:project/questions/:question/answer` | 任意 | `{ answer }` | `{ ok }` |
+| 接口 | 请求体 | 响应 |
+|:-:|:-:|:-:|
+| `GET /api/projects/:project/conversation` | — | Router 的对话视图 |
+| `POST /api/projects/:project/messages` | `{ text }` | `{ ok }` |
+| `POST /api/projects/:project/conversation/retry` | — | `{ ok }` |
+| `GET /api/projects/:project/tickets/:ticket/conversation` | — | Worker 的对话视图 |
+| `POST /api/projects/:project/tickets/:ticket/messages` | `{ text, mode? }` | `{ ok }` |
+| `POST /api/projects/:project/tickets/:ticket/interrupt` | — | `{ ok }` |
+| `POST /api/projects/:project/tickets/:ticket/retry` | — | `{ ok }` |
+| `POST /api/projects/:project/questions/:question/answer` | `{ answer }` | `{ ok }` |
 
 - 给 Router 的消息唤醒它，忙时引导。
 - 给 Worker 的消息 `mode` 为 `steer`（默认，引导）或 `followUp`（排队）。
@@ -171,23 +170,23 @@
 
 ## 后台作业
 
-| 接口 | 访问 | 请求体 | 响应 |
-|:-:|:-:|:-:|:-:|
-| `GET /api/projects/:project/jobs/:job/log` | 任意 | — | `{ job, content, truncated }` |
-| `POST /api/projects/:project/jobs/:job/kill` | 任意 | — | `{ ok }` |
+| 接口 | 请求体 | 响应 |
+|:-:|:-:|:-:|
+| `GET /api/projects/:project/jobs/:job/log` | — | `{ job, content, truncated }` |
+| `POST /api/projects/:project/jobs/:job/kill` | — | `{ ok }` |
 
 - `log` 返回作业的状态和日志尾部：最近 200 行，最多 64 KB；截掉了前面的内容时 `truncated` 为 `true`。完整日志在 `projects/<project>/jobs/<job>.log`。
 - `kill` 终止一个运行中的作业，等它的状态和日志落定后才返回。所属工单还开着时，Worker 会收到作业已终止的通知。作业已经结束时返回 `409 job_ended`。
 
 ## 记忆
 
-| 接口 | 访问 | 请求体 | 响应 |
-|:-:|---|---|:-:|
-| `GET /api/projects/:project/memory/:scope/log` | 任意 | — | `{ commits }` |
-| `GET /api/projects/:project/memory/:scope/files` | 任意 | — | `{ files }` |
-| `GET /api/projects/:project/memory/:scope/files/:file` | 任意 | — | `{ path, content }` |
-| `GET /api/projects/:project/memory/:scope/commits/:commit` | 任意 | — | `{ diff }`：这次提交的改动 |
-| `GET /api/projects/:project/memory/:scope/diff` | 任意 | — | `{ diff }`：还没提交的改动 |
-| `POST /api/projects/:project/memory/:scope/revert` | 任意 | `{ commit }` | `{ ok }` |
+| 接口 | 请求体 | 响应 |
+|:-:|---|:-:|
+| `GET /api/projects/:project/memory/:scope/log` | — | `{ commits }` |
+| `GET /api/projects/:project/memory/:scope/files` | — | `{ files }` |
+| `GET /api/projects/:project/memory/:scope/files/:file` | — | `{ path, content }` |
+| `GET /api/projects/:project/memory/:scope/commits/:commit` | — | `{ diff }`：这次提交的改动 |
+| `GET /api/projects/:project/memory/:scope/diff` | — | `{ diff }`：还没提交的改动 |
+| `POST /api/projects/:project/memory/:scope/revert` | `{ commit }` | `{ ok }` |
 
 `commits` 的每一项是 `{ commit, at, subject }`。`files` 的每一项是 `{ path, size }`，`path` 是相对记忆库的路径，用 `/` 分隔，`MEMORY.md` 排在最前；读取文件时 `:file` 就是这个路径，超出记忆库或指向 `.git` 的路径返回 `404`。`scope` 为 `global` 时操作全局记忆库，路径里的项目只用来定位接口。

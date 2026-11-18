@@ -101,7 +101,7 @@ function refuse(request: IncomingMessage, auth: Auth): string | undefined {
   const token = protocols
     .find((p) => p.startsWith(TOKEN_PROTOCOL_PREFIX))
     ?.slice(TOKEN_PROTOCOL_PREFIX.length);
-  return auth.verify(token) === undefined ? "401 Unauthorized" : undefined;
+  return auth.verify(token) ? undefined : "401 Unauthorized";
 }
 
 function serve(ws: WebSocket, options: StreamOptions): void {

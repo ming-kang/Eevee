@@ -9,7 +9,6 @@ export type Problem =
   | { code: "unauthorized" }
   | { code: "bad_code" }
   | { code: "forbidden_host" }
-  | { code: "cli_only" }
   | { code: "no_route"; method: string; path: string }
   | { code: "no_file" }
   | { code: "bad_json" }
@@ -58,13 +57,11 @@ export function problemOf(error: unknown): Problem {
 export function describeProblem(problem: Problem): string {
   switch (problem.code) {
     case "unauthorized":
-      return "需要授权，请用 eevee web 打开面板";
+      return "需要授权，请运行 eevee 打开面板";
     case "bad_code":
-      return "授权码无效或已过期，请重新运行 eevee web";
+      return "授权码无效或已过期，请重新运行 eevee";
     case "forbidden_host":
       return "只接受本机请求";
-    case "cli_only":
-      return "只允许 CLI 调用";
     case "no_route":
       return `没有接口 ${problem.method} ${problem.path}`;
     case "no_file":

@@ -13,6 +13,8 @@ defineEmits<{
   retry: [];
 }>();
 
+const COMMAND = "eevee";
+
 async function copy(text: string): Promise<void> {
   try {
     await navigator.clipboard?.writeText(text);
@@ -37,13 +39,13 @@ async function copy(text: string): Promise<void> {
         <div>{{ reason }}</div>
       </div>
       <div class="connect-steps">
-        <div v-for="command in networkError ? ['eevee start', 'eevee web'] : ['eevee web']" :key="command" class="codeline">
-          <code>{{ command }}</code>
+        <div class="codeline">
+          <code>{{ COMMAND }}</code>
           <button
             type="button"
             class="btn ghost sm icon"
-            :aria-label="t('复制 {command}', { command })"
-            @click="copy(command)"
+            :aria-label="t('复制 {command}', { command: COMMAND })"
+            @click="copy(COMMAND)"
           >
             <Icon name="copy" size="xs" />
           </button>

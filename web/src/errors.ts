@@ -10,13 +10,11 @@ const list = (items: readonly string[]): string => items.join(t("、"));
 export function problemText(problem: Problem): string {
   switch (problem.code) {
     case "unauthorized":
-      return t("需要授权，请用 eevee web 打开面板");
+      return t("需要授权，请运行 eevee 打开面板");
     case "bad_code":
-      return t("授权码无效或已过期，请重新运行 eevee web");
+      return t("授权码无效或已过期，请重新运行 eevee");
     case "forbidden_host":
       return t("只接受本机请求");
-    case "cli_only":
-      return t("只允许 CLI 调用");
     case "no_route":
       return t("没有接口 {method} {path}", problem);
     case "no_file":

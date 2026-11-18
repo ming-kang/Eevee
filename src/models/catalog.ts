@@ -42,7 +42,7 @@ function formatCatalog(
   ].join("\n\n");
 }
 
-/** What `models://` and `eevee model list` show: defaults, usable models with their key figures, and profiles. */
+/** What `models://` and `GET /api/models` show: defaults, usable models with their key figures, and profiles. */
 export async function renderCatalog(input: CatalogInput): Promise<string> {
   const available = await input.models.getAvailable().catch(() => []);
   return formatCatalog(input.defaults, available, input.profiles);

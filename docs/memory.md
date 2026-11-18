@@ -45,27 +45,21 @@ Router 用 `memory` 工具写入：`edit` 用原文替换，原文在磁盘上�
 
 ## 查看历史和撤销
 
-```bash
-eevee memory log <project>             # 项目记忆库最近 20 次提交
-eevee memory show <project> <commit>   # 一次提交的改动
-eevee memory show <project>            # 还没提交的改动（不含新建的文件）
-eevee memory revert <project> <commit> # 撤销一次提交
-```
+左栏底部的“记忆”打开当前项目的记忆页，顶部在项目记忆和全局记忆之间切换：
 
-加 `-g` 或 `--global` 操作全局记忆库。例如：
+- **历史**：最近 20 次提交，每次一行，标出作者。点开查看 diff，可以撤销这次提交。
+- **未提交的改动**：你在编辑器里改过、还没提交的文件和它们的 diff（不含新建的文件）。
+- **文件**：浏览记忆库里的文件内容。
+
+Router 的提交以 `memory` 开头，整理工单的提交以 `dreaming <ticket>` 开头，后面列出这一轮改了哪些文件，例如：
 
 ```text
-$ eevee memory log p3f9a1c2e
-a1b2c3d  2026-11-17 09:12  dreaming t9: edit MEMORY.md; edit optics-sim.md
-e4f5a6b  2026-11-16 21:40  memory: create figures.md; edit MEMORY.md
-9c8d7e6  2026-11-16 18:03  user edit
+dreaming t9: edit MEMORY.md; edit optics-sim.md
+memory: create figures.md; edit MEMORY.md
+user edit
 ```
 
-Router 的提交以 `memory` 开头，整理工单的提交以 `dreaming <ticket>` 开头，后面列出这一轮改了哪些文件。
-
-`revert` 生成一个新的反向提交，不改写历史。撤销与之后的改动冲突时会放弃，仓库保持原样，命令报错。
-
-面板的“记忆”页也能做这些事：按作者列出历史、查看每次提交和未提交改动的 diff、撤销提交，还能浏览记忆文件，见 [使用面板](web.md#记忆)。
+撤销生成一个新的反向提交，不改写历史。撤销与之后的改动冲突时会放弃，仓库保持原样，面板提示失败。面板的用法见 [使用面板](web.md#记忆)。
 
 Router 也能用 `memory` 工具的 `log`、`diff` 和 `revert` 查看和撤销历史，你可以直接让它“撤销刚才那条记忆”。
 
@@ -89,14 +83,10 @@ Dreaming 只整理项目记忆库，不碰全局记忆库。
 
 ### 结果
 
-整理工单像普通工单一样出现在看板上，可以随时查看和打断，花费单独统计。它交的 `ready` 报告自动验收，不打扰 Router。整次整理的改动提交为一个 `dreaming tN: …` commit，可以用 `eevee memory show` 查看、用 `eevee memory revert` 撤销。
+整理工单像普通工单一样出现在看板上，可以随时查看和打断，花费单独统计。它交的 `ready` 报告自动验收，不打扰 Router。整次整理的改动提交为一个 `dreaming tN: …` commit，可以在面板的“记忆”页查看和撤销。
 
 ### 关闭 Dreaming
 
-在 `settings.json` 里把 `dreamIntervalMs` 设为 `0`，然后重启 Engine。没有可用于 `dreamer` 角色的模型时，Dreaming 也视为关闭。给它单独设置一个轻量模型：
-
-```bash
-eevee model default <provider>/<model-id> --role dreamer
-```
+在 `settings.json` 里把 `dreamIntervalMs` 设为 `0`，然后重启 Engine。没有可用于 `dreamer` 角色的模型时，Dreaming 也视为关闭。可以在“设置 · 模型”里给 Dreamer 单独选一个轻量模型。
 
 对话记录和记忆文件对整理工单来说都是数据，不是指令。

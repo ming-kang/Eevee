@@ -35,10 +35,10 @@ export EEVEE_HOME="$(mktemp -d)"
 npm run engine
 ```
 
-在另一个终端里用同一个 `EEVEE_HOME` 运行命令行：
+在另一个终端里用同一个 `EEVEE_HOME` 运行命令行，打开面板：
 
 ```bash
-EEVEE_HOME=<同一个目录> npm run dev -- project create 测试 --workspace /tmp/eevee-ws
+EEVEE_HOME=<同一个目录> npm run dev -- web
 ```
 
 同一个数据目录同时只能运行一个 Engine。
@@ -124,8 +124,8 @@ contracts ──► orchestration ─┐
 | `src/models/` | 在 pi-ai 之上读写 `auth.json`、读取 `models.json`、生成 `models://` 目录 |
 | `src/engine/` | `ProjectHost`（一个项目的存储与运行）、`Engine`（全部项目和共享扩展）、后台作业表、视图 |
 | `src/api/` | 本地接口的类型契约、HTTP 客户端、实时流协议 |
-| `src/server/` | HTTP 服务、鉴权、实时流 |
-| `src/cli/` | 命令行，按命令组拆分 |
+| `src/server/` | HTTP 服务、鉴权（token 与一次性授权码）、实时流 |
+| `src/cli/` | 命令行：`program.ts` 定义命令，`index.ts` 实现启动、停止和打开面板 |
 | `src/shared/` | 路径、设置、配置读取、文件写入等公共工具 |
 | `web/` | 面板（Vue） |
 

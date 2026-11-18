@@ -2,7 +2,7 @@
 
 这一页列出 Eevee 读取的环境变量，以及 Engine 传给子进程的环境变量。
 
-`eevee start` 把运行它的终端的环境变量原样传给 Engine。所以 provider 凭据和 `models.json`、`mcp.json` 里引用的变量，都要在运行 `eevee start` 的环境里设置；修改后需要重启 Engine。
+`eevee` 和 `eevee start` 启动 Engine 时，把运行它的终端的环境变量原样传给 Engine。所以 provider 凭据和 `models.json`、`mcp.json` 里引用的变量，都要在启动 Engine 的环境里设置；修改后需要重启 Engine。
 
 ## Eevee
 
@@ -36,7 +36,7 @@
 | `together` | `TOGETHER_API_KEY` |
 | `vercel-ai-gateway` | `AI_GATEWAY_API_KEY` |
 
-完整列表以 `@earendil-works/pi-ai` 为准。`eevee model login` 保存的凭据和 `models.json` 里的 `apiKey` 优先于环境变量，见 [选择模型](models.md#认证)。
+完整列表以 `@earendil-works/pi-ai` 为准。面板里保存的凭据（`auth.json`）和 `models.json` 里的 `apiKey` 优先于环境变量，见 [选择模型](models.md#认证)。
 
 ## 配置文件中的引用
 

@@ -60,4 +60,4 @@ Extension 可以提供工具、提示词段落、Hook、包装器和后台任务
 }
 ```
 
-也可以用 `eevee role list / enable / disable / turns`，或 `GET /api/capabilities`、`POST /api/capabilities/roles/:role` 修改；改动立即应用到 Router 和全部未结工单。可启用的扩展、MCP 服务器的连接状态和用户扩展的加载错误都在 `eevee role list`（`GET /api/capabilities`）里。
+也可以在面板的设置里，或用 `GET /api/capabilities`、`POST /api/capabilities/roles/:role` 修改；改动立即应用到 Router 和全部未结工单。新启用的扩展必须已经安装；角色已启用、后来卸载的扩展在应用时跳过，不挡住其他修改。可启用的扩展、MCP 服务器的连接状态和用户扩展的加载错误都在 `GET /api/capabilities` 里。

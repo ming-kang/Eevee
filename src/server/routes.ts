@@ -78,7 +78,6 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
       }),
     },
     "POST /api/shutdown": {
-      cliOnly: true,
       handle: async () => {
         setImmediate(shutdown);
         return { ok: true };
@@ -87,12 +86,12 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     "POST /api/session": {
       public: true,
       handle: async ({ body }) => {
-        const token = await auth.exchange(text(body?.code, "code"));
+        const token = auth.exchange(text(body?.code, "code"));
         if (token === undefined) throw new ProblemError({ code: "bad_code" });
         return { token };
       },
     },
-    "POST /api/session/code": { cliOnly: true, handle: async () => ({ code: auth.issueCode() }) },
+    "POST /api/session/code": { handle: async () => ({ code: auth.issueCode() }) },
     "GET /api/models": { handle: async () => engine.catalog() },
     "POST /api/settings/models": {
       handle: async ({ body }) => {
@@ -101,7 +100,6 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
       },
     },
     "POST /api/auth/:provider": {
-      cliOnly: true,
       handle: async ({ params, body }) => {
         await engine.login(params.provider, text(body?.key, "key"));
         return { ok: true };

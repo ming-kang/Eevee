@@ -33,8 +33,7 @@ export type EeveePaths = {
     dir: string;
     lock: string;
     record: string;
-    cliToken: string;
-    sessions: string;
+    token: string;
     /** Full text of MCP outputs cut to fit the model. */
     mcpOutput: string;
   };
@@ -62,8 +61,7 @@ export function eeveePaths(home: string = resolveHome()): EeveePaths {
       dir: runtime,
       lock: join(runtime, "engine.lock"),
       record: join(runtime, "engine.json"),
-      cliToken: join(runtime, "cli-token"),
-      sessions: join(runtime, "sessions.json"),
+      token: join(runtime, "token"),
       mcpOutput: join(runtime, "mcp-output"),
     },
     projects,

@@ -139,7 +139,10 @@ export class Engine {
     };
   }
 
-  /** Enables extensions for a role, by name, in every project. Names must be installed now. */
+  /**
+   * Enables extensions for a role, by name, in every project. A newly enabled name must be installed now; one the
+   * role already enables may have been uninstalled since, and is kept or dropped without blocking the change.
+   */
   async setRoleCapability(role: RoleName, change: RoleCapabilityChange): Promise<CapabilitiesView> {
     if (change.extensions !== undefined) {
       const known = new Set(
@@ -147,7 +150,10 @@ export class Engine {
           .list()
           .map((e) => e.name),
       );
-      const unknown = change.extensions.filter((name) => !known.has(name));
+      const enabled = this.#options.settings.current.roles[role]?.extensions ?? [];
+      const unknown = change.extensions.filter(
+        (name) => !known.has(name) && !enabled.includes(name),
+      );
       if (unknown.length > 0) throw new ProblemError({ code: "no_extension", names: unknown });
     }
     await this.#options.settings.update((stored) => {

@@ -13,7 +13,7 @@ import {
   type RoleName,
   type ThinkingLevel,
 } from "@shared/contracts/index.ts";
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { configIssueText, configProblemText, errorText } from "../errors.ts";
 import { ROLE_LABEL } from "../labels.ts";
 import { LOCALE_NAME, LOCALES, locale, setLocale, t } from "../i18n.ts";
@@ -95,7 +95,29 @@ const THEME_OPTIONS: { key: ThemePreference; label: string }[] = [
 
 const RESTART = "eevee stop && eevee start";
 
-const loginCommand = (provider: string) => `eevee model login ${provider}`;
+/** The provider whose API key is being typed in its row, and what has been typed so far. */
+const keyDraft = ref<{ provider: string; key: string }>();
+const savingKey = useSubmit();
+
+async function editKey(provider: string): Promise<void> {
+  keyDraft.value = { provider, key: "" };
+  savingKey.error.value = undefined;
+  await nextTick();
+  document.querySelector<HTMLInputElement>("#provider-key")?.focus();
+}
+
+async function saveKey(): Promise<void> {
+  const draft = keyDraft.value;
+  const key = draft?.key.trim();
+  if (!draft || !key) return;
+  const ok = await savingKey.run(async () => {
+    await props.client.call("POST /api/auth/:provider", { provider: draft.provider }, { key });
+  });
+  if (!ok) return;
+  keyDraft.value = undefined;
+  showToast(t("已保存 {provider} 的 API Key", { provider: draft.provider }));
+  await loadModels();
+}
 
 const MCP_STATE_LABEL: Record<McpServerView["state"], { dot: string; label: string }> = {
   connected: { dot: "ok", label: t("已连接") },
@@ -321,6 +343,14 @@ function rolesUsingExtension(extName: string): string[] {
     .filter((r) => r.enabled.includes(extName))
     .map((r) => ROLE_LABEL[r.role]);
 }
+
+/** Extensions a role still enables though they are no longer installed, listed so they can be turned off. */
+const uninstalledExtensions = computed(() => {
+  const cap = capabilities.value;
+  if (!cap) return [];
+  const installed = new Set(cap.available.map((e) => e.name));
+  return [...new Set(cap.roles.flatMap((r) => r.enabled))].filter((name) => !installed.has(name));
+});
 
 const builtInCount = computed(() => {
   const set = new Set<string>();
@@ -552,55 +582,83 @@ const streamBadge = computed(() => {
                       <template v-if="prov.configured && prov.source"> · {{ prov.source }}</template>
                     </span>
                   </div>
-                  <span v-if="prov.configured" class="chip">
+                  <template v-if="keyDraft?.provider === prov.id">
+                    <input
+                      id="provider-key"
+                      v-model="keyDraft.key"
+                      class="input pref mono"
+                      type="password"
+                      autocomplete="off"
+                      spellcheck="false"
+                      placeholder="API Key"
+                      :aria-label="t('{provider} 的 API Key', { provider: prov.name })"
+                      :disabled="savingKey.busy.value"
+                      @keydown.enter="saveKey"
+                      @keydown.esc="keyDraft = undefined"
+                    />
+                    <button
+                      type="button"
+                      class="btn sm"
+                      :disabled="!keyDraft.key.trim() || savingKey.busy.value"
+                      @click="saveKey"
+                    >
+                      {{ t("保存") }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn ghost sm icon"
+                      :aria-label="t('取消')"
+                      @click="keyDraft = undefined"
+                    >
+                      <Icon name="x" size="xs" />
+                    </button>
+                  </template>
+                  <template v-else-if="prov.configured">
+                    <span class="chip">
+                      <Icon name="key" size="xs" />
+                      <span>{{ prov.authType === "oauth" ? "OAuth" : "API Key" }}</span>
+                    </span>
+                    <button
+                      v-if="prov.authType !== 'oauth'"
+                      type="button"
+                      class="btn ghost sm icon"
+                      :aria-label="t('更换 {provider} 的 API Key', { provider: prov.name })"
+                      @click="editKey(prov.id)"
+                    >
+                      <Icon name="pencil" size="xs" />
+                    </button>
+                  </template>
+                  <button v-else type="button" class="btn sm" @click="editKey(prov.id)">
                     <Icon name="key" size="xs" />
-                    <span>{{ prov.authType === "oauth" ? "OAuth" : "API Key" }}</span>
-                  </span>
-                  <button
-                    v-else
-                    type="button"
-                    class="btn sm"
-                    :title="loginCommand(prov.id)"
-                    @click="copyText(loginCommand(prov.id))"
-                  >
-                    <Icon name="copy" size="xs" />
-                    <span>{{ t("登录命令") }}</span>
+                    <span>{{ t("填写 API Key") }}</span>
                   </button>
                 </div>
               </div>
+              <p v-if="savingKey.error.value" class="error hint">{{ savingKey.error.value }}</p>
 
-              <div class="section-t"><h3>{{ t("可用模型") }}</h3></div>
-              <div v-if="availableModels.length > 0" class="panel">
-                <table class="table">
-                  <thead>
-                    <tr>
-                      <th>{{ t("模型") }}</th>
-                      <th>{{ t("名称") }}</th>
-                      <th>{{ t("上下文") }}</th>
-                      <th class="hide-sm">{{ t("定价") }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="entry in availableModels" :key="`${entry.provider}/${entry.modelId}`">
-                      <td class="mono">{{ entry.provider }}/{{ entry.modelId }}</td>
-                      <td class="name">{{ entry.name }}</td>
-                      <td class="num muted">{{ compactTokens(entry.contextWindow) }}</td>
-                      <td class="hide-sm muted">{{ formatModelMeta(entry) }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div v-else class="codeline">
-                <code>{{ loginCommand("<provider>") }}</code>
-                <button
-                  type="button"
-                  class="btn ghost sm icon"
-                  :aria-label="t('复制登录命令')"
-                  @click="copyText(loginCommand('<provider>'))"
-                >
-                  <Icon name="copy" size="xs" />
-                </button>
-              </div>
+              <template v-if="availableModels.length > 0">
+                <div class="section-t"><h3>{{ t("可用模型") }}</h3></div>
+                <div class="panel">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th>{{ t("模型") }}</th>
+                        <th>{{ t("名称") }}</th>
+                        <th>{{ t("上下文") }}</th>
+                        <th class="hide-sm">{{ t("定价") }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="entry in availableModels" :key="`${entry.provider}/${entry.modelId}`">
+                        <td class="mono">{{ entry.provider }}/{{ entry.modelId }}</td>
+                        <td class="name">{{ entry.name }}</td>
+                        <td class="num muted">{{ compactTokens(entry.contextWindow) }}</td>
+                        <td class="hide-sm muted">{{ formatModelMeta(entry) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </template>
 
               <template v-if="modelsView.profiles">
                 <div class="section-t"><h3 title="~/.eevee/models.md">{{ t("使用经验") }}</h3></div>
@@ -653,6 +711,29 @@ const streamBadge = computed(() => {
                         :aria-label="t('{role} 启用 {extension}', { role: ROLE_LABEL[roleItem.role], extension: ext.name })"
                         :aria-pressed="roleItem.enabled.includes(ext.name)"
                         @click="toggleExtension(roleItem.role, ext.name)"
+                      />
+                    </td>
+                  </tr>
+                  <tr v-for="name in uninstalledExtensions" :key="name">
+                    <td>
+                      <div class="ext">
+                        <b>
+                          <Icon :name="name.startsWith('mcp.') ? 'plug' : 'puzzle'" size="xs" />
+                          <span>{{ name }}</span>
+                          <span class="dot bad" />
+                        </b>
+                        <span>{{ t("未安装") }}</span>
+                      </div>
+                    </td>
+                    <td v-for="roleItem in capabilities.roles" :key="roleItem.role">
+                      <button
+                        v-if="roleItem.enabled.includes(name)"
+                        type="button"
+                        class="switch on"
+                        :disabled="savingRole.busy.value"
+                        :aria-label="t('{role} 启用 {extension}', { role: ROLE_LABEL[roleItem.role], extension: name })"
+                        aria-pressed="true"
+                        @click="toggleExtension(roleItem.role, name)"
                       />
                     </td>
                   </tr>

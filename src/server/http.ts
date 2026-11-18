@@ -11,17 +11,15 @@ import {
 } from "../api/contract.ts";
 import { type ProblemCode, ProblemError, problemOf } from "../contracts/index.ts";
 import { resolveInside } from "../shared/paths.ts";
-import { type Auth, type Caller, isLoopbackRequest } from "./auth.ts";
+import { type Auth, isLoopbackRequest } from "./auth.ts";
 
 export type RouteContext<K extends RouteKey> = {
   params: RouteParams<K>;
   body: RouteBody<K>;
-  caller: Caller | undefined;
 };
 
 export type RouteDefinition<K extends RouteKey> = {
   public?: boolean;
-  cliOnly?: boolean;
   handle(context: RouteContext<K>): Promise<RouteResponse<K>>;
 };
 
@@ -66,23 +64,15 @@ export function createHttpServer(options: ServerOptions): Server {
         });
       }
 
-      const caller = options.auth.verify(header(request, TOKEN_HEADER));
-      if (!route.definition.public && caller === undefined) {
+      if (!route.definition.public && !options.auth.verify(header(request, TOKEN_HEADER))) {
         throw new ProblemError({ code: "unauthorized" });
-      }
-      if (route.definition.cliOnly && caller !== "cli") {
-        throw new ProblemError({ code: "cli_only" });
       }
       const match = route.pattern.exec(url.pathname) ?? [];
       const params = Object.fromEntries(
         route.names.map((name, i) => [name, decodeURIComponent(match[i + 1] ?? "")]),
       );
       const body = await readBody(request);
-      const result = await route.definition.handle({
-        params,
-        body,
-        caller,
-      } as RouteContext<RouteKey>);
+      const result = await route.definition.handle({ params, body } as RouteContext<RouteKey>);
       sendJson(response, 200, result);
     } catch (error) {
       const problem = problemOf(error);
@@ -102,7 +92,6 @@ const STATUS: Record<ProblemCode, number> = {
   unauthorized: 401,
   bad_code: 401,
   forbidden_host: 403,
-  cli_only: 403,
   no_route: 404,
   no_file: 404,
   no_project: 404,

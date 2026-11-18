@@ -73,6 +73,41 @@ test("Engine 汇总可启用的扩展；按角色启用要求已安装，写进 
   }
 });
 
+test("角色已启用、后来卸载的扩展不挡住改动，可以逐个去掉；新启用的仍须已安装", async () => {
+  const home = await mkdtemp(join(tmpdir(), "eevee-engine-"));
+  const paths = eeveePaths(home);
+  await mkdir(paths.extensions, { recursive: true });
+  await writeFile(join(paths.extensions, "notes.mjs"), `export default { name: "notes" };`);
+  const settings = await SettingsStore.open(paths.settings);
+  await settings.update((s) => ({
+    ...s,
+    roles: { worker: { extensions: ["mcp.gone", "mcp.left"] } },
+  }));
+  const engine = await Engine.open({
+    paths,
+    settings,
+    models: await createModelRuntime(paths),
+    context: BACKGROUND_CONTEXT,
+  });
+  const enabled = () => engine.capabilities().roles.find((r) => r.role === "worker")?.enabled;
+  try {
+    await engine.setRoleCapability("worker", { extensions: ["mcp.gone", "mcp.left", "notes"] });
+    assert.deepEqual(enabled(), ["mcp.gone", "mcp.left", "notes"]);
+
+    await engine.setRoleCapability("worker", { extensions: ["mcp.left", "notes"] });
+    assert.deepEqual(enabled(), ["mcp.left", "notes"]);
+
+    await assert.rejects(
+      engine.setRoleCapability("worker", { extensions: ["mcp.left", "mcp.gone"] }),
+      { problem: { code: "no_extension", names: ["mcp.gone"] } },
+    );
+    assert.deepEqual(enabled(), ["mcp.left", "notes"]);
+  } finally {
+    await engine.close();
+    await rm(home, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
+
 test("HTTP 接口暴露结构化模型、项目 activeAt、Board.router 与嵌套记忆文件", async () => {
   const home = await mkdtemp(join(tmpdir(), "eevee-http-"));
   const paths = eeveePaths(home);
@@ -99,11 +134,8 @@ test("HTTP 接口暴露结构化模型、项目 activeAt、Board.router 与嵌�
     models: await createModelRuntime(paths),
     context: BACKGROUND_CONTEXT,
   });
-  const auth = await Auth.open({
-    cliTokenPath: paths.runtime.cliToken,
-    sessionsPath: paths.runtime.sessions,
-  });
-  const token = (await readText(paths.runtime.cliToken))?.trim();
+  const auth = await Auth.open({ tokenPath: paths.runtime.token });
+  const token = (await readText(paths.runtime.token))?.trim();
   let listenPort = 0;
   const server = createHttpServer({
     routes: createRoutes({
