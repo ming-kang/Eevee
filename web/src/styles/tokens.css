@@ -33,6 +33,9 @@
   --ev-prose: hsl(0 0% 13%);
   --ev-label-2: hsl(0 0% 46%);
   --ev-label-3: hsl(0 0% 62%);
+  /* The working mark is a thin turning arc; on a light page the third label tone fades to 2.5:1 and the
+     arc all but disappears, so it takes a darker gray that matches the dark theme's 3.7:1. */
+  --ev-working: hsl(0 0% 50%);
   --ev-strong: hsl(0 0% 5%);
   --ev-separator: hsl(0 0% 11% / 0.09);
   --ev-hover: hsl(0 0% 11% / 0.06);
@@ -89,6 +92,7 @@
   --ev-prose: hsl(220 5% 90%);
   --ev-label-2: hsl(220 4% 62%);
   --ev-label-3: hsl(220 4% 44%);
+  --ev-working: hsl(220 4% 44%);
   --ev-strong: hsl(220 5% 94%);
   --ev-separator: hsl(220 20% 96% / 0.08);
   --ev-hover: hsl(220 20% 96% / 0.05);

@@ -130,6 +130,17 @@ pre,
   stroke-width: 1.6;
 }
 
+/* A turning icon is a box around its <svg> (see Icon.vue); the box takes the size, the <svg> fills
+   it and inherits the strokes. */
+span.ico {
+  display: inline-flex;
+}
+
+span.ico > svg {
+  width: 100%;
+  height: 100%;
+}
+
 .ico.spin {
   animation: ev-spin 0.9s linear infinite;
 }

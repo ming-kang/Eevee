@@ -407,10 +407,16 @@
 
 /* Stage glyphs: amber marks a question waiting for the user, red is blocked, everything else is gray and told apart by shape. */
 .glyph {
+  display: inline-flex;
   width: var(--ev-icon-sm);
   height: var(--ev-icon-sm);
   flex: none;
   color: var(--ev-label-3);
+}
+
+.glyph > svg {
+  width: 100%;
+  height: 100%;
 }
 
 .glyph.g-answer {
@@ -422,6 +428,7 @@
 }
 
 .glyph.g-working {
+  color: var(--ev-working);
   animation: ev-spin 1.4s linear infinite;
 }
 
