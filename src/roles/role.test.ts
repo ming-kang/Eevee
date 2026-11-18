@@ -57,6 +57,20 @@ test("应用角色时选中全部扩展的全部工具，不动 tool_search 加�
   assert.equal("modelTools" in change, false);
   assert.equal(change.maxTurns, 40);
   assert.equal(change.model, undefined);
+  assert.equal("thinkingLevel" in change, false);
+  const model = { provider: "faux", modelId: "brain" };
+  const thinking = roleChange(
+    workerRole,
+    { extensions: [], missing: [] },
+    {
+      cwd: "/",
+      model: { ...model, thinkingLevel: "high" },
+    },
+  );
+  assert.deepEqual([thinking.model, thinking.thinkingLevel], [model, "high"]);
+  // A choice without a level clears the one stored before.
+  const plain = roleChange(workerRole, { extensions: [], missing: [] }, { cwd: "/", model });
+  assert.deepEqual([plain.model, plain.thinkingLevel], [model, null]);
   assert.equal(
     roleChange(workerRole, { extensions: [], missing: [] }, { cwd: "/" }).maxTurns,
     null,

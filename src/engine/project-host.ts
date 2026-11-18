@@ -42,6 +42,7 @@ import {
   type JobId,
   jobId,
   type MemoryScope,
+  type ModelDefaults,
   pickModel,
   type QuestionId,
   questionId,
@@ -76,7 +77,7 @@ import { isNotFound, readText } from "../shared/fs.ts";
 import { type EeveePaths, resolveInside } from "../shared/paths.ts";
 import { enabledExtensions, type Settings } from "../shared/settings.ts";
 import { JobHost } from "./jobs.ts";
-import type { ProjectMeta } from "./project.ts";
+import { type ProjectMeta, saveProjectMeta } from "./project.ts";
 import { recentRounds, transcriptSource } from "./transcript.ts";
 import { boardView, conversationView, usageView } from "./views.ts";
 
@@ -109,6 +110,8 @@ export type ProjectHostOptions = {
 
 type Parts = {
   options: ProjectHostOptions;
+  /** The meta as it is now; the roles read its models on every apply. */
+  live: { meta: ProjectMeta };
   harness: Harness;
   root: Conversation;
   registry: Registry;
@@ -125,7 +128,7 @@ type Parts = {
  * root conversation, and the loop that hands queued work to free slots and keeps the board moving.
  */
 export class ProjectHost {
-  readonly meta: ProjectMeta;
+  readonly #live: { meta: ProjectMeta };
   readonly #options: ProjectHostOptions;
   readonly #harness: Harness;
   readonly #root: Conversation;
@@ -143,7 +146,7 @@ export class ProjectHost {
   #lastUpkeep = 0;
 
   private constructor(parts: Parts) {
-    this.meta = parts.options.meta;
+    this.#live = parts.live;
     this.#options = parts.options;
     this.#harness = parts.harness;
     this.#root = parts.root;
@@ -161,6 +164,7 @@ export class ProjectHost {
 
   static async open(options: ProjectHostOptions): Promise<ProjectHost> {
     const { meta, context } = options;
+    const live = { meta };
     const paths = options.paths.project(meta.id);
     const repos: Record<MemoryScope, MemoryRepo> = {
       project: new MemoryRepo(paths.memory),
@@ -178,7 +182,7 @@ export class ProjectHost {
     };
     const conversation = (id: ConversationId, ctx: Context) => late(harness).conversation(id, ctx);
     const defaultModel = (role: RoleName) =>
-      pickModel(role, meta.models, options.settings().models);
+      pickModel(role, live.meta.models, options.settings().models);
 
     const jobLog = (id: string) => join(paths.jobs, `${id}.log`);
     const jobs = new JobHost({ logPath: jobLog, delivery: () => late(delivery), context });
@@ -279,6 +283,7 @@ export class ProjectHost {
     const activeAt = await initialActiveAt(harness, root, meta.createdAt, context);
     const host = new ProjectHost({
       options,
+      live,
       harness,
       root,
       registry,
@@ -345,6 +350,22 @@ export class ProjectHost {
     if (live?.run !== undefined) throw new Conflict("对话正在运行");
     if (live?.runFailure === undefined) throw new Conflict("上一轮没有失败，不需要重试");
     await conversation.submit({ type: "continue" }, this.#context);
+  }
+
+  get meta(): ProjectMeta {
+    return this.#live.meta;
+  }
+
+  /**
+   * The project's own default models over the settings' (`project.json`); empty leaves the settings alone. The Router
+   * and the open tickets that chose no model take them at once, from their next request.
+   */
+  async setModels(models: ModelDefaults): Promise<void> {
+    const { models: _, ...rest } = this.#live.meta;
+    const meta = Object.keys(models).length === 0 ? rest : { ...rest, models };
+    await saveProjectMeta(this.#options.paths, meta);
+    this.#live.meta = meta;
+    await this.#applyRoles();
   }
 
   // ── Views ──────────────────────────────────────────────────────────────────

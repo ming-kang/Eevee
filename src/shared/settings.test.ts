@@ -54,3 +54,20 @@ test("修改只写用户给的字段，写之前校验", async () => {
     assert.equal(store.current.handoffThreshold, DEFAULT_SETTINGS.handoffThreshold);
   });
 });
+
+test("默认模型可以带思考档位，档位不在列表里时指出字段", async () => {
+  const models = { router: { provider: "faux", modelId: "brain", thinkingLevel: "high" } };
+  await withFile({ models }, async (path) => {
+    assert.deepEqual((await loadSettings(path)).models, models);
+  });
+  const wrong = {
+    models: { worker: { provider: "faux", modelId: "brain", thinkingLevel: "huge" } },
+  };
+  await withFile(wrong, async (path) => {
+    await assert.rejects(loadSettings(path), (error: unknown) => {
+      assert.ok(error instanceof ConfigError);
+      assert.match(error.message, /thinkingLevel/);
+      return true;
+    });
+  });
+});

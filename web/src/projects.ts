@@ -1,6 +1,7 @@
 import type { BoardView, ProjectSummary } from "../../src/api/contract.ts";
 import type { RunSummary } from "../../src/contracts/index.ts";
 import { effectiveStage, type VisualStage } from "./board.ts";
+import { t } from "./i18n.ts";
 import { STAGE_LABEL } from "./labels.ts";
 import type { Route } from "./router.ts";
 
@@ -57,12 +58,20 @@ export function deriveProjectState(input: {
   };
 }
 
-export type PaletteIcon = "radio" | "book" | "chart" | "cpu" | "puzzle" | "plug" | "server";
+export type PaletteIcon =
+  | "radio"
+  | "book"
+  | "chart"
+  | "sliders"
+  | "cpu"
+  | "puzzle"
+  | "plug"
+  | "server";
 
 export type PaletteItem =
   | {
       id: string;
-      group: "跳转" | "工单" | "项目";
+      group: string;
       label: string;
       meta?: string;
       search: string;
@@ -74,7 +83,7 @@ export type PaletteItem =
     }
   | {
       id: string;
-      group: "操作";
+      group: string;
       label: string;
       meta?: string;
       search: string;
@@ -91,76 +100,62 @@ export function buildPaletteItems(input: {
 }): PaletteItem[] {
   const items: PaletteItem[] = [];
   const pid = input.activeProjectId;
+  // A page to go to: found by its label in the reader's language and by English keywords.
+  const go = (id: string, label: string, keywords: string, route: Route, icon: PaletteIcon) =>
+    ({
+      id,
+      group: t("跳转"),
+      label,
+      search: `${label} ${keywords}`,
+      kind: "route",
+      route,
+      icon,
+    }) as const;
 
   if (pid) {
     items.push(
-      {
-        id: `nav:chat:${pid}`,
-        group: "跳转",
-        label: "Router 主对话",
-        search: "Router 主对话 chat",
-        kind: "route",
-        route: { name: "chat", pid },
-        icon: "radio",
-      },
-      {
-        id: `nav:memory:${pid}`,
-        group: "跳转",
-        label: "记忆",
-        search: "记忆 memory",
-        kind: "route",
-        route: { name: "memory", pid },
-        icon: "book",
-      },
-      {
-        id: `nav:usage:${pid}`,
-        group: "跳转",
-        label: "花费",
-        search: "花费 usage cost",
-        kind: "route",
-        route: { name: "usage", pid },
-        icon: "chart",
-      },
+      go(`nav:chat:${pid}`, t("Router 主对话"), "chat", { name: "chat", pid }, "radio"),
+      go(`nav:memory:${pid}`, t("记忆"), "memory", { name: "memory", pid }, "book"),
+      go(`nav:usage:${pid}`, t("用量"), "usage cost", { name: "usage", pid }, "chart"),
     );
   }
 
   items.push(
-    {
-      id: "nav:settings:models",
-      group: "跳转",
-      label: "设置 · 模型",
-      search: "设置 模型 settings models",
-      kind: "route",
-      route: { name: "settings", section: "models" },
-      icon: "cpu",
-    },
-    {
-      id: "nav:settings:roles",
-      group: "跳转",
-      label: "设置 · 角色能力",
-      search: "设置 角色能力 settings roles",
-      kind: "route",
-      route: { name: "settings", section: "roles" },
-      icon: "puzzle",
-    },
-    {
-      id: "nav:settings:mcp",
-      group: "跳转",
-      label: "设置 · MCP 与扩展",
-      search: "设置 MCP 扩展 settings mcp",
-      kind: "route",
-      route: { name: "settings", section: "mcp" },
-      icon: "plug",
-    },
-    {
-      id: "nav:settings:engine",
-      group: "跳转",
-      label: "设置 · Engine",
-      search: "设置 Engine settings engine",
-      kind: "route",
-      route: { name: "settings", section: "engine" },
-      icon: "server",
-    },
+    go(
+      "nav:settings:general",
+      t("设置 · 通用"),
+      `${t("主题 字体 字号 语言")} settings general theme font size language`,
+      { name: "settings", section: "general" },
+      "sliders",
+    ),
+    go(
+      "nav:settings:models",
+      t("设置 · 模型"),
+      `${t("思考")} settings models thinking`,
+      { name: "settings", section: "models" },
+      "cpu",
+    ),
+    go(
+      "nav:settings:roles",
+      t("设置 · 角色能力"),
+      "settings roles",
+      { name: "settings", section: "roles" },
+      "puzzle",
+    ),
+    go(
+      "nav:settings:mcp",
+      t("设置 · MCP 与扩展"),
+      "settings mcp extensions",
+      { name: "settings", section: "mcp" },
+      "plug",
+    ),
+    go(
+      "nav:settings:engine",
+      t("设置 · Engine"),
+      "settings engine",
+      { name: "settings", section: "engine" },
+      "server",
+    ),
   );
 
   if (pid) {
@@ -170,7 +165,7 @@ export function buildPaletteItems(input: {
       const meta = `${view.ticket.id} · ${STAGE_LABEL[stage]}`;
       items.push({
         id: `ticket:${pid}:${view.ticket.id}`,
-        group: "工单",
+        group: t("工单"),
         label: view.ticket.title,
         meta,
         search: `${view.ticket.id} ${view.ticket.title} ${STAGE_LABEL[stage]}`,
@@ -185,44 +180,44 @@ export function buildPaletteItems(input: {
     const openCount = (input.boards[project.id]?.board?.tickets ?? []).filter(
       (t) => t.ticket.status === "open",
     ).length;
-    const meta = openCount > 0 ? `${openCount} 张未结` : undefined;
+    const meta = openCount > 0 ? t("{n} 张未结", { n: openCount }) : undefined;
     items.push({
       id: `proj:${project.id}`,
-      group: "项目",
+      group: t("项目"),
       label: project.title,
       ...(meta ? { meta } : {}),
       search: `${project.title} ${project.id} ${project.workspace}`,
       kind: "route",
       route: { name: "chat", pid: project.id },
-      projectTile: project.title.slice(0, 1) || "项",
+      projectTile: project.title.slice(0, 1) || t("项"),
     });
   }
 
   items.push(
     {
       id: "act:new-project",
-      group: "操作",
-      label: "新建项目",
-      search: "新建项目 create project",
+      group: t("操作"),
+      label: t("新建项目"),
+      search: `${t("新建项目")} new create project`,
       kind: "action",
       action: "new-project",
       icon: "plus",
     },
     {
       id: "act:toggle-theme",
-      group: "操作",
-      label: "切换浅色 / 深色",
-      search: "切换浅色 深色 主题 theme dark light",
+      group: t("操作"),
+      label: t("切换浅色 / 深色"),
+      search: `${t("切换浅色 / 深色")} ${t("主题")} theme dark light`,
       kind: "action",
       action: "toggle-theme",
       icon: "moon",
     },
     {
       id: "act:toggle-side",
-      group: "操作",
-      label: "收起 / 展开侧栏",
+      group: t("操作"),
+      label: t("收起 / 展开侧栏"),
       ...(input.sideShortcut ? { meta: input.sideShortcut } : {}),
-      search: "收起 展开 侧栏 sidebar",
+      search: `${t("收起 / 展开侧栏")} sidebar`,
       kind: "action",
       action: "toggle-side",
       icon: "panel",

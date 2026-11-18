@@ -123,7 +123,7 @@ const initialSettings: Settings = {
   models: {
     default: { provider: "faux", modelId: "sonnet-faux" },
     router: { provider: "faux", modelId: "sonnet-faux" },
-    worker: { provider: "faux", modelId: "opus-faux" },
+    worker: { provider: "faux", modelId: "opus-faux", thinkingLevel: "high" },
     dreamer: { provider: "faux", modelId: "haiku-faux" },
   },
   maxActiveWorkers: 4,
@@ -144,12 +144,14 @@ const faux = fauxProvider({
     {
       id: "sonnet-faux",
       name: "Sonnet Faux",
+      reasoning: true,
       contextWindow: 200_000,
       cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
     },
     {
       id: "opus-faux",
       name: "Opus Faux",
+      reasoning: true,
       contextWindow: 200_000,
       cost: { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
     },

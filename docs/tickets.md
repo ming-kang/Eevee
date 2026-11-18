@@ -30,7 +30,7 @@ Router 用 `ticket` 工具的 `create` 动作建单（下文简写为 `ticket cr
    - `blocked`、`failed`、`dropped`：决定是用 `ticket message` 调整后继续，还是用 `ticket close` 取消。
 5. 工单结单后，Worker 对话随之结束，仍在运行的后台作业被终止。
 
-工单打开期间，Router 还可以用 `ticket message` 追加指令、用 `ticket interrupt` 打断当前这一轮、用 `ticket model` 给它换模型。
+工单打开期间，Router 还可以用 `ticket message` 追加指令、用 `ticket interrupt` 打断当前这一轮、用 `ticket model` 给它换模型或思考档位。
 
 ## 报告
 

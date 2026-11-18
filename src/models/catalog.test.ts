@@ -38,7 +38,7 @@ test("buildModelsView 返回角色默认模型、Router 生效模型、凭据状
     models,
     defaults: {
       default: { provider: "configured", modelId: "fast" },
-      worker: { provider: "configured", modelId: "deep" },
+      worker: { provider: "configured", modelId: "deep", thinkingLevel: "high" },
     },
     profiles: "# 使用经验\n\n- deep 适合复杂任务\n",
     customProviders: new Set(["configured"]),
@@ -46,7 +46,11 @@ test("buildModelsView 返回角色默认模型、Router 生效模型、凭据状
   });
 
   assert.deepEqual(view.routerModel, { provider: "configured", modelId: "fast" });
-  assert.deepEqual(view.defaults.worker, { provider: "configured", modelId: "deep" });
+  assert.deepEqual(view.defaults.worker, {
+    provider: "configured",
+    modelId: "deep",
+    thinkingLevel: "high",
+  });
   assert.deepEqual(view.problems, ["测试警告"]);
   assert.equal(view.profiles, "# 使用经验\n\n- deep 适合复杂任务");
 
@@ -61,6 +65,13 @@ test("buildModelsView 返回角色默认模型、Router 生效模型、凭据状
 
   assert.equal(view.available.length, 2);
   assert.equal(view.available[1]?.reasoning, true);
+  assert.deepEqual(view.available[0]?.thinkingLevels, ["off"]);
+  assert.deepEqual(view.available[1]?.thinkingLevels, ["off", "minimal", "low", "medium", "high"]);
+  assert.match(view.catalog, /worker：configured\/deep，思考档位 high/);
+  assert.match(
+    view.catalog,
+    /configured\/deep（Deep）：.*思考档位 minimal \/ low \/ medium \/ high/,
+  );
   assert.equal(view.available[1]?.contextWindow, 200_000);
   assert.match(view.catalog, /configured\/fast/);
   assert.match(view.catalog, /deep 适合复杂任务/);

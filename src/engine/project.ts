@@ -27,6 +27,11 @@ export async function createProjectMeta(
     workspace: input.workspace,
     createdAt: Date.now(),
   };
-  await writeJsonAtomic(paths.project(meta.id).meta, meta);
+  await saveProjectMeta(paths, meta);
   return meta;
+}
+
+/** `project.json`'s single writer. */
+export async function saveProjectMeta(paths: EeveePaths, meta: ProjectMeta): Promise<void> {
+  await writeJsonAtomic(paths.project(meta.id).meta, meta);
 }

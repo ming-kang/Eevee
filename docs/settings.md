@@ -36,7 +36,7 @@
 
 ## 模型
 
-`models` 设置各角色的默认模型。每一项是 `{ "provider": "…", "modelId": "…" }`。
+`models` 设置各角色的默认模型。每一项是 `{ "provider": "…", "modelId": "…" }`，可以再加 `"thinkingLevel"`（`off` 到 `max`，见 [思考档位](models.md#思考档位)）。
 
 | 设置 | 说明 |
 |:-:|:-:|

@@ -153,6 +153,28 @@
   font-size: var(--ev-footnote);
 }
 
+/* A number field steps with the arrow keys; the browser's spin buttons would only add noise. */
+.input[type="number"] {
+  appearance: textfield;
+}
+
+.input[type="number"]::-webkit-inner-spin-button,
+.input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+/* A preference sits at the end of its row, as wide as what it holds. */
+.input.pref {
+  width: 220px;
+  height: var(--ev-h-sm);
+}
+
+.input.pref.size {
+  width: 64px;
+  text-align: center;
+}
+
 .field {
   display: flex;
   flex-direction: column;

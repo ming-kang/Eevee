@@ -8,6 +8,7 @@ import {
   type StreamRequest,
   TOKEN_PROTOCOL_PREFIX,
 } from "../../src/api/stream.ts";
+import { t } from "./i18n.ts";
 
 export type StreamState = "connecting" | "connected" | "reconnecting" | "closed";
 
@@ -239,7 +240,7 @@ export function createStreamClient(options: StreamClientOptions) {
       if (ws !== socket) return;
       socket = undefined;
       greeted = false;
-      rejectPending("实时流连接已断开");
+      rejectPending(t("实时流连接已断开"));
       if (!disposed) scheduleReconnect();
     });
     ws.addEventListener("error", () => {
@@ -258,7 +259,7 @@ export function createStreamClient(options: StreamClientOptions) {
     },
     watch(id: string, registration: WatchRegistration): () => void {
       if (disposed) return () => {};
-      if (watches.has(id)) throw new Error(`重复的 watch id：${id}`);
+      if (watches.has(id)) throw new Error(t("重复的 watch id：{id}", { id }));
       watches.set(id, registration);
       if (greeted && socket?.readyState === WS_OPEN) {
         sendWatch(id, registration);
@@ -277,7 +278,7 @@ export function createStreamClient(options: StreamClientOptions) {
       limit: number,
     ): Promise<EntryRecord[]> {
       if (disposed || !greeted || socket?.readyState !== WS_OPEN) {
-        return Promise.reject(new Error("实时流尚未连接"));
+        return Promise.reject(new Error(t("实时流尚未连接")));
       }
       const id = `e${nextEntrySeq++}`;
       return new Promise<EntryRecord[]>((resolve, reject) => {
@@ -307,7 +308,7 @@ export function createStreamClient(options: StreamClientOptions) {
       const prev = socket;
       socket = undefined;
       greeted = false;
-      rejectPending("正在重新连接实时流");
+      rejectPending(t("正在重新连接实时流"));
       prev?.close();
       open();
     },
@@ -322,7 +323,7 @@ export function createStreamClient(options: StreamClientOptions) {
       socket = undefined;
       greeted = false;
       watches.clear();
-      rejectPending("实时流已关闭");
+      rejectPending(t("实时流已关闭"));
       prev?.close();
       setState("closed");
     },

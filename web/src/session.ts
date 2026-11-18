@@ -1,5 +1,6 @@
 import { ApiRequestError, type Client, createClient } from "../../src/api/client.ts";
 import type { EngineStatus } from "../../src/api/contract.ts";
+import { t } from "./i18n.ts";
 import { extractAuthCode } from "./router.ts";
 
 const STORAGE_KEY = "eevee.token";
@@ -48,7 +49,7 @@ export async function openSessionWith(env: SessionEnv): Promise<SessionInfo> {
     }
   }
   const token = env.storage.getItem(STORAGE_KEY);
-  if (!token) throw new Unauthorized("还没有授权");
+  if (!token) throw new Unauthorized(t("还没有授权"));
   const client = makeClient({ baseUrl: env.origin, token });
   try {
     const status = await client.call("GET /api/status");
@@ -56,7 +57,7 @@ export async function openSessionWith(env: SessionEnv): Promise<SessionInfo> {
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 401) {
       env.storage.removeItem(STORAGE_KEY);
-      throw new Unauthorized("会话已过期");
+      throw new Unauthorized(t("会话已过期"));
     }
     throw error;
   }

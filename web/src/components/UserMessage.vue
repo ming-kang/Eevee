@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { t } from "../i18n.ts";
 import { formatClockTime } from "../time.ts";
 
 const props = defineProps<{
@@ -13,7 +14,7 @@ const timeText = computed(() => (props.at === undefined ? "" : formatClockTime(p
 
 <template>
   <div class="u-wrap" :class="{ pending }">
-    <div v-if="pending || timeText" class="msg-meta">{{ pending ? "待送达" : timeText }}</div>
+    <div v-if="pending || timeText" class="msg-meta">{{ pending ? t("待送达") : timeText }}</div>
     <div class="msg-user">{{ text }}</div>
   </div>
 </template>

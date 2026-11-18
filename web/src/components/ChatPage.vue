@@ -5,11 +5,13 @@ import type { QuestionId } from "@shared/contracts/index.ts";
 import { computed, ref, watch } from "vue";
 import type { RailTab } from "../board.ts";
 import type { ConversationWatch } from "../engine-data.ts";
+import { t } from "../i18n.ts";
 import { mapTranscript } from "../transcript-map.ts";
 import Composer from "./Composer.vue";
 import Icon from "./Icon.vue";
 import QuestionCard from "./QuestionCard.vue";
 import QuestionStrip from "./QuestionStrip.vue";
+import RouterModel from "./RouterModel.vue";
 import Transcript from "./Transcript.vue";
 
 const props = defineProps<{
@@ -23,6 +25,7 @@ defineEmits<{
   "open-side": [];
   "open-rail": [tab?: RailTab];
   "open-ticket": [ticketId: string];
+  "project-changed": [];
 }>();
 
 const params = computed(() => ({ project: props.project.id }));
@@ -70,13 +73,13 @@ async function answer(id: QuestionId, text: string): Promise<void> {
 <template>
   <section class="chat-page" :class="{ landing: empty }">
     <header class="header">
-      <button type="button" class="btn ghost sm icon menu-btn" aria-label="菜单" @click="$emit('open-side')">
+      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('菜单')" @click="$emit('open-side')">
         <Icon name="menu" size="sm" />
       </button>
       <h1 v-if="!empty" class="ellipsis" :title="project.workspace">{{ project.title }}</h1>
       <span class="spacer" />
       <button type="button" class="btn ghost sm rail-btn" @click="$emit('open-rail', 'tickets')">
-        <span>工单</span>
+        <span>{{ t("工单") }}</span>
         <span v-if="questions.length > 0" class="count user">{{ questions.length }}</span>
       </button>
     </header>
@@ -119,8 +122,12 @@ async function answer(id: QuestionId, text: string): Promise<void> {
           <Composer
             :draft-key="`r:${project.id}`"
             :send="send"
-            :placeholder="conversation.running.value ? '补充消息' : '告诉 Router 要做什么'"
-          />
+            :placeholder="conversation.running.value ? t('补充消息') : t('告诉 Router 要做什么')"
+          >
+            <template #actions>
+              <RouterModel :client="client" :project="project" @changed="$emit('project-changed')" />
+            </template>
+          </Composer>
         </template>
       </div>
     </div>

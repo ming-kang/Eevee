@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../i18n.ts";
 import { useSubmit } from "../submit.ts";
 import Icon from "./Icon.vue";
 
@@ -18,7 +19,7 @@ function onRetry(): void {
 <template>
   <div class="failure">
     <Icon name="alert" size="sm" />
-    <span>上一轮没有完成：{{ text }}</span>
+    <span>{{ t("上一轮没有完成：{text}", { text }) }}</span>
     <span v-if="retrying.error.value" class="error">{{ retrying.error.value }}</span>
     <span class="spacer" />
     <button
@@ -28,7 +29,7 @@ function onRetry(): void {
       :disabled="retrying.busy.value"
       @click="onRetry"
     >
-      重试
+      {{ t("重试") }}
     </button>
   </div>
 </template>

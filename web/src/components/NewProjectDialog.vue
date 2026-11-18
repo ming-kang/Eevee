@@ -3,6 +3,7 @@ import type { Client } from "@shared/api/client.ts";
 import type { ProjectSummary } from "@shared/api/contract.ts";
 import { ref, watch } from "vue";
 import { trapTab, useFocusReturn } from "../focus.ts";
+import { t } from "../i18n.ts";
 import { useSubmit } from "../submit.ts";
 import { showToast } from "../toasts.ts";
 import Icon from "./Icon.vue";
@@ -43,28 +44,27 @@ watch(
   },
 );
 
-
 async function submit(): Promise<void> {
-  const t = title.value.trim();
-  const w = workspace.value.trim();
-  if (!t) {
-    localError.value = "请填写项目标题";
+  const name = title.value.trim();
+  const dir = workspace.value.trim();
+  if (!name) {
+    localError.value = t("请填写项目标题");
     return;
   }
-  if (!w) {
-    localError.value = "请填写工作目录";
+  if (!dir) {
+    localError.value = t("请填写工作目录");
     return;
   }
   localError.value = undefined;
   let created: ProjectSummary | undefined;
   const ok = await run(async () => {
     created = await props.client.call("POST /api/projects", {
-      title: t,
-      workspace: w,
+      title: name,
+      workspace: dir,
     });
   });
   if (ok && created) {
-    showToast(`已创建项目 · ${created.title}`);
+    showToast(t("已创建项目 · {title}", { title: created.title }));
     await props.onCreated(created);
     emit("close");
   }
@@ -91,12 +91,12 @@ function onKeydown(event: KeyboardEvent): void {
       @submit.prevent="submit"
     >
       <div class="modal-h">
-        <h2 id="new-proj-title">新建项目</h2>
+        <h2 id="new-proj-title">{{ t("新建项目") }}</h2>
         <span class="spacer" />
         <button
           type="button"
           class="btn ghost sm icon"
-          aria-label="关闭"
+          :aria-label="t('关闭')"
           @click="$emit('close')"
         >
           <Icon name="x" size="sm" />
@@ -104,7 +104,7 @@ function onKeydown(event: KeyboardEvent): void {
       </div>
       <div class="modal-b">
         <div class="field">
-          <label for="new-proj-name">标题</label>
+          <label for="new-proj-name">{{ t("标题") }}</label>
           <input
             id="new-proj-name"
             ref="titleInput"
@@ -114,7 +114,7 @@ function onKeydown(event: KeyboardEvent): void {
           />
         </div>
         <div class="field">
-          <label for="new-proj-ws">工作目录</label>
+          <label for="new-proj-ws">{{ t("工作目录") }}</label>
           <input
             id="new-proj-ws"
             v-model="workspace"
@@ -127,13 +127,13 @@ function onKeydown(event: KeyboardEvent): void {
         </p>
       </div>
       <div class="modal-f">
-        <button type="button" class="btn" :disabled="busy" @click="$emit('close')">取消</button>
+        <button type="button" class="btn" :disabled="busy" @click="$emit('close')">{{ t("取消") }}</button>
         <button
           type="submit"
           class="btn primary"
           :disabled="busy || !title.trim() || !workspace.trim()"
         >
-          {{ busy ? "正在创建…" : "创建项目" }}
+          {{ busy ? t("正在创建…") : t("创建项目") }}
         </button>
       </div>
     </form>

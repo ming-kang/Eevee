@@ -164,7 +164,7 @@
 }
 
 /* Scales. Every type role and icon size is a ratio of one interface size, `--ev-ui` (14px unless
-   the reader picked another in settings; `text-size.ts` sets it on the root before first paint).
+   the reader picked another in settings; `theme.ts` sets it on the root before the app mounts).
    Control geometry stays fixed, so a larger size reads larger without loosening the layout. */
 :root {
   --ev-ui: 14px;
@@ -173,9 +173,11 @@
 :root {
   /* Latin always comes from the bundled Inter; Chinese names its fonts before the system face so
      every platform picks a real CJK sans instead of whatever system-ui falls back to. */
-  --ev-font:
+  --ev-font-base:
     "Inter Variable", "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
     "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* The reader's font goes ahead of the bundled stack (`theme.ts`); unset, this is the stack alone. */
+  --ev-font: var(--ev-font-base);
   --ev-font-mono:
     "JetBrains Mono Variable", "JetBrains Mono", "Cascadia Code", ui-monospace, "SF Mono",
     Consolas, monospace;

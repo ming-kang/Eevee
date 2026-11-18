@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TicketView } from "@shared/api/contract.ts";
+import { t } from "../i18n.ts";
 import MarkdownText from "./MarkdownText.vue";
 
 defineProps<{
@@ -14,7 +15,7 @@ defineEmits<{
 </script>
 
 <template>
-  <p v-if="streaming && text === ''" class="note"><span class="shimmer">思考中</span></p>
+  <p v-if="streaming && text === ''" class="note"><span class="shimmer">{{ t("思考中") }}</span></p>
   <div v-else class="turn msg-ai">
     <MarkdownText
       :source="text"

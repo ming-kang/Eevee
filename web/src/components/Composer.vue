@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from "vue";
+import { t } from "../i18n.ts";
 import { useSubmit } from "../submit.ts";
 import Icon from "./Icon.vue";
 
@@ -10,7 +11,7 @@ const props = withDefaults(
     draftKey?: string;
     disabled?: boolean;
   }>(),
-  { placeholder: "告诉 Router 要做什么", draftKey: "", disabled: false },
+  { placeholder: t("告诉 Router 要做什么"), draftKey: "", disabled: false },
 );
 
 const draftStore = new Map<string, string>();
@@ -79,8 +80,8 @@ function onKeydown(event: KeyboardEvent): void {
         class="send"
         type="submit"
         :disabled="busy || disabled || text.trim() === ''"
-        title="发送（Enter）"
-        aria-label="发送"
+        :title="t('发送（Enter）')"
+        :aria-label="t('发送')"
       >
         <Icon name="arrowUp" size="sm" />
       </button>

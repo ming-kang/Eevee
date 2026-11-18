@@ -89,14 +89,30 @@ export class Engine {
   }
 
   async setDefaultModel(role: RoleName | "default", choice: ModelChoice): Promise<void> {
-    if (this.#options.models.models().getModel(choice.provider, choice.modelId) === undefined) {
-      throw new UnknownModel(`没有模型 ${choice.provider}/${choice.modelId}`);
-    }
+    this.#requireModel(choice);
     await this.#options.settings.update((stored) => ({
       ...stored,
       models: { ...stored.models, [role]: choice },
     }));
     await this.#refreshProjects();
+  }
+
+  /** A project's own model for a role over the settings' default; `null` follows the settings again. */
+  async setProjectModel(
+    host: ProjectHost,
+    role: RoleName | "default",
+    choice: ModelChoice | null,
+  ): Promise<ProjectSummary> {
+    if (choice !== null) this.#requireModel(choice);
+    const { [role]: _, ...others } = host.meta.models ?? {};
+    await host.setModels(choice === null ? others : { ...others, [role]: choice });
+    return host.summary();
+  }
+
+  #requireModel(choice: ModelChoice): void {
+    if (this.#options.models.models().getModel(choice.provider, choice.modelId) === undefined) {
+      throw new UnknownModel(`没有模型 ${choice.provider}/${choice.modelId}`);
+    }
   }
 
   async login(provider: string, key: string): Promise<void> {

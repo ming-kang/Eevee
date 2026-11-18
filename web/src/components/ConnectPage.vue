@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../i18n.ts";
 import { showToast } from "../toasts.ts";
 import BrandLogo from "./BrandLogo.vue";
 import Icon from "./Icon.vue";
@@ -15,9 +16,9 @@ defineEmits<{
 async function copy(text: string): Promise<void> {
   try {
     await navigator.clipboard?.writeText(text);
-    showToast(`已复制 ${text}`);
+    showToast(t("已复制 {text}", { text }));
   } catch {
-    showToast("复制失败，请手动复制", "error");
+    showToast(t("复制失败，请手动复制"), "error");
   }
 }
 </script>
@@ -26,7 +27,7 @@ async function copy(text: string): Promise<void> {
   <div class="connect">
     <div class="connect-card">
       <span class="brand"><BrandLogo /></span>
-      <h1>连接到 Engine</h1>
+      <h1>{{ t("连接到 Engine") }}</h1>
       <div v-if="networkError" class="banner bad" role="alert">
         <Icon name="alert" size="sm" />
         <div>{{ networkError }}</div>
@@ -41,7 +42,7 @@ async function copy(text: string): Promise<void> {
           <button
             type="button"
             class="btn ghost sm icon"
-            :aria-label="`复制 ${command}`"
+            :aria-label="t('复制 {command}', { command })"
             @click="copy(command)"
           >
             <Icon name="copy" size="xs" />
@@ -50,7 +51,7 @@ async function copy(text: string): Promise<void> {
       </div>
       <button v-if="networkError" type="button" class="btn" @click="$emit('retry')">
         <Icon name="refresh" size="sm" />
-        <span>重试</span>
+        <span>{{ t("重试") }}</span>
       </button>
     </div>
   </div>

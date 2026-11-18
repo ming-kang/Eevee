@@ -207,6 +207,49 @@
   box-shadow: none;
 }
 
+/* The model list: the search stays put while the models under it scroll. */
+.model-pop {
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 40px));
+  max-height: 360px;
+}
+
+.model-pop .pop-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.model-pop .pop-row {
+  height: 32px;
+}
+
+/* A list of words hugs the longest one. */
+.level-pop {
+  width: max-content;
+  min-width: 140px;
+}
+
+.level-pop .pop-row {
+  height: 32px;
+}
+
+/* Opened from a control at the bottom of the window, a menu rises above it. */
+.pop.up {
+  bottom: calc(100% + 6px);
+  left: 0;
+}
+
+/* A submenu opens beside its row, past the parent's inset, growing up from the row's bottom edge. */
+.pop.side {
+  bottom: -4px;
+  left: calc(100% + 8px);
+}
+
+.model-pop.side {
+  width: 280px;
+}
+
 /* ——— Hover card ——— */
 .hovercard {
   position: absolute;

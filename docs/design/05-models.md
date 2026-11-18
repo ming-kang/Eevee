@@ -29,6 +29,8 @@
 1. **默认配置**：项目和角色可以有默认模型，Router 建单时不必每次重复选择。
 2. **按对话覆盖**：某项工作确有需要时，Router 可以为 Worker 指定模型，运行中也可以按需要调整。Durable 把模型选择保存在各对话的 `pi.agent` 中。
 
+一次模型选择是 provider、模型编号和可选的思考档位（`off` 到 `max`，不设为 `off`）。档位跟着模型走：换模型时面板把档位换成新模型最接近的一档，Durable 收到的是 `pi.agent` 的 `model` 与 `thinkingLevel`，不支持的档位由 provider 收拢。用户在面板里给项目的 Router 选模型时，写的是这个项目的默认配置（`project.json`），不是只改 Router 这一个对话，所以重启和交接后仍然有效。
+
 ## 2. 模型画像
 
 用户可以在 `~/.eevee/models.md` 中记录各模型的使用经验：

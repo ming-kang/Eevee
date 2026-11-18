@@ -2,6 +2,7 @@
 import type { Client } from "@shared/api/client.ts";
 import type { ProjectSummary, UsageSummary, UsageView } from "@shared/api/contract.ts";
 import { computed, ref, watch } from "vue";
+import { t } from "../i18n.ts";
 import Icon from "./Icon.vue";
 import Skeleton from "./Skeleton.vue";
 
@@ -71,7 +72,7 @@ const modelRows = computed(() => {
 const conversationRows = computed(() => {
   if (!usage.value) return [];
   const rows: { id?: string; title: string; summary: UsageSummary }[] = [
-    { title: "Router 主对话", summary: usage.value.router },
+    { title: t("Router 主对话"), summary: usage.value.router },
     ...usage.value.tickets.map((t) => ({
       id: t.ticketId,
       title: t.title,
@@ -100,13 +101,13 @@ function barWidth(summary: UsageSummary): string {
 <template>
   <section class="page-wrap">
     <header class="header">
-      <button type="button" class="btn ghost sm icon menu-btn" aria-label="菜单" @click="$emit('open-side')">
+      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('菜单')" @click="$emit('open-side')">
         <Icon name="menu" size="sm" />
       </button>
-      <h1>花费</h1>
+      <h1>{{ t("用量") }}</h1>
       <span class="sub ellipsis hide-sm">{{ project.title }}</span>
       <span class="spacer" />
-      <button type="button" class="btn ghost sm icon" :disabled="loading" aria-label="刷新" title="刷新" @click="loadUsage">
+      <button type="button" class="btn ghost sm icon" :disabled="loading" :aria-label="t('刷新')" :title="t('刷新')" @click="loadUsage">
         <Icon name="refresh" size="sm" :spin="loading" />
       </button>
     </header>
@@ -116,42 +117,47 @@ function barWidth(summary: UsageSummary): string {
         <Skeleton v-else-if="loading && !usage" />
         <template v-else-if="usage">
           <div class="panel stats">
-            <div title="按 provider 账单计，缺失时按目录价估算">
-              <span class="k">总花费</span>
+            <div :title="t('按 Provider 账单计，缺失时按目录价估算')">
+              <span class="k">{{ t("费用") }}</span>
               <span class="v">{{ formatCost(usage.total.cost) }}</span>
             </div>
             <div>
-              <span class="k">输入</span>
+              <span class="k">{{ t("输入") }}</span>
               <span class="v">{{ formatTokens(usage.total.input) }}</span>
             </div>
             <div>
-              <span class="k">输出</span>
+              <span class="k">{{ t("输出") }}</span>
               <span class="v">{{ formatTokens(usage.total.output) }}</span>
             </div>
             <div>
-              <span class="k">缓存命中</span>
+              <span class="k">{{ t("缓存命中") }}</span>
               <span class="v">{{ cacheHitPercent }}</span>
             </div>
           </div>
 
-          <div class="section-h">按模型</div>
+          <div class="section-h">{{ t("按模型") }}</div>
           <div class="rows">
             <div v-if="modelRows.length === 0" class="row usage-row">
-              <span class="muted">没有调用记录</span>
+              <span class="muted">{{ t("没有调用记录") }}</span>
             </div>
             <div v-for="item in modelRows" :key="item.model" class="row usage-row">
               <span class="mono">{{ item.model }}</span>
               <span class="tokens hide-sm">
-                入 {{ formatTokens(item.summary.input) }} · 出 {{ formatTokens(item.summary.output) }}
+                {{
+                  t("入 {input} · 出 {output}", {
+                    input: formatTokens(item.summary.input),
+                    output: formatTokens(item.summary.output),
+                  })
+                }}
                 <template v-if="item.summary.cacheRead > 0">
-                  · 缓存 {{ formatTokens(item.summary.cacheRead) }}
+                  · {{ t("缓存 {tokens}", { tokens: formatTokens(item.summary.cacheRead) }) }}
                 </template>
               </span>
               <span class="cost">{{ formatCost(item.summary.cost) }}</span>
             </div>
           </div>
 
-          <div class="section-h">按对话</div>
+          <div class="section-h">{{ t("按对话") }}</div>
           <div class="panel">
             <table class="table">
               <tbody>

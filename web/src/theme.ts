@@ -1,5 +1,5 @@
 import { computed, onScopeDispose, ref } from "vue";
-import { parseTextSize, TEXT_SIZE_KEY, type TextSize } from "./text-size.ts";
+import { FONT_KEY, fontStack, readTextSize, TEXT_SIZE, TEXT_SIZE_KEY } from "./typography.ts";
 
 export type ThemePreference = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
@@ -56,20 +56,34 @@ export function useTheme() {
   return { preference, resolved, setTheme, toggleTheme };
 }
 
-/** Sets the root interface size that every type role and icon scales from; `index.html` does the
- * same before first paint. */
-function applyTextSize(size: TextSize): void {
-  document.documentElement.style.setProperty("--ev-ui", `${size}px`);
+const root = document.documentElement.style;
+const textSize = ref(readTextSize(localStorage.getItem(TEXT_SIZE_KEY)) ?? TEXT_SIZE.default);
+const font = ref(localStorage.getItem(FONT_KEY) ?? "");
+
+/** The root size every type role and icon scales from, and the font ahead of the bundled one. */
+function applyTypography(): void {
+  root.setProperty("--ev-ui", `${textSize.value}px`);
+  const stack = fontStack(font.value);
+  if (stack === undefined) root.removeProperty("--ev-font");
+  else root.setProperty("--ev-font", stack);
 }
 
-const textSize = ref<TextSize>(parseTextSize(localStorage.getItem(TEXT_SIZE_KEY)));
+// Before the app mounts: the page has no text until then, so the first frame with words is right.
+applyTypography();
 
-export function useTextSize() {
-  function setTextSize(next: TextSize): void {
+export function useTypography() {
+  function setTextSize(next: number): void {
     textSize.value = next;
     localStorage.setItem(TEXT_SIZE_KEY, String(next));
-    applyTextSize(next);
+    applyTypography();
   }
 
-  return { size: textSize, setTextSize };
+  function setFont(next: string): void {
+    font.value = next;
+    if (next.trim() === "") localStorage.removeItem(FONT_KEY);
+    else localStorage.setItem(FONT_KEY, next);
+    applyTypography();
+  }
+
+  return { size: textSize, font, setTextSize, setFont };
 }

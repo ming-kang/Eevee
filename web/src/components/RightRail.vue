@@ -11,6 +11,7 @@ import {
 } from "../board.ts";
 import { onRovingKeydown } from "../focus.ts";
 import { vSeg } from "../dom.ts";
+import { t } from "../i18n.ts";
 import DetailTab from "./DetailTab.vue";
 import Icon from "./Icon.vue";
 import JobsTab from "./JobsTab.vue";
@@ -48,19 +49,19 @@ const tabs = computed(() => {
   const list: { key: RailTab; label: string; count: number; dot: boolean }[] = [
     {
       key: "tickets",
-      label: "工单",
+      label: t("工单"),
       count: groups.value.openCount,
       dot: pendingQuestions.value > 0 && effectiveTab.value !== "tickets",
     },
     {
       key: "jobs",
-      label: "作业",
+      label: t("作业"),
       count: jobs.value.length,
       dot: false,
     },
   ];
   if (props.hasDetail) {
-    list.push({ key: "detail", label: "详情", count: 0, dot: false });
+    list.push({ key: "detail", label: t("详情"), count: 0, dot: false });
   }
   return list;
 });
@@ -72,7 +73,7 @@ const tabs = computed(() => {
       v-seg
       class="seg sm rtabs"
       role="tablist"
-      aria-label="工单栏标签"
+      :aria-label="t('工单栏标签')"
       @keydown="
         onRovingKeydown(
           $event,
@@ -97,13 +98,13 @@ const tabs = computed(() => {
         <span>{{ item.label }}</span>
         <span v-if="item.count > 0" class="n">{{ item.count }}</span>
         <span v-if="item.dot" class="dot user" aria-hidden="true" />
-        <span v-if="item.dot" class="sr">（有待回答问题）</span>
+        <span v-if="item.dot" class="sr">{{ t("（有待回答问题）") }}</span>
       </button>
     </div>
     <button
       type="button"
       class="btn ghost sm icon rail-close"
-      aria-label="关闭工单栏"
+      :aria-label="t('关闭工单栏')"
       @click="emit('close-drawer')"
     >
       <Icon name="x" size="sm" />

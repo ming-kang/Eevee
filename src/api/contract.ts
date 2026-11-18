@@ -7,6 +7,7 @@ import type {
   Report,
   RoleName,
   RunSummary,
+  ThinkingLevel,
   Ticket,
   TicketId,
   TicketStage,
@@ -100,6 +101,8 @@ export type ModelSpecView = {
   contextWindow: number;
   maxTokens: number;
   reasoning: boolean;
+  /** The thinking levels it takes, least to most; `["off"]` when it does not reason. */
+  thinkingLevels: ThinkingLevel[];
   cost: {
     input: number;
     output: number;
@@ -169,7 +172,7 @@ export type ApiRoutes = {
   "POST /api/session/code": { response: { code: string } };
   "GET /api/models": { response: ModelsView };
   "POST /api/settings/models": {
-    body: { role?: RoleName | "default"; provider: string; modelId: string };
+    body: { role?: RoleName | "default" } & ModelChoice;
     response: Ok;
   };
   "POST /api/auth/:provider": { body: { key: string }; response: Ok };
@@ -180,6 +183,11 @@ export type ApiRoutes = {
   };
   "POST /api/mcp/reload": { response: CapabilitiesView };
   "POST /api/projects": { body: { title: string; workspace: string }; response: ProjectSummary };
+  "POST /api/projects/:project/models": {
+    /** `null` drops the project's own choice, so the role follows the settings again. */
+    body: { role?: RoleName | "default"; model: ModelChoice | null };
+    response: ProjectSummary;
+  };
   "GET /api/projects/:project/board": { response: BoardView };
   "GET /api/projects/:project/conversation": { response: ConversationView };
   "GET /api/projects/:project/usage": { response: UsageView };

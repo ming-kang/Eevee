@@ -3,6 +3,7 @@ import type { TicketView } from "@shared/api/contract.ts";
 import type { ReportStatus } from "@shared/contracts/index.ts";
 import { computed } from "vue";
 import type { VisualStage } from "../board.ts";
+import { t } from "../i18n.ts";
 import type { IconName } from "../icons.ts";
 import { REPORT_LABEL } from "../labels.ts";
 import type { EventKind } from "../transcript-map.ts";
@@ -62,7 +63,7 @@ const glyph = computed<{ stage: VisualStage } | { icon: IconName }>(() => {
           :tickets="tickets"
           @open-ticket="$emit('open-ticket', $event)"
         />
-        交回报告（{{ REPORT_LABEL[status] }}）：{{ text }}
+        {{ t("交回报告（{status}）：{text}", { status: REPORT_LABEL[status], text }) }}
       </template>
       <span v-else class="pre-wrap">{{ text }}</span>
     </span>

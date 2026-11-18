@@ -2,9 +2,12 @@ import type { Context } from "@earendil-works/chord/context";
 import { configure, defineTool, type ToolExecutionApi } from "@earendil-works/pi-durable";
 import { arr, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import {
+  agentModel,
   formatModel,
   latestFinalReport,
   type ModelChoice,
+  THINKING_LEVELS,
+  type ThinkingLevel,
   type Ticket,
   type TicketId,
 } from "../../../contracts/index.ts";
@@ -41,6 +44,12 @@ const Parameters = obj({
     str({ description: "create / model：模型提供方，见 models://；建单时不填用默认模型" }),
   ),
   modelId: opt(str({ description: "create / model：模型编号" })),
+  thinkingLevel: opt(
+    oneOf(THINKING_LEVELS, {
+      description:
+        "create / model：思考档位，从 off 到 max，和 provider、modelId 一起填；不填为 off",
+    }),
+  ),
   modelReason: opt(str({ description: "create / model：选非默认模型时说明理由" })),
   text: opt(str({ description: "message：追加的指令" })),
   mode: opt(oneOf(["steer", "followUp"], { description: "message：引导或排队，默认排队" })),
@@ -59,6 +68,7 @@ type Args = {
   deliverTo?: string[];
   provider?: string;
   modelId?: string;
+  thinkingLevel?: ThinkingLevel;
   modelReason?: string;
   text?: string;
   mode?: "steer" | "followUp";
@@ -109,6 +119,9 @@ async function create(
   if ((args.provider === undefined) !== (args.modelId === undefined)) {
     return fail("provider 和 modelId 要么都填，要么都不填（使用默认模型）。");
   }
+  if (args.thinkingLevel !== undefined && args.provider === undefined) {
+    return fail("thinkingLevel 要和 provider、modelId 一起填，默认模型见 models://。");
+  }
   const model = chosenModel(args, api);
   if (typeof model === "string") return fail(model);
   const deliverTo = (args.deliverTo ?? []) as TicketId[];
@@ -152,7 +165,11 @@ function chosenModel(args: Args, api: ToolExecutionApi): ModelChoice | undefined
   if (api.models.getModel(args.provider, args.modelId) === undefined) {
     return `没有模型 ${args.provider}/${args.modelId}，可用模型见 models://。`;
   }
-  return { provider: args.provider, modelId: args.modelId };
+  return {
+    provider: args.provider,
+    modelId: args.modelId,
+    ...(args.thinkingLevel === undefined ? {} : { thinkingLevel: args.thinkingLevel }),
+  };
 }
 
 async function message(ticket: Ticket, args: Args, api: ToolExecutionApi, context: Context) {
@@ -238,8 +255,9 @@ async function retarget(ticket: Ticket, args: Args, api: ToolExecutionApi, conte
       model,
       ...(args.modelReason ? { modelReason: args.modelReason } : {}),
     });
-    await configure(tx, conversationOf(ticket), { model });
+    await configure(tx, conversationOf(ticket), agentModel(model));
     await markHandled(tx, ticket.id);
   }, context);
-  return ok(`${ticket.id} 改用 ${formatModel(model)}，从下一次请求开始生效。`);
+  const thinking = model.thinkingLevel === undefined ? "" : `，思考档位 ${model.thinkingLevel}`;
+  return ok(`${ticket.id} 改用 ${formatModel(model)}${thinking}，从下一次请求开始生效。`);
 }

@@ -60,20 +60,31 @@ EEVEE_ENGINE=http://127.0.0.1:19391 npm run web:dev
 
 | 文件 | 内容 |
 |---|---|
-| `tokens.css` | 两个主题的全部语义 token：表面层级、文字层级、颜色、阴影、圆角、控件高度、动效时长；字号与图标尺寸都由 `--ev-ui` 按比例换算（`theme.ts` 的 `useTextSize` 设置它） |
+| `tokens.css` | 两个主题的全部语义 token：表面层级、文字层级、颜色、阴影、圆角、控件高度、动效时长；字号与图标尺寸都由 `--ev-ui` 按比例换算（`theme.ts` 的 `useTypography` 设置它和读者的字体） |
 | `base.css` | 重置、焦点环、图标尺寸、关键帧、`prefers-reduced-motion` |
 | `controls.css` | 按钮、输入框、开关、分段控件、状态图形、卡片和列表行 |
 | `shell.css` | 左栏、主区域、右栏和三种宽度下的布局 |
 | `conversation.css` | 对话、过程行、diff、输入框、提问卡片 |
 | `rail.css` | 右栏的工单、作业、详情 |
 | `overlays.css` | 对话框、命令面板、浮层、悬停卡片、提示、连接页 |
-| `pages.css` | 设置、记忆、花费 |
+| `pages.css` | 设置、记忆、用量 |
 
 组件不写 scoped 样式，行内样式只用于运行时算出的位置和宽度，颜色只用 `tokens.css` 里的语义 token；层级和尺寸规则见 [WebUI 思路](design/06-ui.md#视觉与动效)。面板直接操作 DOM 的行为都在 `web/src/dom.ts`，其中的判断放在 `web/src/dom-rules.ts`，可以离线测试：
 
 - 分段控件写成 `<div v-seg class="seg">`，选中的按钮（`.on`、`aria-selected` 或 `aria-pressed`）下面有一块随选择滑动的底板；
 - 会持续增长的输出（作业日志、命令输出）加 `v-tail`，打开时停在最新一行并跟随新输出，读者往上翻时暂停；
 - `trackFocusModality()` 在 `<html>` 上标出 `data-modality`，用鼠标时焦点环宽度为 0，用 Tab 或方向键时才画。新写的焦点样式用 `--ev-ring` / `--ev-ring-in`，文本框用 `--ev-ring-field`。
+
+### 面板文字
+
+面板有简体中文和英文两种语言。界面文字一律写成中文原文并包进 `t()`（`web/src/i18n.ts`），中文原文就是键，英文在 `web/src/locales/en.ts`：
+
+- 带参数写成 `t("{n} 张未结", { n })`；英文可以写成 `"{n} job|{n} jobs"`，按 `n` 是否为 1 挑单复数；
+- 同一个中文在英文里意思不同时，在键后加 `::名字`（`t("模型::list")` 显示“模型”，英文是 “Models”）；
+- 产品和技术名词保留英文：Router、Worker、Dreamer、Engine、MCP、Provider、commit 和思考档位的取值；工单、记忆、报告这类一般名词写中文；
+- 语言在页面载入时定下，切换后重新载入，所以模块顶层的常量也可以用 `t()`。
+
+`web/src/i18n.test.ts` 扫描全部组件：`t()` 之外出现中文（注释和匹配 Engine 原文的正则除外）、用到的键没有英文、英文表里有没人用的键，都会失败。
 
 ## 测试
 

@@ -5,6 +5,7 @@ import type { Question, QuestionId, TicketId } from "@shared/contracts/index.ts"
 import { computed, ref, type ShallowRef, watch } from "vue";
 import { effectiveStage, type RailTab } from "../board.ts";
 import { useConversationWatch } from "../engine-data.ts";
+import { t } from "../i18n.ts";
 import { STAGE_LABEL } from "../labels.ts";
 import { vSeg } from "../dom.ts";
 import type { StreamClient } from "../stream.ts";
@@ -114,21 +115,21 @@ async function answer(id: QuestionId, text: string): Promise<void> {
 <template>
   <section class="worker">
     <header class="header">
-      <button type="button" class="btn ghost sm icon menu-btn" aria-label="菜单" @click="$emit('open-side')">
+      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('菜单')" @click="$emit('open-side')">
         <Icon name="menu" size="sm" />
       </button>
       <button
         type="button"
         class="btn ghost sm icon back-btn"
-        title="回到 Router"
-        aria-label="回到 Router 主对话"
+        :title="t('回到 Router')"
+        :aria-label="t('回到 Router 主对话')"
         @click="$emit('close')"
       >
         <Icon name="chevL" size="sm" />
       </button>
       <span class="t-id-h">{{ ticketId }}</span>
       <h1 class="ellipsis">
-        {{ view ? view.ticket.title : boardLoaded ? `找不到工单 ${ticketId}` : "" }}
+        {{ view ? view.ticket.title : boardLoaded ? t("找不到工单 {id}", { id: ticketId }) : "" }}
       </h1>
       <span
         v-if="view && stage"
@@ -141,7 +142,7 @@ async function answer(id: QuestionId, text: string): Promise<void> {
       </span>
       <span class="spacer" />
       <button type="button" class="btn ghost sm rail-btn" @click="$emit('open-rail', 'detail')">
-        详情
+        {{ t("详情") }}
       </button>
     </header>
 
@@ -150,11 +151,11 @@ async function answer(id: QuestionId, text: string): Promise<void> {
         <p>
           {{
             !view && boardLoaded
-              ? `找不到工单 ${ticketId}`
+              ? t("找不到工单 {id}", { id: ticketId })
               : view?.stage === "queued"
-                ? "排队中"
+                ? t("排队中")
                 : conversation.view.value
-                  ? "尚未开始"
+                  ? t("尚未开始")
                   : ""
           }}
         </p>
@@ -195,30 +196,31 @@ async function answer(id: QuestionId, text: string): Promise<void> {
               :count="ticketQuestions.length"
               @expand="later = false"
             />
-            <Composer :draft-key="`w:${project}:${ticketId}`" :send="send" :placeholder="`发消息给 ${ticketId}`">
+            <Composer :draft-key="`w:${project}:${ticketId}`" :send="send" :placeholder="t('发消息给 {ticket}', { ticket: ticketId })">
               <template v-if="conversation.running.value" #actions>
                 <div
                   v-seg
                   class="seg sm"
                   role="group"
-                  aria-label="送达时机"
-                  title="引导：本批工具调用结束后立刻看到&#10;排队：这一轮结束后再开始新的一轮"
+                  :aria-label="t('送达时机')"
                 >
                   <button
                     type="button"
                     :class="{ on: mode === 'steer' }"
                     :aria-pressed="mode === 'steer'"
+                    :title="t('本批工具调用结束后立刻看到')"
                     @click="mode = 'steer'"
                   >
-                    引导
+                    {{ t("引导") }}
                   </button>
                   <button
                     type="button"
                     :class="{ on: mode === 'followUp' }"
                     :aria-pressed="mode === 'followUp'"
+                    :title="t('这一轮结束后再开始新的一轮')"
                     @click="mode = 'followUp'"
                   >
-                    排队
+                    {{ t("排队") }}
                   </button>
                 </div>
               </template>
@@ -227,8 +229,8 @@ async function answer(id: QuestionId, text: string): Promise<void> {
                   type="button"
                   class="stop"
                   :disabled="interrupting.busy.value"
-                  title="打断这一轮（工单仍为 open）"
-                  aria-label="打断这一轮"
+                  :title="t('打断这一轮（工单仍为 open）')"
+                  :aria-label="t('打断这一轮')"
                   @click="interrupting.run(interrupt)"
                 >
                   <Icon name="stop" size="sm" />
@@ -238,7 +240,7 @@ async function answer(id: QuestionId, text: string): Promise<void> {
           </template>
         </template>
         <p v-else-if="view" class="dock-note">
-          {{ view.ticket.status === "done" ? "已结单" : "已取消"
+          {{ view.ticket.status === "done" ? t("已结单") : t("已取消")
           }}{{ view.ticket.closeNote ? ` · ${view.ticket.closeNote}` : "" }}
         </p>
       </div>

@@ -136,6 +136,23 @@
   font-weight: 400;
 }
 
+/* The thinking level beside a row's model, one width for every row so the models line up; its
+   menu opens under it. */
+.level-slot {
+  position: relative;
+}
+
+.level-slot > .pop {
+  top: calc(100% + 4px);
+  left: 0;
+}
+
+.model-pick.level {
+  width: 104px;
+  font-family: var(--ev-font);
+  font-size: var(--ev-control);
+}
+
 .model-pick:focus-visible {
   box-shadow: var(--ev-shadow-well), var(--ev-ring);
 }
@@ -144,25 +161,9 @@
   opacity: 0.45;
 }
 
-.model-pop {
+.model-row-ctrl > .pop {
   top: calc(100% - 6px);
   right: 12px;
-  width: min(360px, calc(100vw - 40px));
-  max-height: 360px;
-  overflow-y: auto;
-}
-
-.model-pop .pop-row {
-  height: 32px;
-}
-
-.model-pop .pop-row .mono {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--ev-footnote);
 }
 
 /* Role capabilities: one switch per role and extension. */

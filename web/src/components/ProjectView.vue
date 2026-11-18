@@ -22,6 +22,7 @@ defineEmits<{
   "open-rail": [tab?: RailTab, jobId?: string];
   "open-ticket": [ticketId: string];
   "close-ticket": [];
+  "project-changed": [];
 }>();
 
 const selectedView = computed(() =>
@@ -55,5 +56,6 @@ const selectedView = computed(() =>
     @open-side="$emit('open-side')"
     @open-rail="(tab) => $emit('open-rail', tab)"
     @open-ticket="$emit('open-ticket', $event)"
+    @project-changed="$emit('project-changed')"
   />
 </template>

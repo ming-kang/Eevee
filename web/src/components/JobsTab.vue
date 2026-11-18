@@ -5,6 +5,7 @@ import type { JobId, JobStatus } from "@shared/contracts/index.ts";
 import { computed, onUnmounted, ref, watch } from "vue";
 import type { RunningJobItem } from "../board.ts";
 import { vTail } from "../dom.ts";
+import { t } from "../i18n.ts";
 import { useSubmit } from "../submit.ts";
 import { formatElapsedSeconds } from "../time.ts";
 import { showToast } from "../toasts.ts";
@@ -131,10 +132,10 @@ function elapsed(startedAt: number): string {
 }
 
 function statusLabel(status: JobStatus, exitCode?: number): string {
-  if (status === "running") return "运行中";
-  if (status === "killed") return "已终止";
-  if (status === "interrupted") return "被打断";
-  return exitCode !== undefined ? `退出码 ${exitCode}` : "已结束";
+  if (status === "running") return t("运行中");
+  if (status === "killed") return t("已终止");
+  if (status === "interrupted") return t("被打断");
+  return exitCode !== undefined ? t("退出码 {code}", { code: exitCode }) : t("已结束");
 }
 
 async function killJob(jobId: JobId): Promise<void> {
@@ -148,7 +149,7 @@ async function killJob(jobId: JobId): Promise<void> {
   });
   if (ok) {
     confirmKillId.value = undefined;
-    showToast(`已终止后台作业 ${jobId}`);
+    showToast(t("已终止后台作业 {job}", { job: jobId }));
     await fetchLog(jobId, pid, true);
   }
 }
@@ -165,7 +166,7 @@ async function killJob(jobId: JobId): Promise<void> {
         @click="$emit('update:openJobId', undefined)"
       >
         <StageGlyph :stage="logView?.job.status === 'killed' || logView?.job.status === 'interrupted' ? 'blocked' : 'done'" />
-        <span class="job-cmd">{{ logView?.job.command ?? `作业 ${openJobId}` }}</span>
+        <span class="job-cmd">{{ logView?.job.command ?? t("作业 {id}", { id: openJobId ?? "" }) }}</span>
         <span class="job-sub">
           <span v-if="logView" class="t-id">{{ logView.job.ticketId }}</span>
           <span>{{ logView ? statusLabel(logView.job.status, logView.job.exitCode) : openJobId }}</span>
@@ -177,8 +178,8 @@ async function killJob(jobId: JobId): Promise<void> {
       <p v-if="logError" class="error job-note">{{ logError }}</p>
       <div v-else-if="logLoading && !logView" class="job-note"><Skeleton /></div>
       <template v-else-if="logView">
-        <pre v-tail class="job-log">{{ logView.content || "（暂无输出）" }}</pre>
-        <p v-if="logView.truncated" class="job-note">仅最近 200 行</p>
+        <pre v-tail class="job-log">{{ logView.content || t("（暂无输出）") }}</pre>
+        <p v-if="logView.truncated" class="job-note">{{ t("仅最近 200 行") }}</p>
       </template>
 
       <div class="job-actions">
@@ -188,7 +189,7 @@ async function killJob(jobId: JobId): Promise<void> {
           class="btn sm"
           @click="$emit('open-ticket', logView.job.ticketId)"
         >
-          打开 {{ logView.job.ticketId }}
+          {{ t("打开 {ticket}", { ticket: logView.job.ticketId }) }}
         </button>
         <span class="spacer" />
         <button
@@ -196,13 +197,13 @@ async function killJob(jobId: JobId): Promise<void> {
           class="btn sm ghost"
           @click="$emit('update:openJobId', undefined)"
         >
-          收起
+          {{ t("收起") }}
         </button>
       </div>
     </div>
   </div>
 
-  <p v-if="jobs.length === 0 && (!openJobId || openInRunning)" class="rail-empty">没有后台作业</p>
+  <p v-if="jobs.length === 0 && (!openJobId || openInRunning)" class="rail-empty">{{ t("没有后台作业") }}</p>
 
   <template v-else-if="jobs.length > 0">
     <div class="jobs">
@@ -232,8 +233,8 @@ async function killJob(jobId: JobId): Promise<void> {
           <p v-if="logError" class="error job-note">{{ logError }}</p>
           <div v-else-if="logLoading && !logView" class="job-note"><Skeleton /></div>
           <template v-else-if="logView">
-            <pre v-tail class="job-log">{{ logView.content || "（暂无输出）" }}</pre>
-            <p v-if="logView.truncated" class="job-note">仅最近 200 行</p>
+            <pre v-tail class="job-log">{{ logView.content || t("（暂无输出）") }}</pre>
+            <p v-if="logView.truncated" class="job-note">{{ t("仅最近 200 行") }}</p>
           </template>
           <p v-if="killing.error.value" class="error job-note">{{ killing.error.value }}</p>
           <div class="job-actions">
@@ -242,7 +243,7 @@ async function killJob(jobId: JobId): Promise<void> {
               class="btn sm"
               @click="$emit('open-ticket', item.ticket.id)"
             >
-              打开 {{ item.ticket.id }}
+              {{ t("打开 {ticket}", { ticket: item.ticket.id }) }}
             </button>
             <span class="spacer" />
             <template v-if="confirmKillId === item.job.id">
@@ -252,7 +253,7 @@ async function killJob(jobId: JobId): Promise<void> {
                 :disabled="killing.busy.value"
                 @click="confirmKillId = undefined"
               >
-                取消
+                {{ t("取消") }}
               </button>
               <button
                 type="button"
@@ -260,7 +261,7 @@ async function killJob(jobId: JobId): Promise<void> {
                 :disabled="killing.busy.value"
                 @click="killJob(item.job.id)"
               >
-                {{ killing.busy.value ? "正在终止…" : "确认终止" }}
+                {{ killing.busy.value ? t("正在终止…") : t("确认终止") }}
               </button>
             </template>
             <button
@@ -273,7 +274,7 @@ async function killJob(jobId: JobId): Promise<void> {
                 confirmKillId = item.job.id;
               "
             >
-              终止
+              {{ t("终止") }}
             </button>
           </div>
         </template>

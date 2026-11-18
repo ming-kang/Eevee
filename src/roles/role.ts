@@ -1,10 +1,5 @@
-import type {
-  AgentChange,
-  Extension,
-  ModelRef,
-  RegistrySnapshot,
-} from "@earendil-works/pi-durable";
-import type { RoleName } from "../contracts/index.ts";
+import type { AgentChange, Extension, RegistrySnapshot } from "@earendil-works/pi-durable";
+import { agentModel, type ModelChoice, type RoleName } from "../contracts/index.ts";
 
 export type MemorySnapshot = {
   global: string;
@@ -73,7 +68,7 @@ export function resolveCapability(
 export function roleChange(
   role: Role<never>,
   capability: Capability,
-  options: { cwd: string; model?: ModelRef; maxTurns?: number },
+  options: { cwd: string; model?: ModelChoice; maxTurns?: number },
 ): AgentChange {
   return {
     extensions: capability.extensions,
@@ -81,6 +76,6 @@ export function roleChange(
     instructions: role.instructions,
     cwd: options.cwd,
     maxTurns: options.maxTurns ?? null,
-    ...(options.model === undefined ? {} : { model: options.model }),
+    ...(options.model === undefined ? {} : agentModel(options.model)),
   };
 }

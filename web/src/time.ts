@@ -1,3 +1,5 @@
+import { t } from "./i18n.ts";
+
 export function formatRelativeTime(
   ms: number,
   nowMs = Date.now(),
@@ -5,14 +7,15 @@ export function formatRelativeTime(
 ): string {
   const diff = Math.max(0, nowMs - ms);
   const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "刚刚";
-  if (mins < 60) return style === "short" ? `${mins}分` : `${mins} 分钟前`;
+  if (mins < 1) return t("刚刚");
+  if (mins < 60) return style === "short" ? t("{n}分", { n: mins }) : t("{n} 分钟前", { n: mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return style === "short" ? `${hours}时` : `${hours} 小时前`;
+  if (hours < 24)
+    return style === "short" ? t("{n}时", { n: hours }) : t("{n} 小时前", { n: hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return style === "short" ? `${days}天` : `${days} 天前`;
+  if (days < 7) return style === "short" ? t("{n}天", { n: days }) : t("{n} 天前", { n: days });
   const weeks = Math.floor(days / 7);
-  return style === "short" ? `${weeks}周` : `${weeks} 周前`;
+  return style === "short" ? t("{n}周", { n: weeks }) : t("{n} 周前", { n: weeks });
 }
 
 export function formatClockTime(ms: number, nowMs = Date.now()): string {

@@ -2,6 +2,7 @@
 import type { BoardView, TicketView } from "@shared/api/contract.ts";
 import { ref } from "vue";
 import { effectiveStage, type TicketGroups, ticketQuestionSummary } from "../board.ts";
+import { t } from "../i18n.ts";
 import { STAGE_LABEL } from "../labels.ts";
 import Icon from "./Icon.vue";
 import StageGlyph from "./StageGlyph.vue";
@@ -41,11 +42,11 @@ function questionLine(view: TicketView): string | undefined {
 
 <template>
   <template v-if="board && board.tickets.length === 0">
-    <p class="rail-empty">没有工单</p>
+    <p class="rail-empty">{{ t("没有工单") }}</p>
   </template>
   <template v-else-if="board">
     <template v-if="groups.answer.length > 0">
-      <div class="group-h user">需要你</div>
+      <div class="group-h user">{{ t("需要你") }}</div>
       <button
         v-for="view in groups.answer"
         :key="view.ticket.id"
@@ -66,7 +67,7 @@ function questionLine(view: TicketView): string | undefined {
     </template>
 
     <template v-if="groups.active.length > 0">
-      <div class="group-h">进行中</div>
+      <div class="group-h">{{ t("进行中") }}</div>
       <button
         v-for="view in groups.active"
         :key="view.ticket.id"
@@ -93,7 +94,7 @@ function questionLine(view: TicketView): string | undefined {
         :aria-expanded="showClosed"
         @click="showClosed = !showClosed"
       >
-        <span>已结单 {{ groups.closed.length }}</span>
+        <span>{{ t("已结单 {n}", { n: groups.closed.length }) }}</span>
         <Icon name="chevD" size="xs" class="chev" />
       </button>
       <template v-if="showClosed">

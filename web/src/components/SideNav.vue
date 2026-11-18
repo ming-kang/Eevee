@@ -3,6 +3,7 @@ import type { ProjectSummary } from "@shared/api/contract.ts";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import type { RunSummary } from "@shared/contracts/index.ts";
 import type { BoardState } from "../engine-data.ts";
+import { t } from "../i18n.ts";
 import { deriveProjectState, type ProjectRowState } from "../projects.ts";
 import { formatRoute, type Route } from "../router.ts";
 import type { StreamState } from "../stream.ts";
@@ -132,8 +133,12 @@ onUnmounted(() => {
     <button
       type="button"
       class="btn ghost sm icon side-toggle"
-      :title="`${sideCollapsed ? '展开' : '收起'}侧栏（${sideShortcut}）`"
-      :aria-label="sideCollapsed ? '展开侧栏' : '收起侧栏'"
+      :title="
+        sideCollapsed
+          ? t('展开侧栏（{key}）', { key: sideShortcut })
+          : t('收起侧栏（{key}）', { key: sideShortcut })
+      "
+      :aria-label="sideCollapsed ? t('展开侧栏') : t('收起侧栏')"
       @click="$emit('toggle-side')"
     >
       <Icon name="sidebar" size="sm" />
@@ -144,31 +149,31 @@ onUnmounted(() => {
     <button
       type="button"
       class="nav-row"
-      title="新建项目"
+      :title="t('新建项目')"
       @click="
         hideHoverImmediate();
         $emit('new-project');
       "
     >
       <Icon name="compose" size="sm" />
-      <span class="label">新建项目</span>
+      <span class="label">{{ t("新建项目") }}</span>
     </button>
     <button
       type="button"
       class="nav-row"
-      :title="`搜索（${paletteShortcut}）`"
+      :title="t('搜索（{key}）', { key: paletteShortcut })"
       @click="
         hideHoverImmediate();
         $emit('open-palette');
       "
     >
       <Icon name="search" size="sm" />
-      <span class="label">搜索</span>
+      <span class="label">{{ t("搜索") }}</span>
       <span class="kbd">{{ paletteShortcut }}</span>
     </button>
   </div>
 
-  <div v-if="projects.length > 0" class="side-h">项目</div>
+  <div v-if="projects.length > 0" class="side-h">{{ t("项目") }}</div>
 
   <div class="side-scroll" @scroll="hideHoverImmediate">
     <ProjectRow
@@ -196,10 +201,10 @@ onUnmounted(() => {
     v-if="streamState === 'reconnecting'"
     class="side-conn"
     role="status"
-    title="与 Engine 的实时连接断开了，正在自动重连"
+    :title="t('与 Engine 的实时连接断开了，正在自动重连')"
   >
     <span class="dot bad" aria-hidden="true" />
-    <span class="label">正在重新连接…</span>
+    <span class="label">{{ t("正在重新连接…") }}</span>
   </p>
 
   <ControlTiles

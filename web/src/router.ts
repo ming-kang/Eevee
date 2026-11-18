@@ -1,4 +1,4 @@
-export const SETTINGS_SECTIONS = ["models", "roles", "mcp", "engine"] as const;
+export const SETTINGS_SECTIONS = ["general", "models", "roles", "mcp", "engine"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export type Route =
@@ -42,7 +42,7 @@ export function parseRoute(hash: string): Route | undefined {
   }
   if (parts[0] === "settings") {
     const raw = parts[1] ? decode(parts[1]) : undefined;
-    const section: SettingsSection = raw && isSettingsSection(raw) ? raw : "models";
+    const section: SettingsSection = raw && isSettingsSection(raw) ? raw : "general";
     return { name: "settings", section };
   }
   if (parts[0] === "p" && parts[1]) {

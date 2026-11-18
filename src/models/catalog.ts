@@ -1,6 +1,16 @@
-import type { Api, Model, Models } from "@earendil-works/pi-ai";
+import {
+  type Api,
+  getSupportedThinkingLevels,
+  type Model,
+  type Models,
+} from "@earendil-works/pi-ai";
 import type { ModelProviderView, ModelSpecView, ModelsView } from "../api/contract.ts";
-import { formatModel, type ModelDefaults, pickModel } from "../contracts/index.ts";
+import {
+  formatModel,
+  type ModelChoice,
+  type ModelDefaults,
+  pickModel,
+} from "../contracts/index.ts";
 
 export type CatalogInput = {
   models: Models;
@@ -19,7 +29,7 @@ function formatCatalog(
   profiles: string | undefined,
 ): string {
   const defaults = Object.entries(defaultsMap).flatMap(([role, choice]) =>
-    choice === undefined ? [] : [`- ${role}：${formatModel(choice)}`],
+    choice === undefined ? [] : [`- ${role}：${formatChoice(choice)}`],
   );
   return [
     "## 默认模型",
@@ -73,6 +83,7 @@ export async function buildModelsView(input: ModelsViewInput): Promise<ModelsVie
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
     reasoning: model.reasoning,
+    thinkingLevels: getSupportedThinkingLevels(model),
     cost: {
       input: model.cost.input,
       output: model.cost.output,
@@ -103,8 +114,14 @@ export function describeModel(model: Model<Api>): string {
   if (cost.input || cost.output) parts.push(`输入 $${cost.input}/M`, `输出 $${cost.output}/M`);
   if (cost.cacheRead) parts.push(`缓存读 $${cost.cacheRead}/M`);
   if (model.promptCache?.short) parts.push(`缓存 ${duration(model.promptCache.short)}`);
-  if (model.reasoning) parts.push("推理");
+  const levels = getSupportedThinkingLevels(model).filter((level) => level !== "off");
+  if (levels.length > 0) parts.push(`思考档位 ${levels.join(" / ")}`);
   return `- ${model.provider}/${model.id}（${model.name}）：${parts.join(" · ")}`;
+}
+
+function formatChoice(choice: ModelChoice): string {
+  const thinking = choice.thinkingLevel === undefined ? "" : `，思考档位 ${choice.thinkingLevel}`;
+  return `${formatModel(choice)}${thinking}`;
 }
 
 function compact(tokens: number): string {

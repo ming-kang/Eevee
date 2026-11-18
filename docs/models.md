@@ -48,9 +48,19 @@ eevee model default <provider>/<轻量模型> --role dreamer
 
 改动立即应用到全部项目的 Router 和没有指定模型的工单。
 
+### 思考档位
+
+支持推理的模型可以设思考档位，从低到高为 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`，不设为 `off`。档位跟着模型走，写在同一处：
+
+```bash
+eevee model default anthropic/<model-id> --role worker --thinking high
+```
+
+`settings.json` 与 `project.json` 里写作 `"thinkingLevel": "high"`。模型不支持的档位由 provider 换成最接近的一档；`eevee model list` 和 `models://` 列出每个模型支持的档位。
+
 ### 项目的默认模型
 
-某个项目需要不同的默认模型时，编辑 `~/.eevee/projects/<项目>/project.json`，加上 `models`，然后重启 Engine：
+在面板里，输入框左下角的按钮显示当前项目 Router 的模型和思考档位，点开可以换；选择写进这个项目的 `project.json`，选“默认”则回到全局设置。也可以直接编辑 `~/.eevee/projects/<项目>/project.json`，加上 `models`，然后重启 Engine：
 
 ```json
 {
@@ -71,7 +81,7 @@ Dreaming 没有可用的模型时，视为关闭。
 
 ## 工单的模型
 
-Router 建单时可以为工单指定模型，选非默认模型时写明理由；工单进行中也可以用 `ticket model` 换模型，从下一次模型请求起生效。不指定时，工单跟随 Worker 的默认模型。
+Router 建单时可以为工单指定模型和思考档位，选非默认模型时写明理由；工单进行中也可以用 `ticket model` 换模型或档位，从下一次模型请求起生效。不指定时，工单跟随 Worker 的默认模型。
 
 Router 用 `read models://` 查看可用模型和你记录的经验。格式与 `eevee model list` 相同，但默认模型一栏列出的是这个项目里每个角色实际使用的模型，已经合并了 `project.json` 的设置。
 

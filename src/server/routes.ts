@@ -2,9 +2,12 @@ import { MEMORY_SCOPES } from "../api/contract.ts";
 import {
   type JobId,
   type MemoryScope,
+  type ModelChoice,
   type QuestionId,
   ROLE_NAMES,
   type RoleName,
+  THINKING_LEVELS,
+  type ThinkingLevel,
   type TicketId,
 } from "../contracts/index.ts";
 import type { Engine } from "../engine/engine.ts";
@@ -37,6 +40,20 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
       throw new HttpError(400, "bad_request", `未知角色 ${String(value)}`);
     }
     return value as RoleName;
+  };
+  const modelRole = (value: unknown): RoleName | "default" =>
+    value === undefined || value === "default" ? "default" : role(value);
+  const model = (value: unknown): ModelChoice => {
+    const body = value as Record<string, unknown> | undefined;
+    const thinkingLevel = body?.thinkingLevel;
+    if (thinkingLevel !== undefined && !THINKING_LEVELS.includes(thinkingLevel as ThinkingLevel)) {
+      throw new HttpError(400, "bad_request", `思考档位只能是 ${THINKING_LEVELS.join(" / ")}`);
+    }
+    return {
+      provider: text(body?.provider, "provider"),
+      modelId: text(body?.modelId, "modelId"),
+      ...(thinkingLevel === undefined ? {} : { thinkingLevel: thinkingLevel as ThinkingLevel }),
+    };
   };
   const scope = (value: string): MemoryScope => {
     if (!MEMORY_SCOPES.includes(value as MemoryScope)) {
@@ -75,12 +92,7 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     "GET /api/models": { handle: async () => engine.catalog() },
     "POST /api/settings/models": {
       handle: async ({ body }) => {
-        const target =
-          body?.role === undefined || body.role === "default" ? "default" : role(body.role);
-        await engine.setDefaultModel(target, {
-          provider: text(body?.provider, "provider"),
-          modelId: text(body?.modelId, "modelId"),
-        });
+        await engine.setDefaultModel(modelRole(body?.role), model(body));
         return { ok: true };
       },
     },
@@ -122,6 +134,14 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
           title: text(body?.title, "title"),
           workspace: text(body?.workspace, "workspace"),
         }),
+    },
+    "POST /api/projects/:project/models": {
+      handle: async ({ params, body }) =>
+        engine.setProjectModel(
+          project(params.project),
+          modelRole(body?.role),
+          body?.model === null ? null : model(body?.model),
+        ),
     },
     "GET /api/projects/:project/board": {
       handle: async ({ params }) => project(params.project).board(),

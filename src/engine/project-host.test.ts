@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
+import { eeveePaths } from "../shared/paths.ts";
 import { Conflict, NotFound } from "./project-host.ts";
 import { type Brain, call, openTestProject, say, textOf, toolName } from "./testing.ts";
 
@@ -562,6 +563,52 @@ test("BoardView 反映 Router 运行状态与失败原因，ProjectSummary.activ
     assert.match((await project.host.board()).router.failure ?? "", /403 forbidden/);
   } finally {
     releaseGate();
+    await project.close();
+  }
+});
+
+test("项目给 Router 选的模型和思考档位写进 project.json，下一轮起生效；建单也能指定档位", async () => {
+  const brain: Brain = ({ role, last }) => {
+    if (role === "router" && last?.role === "user" && textOf(last).includes("建单")) {
+      return call("ticket", {
+        action: "create",
+        title: "查资料",
+        goal: "查一下",
+        acceptance: ["有结论"],
+        provider: "faux",
+        modelId: "deep",
+        thinkingLevel: "low",
+      });
+    }
+    return say("好。");
+  };
+  const project = await openTestProject(brain, { extraModels: ["deep"] });
+  const lastTurn = (role: string) => project.calls.findLast((turn) => turn.role === role);
+  try {
+    const router = { provider: "faux", modelId: "deep", thinkingLevel: "high" } as const;
+    await project.host.setModels({ router });
+    assert.deepEqual(project.host.summary().models, { router });
+    const meta = eeveePaths(project.home).project(project.host.meta.id).meta;
+    assert.deepEqual(JSON.parse(await readFile(meta, "utf8")).models, { router });
+
+    await project.host.sendUserMessage("你好");
+    const first = await project.until(async () => lastTurn("router"));
+    assert.deepEqual([first.model, first.thinking], ["deep", "high"]);
+
+    await project.host.sendUserMessage("建单");
+    const worker = await project.until(async () => lastTurn("worker"));
+    assert.deepEqual([worker.model, worker.thinking], ["deep", "low"]);
+    await project.until(async () => !(await project.host.board()).router.running);
+
+    await project.host.setModels({});
+    assert.equal(project.host.summary().models, undefined);
+    const before = project.calls.length;
+    await project.host.sendUserMessage("换回默认");
+    const after = await project.until(async () =>
+      project.calls.slice(before).findLast((turn) => turn.role === "router"),
+    );
+    assert.deepEqual([after.model, after.thinking], ["brain", "off"]);
+  } finally {
     await project.close();
   }
 });

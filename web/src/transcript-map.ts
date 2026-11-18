@@ -20,6 +20,7 @@ import {
   type TicketStatus,
 } from "../../src/contracts/index.ts";
 import type { GapItem } from "./conversation.ts";
+import { t } from "./i18n.ts";
 
 export type DiffLine = {
   k: "ctx" | "add" | "del" | "hunk";
@@ -328,7 +329,9 @@ export function mapTranscript(
         kind: "event",
         key: "live:retry",
         eventKind: "notice",
-        text: `模型请求暂时受阻（${live.generation.retry.error}），正在等待自动重试…`,
+        text: t("模型请求暂时受阻（{error}），正在等待自动重试…", {
+          error: live.generation.retry.error,
+        }),
       });
     }
     const partial = live.generation?.message;
@@ -350,8 +353,8 @@ export function mapTranscript(
         key: `live:abort:${failure.taskId}`,
         text:
           options.mode === "worker"
-            ? "本轮已被你打断 · 工单仍为 open，发消息即可继续"
-            : "本轮已被打断 · 发消息即可继续",
+            ? t("本轮已被你打断 · 工单仍为 open，发消息即可继续")
+            : t("本轮已被打断 · 发消息即可继续"),
       });
     } else if (!isDeliberateEnd(failure.reason)) {
       out.push({
@@ -409,12 +412,12 @@ function mapInbox(inbox: InboxState | undefined): TranscriptDisplayItem[] {
 }
 
 const WORKER_IDLE_TEXT: Partial<Record<TicketStage, string>> = {
-  queued: "排队中 · 等待空闲的 Worker 槽位",
-  jobs: "本轮已结束 · 等待后台作业",
-  answer: "本轮已结束 · 等你回答问题",
-  review: "本轮已结束 · 等 Router 验收",
-  blocked: "本轮已结束 · 等 Router 处理",
-  waiting: "本轮已结束 · 等待所需材料",
+  queued: t("排队中 · 等待空闲的 Worker 槽位"),
+  jobs: t("本轮已结束 · 等待后台作业"),
+  answer: t("本轮已结束 · 等你回答问题"),
+  review: t("本轮已结束 · 等 Router 验收"),
+  blocked: t("本轮已结束 · 等 Router 处理"),
+  waiting: t("本轮已结束 · 等待所需材料"),
 };
 
 function mapReset(
@@ -442,7 +445,7 @@ function mapReset(
       return {
         kind: "reset",
         key: `e:${entry.id}`,
-        summary: latest ?? "工单上下文已交接重置",
+        summary: latest ?? t("工单上下文已交接重置"),
         ...(at === undefined ? {} : { at }),
       };
     }
@@ -457,7 +460,7 @@ function mapReset(
   return {
     kind: "reset",
     key: `e:${entry.id}`,
-    summary: text || "（上下文已重置）",
+    summary: text || t("（上下文已重置）"),
     ...(at === undefined ? {} : { at }),
   };
 }
@@ -506,7 +509,10 @@ function mapNotice(
       eventKind: "answer",
       questionId,
       ticketId,
-      text: `你回答了 ${questionId}（已直接投给 ${ticketId}）`,
+      text: t("你回答了 {question}（已直接投给 {ticket}）", {
+        question: questionId,
+        ticket: ticketId,
+      }),
       ...(detail ? { detail } : {}),
       ...(at === undefined ? {} : { at }),
     };
@@ -521,7 +527,7 @@ function mapNotice(
         kind: "qa",
         key: `e:${entry.id}`,
         questionId,
-        question: `回答 ${questionId}`,
+        question: t("回答 {question}", { question: questionId }),
         answer,
         ...(at === undefined ? {} : { at }),
       };
@@ -529,7 +535,7 @@ function mapNotice(
     return {
       kind: "user",
       key: `e:${entry.id}`,
-      text: `[${questionId} 的回答] ${answer}`,
+      text: t("[{question} 的回答] {answer}", { question: questionId, answer }),
       ...(at === undefined ? {} : { at }),
     };
   }
@@ -556,7 +562,7 @@ function mapNotice(
       key: `e:${entry.id}`,
       eventKind: "job",
       jobId,
-      text: `后台作业 ${jobId} 已结束（${jobDone[2] ?? ""}）`,
+      text: t("后台作业 {job} 已结束（{status}）", { job: jobId, status: jobDone[2] ?? "" }),
       ...(tail ? { detail: tail } : {}),
       ...(at === undefined ? {} : { at }),
     };
@@ -571,7 +577,7 @@ function mapNotice(
       key: `e:${entry.id}`,
       eventKind: "deliver",
       ticketId,
-      text: `你等待的 ${ticketId}「${handover[2] ?? ""}」已验收`,
+      text: t("你等待的 {ticket}「{title}」已验收", { ticket: ticketId, title: handover[2] ?? "" }),
       ...(detail ? { detail } : {}),
       ...(at === undefined ? {} : { at }),
     };
@@ -586,7 +592,7 @@ function mapNotice(
       key: `e:${entry.id}`,
       eventKind: "intervene",
       ticketId,
-      text: `你直接给 ${ticketId} 发了消息：${msg}`,
+      text: t("你直接给 {ticket} 发了消息：{text}", { ticket: ticketId, text: msg }),
       ...(at === undefined ? {} : { at }),
     };
   }
@@ -628,15 +634,22 @@ function mapDispatch(
     const qMatch = /已提问 (q\d+)/.exec(resText);
     const questionId = qMatch?.[1];
     const ticketId = typeof args.ticketId === "string" ? args.ticketId : undefined;
-    const firstTitle = items[0]?.text ?? "向用户提问";
-    const title = items.length > 1 ? `${firstTitle}（共 ${items.length} 题）` : firstTitle;
+    const firstTitle = items[0]?.text ?? t("向用户提问");
+    const title =
+      items.length > 1
+        ? t("{title}（共 {n} 题）", { title: firstTitle, n: items.length })
+        : firstTitle;
     return {
       id: call.id,
       kind: "ask",
       ...(questionId === undefined ? {} : { questionId }),
       ...(ticketId === undefined ? {} : { ticketId }),
       title,
-      ...(result?.isError ? { detail: resText } : ticketId ? { detail: `来自 ${ticketId}` } : {}),
+      ...(result?.isError
+        ? { detail: resText }
+        : ticketId
+          ? { detail: t("来自 {ticket}", { ticket: ticketId }) }
+          : {}),
       status,
     };
   }
@@ -653,15 +666,16 @@ function mapDispatch(
     const model =
       typeof args.provider === "string" && typeof args.modelId === "string"
         ? `${args.provider}/${args.modelId}${typeof args.modelReason === "string" && args.modelReason ? ` · ${args.modelReason}` : ""}`
-        : "默认模型";
-    const parts = [deliverTo.length > 0 ? `投递给 ${deliverTo.join("、")}` : "", model].filter(
+        : t("默认模型");
+    const targets = deliverTo.join(t("、"));
+    const parts = [deliverTo.length > 0 ? t("投递给 {targets}", { targets }) : "", model].filter(
       Boolean,
     );
     return {
       id: call.id,
       kind: "create",
       ...(ticketId === undefined ? {} : { ticketId }),
-      title: typeof args.title === "string" ? args.title : "新建工单",
+      title: typeof args.title === "string" ? args.title : t("新建工单"),
       detail: result?.isError ? resText : parts.join(" · "),
       status,
     };
@@ -674,7 +688,7 @@ function mapDispatch(
       id: call.id,
       kind: verdict,
       ...(ticketId === undefined ? {} : { ticketId }),
-      title: verdict === "accept" ? "验收结单" : "打回返工",
+      title: verdict === "accept" ? t("验收结单") : t("打回返工"),
       ...(result?.isError ? { detail: resText } : note ? { detail: note } : {}),
       status,
     };
@@ -686,7 +700,7 @@ function mapDispatch(
       id: call.id,
       kind: "message",
       ...(ticketId === undefined ? {} : { ticketId }),
-      title: args.mode === "steer" ? "引导指令" : "排队指令",
+      title: args.mode === "steer" ? t("引导指令") : t("排队指令"),
       ...(result?.isError ? { detail: resText } : msgText ? { detail: msgText } : {}),
       status,
     };
@@ -697,7 +711,7 @@ function mapDispatch(
       id: call.id,
       kind: "interrupt",
       ...(ticketId === undefined ? {} : { ticketId }),
-      title: "打断当前这一轮",
+      title: t("打断当前这一轮"),
       ...(result?.isError ? { detail: resText } : {}),
       status,
     };
@@ -709,7 +723,7 @@ function mapDispatch(
       id: call.id,
       kind: "close",
       ...(ticketId === undefined ? {} : { ticketId }),
-      title: "取消工单",
+      title: t("取消工单"),
       ...(result?.isError ? { detail: resText } : note ? { detail: note } : {}),
       status,
     };
@@ -723,7 +737,7 @@ function mapDispatch(
     id: call.id,
     kind: "model",
     ...(ticketId === undefined ? {} : { ticketId }),
-    title: model || "更换模型",
+    title: model || t("更换模型"),
     ...(result?.isError
       ? { detail: resText }
       : typeof args.modelReason === "string" && args.modelReason
@@ -997,7 +1011,7 @@ function mapWorkerBash(
   }
   if (result.isError) {
     if (
-      output.includes("命令已中止") ||
+      /命令已中止/.test(output) ||
       output.toLowerCase().includes("aborted") ||
       output.toLowerCase().includes("interrupted")
     ) {

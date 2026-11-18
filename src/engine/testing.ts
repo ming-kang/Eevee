@@ -28,6 +28,8 @@ export type Turn = {
   tools: string[];
   /** The model asked. */
   model: string;
+  /** The thinking level the request asked for; `off` sends none. */
+  thinking: string;
 };
 
 type Reply = ReturnType<typeof fauxAssistantMessage>;
@@ -105,7 +107,7 @@ export async function openTestProject(
       ...(contextWindow === undefined ? {} : { contextWindow }),
     })),
   });
-  const factory: FauxResponseFactory = (context, _options, _state, model) => {
+  const factory: FauxResponseFactory = (context, options, _state, model) => {
     const serialized = JSON.stringify(context.messages.filter((m) => m.role !== "toolResult"));
     const role = serialized.includes("你是 Eevee 的调度者")
       ? "router"
@@ -118,6 +120,7 @@ export async function openTestProject(
       last: context.messages.findLast((m) => m.role !== "system"),
       tools: offeredTools(context.messages),
       model: model.id,
+      thinking: options?.reasoning ?? "off",
     };
     calls.push(turn);
     return brain(turn);

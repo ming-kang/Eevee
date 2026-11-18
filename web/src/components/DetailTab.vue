@@ -3,6 +3,7 @@ import type { TicketView } from "@shared/api/contract.ts";
 import { formatModel, type ModelDefaults, pickModel } from "@shared/contracts/index.ts";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { effectiveStage } from "../board.ts";
+import { t } from "../i18n.ts";
 import { STAGE_LABEL } from "../labels.ts";
 import { formatRelativeTime } from "../time.ts";
 import Icon from "./Icon.vue";
@@ -48,46 +49,46 @@ const modelInfo = computed(() => {
   if (ticket.model) {
     return {
       name: formatModel(ticket.model),
-      hint: ticket.modelReason ?? "指定模型",
+      hint: ticket.modelReason ?? t("指定模型"),
     };
   }
   const projectDefault = pickModel(ticket.role, props.projectModels);
   if (projectDefault) {
     return {
       name: formatModel(projectDefault),
-      hint: "项目默认",
+      hint: t("项目默认"),
     };
   }
   return {
     name: undefined,
-    hint: ticket.role === "dreamer" ? "Dreamer 默认模型" : "Worker 默认模型",
+    hint: ticket.role === "dreamer" ? t("Dreamer 默认模型") : t("Worker 默认模型"),
   };
 });
 </script>
 
 <template>
   <div v-if="!view && !loaded" class="rdetail"><Skeleton :lines="4" /></div>
-  <p v-else-if="!view" class="rail-empty">找不到工单 {{ ticketId ?? "" }}</p>
+  <p v-else-if="!view" class="rail-empty">{{ t("找不到工单 {id}", { id: ticketId ?? "" }) }}</p>
   <div v-else class="rdetail">
     <div v-if="stage" class="rd-meta">
       <StageGlyph :stage="stage" />
       <span>{{ STAGE_LABEL[stage] }}</span>
       <span>·</span>
-      <span>{{ formatRelativeTime(view.ticket.createdAt, nowMs) }}创建</span>
+      <span>{{ t("{time}创建", { time: formatRelativeTime(view.ticket.createdAt, nowMs) }) }}</span>
       <template v-if="view.ticket.closedAt">
         <span>·</span>
-        <span>{{ formatRelativeTime(view.ticket.closedAt, nowMs) }}结单</span>
+        <span>{{ t("{time}结单", { time: formatRelativeTime(view.ticket.closedAt, nowMs) }) }}</span>
       </template>
     </div>
 
     <dl class="brief col">
-      <dt>目标</dt>
+      <dt>{{ t("目标") }}</dt>
       <dd>
         <span>{{ view.ticket.goal || "—" }}</span>
       </dd>
 
       <template v-if="view.ticket.inputs.length > 0">
-        <dt>输入</dt>
+        <dt>{{ t("输入") }}</dt>
         <dd>
           <span v-for="(input, index) in view.ticket.inputs" :key="index" class="mono">
             {{ input }}
@@ -96,7 +97,7 @@ const modelInfo = computed(() => {
       </template>
 
       <template v-if="view.ticket.acceptance.length > 0">
-        <dt>验收标准</dt>
+        <dt>{{ t("验收标准") }}</dt>
         <dd>
           <ul>
             <li v-for="(item, index) in view.ticket.acceptance" :key="index">
@@ -108,18 +109,18 @@ const modelInfo = computed(() => {
       </template>
 
       <template v-if="view.ticket.output">
-        <dt>产物</dt>
+        <dt>{{ t("产物") }}</dt>
         <dd>
           <span class="mono">{{ view.ticket.output }}</span>
         </dd>
       </template>
 
       <template v-if="view.ticket.deliverTo.length > 0">
-        <dt>交付给</dt>
+        <dt>{{ t("交付给") }}</dt>
         <dd>
           <span>
             <template v-for="(targetId, index) in view.ticket.deliverTo" :key="targetId">
-              <template v-if="index > 0">、</template>
+              <template v-if="index > 0">{{ t("、") }}</template>
               <TicketRef
                 :ticket-id="targetId"
                 :tickets="tickets"
@@ -130,21 +131,21 @@ const modelInfo = computed(() => {
         </dd>
       </template>
 
-      <dt>模型</dt>
+      <dt>{{ t("模型") }}</dt>
       <dd>
         <span v-if="modelInfo.name" class="mono">{{ modelInfo.name }}</span>
         <span v-if="modelInfo.hint" class="hint">{{ modelInfo.hint }}</span>
       </dd>
 
       <template v-if="view.ticket.closeNote">
-        <dt>结单说明</dt>
+        <dt>{{ t("结单说明") }}</dt>
         <dd>
           <span>{{ view.ticket.closeNote }}</span>
         </dd>
       </template>
     </dl>
 
-    <div class="section-h">报告</div>
+    <div class="section-h">{{ t("报告") }}</div>
     <div v-if="sortedReports.length > 0" class="rlist">
       <ReportCard
         v-for="report in sortedReports"
@@ -154,6 +155,6 @@ const modelInfo = computed(() => {
         full
       />
     </div>
-    <p v-else class="hint">没有报告</p>
+    <p v-else class="hint">{{ t("没有报告") }}</p>
   </div>
 </template>

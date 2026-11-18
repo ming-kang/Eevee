@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../i18n.ts";
 import { formatRoute, type Route } from "../router.ts";
 import Icon from "./Icon.vue";
 
@@ -20,8 +21,8 @@ defineEmits<{
       class="foot-tile"
       :class="{ on: routeName === 'memory', dim: !controlPid }"
       :href="controlPid ? formatRoute({ name: 'memory', pid: controlPid }) : undefined"
-      :title="controlTitle ? `记忆 · ${controlTitle}` : '记忆'"
-      aria-label="记忆"
+      :title="controlTitle ? `${t('记忆')} · ${controlTitle}` : t('记忆')"
+      :aria-label="t('记忆')"
       @click="$emit('navigate')"
     >
       <Icon name="book" />
@@ -31,8 +32,8 @@ defineEmits<{
       class="foot-tile"
       :class="{ on: routeName === 'usage', dim: !controlPid }"
       :href="controlPid ? formatRoute({ name: 'usage', pid: controlPid }) : undefined"
-      :title="controlTitle ? `花费 · ${controlTitle}` : '花费'"
-      aria-label="花费"
+      :title="controlTitle ? `${t('用量')} · ${controlTitle}` : t('用量')"
+      :aria-label="t('用量')"
       @click="$emit('navigate')"
     >
       <Icon name="chart" />
@@ -40,9 +41,9 @@ defineEmits<{
     <a
       class="foot-tile"
       :class="{ on: routeName === 'settings' }"
-      :href="formatRoute({ name: 'settings', section: 'models' })"
-      title="设置"
-      aria-label="设置"
+      :href="formatRoute({ name: 'settings', section: 'general' })"
+      :title="t('设置')"
+      :aria-label="t('设置')"
       @click="$emit('navigate')"
     >
       <Icon name="sliders" />

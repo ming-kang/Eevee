@@ -59,10 +59,10 @@
 | 接口 | 访问 | 请求体 | 响应 |
 |:-:|:-:|:-:|:-:|
 | `GET /api/models` | 任意 | — | 模型视图 |
-| `POST /api/settings/models` | 任意 | `{ role?, provider, modelId }` | `{ ok }` |
+| `POST /api/settings/models` | 任意 | `{ role?, provider, modelId, thinkingLevel? }` | `{ ok }` |
 | `POST /api/auth/:provider` | CLI | `{ key }` | `{ ok }` |
 
-`role` 为 `router`、`worker`、`dreamer` 或 `default`，省略时为 `default`。
+`role` 为 `router`、`worker`、`dreamer` 或 `default`，省略时为 `default`。`thinkingLevel` 为 `off`、`minimal`、`low`、`medium`、`high`、`xhigh` 或 `max`，省略时为 `off`。
 
 模型视图：
 
@@ -72,7 +72,7 @@
 | `defaults` | `settings.json` 里的默认模型：`{ default?, router?, worker?, dreamer? }`，每项为 `{ provider, modelId }` |
 | `routerModel` | Router 实际使用的模型，没有配置时省略 |
 | `providers` | 每个 provider：`{ id, name, configured, authType?, source?, custom, modelCount }`。`configured` 表示有可用的凭据，`authType` 为 `api_key` 或 `oauth`，`source` 说明凭据从哪里来，`custom` 表示来自 `models.json` |
-| `available` | 有凭据的 provider 下的模型：`{ provider, modelId, name, contextWindow, maxTokens, reasoning, cost, cacheShortSeconds? }`，`cost` 是每百万 token 的 `{ input, output, cacheRead, cacheWrite }` 美元价格 |
+| `available` | 有凭据的 provider 下的模型：`{ provider, modelId, name, contextWindow, maxTokens, reasoning, thinkingLevels, cost, cacheShortSeconds? }`，`thinkingLevels` 是它支持的思考档位，不支持推理时为 `["off"]`，`cost` 是每百万 token 的 `{ input, output, cacheRead, cacheWrite }` 美元价格 |
 | `profiles` | `models.md` 的内容 |
 | `problems` | `models.json` 里的配置问题 |
 
@@ -101,10 +101,13 @@
 | 接口 | 访问 | 请求体 | 响应 |
 |:-:|:-:|:-:|:-:|
 | `POST /api/projects` | 任意 | `{ title, workspace }` | 项目摘要 |
+| `POST /api/projects/:project/models` | 任意 | `{ role?, model }` | 项目摘要 |
 | `GET /api/projects/:project/board` | 任意 | — | 看板 |
 | `GET /api/projects/:project/usage` | 任意 | — | 花费 |
 
 `POST /api/projects` 原样保存 `workspace`，不转换为绝对路径，也不检查目录是否存在；请传入已存在目录的绝对路径。
+
+`POST /api/projects/:project/models` 设置这个项目某个角色的模型，写进 `project.json`，立即应用到 Router 和没有指定模型的工单。`model` 为 `{ provider, modelId, thinkingLevel? }`，`null` 去掉项目自己的设置、回到全局默认；`role` 同上。
 
 看板为 `{ tickets, openQuestions, router }`。`tickets` 的每一项是 `{ ticket, stage, reports, jobs }`：工单的全部字段、[阶段](tickets.md#工单阶段)、全部报告和运行中的后台作业。`openQuestions` 是尚未回答的问题。`router` 为 `{ running, failure? }`：Router 是否正在运行，以及上一轮失败的原因；被打断、交接重置不算失败。
 

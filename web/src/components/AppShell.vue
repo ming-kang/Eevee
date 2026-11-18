@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
 import { focusFirst, useFocusReturn } from "../focus.ts";
+import { t } from "../i18n.ts";
 
 const props = defineProps<{
   withRail: boolean;
@@ -69,7 +70,7 @@ onUnmounted(() => {
         ref="sidebar"
         class="sidebar"
         :class="{ open: drawer === 'side', collapsed: sideCollapsed }"
-        aria-label="导航"
+        :aria-label="t('导航')"
         :inert="drawer === 'rail'"
       >
         <slot name="sidebar" />
@@ -82,7 +83,7 @@ onUnmounted(() => {
         ref="rail"
         class="rail"
         :class="{ open: drawer === 'rail' }"
-        aria-label="工单与作业"
+        :aria-label="t('工单与作业')"
         :inert="drawer === 'side'"
       >
         <slot name="rail" />

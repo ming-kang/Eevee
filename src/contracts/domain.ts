@@ -10,9 +10,15 @@ export const ROLE_NAMES = ["router", "worker", "dreamer"] as const;
 export type RoleName = (typeof ROLE_NAMES)[number];
 export type TicketRole = Exclude<RoleName, "router">;
 
+/** How hard a model thinks before it answers, least to most; providers clamp to what a model supports. */
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+
 export type ModelChoice = {
   provider: string;
   modelId: string;
+  /** Unset is `off`. */
+  thinkingLevel?: ThinkingLevel;
 };
 
 export type ModelDefaults = Partial<Record<"default" | RoleName, ModelChoice>>;
@@ -29,6 +35,12 @@ export function pickModel(
 }
 
 export const formatModel = (model: ModelChoice): string => `${model.provider}/${model.modelId}`;
+
+/** The agent fields a choice sets: the model by name and its thinking level, `null` clearing a stored one. */
+export const agentModel = (choice: ModelChoice) => ({
+  model: { provider: choice.provider, modelId: choice.modelId },
+  thinkingLevel: choice.thinkingLevel ?? null,
+});
 
 export type TicketStatus = "open" | "done" | "cancelled";
 

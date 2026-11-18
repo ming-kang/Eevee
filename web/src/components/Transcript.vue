@@ -2,6 +2,7 @@
 import type { TicketView } from "@shared/api/contract.ts";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import type { GapItem } from "../conversation.ts";
+import { t } from "../i18n.ts";
 import { formatClockTime } from "../time.ts";
 import type { TranscriptDisplayItem } from "../transcript-map.ts";
 import AssistantMessage from "./AssistantMessage.vue";
@@ -81,7 +82,7 @@ watch(tailKey, async () => {
           :disabled="loadingEarlier"
           @click="loadEarlier?.()"
         >
-          {{ loadingEarlier ? "正在加载…" : "更早的消息" }}
+          {{ loadingEarlier ? t("正在加载…") : t("更早的消息") }}
         </button>
         <button
           v-else-if="item.kind === 'gap'"
@@ -90,7 +91,7 @@ watch(tailKey, async () => {
           :disabled="fillingGaps"
           @click="fillGap?.(item.gap)"
         >
-          {{ fillingGaps ? "正在补全…" : "补全缺失的记录" }}
+          {{ fillingGaps ? t("正在补全…") : t("补全缺失的记录") }}
         </button>
         <ResetMark
           v-else-if="item.kind === 'reset'"
@@ -101,11 +102,11 @@ watch(tailKey, async () => {
           v-else-if="item.kind === 'opening'"
           type="button"
           class="note link"
-          title="工单目标、输入、验收标准和项目记忆"
+          :title="t('工单目标、输入、验收标准和项目记忆')"
           @click="$emit('open-detail')"
         >
           <Icon name="flag" size="xs" />
-          <span>开篇</span>
+          <span>{{ t("开篇") }}</span>
         </button>
         <UserMessage
           v-else-if="item.kind === 'user'"

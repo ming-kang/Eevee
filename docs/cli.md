@@ -9,7 +9,7 @@ eevee project say <id> <text...>
 eevee project board <id>
 eevee project usage <id>
 eevee model list
-eevee model default <provider/modelId> [--role <role>]
+eevee model default <provider/modelId> [--role <role>] [--thinking <level>]
 eevee model login <provider>
 eevee role list
 eevee role enable <role> <extensions...>
@@ -65,6 +65,7 @@ eevee memory revert <project> <commit> [--global]
 | 选项 | 作用 |
 |---|---|
 | `-r`, `--role <role>` | 只为某个角色设置：`router`、`worker` 或 `dreamer`。不加时设置 `default` |
+| `-t`, `--thinking <level>` | 思考档位：`off`、`minimal`、`low`、`medium`、`high`、`xhigh` 或 `max`。不加时为 `off` |
 
 模型必须已经存在，写错会被拒绝。`model login` 在终端里运行时会提示输入，但输入的 key 会显示在屏幕上；建议用管道传入：
 

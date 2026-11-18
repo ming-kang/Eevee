@@ -18,6 +18,7 @@ import Toasts from "./components/Toasts.vue";
 import UsagePage from "./components/UsagePage.vue";
 import { useConversationWatch, useEngineData } from "./engine-data.ts";
 import { summarizeRun } from "@shared/contracts/index.ts";
+import { t } from "./i18n.ts";
 import { buildPaletteItems, deriveProjectState, type PaletteItem } from "./projects.ts";
 import { formatRoute, type Route, resolveRoute } from "./router.ts";
 import { type SessionInfo, Unauthorized, openSession } from "./session.ts";
@@ -243,7 +244,7 @@ function onPaletteSelect(item: PaletteItem): void {
 </script>
 
 <template>
-  <div v-if="connecting" class="viewport boot" aria-busy="true" aria-label="正在连接 Engine">
+  <div v-if="connecting" class="viewport boot" aria-busy="true" :aria-label="t('正在连接 Engine')">
     <BrandLogo />
     <Toasts />
   </div>
@@ -299,17 +300,18 @@ function onPaletteSelect(item: PaletteItem): void {
         @open-rail="openRail"
         @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
         @close-ticket="navigate({ name: 'chat', pid: currentProject.id })"
+        @project-changed="engine.refreshStatus()"
       />
     </template>
 
     <template v-else-if="route.name === 'chat' || route.name === 'worker' || route.name === 'home'">
       <header class="header">
-        <button type="button" class="btn ghost sm icon menu-btn" aria-label="菜单" @click="drawer = 'side'">
+        <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('菜单')" @click="drawer = 'side'">
           <Icon name="menu" size="sm" />
         </button>
       </header>
       <div class="empty">
-        <h3>{{ projects.length === 0 ? "还没有项目" : "找不到这个项目" }}</h3>
+        <h3>{{ projects.length === 0 ? t("还没有项目") : t("找不到这个项目") }}</h3>
         <button
           v-if="projects.length === 0"
           type="button"
@@ -317,7 +319,7 @@ function onPaletteSelect(item: PaletteItem): void {
           @click="openNewProject"
         >
           <Icon name="plus" size="sm" />
-          <span>新建项目</span>
+          <span>{{ t("新建项目") }}</span>
         </button>
       </div>
     </template>
@@ -342,13 +344,13 @@ function onPaletteSelect(item: PaletteItem): void {
 
     <template v-else-if="route.name === 'memory' || route.name === 'usage'">
       <header class="header">
-        <button type="button" class="btn ghost sm icon menu-btn" aria-label="菜单" @click="drawer = 'side'">
+        <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('菜单')" @click="drawer = 'side'">
           <Icon name="menu" size="sm" />
         </button>
-        <h1>{{ route.name === "memory" ? "记忆" : "花费" }}</h1>
+        <h1>{{ route.name === "memory" ? t("记忆") : t("用量") }}</h1>
       </header>
       <div class="empty">
-        <h3>找不到这个项目</h3>
+        <h3>{{ t("找不到这个项目") }}</h3>
       </div>
     </template>
 

@@ -603,6 +603,90 @@
   cursor: default;
 }
 
+/* The Router's run configuration opens the composer's row: one quiet button, `model · level`. */
+.run-config {
+  position: relative;
+  min-width: 0;
+  margin-left: -4px;
+}
+
+.run-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  height: var(--ev-h-sm);
+  padding: 0 8px;
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+  font-size: var(--ev-control);
+  font-weight: 400;
+  white-space: nowrap;
+  color: var(--ev-label-2);
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    color var(--ev-fast) var(--ev-ease);
+}
+
+.run-trigger:hover:not(:disabled),
+.run-trigger[aria-expanded="true"] {
+  color: var(--ev-label);
+  background: var(--ev-hover);
+}
+
+.run-trigger:disabled {
+  opacity: 0.45;
+}
+
+.run-trigger > .ico {
+  flex: none;
+  color: var(--ev-label-3);
+}
+
+.face-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.face-dot {
+  flex: none;
+  color: var(--ev-label-3);
+}
+
+.face-fixed {
+  flex: none;
+}
+
+/* Its menu: a row per setting, the current value at the end, the choices in a submenu beside it. */
+.run-menu {
+  min-width: 240px;
+}
+
+.run-item {
+  position: relative;
+}
+
+.run-menu > .run-item > .pop-row {
+  height: 32px;
+}
+
+.run-menu > .run-item > .pop-row > .ico {
+  color: var(--ev-label-3);
+}
+
+.run-value {
+  min-width: 0;
+  max-width: 10rem;
+  margin-left: auto;
+  padding-left: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ev-label-2);
+}
+
 .send,
 .stop {
   display: inline-grid;

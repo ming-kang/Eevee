@@ -1,9 +1,13 @@
-import { arr, int, num, obj, opt, type Static, str } from "@earendil-works/pi-schema";
-import type { RoleName } from "../contracts/domain.ts";
+import { arr, int, num, obj, oneOf, opt, type Static, str } from "@earendil-works/pi-schema";
+import { type RoleName, THINKING_LEVELS } from "../contracts/domain.ts";
 import { loadConfig, parseConfig } from "./config.ts";
 import { readJson, writeJsonAtomic } from "./fs.ts";
 
-const ModelChoiceSchema = obj({ provider: str({ minLength: 1 }), modelId: str({ minLength: 1 }) });
+const ModelChoiceSchema = obj({
+  provider: str({ minLength: 1 }),
+  modelId: str({ minLength: 1 }),
+  thinkingLevel: opt(oneOf(THINKING_LEVELS)),
+});
 
 const RoleSettingsSchema = obj({
   /** Extensions enabled on top of the role's own, by name: MCP servers (`mcp.<name>`), user extensions. */

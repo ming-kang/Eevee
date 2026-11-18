@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
 import { vTail } from "../dom.ts";
+import { t } from "../i18n.ts";
 import { formatDurationMs, formatElapsedSeconds } from "../time.ts";
 import Icon from "./Icon.vue";
 import StageGlyph from "./StageGlyph.vue";
@@ -61,11 +62,11 @@ const isJobActive = computed(
     <summary>
       <Icon name="chevR" size="xs" class="chev" />
       <span class="ellipsis" :class="{ shimmer: status === 'run' }">
-        运行 <span class="mono">{{ command }}</span>
+        {{ t("运行") }} <span class="mono">{{ command }}</span>
       </span>
       <span v-if="status === 'run'" class="num">{{ elapsed }}</span>
-      <span v-else-if="status === 'stopped'" class="dim">已打断</span>
-      <span v-else-if="status === 'job'" class="dim">转入后台</span>
+      <span v-else-if="status === 'stopped'" class="dim">{{ t("已打断") }}</span>
+      <span v-else-if="status === 'job'" class="dim">{{ t("转入后台") }}</span>
       <span v-else class="num">
         <template v-if="exitCode && exitCode !== 0">exit {{ exitCode }}{{ ms !== undefined ? " · " : "" }}</template>
         <template v-if="ms !== undefined">{{ formatDurationMs(ms) }}</template>
@@ -80,7 +81,7 @@ const isJobActive = computed(
     @click="$emit('open-job', jobId)"
   >
     <StageGlyph stage="jobs" />
-    <span>后台作业 <span class="mono">{{ jobId }}</span></span>
-    <span class="dim">{{ isJobActive ? "进行中" : "已结束" }}</span>
+    <span class="mono">{{ jobId }}</span>
+    <span class="dim">{{ isJobActive ? t("后台运行中") : t("已结束") }}</span>
   </button>
 </template>

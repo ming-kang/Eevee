@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUpdate, ref, watch } from "vue";
 import { trapTab, useFocusReturn } from "../focus.ts";
+import { t } from "../i18n.ts";
 import { filterPaletteItems, type PaletteItem } from "../projects.ts";
 import Icon from "./Icon.vue";
 import StageGlyph from "./StageGlyph.vue";
@@ -91,7 +92,7 @@ function onKeydown(event: KeyboardEvent): void {
       class="palette"
       role="dialog"
       aria-modal="true"
-      aria-label="命令面板"
+      :aria-label="t('命令面板')"
       @keydown="onKeydown"
     >
       <div class="palette-in">
@@ -100,17 +101,17 @@ function onKeydown(event: KeyboardEvent): void {
           id="palette-input"
           ref="inputEl"
           v-model="query"
-          placeholder="搜索或跳转…"
+          :placeholder="t('搜索或跳转…')"
           autocomplete="off"
           role="combobox"
-          aria-label="搜索或跳转"
+          :aria-label="t('搜索或跳转')"
           aria-expanded="true"
           aria-controls="palette-list"
           aria-autocomplete="list"
           :aria-activedescendant="filtered.length > 0 ? `palette-opt-${selected}` : undefined"
         />
       </div>
-      <div id="palette-list" class="palette-list" role="listbox" aria-label="结果">
+      <div id="palette-list" class="palette-list" role="listbox" :aria-label="t('结果')">
         <template v-if="filtered.length > 0">
           <template v-for="(item, index) in filtered" :key="item.id">
             <div
@@ -142,7 +143,7 @@ function onKeydown(event: KeyboardEvent): void {
             </button>
           </template>
         </template>
-        <div v-else class="palette-empty">没有结果</div>
+        <div v-else class="palette-empty">{{ t("没有结果") }}</div>
       </div>
     </div>
   </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { t } from "../i18n.ts";
 import { formatDurationMs } from "../time.ts";
 import type { ToolStepItem } from "../transcript-map.ts";
 import Icon from "./Icon.vue";
@@ -10,13 +11,13 @@ const props = defineProps<{
 }>();
 
 const VERB: Record<string, (n: number) => string> = {
-  read: (n) => `查阅 ${n} 项`,
-  bash: (n) => `运行 ${n} 条命令`,
-  edit: (n) => `修改 ${n} 个文件`,
-  write: (n) => `写入 ${n} 个文件`,
-  memory: (n) => `记忆 ${n} 次`,
-  tool_search: (n) => `查找工具 ${n} 次`,
-  codemode: (n) => `执行脚本 ${n} 次`,
+  read: (n) => t("查阅 {n} 项", { n }),
+  bash: (n) => t("运行 {n} 条命令", { n }),
+  edit: (n) => t("修改 {n} 个文件", { n }),
+  write: (n) => t("写入 {n} 个文件", { n }),
+  memory: (n) => t("记忆 {n} 次", { n }),
+  tool_search: (n) => t("查找工具 {n} 次", { n }),
+  codemode: (n) => t("执行脚本 {n} 次", { n }),
 };
 
 const runningStep = computed(() => props.steps.find((s) => s.status === "run"));
@@ -29,7 +30,7 @@ const summary = computed(() => {
   }
   return [...counts.entries()]
     .map(([tool, count]) => (VERB[tool] ? VERB[tool](count) : `${tool} ×${count}`))
-    .join("，");
+    .join(" · ");
 });
 </script>
 
@@ -38,12 +39,18 @@ const summary = computed(() => {
     <summary>
       <Icon name="chevR" size="xs" class="chev" />
       <span v-if="runningStep" class="ellipsis shimmer">
-        正在{{ runningStep.tool === "read" ? "查阅" : runningStep.tool === "bash" ? "运行" : "执行" }}
+        {{
+          runningStep.tool === "read"
+            ? t("正在查阅")
+            : runningStep.tool === "bash"
+              ? t("正在运行")
+              : t("正在执行")
+        }}
         {{ runningStep.label }}
       </span>
       <template v-else>
         <span class="ellipsis">{{ summary }}</span>
-        <span v-if="hasError" class="minus">· 失败</span>
+        <span v-if="hasError" class="minus">· {{ t("失败") }}</span>
       </template>
     </summary>
     <div class="steps">

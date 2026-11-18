@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../i18n.ts";
 import type { DiffLine } from "../transcript-map.ts";
 import Icon from "./Icon.vue";
 
@@ -18,10 +19,18 @@ defineProps<{
     <summary>
       <Icon name="chevR" size="xs" class="chev" />
       <span class="ellipsis" :class="{ shimmer: status === 'run' }">
-        {{ status === "run" ? "正在" : "" }}{{ action === "write" ? "写入" : "修改" }}
+        {{
+          status === "run"
+            ? action === "write"
+              ? t("正在写入")
+              : t("正在修改")
+            : action === "write"
+              ? t("写入")
+              : t("修改")
+        }}
         {{ " " }}<span class="mono">{{ path }}</span>
       </span>
-      <span v-if="status === 'err'" class="minus">· 失败</span>
+      <span v-if="status === 'err'" class="minus">· {{ t("失败") }}</span>
       <span v-else-if="status === 'ok' && (added > 0 || removed > 0)" class="diffstat">
         <span v-if="added > 0" class="plus">+{{ added }}</span>
         <span v-if="removed > 0" class="minus">−{{ removed }}</span>

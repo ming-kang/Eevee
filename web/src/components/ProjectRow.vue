@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ProjectSummary } from "@shared/api/contract.ts";
+import { t } from "../i18n.ts";
 import type { ProjectRowState } from "../projects.ts";
 import { formatRelativeTime } from "../time.ts";
 import Icon from "./Icon.vue";
@@ -32,7 +33,7 @@ defineEmits<{
     @mouseleave="$emit('hover-leave', $event)"
   >
     <span class="p-lead"><Icon name="folder" size="sm" /></span>
-    <span class="p-tile">{{ project.title.slice(0, 1) || "项" }}</span>
+    <span class="p-tile">{{ project.title.slice(0, 1) || t("项") }}</span>
     <span class="p-title">{{ project.title }}</span>
     <span class="p-end" :class="`s-${state.kind}`">
       <span v-if="state.kind === 'user'" class="count user">{{ state.questionCount }}</span>
