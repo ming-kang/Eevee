@@ -41,8 +41,8 @@ export type ProjectStream = {
     limit: number,
   ): Promise<EntryRecord[]>;
   board(): Promise<BoardView>;
-  /** Calls `listener` after the board changed; without it a board watch only sends its first value. */
-  subscribeBoard?(listener: () => void): () => void;
+  /** Calls `listener` after the board changed. */
+  subscribeBoard(listener: () => void): () => void;
 };
 
 export type StreamOptions = {
@@ -230,10 +230,10 @@ function serve(ws: WebSocket, options: StreamOptions): void {
         fail(id, error);
       }
     };
-    const unsubscribe = host.subscribeBoard?.(() => void push());
+    const unsubscribe = host.subscribeBoard(() => void push());
     watches.set(id, () => {
       stopped = true;
-      unsubscribe?.();
+      unsubscribe();
     });
     await push();
   }

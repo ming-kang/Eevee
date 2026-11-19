@@ -26,6 +26,7 @@ const TAIL_CHARS = 2000;
 export type JobHostDeps = {
   logPath(id: JobId): string;
   delivery(): DeliveryContext;
+  onChange(): void;
   context: Context;
   now?: () => number;
 };
@@ -38,12 +39,6 @@ export class JobHost implements BackgroundJobs {
   /** Why a job was killed: its ticket closed (nobody to tell), or someone stopped it (its Worker hears). */
   readonly #killed = new Map<JobId, "closed" | "stopped">();
   #closing = false;
-  /** Bumped whenever the set of running jobs changes, so a cached board knows when to rebuild. */
-  #revision = 0;
-
-  get revision(): number {
-    return this.#revision;
-  }
 
   constructor(deps: JobHostDeps) {
     this.#deps = deps;
@@ -77,7 +72,7 @@ export class JobHost implements BackgroundJobs {
     };
     const settled = command.done.then((result) => this.#settle(job, command, result, log));
     this.#running.set(job.id, { job, command, settled });
-    this.#revision += 1;
+    this.#deps.onChange();
     return job.id;
   }
 
@@ -151,8 +146,8 @@ export class JobHost implements BackgroundJobs {
     log.write(`\n[${describeJobOutcome(outcome)}]\n`);
     await new Promise<void>((resolve) => log.end(resolve));
     this.#running.delete(job.id);
-    this.#revision += 1;
     if (this.#closing) return;
+    this.#deps.onChange();
 
     const { context } = this.#deps;
     const host = this.#deps.delivery();

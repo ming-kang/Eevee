@@ -70,6 +70,7 @@ import {
   reportRunFailures,
   route,
   routerIdle,
+  WorkerQueue,
 } from "../extensions/orchestration/index.ts";
 import { createResources } from "../extensions/resources/index.ts";
 import { createWorkspace } from "../extensions/workspace/index.ts";
@@ -78,6 +79,7 @@ import { createRoles, type Roles } from "../roles/index.ts";
 import { isNotFound, readText } from "../shared/fs.ts";
 import { type EeveePaths, resolveInside } from "../shared/paths.ts";
 import { enabledExtensions, type Settings } from "../shared/settings.ts";
+import { BoardFeed } from "./board-feed.ts";
 import { JobHost } from "./jobs.ts";
 import { type ProjectMeta, ProjectStore } from "./project.ts";
 import { recentRounds, transcriptSource } from "./transcript.ts";
@@ -113,6 +115,7 @@ type Parts = {
   registry: Registry;
   roles: Roles;
   jobs: JobHost;
+  feed: BoardFeed;
   jobLog: (id: JobId) => string;
   repos: Record<MemoryScope, MemoryRepo>;
   shared: Set<string>;
@@ -131,6 +134,7 @@ export class ProjectHost {
   readonly #registry: Registry;
   readonly #roles: Roles;
   readonly #jobs: JobHost;
+  readonly #feed: BoardFeed;
   readonly #jobLogPath: (id: JobId) => string;
   readonly #repos: Record<MemoryScope, MemoryRepo>;
   /** Names of the shared extensions installed now. */
@@ -140,14 +144,6 @@ export class ProjectHost {
   readonly #timer: NodeJS.Timeout;
   #ticking = false;
   #lastUpkeep = 0;
-  #board: { view?: BoardView; dirty: boolean; generation: number; revision: number } = {
-    dirty: true,
-    generation: 0,
-    revision: -1,
-  };
-  #boardGeneration = 0;
-  #boardBuilding: Promise<BoardView> | undefined;
-  readonly #boardWatchers = new Set<() => void>();
   readonly #stopping = new Set<TicketId>();
 
   private constructor(parts: Parts) {
@@ -158,6 +154,7 @@ export class ProjectHost {
     this.#registry = parts.registry;
     this.#roles = parts.roles;
     this.#jobs = parts.jobs;
+    this.#feed = parts.feed;
     this.#jobLogPath = parts.jobLog;
     this.#repos = parts.repos;
     this.#shared = parts.shared;
@@ -190,7 +187,16 @@ export class ProjectHost {
       pickModel(role, store.current.models, options.settings().models);
 
     const jobLog = (id: string) => join(paths.jobs, `${id}.log`);
-    const jobs = new JobHost({ logPath: jobLog, delivery: () => late(delivery), context });
+    let jobs: JobHost | undefined;
+    const feed = new BoardFeed(() =>
+      boardView(late(harness), (id) => late(jobs).running(id), context),
+    );
+    jobs = new JobHost({
+      logPath: jobLog,
+      delivery: () => late(delivery),
+      onChange: () => feed.invalidate(),
+      context,
+    });
 
     const reported = new Set<string>();
     const roles = createRoles({
@@ -296,6 +302,7 @@ export class ProjectHost {
       registry,
       roles,
       jobs,
+      feed,
       jobLog,
       repos,
       shared,
@@ -389,34 +396,12 @@ export class ProjectHost {
     return { ...this.meta, activeAt: this.#activeAt };
   }
 
-  async board(): Promise<BoardView> {
-    const cache = this.#board;
-    if (cache.view !== undefined && !cache.dirty && cache.revision === this.#jobs.revision) {
-      return cache.view;
-    }
-    if (this.#boardBuilding !== undefined) return this.#boardBuilding;
-    const generation = this.#boardGeneration;
-    this.#boardBuilding = this.#buildBoard(generation).finally(() => {
-      this.#boardBuilding = undefined;
-    });
-    return this.#boardBuilding;
+  board(): Promise<BoardView> {
+    return this.#feed.read();
   }
 
   subscribeBoard(listener: () => void): () => void {
-    this.#boardWatchers.add(listener);
-    return () => this.#boardWatchers.delete(listener);
-  }
-
-  async #buildBoard(generation: number): Promise<BoardView> {
-    const view = await boardView(this.#harness, (id) => this.#jobs.running(id), this.#context);
-    this.#board = {
-      view,
-      dirty: this.#boardGeneration !== generation,
-      generation,
-      revision: this.#jobs.revision,
-    };
-    for (const notify of this.#boardWatchers) notify();
-    return view;
+    return this.#feed.subscribe(listener);
   }
 
   async killJob(id: JobId): Promise<void> {
@@ -533,6 +518,7 @@ export class ProjectHost {
   async close(): Promise<void> {
     this.#activityWatch?.detach();
     clearInterval(this.#timer);
+    this.#feed.close();
     await this.#jobs.close();
     await this.#harness.close(this.#context);
   }
@@ -540,10 +526,12 @@ export class ProjectHost {
   #watchActivity(): void {
     this.#activityWatch = this.#harness.observeCommits({
       advance: (pub) => {
-        if (!isActivityCommit(pub)) return;
-        this.#activeAt = Math.max(this.#activeAt, Date.now());
-        this.#boardGeneration += 1;
-        this.#board.dirty = true;
+        if (isActivityCommit(pub)) {
+          this.#activeAt = Math.max(this.#activeAt, Date.now());
+        }
+        if (isBoardCommit(pub)) {
+          this.#feed.invalidate();
+        }
         for (const change of pub.changes) {
           if (change.type !== "document" || change.kind !== "change") continue;
           if (change.record.kind !== TicketDoc.definition.kind) continue;
@@ -693,12 +681,25 @@ const ACTIVITY_DOC_KINDS = new Set([
   LiveDoc.definition.kind,
 ]);
 
+const BOARD_DOC_KINDS = new Set([
+  Board.definition.kind,
+  TicketDoc.definition.kind,
+  ReportLog.definition.kind,
+  QuestionDoc.definition.kind,
+  LiveDoc.definition.kind,
+  WorkerQueue.definition.kind,
+]);
+
 function isActivityCommit(pub: CommitPublication): boolean {
   return pub.changes.some(
     (c) =>
       (c.type === "entry" && ACTIVITY_ENTRY_KINDS.has(c.value.kind)) ||
       (c.type === "document" && ACTIVITY_DOC_KINDS.has(c.record.kind)),
   );
+}
+
+function isBoardCommit(pub: CommitPublication): boolean {
+  return pub.changes.some((c) => c.type === "document" && BOARD_DOC_KINDS.has(c.record.kind));
 }
 
 async function initialActiveAt(

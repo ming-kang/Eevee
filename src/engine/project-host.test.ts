@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
+import type { BoardView } from "../api/contract.ts";
 import { eeveePaths } from "../shared/paths.ts";
 import { type Brain, call, openTestProject, say, textOf, toolName } from "./testing.ts";
 
@@ -766,6 +767,93 @@ test("the opening is written into the worker conversation when the ticket is cre
     assert.ok(opening !== undefined);
     assert.match(textOf(opening.model?.[0]), /write hello\.txt in the working directory/);
   } finally {
+    await project.close();
+  }
+});
+
+test("a board subscriber receives changes without calling board()", async () => {
+  const project = await openTestProject(() => say("OK."));
+  let notifications = 0;
+  const unsubscribe = project.host.subscribeBoard(() => {
+    notifications += 1;
+  });
+  try {
+    await project.host.sendUserMessage("hello");
+    await project.until(async () => notifications > 0, 1500);
+    assert.ok(notifications > 0);
+  } finally {
+    unsubscribe();
+    await project.close();
+  }
+});
+
+test("a board subscriber is notified when a background job starts and finishes, with accurate job state", async () => {
+  let releaseAfterAdopt: () => void = () => {};
+  const adoptGate = new Promise<void>((resolve) => {
+    releaseAfterAdopt = resolve;
+  });
+  const brain: Brain = async ({ role, last }) => {
+    if (role === "router") {
+      if (last?.role === "user" && textOf(last).includes("run simulation")) {
+        return call("ticket", {
+          action: "create",
+          title: "simulation",
+          goal: "run",
+          acceptance: ["done running"],
+        });
+      }
+      return say("OK.");
+    }
+    if (last?.role === "user" && textOf(last).includes("Background job job://j1 finished")) {
+      return call("report", { status: "ready", summary: textOf(last), artifacts: [] });
+    }
+    if (toolName(last) === "bash") {
+      await adoptGate;
+      return say("The job runs in the background; ending this turn.");
+    }
+    if (last?.role === "user") return call("bash", { command: "sleep 1; echo finished" });
+    return say("…");
+  };
+
+  const project = await openTestProject(brain, { backgroundAfterMs: 200 });
+  const snapshots: BoardView[] = [];
+  let pendingReads = Promise.resolve();
+  const unsubscribe = project.host.subscribeBoard(() => {
+    pendingReads = pendingReads.then(async () => {
+      snapshots.push(await project.host.board());
+    });
+  });
+  try {
+    await project.host.sendUserMessage("run simulation");
+
+    const adopted = await project.until(async () => {
+      const index = snapshots.findIndex((b) => b.tickets[0]?.jobs[0]?.status === "running");
+      return index >= 0 ? { index, board: snapshots[index] } : false;
+    });
+    assert.equal(adopted.board?.tickets[0]?.jobs.length, 1);
+    releaseAfterAdopt();
+
+    const jobsStage = await project.until(async () => {
+      const index = snapshots.findIndex(
+        (b, i) => i >= adopted.index && b.tickets[0]?.stage === "jobs",
+      );
+      return index >= 0 ? { index, board: snapshots[index] } : false;
+    });
+    assert.equal(jobsStage.board?.tickets[0]?.jobs[0]?.status, "running");
+
+    const ended = await project.until(async () => {
+      const index = snapshots.findIndex(
+        (b, i) => i > jobsStage.index && b.tickets[0]?.jobs.length === 0,
+      );
+      return index >= 0 ? { index, board: snapshots[index] } : false;
+    });
+    assert.notEqual(ended.board?.tickets[0]?.stage, "jobs");
+
+    await project.until(async () => snapshots.at(-1)?.tickets[0]?.reports[0]?.status === "ready");
+  } finally {
+    releaseAfterAdopt();
+    unsubscribe();
+    await pendingReads.catch(() => {});
     await project.close();
   }
 });

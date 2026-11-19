@@ -23,6 +23,7 @@ export {
   queuedTickets,
   submitReport,
   toSubmission,
+  WorkerQueue,
 } from "./deliver.ts";
 export type { EngineEvent } from "./delivery.ts";
 export { describeJobOutcome, route } from "./delivery.ts";
