@@ -23,6 +23,7 @@ docs/design is the source of truth
 
 ## Docs
 
+- `docs/design` describes the overall design at a high level; keep implementation details out of it.
 - `CHANGELOG.md` lists under `## [Unreleased]` only user-visible changes relative to the last released version.
 
 ## Git
