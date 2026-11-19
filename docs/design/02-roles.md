@@ -36,27 +36,10 @@ Extension 可以提供工具、提示词段落、Hook、包装器和后台任务
 
 角色应用最终映射为 Durable 的 `configure()`：选择 `extensions`，按需收窄 `tools` 或 `modelTools`，并设置 `instructions`、模型和工作目录。具体协同工具与事件流见 [03 工单与调度](03-orchestration.md)。
 
-## 5. 当前实现
+## 5. 角色配置
 
-各角色自带的扩展：
+角色配置所有项目共用，可以在面板或配置文件里调整，修改对之后的运行生效：
 
-| 角色 | 自带扩展 |
-|:-:|:-:|
-| `router` | `eevee.resources`、`eevee.dispatch`、`eevee.memory`、`eevee.router` |
-| `worker` | `eevee.resources`、`eevee.workspace`、`eevee.report` |
-| `dreamer` | `eevee.resources`、`eevee.memory-project`、`eevee.report` |
-
-在此之上，`settings.json` 按角色启用其他扩展、设置每次运行的轮次上限，所有项目共用：
-
-```json
-{
-  "roles": {
-    "router": { "extensions": ["mcp.deepwiki"] },
-    "worker": { "extensions": ["mcp.deepwiki", "mcp.github"], "maxTurns": 80 }
-  }
-}
-```
-
-也可以在面板的设置里，或用 `GET /api/capabilities`、`POST /api/capabilities/roles/:role` 修改，修改即刻生效。
-
-新启用的扩展必须已经安装；角色已启用、后来卸载的扩展在应用时跳过，不挡住其他修改。
+- **按角色启用扩展**：在角色自带能力之上，为每种角色选择额外的 Extension（如 MCP 服务）。
+- **运行上限**：限制一次运行的轮次，避免执行对话无止境地运行。
+- **容错**：已启用但后来卸载的扩展在应用时跳过，不影响角色的其他能力。
