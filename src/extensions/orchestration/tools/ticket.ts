@@ -1,14 +1,11 @@
 import type { Context } from "@earendil-works/chord/context";
 import { configure, defineTool, type ToolExecutionApi } from "@earendil-works/pi-durable";
-import { arr, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import {
   agentModel,
   formatModel,
   latestFinalReport,
   type ModelChoice,
   problemOf,
-  THINKING_LEVELS,
-  type ThinkingLevel,
   type Ticket,
   type TicketDetails,
   type TicketId,
@@ -18,87 +15,20 @@ import { deliver } from "../deliver.ts";
 import { route } from "../delivery.ts";
 import { openTicket } from "../open.ts";
 import type { OrchestrationDeps } from "../ports.ts";
-import { fail, missing, ok } from "../result.ts";
+import { fail, ok } from "../result.ts";
 import { prepareSettlement, settle } from "../settle.ts";
+import {
+  type ModelRequest,
+  Parameters,
+  type Parsed,
+  parseTicketCommand,
+  type TicketCommand,
+} from "./ticket-command.ts";
 
 export const TICKET_TOOL = "ticket";
 
-const TICKET_ID = "^t[1-9][0-9]*$";
-
-const Parameters = obj({
-  action: oneOf(["create", "message", "interrupt", "review", "close", "model"]),
-  ticketId: opt(
-    str({
-      pattern: TICKET_ID,
-      description: "The ticket to act on, e.g. t3. Every action except create requires it.",
-    }),
-  ),
-  title: opt(str({ description: "create: a short title for the ticket" })),
-  goal: opt(str({ description: "create: what the ticket should achieve" })),
-  inputs: opt(arr(str(), { description: "create: the input file paths or resource addresses" })),
-  acceptance: opt(
-    arr(str(), { description: "create: the acceptance criteria the work must meet" }),
-  ),
-  output: opt(str({ description: "create: where the artifacts are written" })),
-  deliverTo: opt(
-    arr(str({ pattern: TICKET_ID }), {
-      description: "create: tickets that receive the result after review",
-    }),
-  ),
-  provider: opt(
-    str({
-      description:
-        "create and model: the model provider; see models://. On create, leave it out to use the default model.",
-    }),
-  ),
-  modelId: opt(str({ description: "create and model: the model ID" })),
-  thinkingLevel: opt(
-    oneOf(THINKING_LEVELS, {
-      description:
-        "create and model: the thinking level, from off to max. Set it together with provider and modelId; it defaults to off.",
-    }),
-  ),
-  modelReason: opt(
-    str({ description: "create and model: why this model instead of the default one" }),
-  ),
-  text: opt(str({ description: "message: the instruction to append to the conversation" })),
-  mode: opt(
-    oneOf(["steer", "followUp"], {
-      description:
-        "message: steer to cut in on the current turn, or followUp to queue behind it. followUp is the default.",
-    }),
-  ),
-  verdict: opt(
-    oneOf(["accept", "rework"], {
-      description: "review: accept approves the report, or rework sends it back",
-    }),
-  ),
-  note: opt(
-    str({
-      description:
-        "review accept: the evidence that it passed; review rework: what is missing; close: the reason for cancelling",
-    }),
-  ),
-});
-
-type Args = {
-  action: "create" | "message" | "interrupt" | "review" | "close" | "model";
-  ticketId?: string;
-  title?: string;
-  goal?: string;
-  inputs?: string[];
-  acceptance?: string[];
-  output?: string;
-  deliverTo?: string[];
-  provider?: string;
-  modelId?: string;
-  thinkingLevel?: ThinkingLevel;
-  modelReason?: string;
-  text?: string;
-  mode?: "steer" | "followUp";
-  verdict?: "accept" | "rework";
-  note?: string;
-};
+/** The command of one action, as its handler takes it. */
+type Command<A extends TicketCommand["action"]> = Extract<TicketCommand, { action: A }>;
 
 export function createTicketTool(deps: OrchestrationDeps) {
   return defineTool({
@@ -115,25 +45,28 @@ export function createTicketTool(deps: OrchestrationDeps) {
     replay: "unsafe",
     executionMode: "sequential",
     async execute(args, api, context) {
-      if (args.action === "create") return create(deps, args, api, context);
-      if (args.ticketId === undefined) return fail(`${args.action} needs a ticketId.`);
-      const ticket = await readTicket(api, args.ticketId as TicketId, context);
-      if (ticket === undefined) return fail(`No ticket ${args.ticketId}.`);
+      const parsed = parseTicketCommand(args);
+      if (!parsed.ok) return fail(parsed.reason);
+      const command = parsed.value;
+      if (command.action === "create") return create(deps, command, api, context);
+
+      const ticket = await readTicket(api, command.ticketId, context);
+      if (ticket === undefined) return fail(`No ticket ${command.ticketId}.`);
       if (ticket.status !== "open")
         return fail(
           `${ticket.id} is already ${ticket.status === "done" ? "closed" : "cancelled"}.`,
         );
-      switch (args.action) {
+      switch (command.action) {
         case "message":
-          return message(ticket, args, api, context);
+          return message(ticket, command, api, context);
         case "interrupt":
           return interrupt(ticket, api, context);
         case "review":
-          return review(ticket, args, api, context);
+          return review(ticket, command, api, context);
         case "close":
-          return close(ticket, args, api, context);
+          return close(ticket, command, api, context);
         case "model":
-          return retarget(ticket, args, api, context);
+          return retarget(ticket, command, api, context);
       }
     },
   });
@@ -141,26 +74,14 @@ export function createTicketTool(deps: OrchestrationDeps) {
 
 async function create(
   deps: OrchestrationDeps,
-  args: Args,
+  command: Command<"create">,
   api: ToolExecutionApi,
   context: Context,
 ) {
-  const absent = missing(args, ["title", "goal", "acceptance"]);
-  if (absent.length > 0) return fail(`create is missing fields: ${absent.join(", ")}.`);
-  if ((args.provider === undefined) !== (args.modelId === undefined)) {
-    return fail(
-      "provider and modelId are filled in together or left out together (to use the default model).",
-    );
-  }
-  if (args.thinkingLevel !== undefined && args.provider === undefined) {
-    return fail(
-      "thinkingLevel goes together with provider and modelId; see models:// for the default model.",
-    );
-  }
-  const model = chosenModel(args, api);
-  if (typeof model === "string") return fail(model);
-  const deliverTo = (args.deliverTo ?? []) as TicketId[];
-  for (const to of deliverTo) {
+  // `create` may leave the model out and use the default one.
+  const model = command.model === undefined ? undefined : resolveModel(command.model, api);
+  if (model !== undefined && !model.ok) return fail(model.reason);
+  for (const to of command.deliverTo) {
     const target = await readTicket(api, to, context);
     if (target?.status !== "open")
       return fail(`The ${to} in deliverTo does not exist or is already closed.`);
@@ -174,14 +95,14 @@ async function create(
         api.registry,
         {
           role: "worker",
-          title: args.title ?? "",
-          goal: args.goal ?? "",
-          inputs: args.inputs ?? [],
-          acceptance: args.acceptance ?? [],
-          deliverTo,
-          ...(args.output ? { output: args.output } : {}),
-          ...(model === undefined ? {} : { model }),
-          ...(args.modelReason ? { modelReason: args.modelReason } : {}),
+          title: command.title,
+          goal: command.goal,
+          inputs: command.inputs,
+          acceptance: command.acceptance,
+          deliverTo: command.deliverTo,
+          ...(command.output === undefined ? {} : { output: command.output }),
+          ...(model?.value === undefined ? {} : { model: model.value }),
+          ...(command.modelReason === undefined ? {} : { modelReason: command.modelReason }),
         },
         api.now(),
         context,
@@ -195,27 +116,36 @@ async function create(
   } satisfies TicketDetails & { conversationId: number });
 }
 
-/** The model the arguments name, `undefined` for the default, or why it cannot be used. */
-function chosenModel(args: Args, api: ToolExecutionApi): ModelChoice | undefined | string {
-  if (args.provider === undefined || args.modelId === undefined) return undefined;
-  if (api.models.getModel(args.provider, args.modelId) === undefined) {
-    return `No model ${args.provider}/${args.modelId}; see models:// for the available models.`;
+/** The model a command asks for, checked against the ones this project has. */
+function resolveModel(request: ModelRequest, api: ToolExecutionApi): Parsed<ModelChoice> {
+  if (api.models.getModel(request.provider, request.modelId) === undefined) {
+    return {
+      ok: false,
+      reason: `No model ${request.provider}/${request.modelId}; see models:// for the available models.`,
+    };
   }
   return {
-    provider: args.provider,
-    modelId: args.modelId,
-    ...(args.thinkingLevel === undefined ? {} : { thinkingLevel: args.thinkingLevel }),
+    ok: true,
+    value: {
+      provider: request.provider,
+      modelId: request.modelId,
+      ...(request.thinkingLevel === undefined ? {} : { thinkingLevel: request.thinkingLevel }),
+    },
   };
 }
 
-async function message(ticket: Ticket, args: Args, api: ToolExecutionApi, context: Context) {
-  if (!args.text) return fail("message needs text.");
+async function message(
+  ticket: Ticket,
+  command: Command<"message">,
+  api: ToolExecutionApi,
+  context: Context,
+) {
   const event = {
     type: "router-message",
     id: api.callId,
     ticketId: ticket.id,
-    text: args.text,
-    whenBusy: args.mode ?? "followUp",
+    text: command.text,
+    whenBusy: command.whenBusy,
   } as const;
   await deliver(api, route(event), context, (tx) => markHandled(tx, ticket.id));
   return ok(`Sent to ${ticket.id}.`);
@@ -227,19 +157,23 @@ async function interrupt(ticket: Ticket, api: ToolExecutionApi, context: Context
   return ok(`Interrupted the current turn of ${ticket.id}; the ticket is still open.`);
 }
 
-async function review(ticket: Ticket, args: Args, api: ToolExecutionApi, context: Context) {
-  if (args.verdict === undefined || !args.note) return fail("review needs verdict and note.");
+async function review(
+  ticket: Ticket,
+  command: Command<"review">,
+  api: ToolExecutionApi,
+  context: Context,
+) {
   const latest = latestFinalReport(await readReports(api, ticket.id, context));
   if (latest?.status !== "ready" || latest.handled) {
     return fail(`${ticket.id} has no ready report waiting for review.`);
   }
 
-  if (args.verdict === "rework") {
+  if (command.verdict === "rework") {
     const event = {
       type: "router-message",
       id: api.callId,
       ticketId: ticket.id,
-      text: `Review did not pass, rework needed:\n${args.note}`,
+      text: `Review did not pass, rework needed:\n${command.note}`,
       whenBusy: "followUp",
     } as const;
     await deliver(api, route(event), context, (tx) => markHandled(tx, ticket.id));
@@ -256,7 +190,7 @@ async function review(ticket: Ticket, args: Args, api: ToolExecutionApi, context
         await settle(
           tx,
           prepared,
-          { status: "done", note: args.note ?? "", at: api.now() },
+          { status: "done", note: command.note, at: api.now() },
           { reportSeq: latest.seq },
         );
       },
@@ -267,18 +201,22 @@ async function review(ticket: Ticket, args: Args, api: ToolExecutionApi, context
   return ok(`${ticket.id} is accepted and closed.`);
 }
 
-async function close(ticket: Ticket, args: Args, api: ToolExecutionApi, context: Context) {
-  if (!args.note) return fail("close needs a note that says why.");
+async function close(
+  ticket: Ticket,
+  command: Command<"close">,
+  api: ToolExecutionApi,
+  context: Context,
+) {
   const prepared = await prepareSettlement(api, ticket, context);
   try {
     await deliver(
       api,
-      route({ type: "ticket-cancelled", ticket, reason: args.note }),
+      route({ type: "ticket-cancelled", ticket, reason: command.note }),
       context,
       async (tx) => {
         await settle(tx, prepared, {
           status: "cancelled",
-          note: args.note ?? "",
+          note: command.note,
           at: api.now(),
         });
       },
@@ -289,26 +227,28 @@ async function close(ticket: Ticket, args: Args, api: ToolExecutionApi, context:
   return ok(`${ticket.id} is cancelled.`);
 }
 
-async function retarget(ticket: Ticket, args: Args, api: ToolExecutionApi, context: Context) {
-  if (args.provider === undefined || args.modelId === undefined) {
-    return fail("model needs provider and modelId.");
-  }
-  const model = chosenModel(args, api);
-  if (typeof model === "string" || model === undefined) return fail(model ?? "");
+async function retarget(
+  ticket: Ticket,
+  command: Command<"model">,
+  api: ToolExecutionApi,
+  context: Context,
+) {
+  const model = resolveModel(command.model, api);
+  if (!model.ok) return fail(model.reason);
   await api.commit(async (tx) => {
     const { modelReason: _, ...rest } = ticket;
     await saveTicket(tx, {
       ...rest,
-      model,
-      ...(args.modelReason ? { modelReason: args.modelReason } : {}),
+      model: model.value,
+      ...(command.modelReason === undefined ? {} : { modelReason: command.modelReason }),
     });
-    await configure(tx, conversationOf(ticket), agentModel(model));
+    await configure(tx, conversationOf(ticket), agentModel(model.value));
     await markHandled(tx, ticket.id);
   }, context);
   const thinking =
-    model.thinkingLevel === undefined ? "" : `, thinking level ${model.thinkingLevel}`;
+    model.value.thinkingLevel === undefined ? "" : `, thinking level ${model.value.thinkingLevel}`;
   return ok(
-    `${ticket.id} now uses ${formatModel(model)}${thinking}, starting from its next request.`,
+    `${ticket.id} now uses ${formatModel(model.value)}${thinking}, starting from its next request.`,
   );
 }
 
