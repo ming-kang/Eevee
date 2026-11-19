@@ -65,6 +65,11 @@ test("The answer to a ticket's question goes straight to its worker conversation
   });
   assert.deepEqual(deliveries[0]?.target, { kind: "ticket", id: "t1" });
   assert.equal(deliveries[1]?.mode, "record");
+  // Nothing marks a delivery as skipping the slot any more: only a ticket's start ever waits for one.
+  assert.deepEqual(
+    deliveries.map((d) => "direct" in d),
+    [false, false],
+  );
 });
 
 test("The requestId comes from the event, so a repeated submit can be deduplicated", () => {

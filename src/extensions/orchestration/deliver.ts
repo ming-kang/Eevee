@@ -30,18 +30,41 @@ export const Outbox = defineDoc<{ pending: Delivery[] }>({
   checkpointWhen: () => true,
 });
 
-export const WorkerQueue = defineDoc<{ pending: Delivery[] }>({
+export const WorkerQueue = defineDoc<{ pending: QueuedStart[] }>({
   kind: "eevee.worker-queue",
-  version: 1,
+  version: 2,
   scope: "session",
   initial: () => ({ pending: [] }),
+  // Version 1 stored whole deliveries, of which only a ticket's start ever queued; anything else is dropped.
+  migrate: (value) => ({
+    pending: (value.pending as unknown[])
+      .map((entry) => queuedStartOf(entry))
+      .filter((start): start is QueuedStart => start !== undefined),
+  }),
   checkpointWhen: () => true,
 });
+
+/** A ticket waiting for a free slot, to start its run with one `continue`. */
+export type QueuedStart = { ticketId: TicketId; requestId: string };
+
+/** Queues the start of a ticket's run; its `requestId` keeps the opening's, so a restart stays deduplicated. */
+export async function enqueueStart(tx: Tx, ticketId: TicketId): Promise<void> {
+  (await tx.doc(WorkerQueue)).pending.push({ ticketId, requestId: `opening:${ticketId}` });
+}
+
+/** A version 1 queue entry as the start it was; `undefined` for anything that was not one. */
+function queuedStartOf(entry: unknown): QueuedStart | undefined {
+  if (typeof entry !== "object" || entry === null) return undefined;
+  const stored = entry as { target?: { kind?: unknown; id?: unknown }; requestId?: unknown };
+  if (stored.target?.kind !== "ticket") return undefined;
+  if (typeof stored.target.id !== "string" || typeof stored.requestId !== "string")
+    return undefined;
+  return { ticketId: stored.target.id as TicketId, requestId: stored.requestId };
+}
 
 export type PreparedDelivery = {
   first?: { handle: ConversationHandle; draft: SubmissionDraft };
   rest: Delivery[];
-  queued: Delivery[];
 };
 
 export type DeliveryContext = {
@@ -50,51 +73,35 @@ export type DeliveryContext = {
   commit<T>(change: (tx: Tx) => Promise<T>, context: Context): Promise<T>;
 };
 
-/** A delivery that waits for a free slot: only the start of an engine-run ticket does. */
-export const needsSlot = (delivery: Delivery): boolean => delivery.mode === "start";
-
-export const startOf = (delivery: Delivery): SubmissionDraft => ({
-  type: "continue",
-  requestId: delivery.requestId,
-});
-
 export async function prepare(
   host: DeliveryContext,
   deliveries: readonly Delivery[],
   context: Context,
 ): Promise<PreparedDelivery> {
-  const queued = deliveries.filter(needsSlot);
-  const direct = deliveries.filter((d) => !needsSlot(d));
-  for (const [index, delivery] of direct.entries()) {
+  for (const [index, delivery] of deliveries.entries()) {
     const handle = await resolveHandle(host, delivery.target, context);
     if (handle === undefined) continue;
     return {
       first: { handle, draft: toSubmission(delivery) },
-      rest: direct.slice(index + 1),
-      queued,
+      rest: deliveries.slice(index + 1),
     };
   }
-  return { rest: [], queued };
+  return { rest: [] };
 }
 
 export async function submit(tx: Tx, prepared: PreparedDelivery): Promise<void> {
   if (prepared.first !== undefined) await prepared.first.handle.submit(tx, prepared.first.draft);
   if (prepared.rest.length > 0) (await tx.doc(Outbox)).pending.push(...prepared.rest);
-  if (prepared.queued.length > 0) (await tx.doc(WorkerQueue)).pending.push(...prepared.queued);
 }
 
 /** Drops every delivery waiting for a ticket, so closing it leaves nothing queued behind. */
-export async function purgeDeliveries(tx: Tx, id: TicketId): Promise<Delivery[]> {
-  const dropped: Delivery[] = [];
-  for (const token of [Outbox, WorkerQueue]) {
-    const queue = await tx.doc(token);
-    const going = queue.pending.filter((d) => d.target.kind === "ticket" && d.target.id === id);
-    if (going.length === 0) continue;
-    dropped.push(...going);
-    const keys = new Set(going.map((d) => d.requestId));
-    queue.pending = queue.pending.filter((d) => !keys.has(d.requestId));
-  }
-  return dropped;
+export async function purgeDeliveries(tx: Tx, id: TicketId): Promise<void> {
+  const outbox = await tx.doc(Outbox);
+  outbox.pending = outbox.pending.filter(
+    (d) => !(d.target.kind === "ticket" && d.target.id === id),
+  );
+  const queue = await tx.doc(WorkerQueue);
+  queue.pending = queue.pending.filter((s) => s.ticketId !== id);
 }
 
 export async function flush(host: DeliveryContext, context: Context): Promise<void> {
@@ -143,51 +150,49 @@ export async function submitReport(
 
 export async function queuedTickets(reader: DocReader, context: Context): Promise<Set<TicketId>> {
   const pending = (await reader.snapshot(WorkerQueue, context))?.pending ?? [];
-  return new Set(pending.flatMap((d) => (d.target.kind === "ticket" ? [d.target.id] : [])));
+  return new Set(pending.map((start) => start.ticketId));
 }
 
 export async function pump(host: DeliveryContext, limit: number, context: Context): Promise<void> {
   const pending = (await host.snapshot(WorkerQueue, context))?.pending ?? [];
   if (pending.length === 0) return;
   let active = await activeWorkers(host, context);
-  for (const delivery of pending) {
-    if (delivery.target.kind !== "ticket") continue;
-    const ticket = await readTicket(host, delivery.target.id, context);
-    const busy =
-      ticket !== undefined &&
-      (await host.snapshot(LiveDoc, conversationOf(ticket), context))?.run !== undefined;
-    if (ticket?.status === "open" && !busy && active >= limit) continue;
-    const handle =
-      ticket?.status === "open"
-        ? await host.conversation(conversationOf(ticket), context)
-        : undefined;
+  for (const start of pending) {
+    const ticket = await readTicket(host, start.ticketId, context);
+    if (ticket === undefined || ticket.status !== "open") {
+      await host.commit((tx) => dropStart(tx, start.requestId), context);
+      continue;
+    }
+    const busy = (await host.snapshot(LiveDoc, conversationOf(ticket), context))?.run !== undefined;
+    // A busy ticket, or a full set of slots, leaves the start queued for the next pass.
+    if (busy || active >= limit) continue;
+    const handle = await host.conversation(conversationOf(ticket), context);
+    if (handle === undefined) {
+      await host.commit((tx) => dropStart(tx, start.requestId), context);
+      continue;
+    }
     const started = await host.commit(async (tx) => {
-      if (handle === undefined) {
-        const queue = await tx.doc(WorkerQueue);
-        queue.pending = queue.pending.filter((d) => d.requestId !== delivery.requestId);
-        return false;
+      if (!(await stillOpen(tx, ticket))) return false;
+      try {
+        await handle.submit(tx, { type: "continue", requestId: start.requestId });
+      } catch (error) {
+        if (error instanceof ConversationBusy) return false;
+        throw error;
       }
-      if (delivery.mode === "start" && busy) return false;
-      let submitted = false;
-      if (await stillOpen(tx, ticket)) {
-        try {
-          await handle.submit(tx, toSubmission(delivery));
-          submitted = true;
-        } catch (error) {
-          if (error instanceof ConversationBusy) return false;
-          throw error;
-        }
-      }
-      const queue = await tx.doc(WorkerQueue);
-      queue.pending = queue.pending.filter((d) => d.requestId !== delivery.requestId);
-      return submitted;
+      await dropStart(tx, start.requestId);
+      return true;
     }, context);
     if (started) active += 1;
   }
 }
 
+/** Takes a start out of the queue, whether its ticket is gone or its run has begun. */
+async function dropStart(tx: Tx, requestId: string): Promise<void> {
+  const queue = await tx.doc(WorkerQueue);
+  queue.pending = queue.pending.filter((start) => start.requestId !== requestId);
+}
+
 export function toSubmission(delivery: Delivery): SubmissionDraft {
-  if (delivery.mode === "start") return startOf(delivery);
   if (delivery.mode === "wake") {
     return {
       type: "input",

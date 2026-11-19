@@ -44,7 +44,7 @@ tail -f ~/.eevee/runtime/engine.log
 
 | 现象 | 原因与解决办法 |
 |---|---|
-| 工单一直是 `queued` | 同时运行的 Worker 达到 [`maxActiveWorkers`](settings.md) 上限，等其他工单结束本轮后再开始。你回答了工单的问题、后台作业结束时，空闲的工单也要等槽位 |
+| 工单一直是 `queued` | 同时运行的 Worker 达到 [`maxActiveWorkers`](settings.md) 上限，等有空位时这张工单才开始运行。排队只发生在新工单的开篇；你回答问题、后台作业结束都会直接唤醒所属的 Worker，不占槽位 |
 | 工单停在 `review` 或 `blocked` | 在等 Router 处理。报告超过 [`reminderAfterMs`](settings.md) 仍未处理时，Engine 会在 Router 空闲时提醒它一次；提醒过还没处理，就在主对话里直接让它处理 |
 | 工单停在 `answer` | 在等你回答问题 |
 | Worker 的 `bash` 报 “No bash shell found” | Windows 上没有找到 bash。安装 Git for Windows，然后重启 Engine |

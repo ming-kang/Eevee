@@ -3,8 +3,7 @@ import type { RegistrySnapshot, Tx } from "@earendil-works/pi-durable";
 import type { Ticket } from "../../contracts/index.ts";
 import { WorkerAnchor } from "./anchor.ts";
 import { allocateTicketId, bindConversation, markHandled, saveTicket } from "./board.ts";
-import { NOTICE_KIND, submit } from "./deliver.ts";
-import { route } from "./delivery.ts";
+import { enqueueStart, NOTICE_KIND } from "./deliver.ts";
 import type { TicketConversations } from "./ports.ts";
 
 export type TicketDraft = Pick<
@@ -44,7 +43,7 @@ export async function openTicket(
   await bindConversation(tx, conversation.id, id);
   for (const to of ticket.deliverTo) await markHandled(tx, to);
   const opening = await conversations.opening(ticket, context);
-  await submit(tx, { rest: [], queued: route({ type: "ticket-start", ticketId: id }) });
+  await enqueueStart(tx, id);
   await tx.appendEntry(conversation.id, {
     kind: NOTICE_KIND,
     data: { requestId: `opening:${id}`, notice: { type: "opening", ticketId: id } },
