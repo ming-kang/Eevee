@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
-import { vTail } from "../dom.ts";
 import { t } from "../i18n.ts";
 import { formatDurationMs, formatElapsedSeconds } from "../time.ts";
 import Icon from "./Icon.vue";
 import StageGlyph from "./StageGlyph.vue";
+import ToolSheet from "./ToolSheet.vue";
 
 const props = defineProps<{
   command: string;
@@ -72,7 +72,7 @@ const isJobActive = computed(
         <template v-if="ms !== undefined">{{ formatDurationMs(ms) }}</template>
       </span>
     </summary>
-    <pre v-if="output" v-tail class="step-out">{{ output }}</pre>
+    <ToolSheet :label="command" lang="bash" :output="output" />
   </details>
   <button
     v-if="status === 'job' && jobId"

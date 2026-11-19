@@ -4,7 +4,8 @@
  * One rung per component fixes its background and shadow together:
  *
  *   well      --ev-well   + --ev-shadow-well     things that hold a value (input, switch off, tray)
- *   page      --ev-page                          the app ground, the conversation
+ *   ground    --ev-ground                        the window ground behind the cards
+ *   page      --ev-page                          the main card, the conversation
  *   region    --ev-region                        sidebar, rail, a block inside a card
  *   card      --ev-card   + --ev-shadow-card     composer, question card, settings group
  *   floating  --ev-raised + --ev-shadow-float    menu, palette, hover card, toast
@@ -20,6 +21,7 @@
 
 :root,
 [data-theme="light"] {
+  --ev-ground: hsl(0 0% 90.6%);
   --ev-page: hsl(0 0% 97.6%);
   --ev-region: hsl(0 0% 94.1%);
   --ev-card: hsl(0 0% 100%);
@@ -76,6 +78,7 @@
 }
 
 [data-theme="dark"] {
+  --ev-ground: hsl(220 8% 5.8%);
   --ev-page: hsl(220 7% 8%);
   --ev-region: hsl(225 7% 10.6%);
   --ev-card: hsl(216 8% 12.7%);
@@ -169,9 +172,11 @@
 
 /* Scales. Every type role and icon size is a ratio of one interface size, `--ev-ui` (14px unless
    the reader picked another in settings; `theme.ts` sets it on the root before the app mounts).
-   Control geometry stays fixed, so a larger size reads larger without loosening the layout. */
+   `--ev-scale` is that choice as a unitless factor; control heights, row geometry, gutters and
+   column limits multiply by it, so a larger size sits roomier, not just larger. Radii stay fixed. */
 :root {
   --ev-ui: 14px;
+  --ev-scale: 1;
 }
 
 :root {
@@ -205,15 +210,18 @@
   --ev-r-sm: 8px;
   --ev-r-md: 10px;
   --ev-r-lg: 14px;
-  --ev-h-sm: 28px;
-  --ev-h-md: 32px;
-  --ev-h-lg: 36px;
+  --ev-h-sm: calc(28px * var(--ev-scale));
+  --ev-h-md: calc(32px * var(--ev-scale));
+  --ev-h-lg: calc(36px * var(--ev-scale));
 
-  --ev-inset: 8px;
-  --ev-sidebar-w: 256px;
-  --ev-rail-w: 336px;
-  --ev-header-h: 48px;
-  --ev-chat-max: 720px;
+  --ev-inset: 6px;
+  --ev-gap: 6px;
+  --ev-sidebar-w: calc(256px * var(--ev-scale));
+  --ev-rail-w: calc(336px * var(--ev-scale));
+  --ev-side-collapsed: calc(52px * var(--ev-scale));
+  --ev-header-h: calc(48px * var(--ev-scale));
+  --ev-chat-max: calc(720px * var(--ev-scale));
+  --ev-gutter: calc(32px * var(--ev-scale));
 
   --ev-fast: 120ms;
   --ev-regular: 180ms;

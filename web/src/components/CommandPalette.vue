@@ -5,6 +5,7 @@ import { t } from "../i18n.ts";
 import { listStep } from "../keyboard.ts";
 import { filterPaletteItems, type PaletteItem } from "../projects.ts";
 import Icon from "./Icon.vue";
+import ProjectDot from "./ProjectDot.vue";
 import StageGlyph from "./StageGlyph.vue";
 
 const props = defineProps<{
@@ -135,9 +136,10 @@ function onKeydown(event: KeyboardEvent): void {
               @click="choose(item)"
             >
               <StageGlyph v-if="item.kind === 'route' && item.stage" :stage="item.stage" />
-              <span v-else-if="item.kind === 'route' && item.projectTile" class="proj-glyph">
-                {{ item.projectTile }}
-              </span>
+              <ProjectDot
+                v-else-if="item.kind === 'route' && item.projectId"
+                :id="item.projectId"
+              />
               <Icon v-else-if="item.icon" :name="item.icon" size="sm" />
               <span class="ellipsis spacer">{{ item.label }}</span>
               <span v-if="item.meta" class="meta">{{ item.meta }}</span>

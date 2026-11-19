@@ -95,8 +95,8 @@ pre,
 
 .sr {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  width: calc(1px * var(--ev-scale));
+  height: calc(1px * var(--ev-scale));
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
@@ -239,6 +239,23 @@ span.ico > svg {
 @keyframes ev-breathe {
   50% {
     opacity: 0.45;
+  }
+}
+
+/* The working grid's wave: each dot crests once per lap, staggered by its animation-delay. */
+@keyframes ev-dotwave {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  60% {
+    opacity: 0.25;
+    transform: scale(0.8);
   }
 }
 

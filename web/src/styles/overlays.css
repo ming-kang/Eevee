@@ -7,14 +7,14 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 14vh 16px 16px;
+  padding: 14vh calc(16px * var(--ev-scale)) calc(16px * var(--ev-scale));
   background: var(--ev-overlay);
   animation: ev-fade var(--ev-regular) var(--ev-ease);
 }
 
 /* ——— Modal ——— */
 .modal {
-  width: min(460px, 100%);
+  width: min(calc(460px * var(--ev-scale)), 100%);
   max-height: 100%;
   display: flex;
   flex-direction: column;
@@ -29,8 +29,8 @@
 .modal-h {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px 12px 4px 20px;
+  gap: calc(8px * var(--ev-scale));
+  padding: calc(16px * var(--ev-scale)) calc(12px * var(--ev-scale)) calc(4px * var(--ev-scale)) calc(20px * var(--ev-scale));
 }
 
 .modal-h h2 {
@@ -42,8 +42,8 @@
 .modal-b {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 12px 20px 4px;
+  gap: calc(14px * var(--ev-scale));
+  padding: calc(12px * var(--ev-scale)) calc(20px * var(--ev-scale)) calc(4px * var(--ev-scale));
   overflow-y: auto;
   font-size: var(--ev-body);
   line-height: 1.6;
@@ -52,13 +52,13 @@
 .modal-f {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 16px 20px 20px;
+  gap: calc(8px * var(--ev-scale));
+  padding: calc(16px * var(--ev-scale)) calc(20px * var(--ev-scale)) calc(20px * var(--ev-scale));
 }
 
 /* ——— Command palette ——— */
 .palette {
-  width: min(600px, 100%);
+  width: min(calc(600px * var(--ev-scale)), 100%);
   display: flex;
   flex-direction: column;
   border-radius: var(--ev-r-lg);
@@ -72,9 +72,9 @@
 .palette-in {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 52px;
-  padding: 0 18px;
+  gap: calc(10px * var(--ev-scale));
+  height: calc(52px * var(--ev-scale));
+  padding: 0 calc(18px * var(--ev-scale));
   color: var(--ev-label-3);
   box-shadow: inset 0 -1px 0 var(--ev-separator);
 }
@@ -95,24 +95,24 @@
 }
 
 .palette-list {
-  max-height: min(56vh, 440px);
+  max-height: min(56vh, calc(440px * var(--ev-scale)));
   overflow-y: auto;
-  padding: 6px;
+  padding: calc(6px * var(--ev-scale));
 }
 
 .palette-g {
-  padding: 10px 10px 4px;
+  padding: calc(10px * var(--ev-scale)) calc(10px * var(--ev-scale)) calc(4px * var(--ev-scale));
   font-size: var(--ev-footnote);
   font-weight: 500;
   color: var(--ev-label-3);
 }
 
 .palette-g:first-child {
-  padding-top: 4px;
+  padding-top: calc(4px * var(--ev-scale));
 }
 
 .palette-empty {
-  padding: 28px 16px;
+  padding: calc(28px * var(--ev-scale)) calc(16px * var(--ev-scale));
   text-align: center;
   font-size: var(--ev-control);
   color: var(--ev-label-3);
@@ -123,10 +123,10 @@
 .pop-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(10px * var(--ev-scale));
   width: 100%;
-  height: 34px;
-  padding: 0 10px;
+  height: calc(34px * var(--ev-scale));
+  padding: 0 calc(10px * var(--ev-scale));
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
   font-size: var(--ev-body);
@@ -156,25 +156,11 @@
   color: var(--ev-label-3);
 }
 
-.proj-glyph {
-  display: grid;
-  place-items: center;
-  width: var(--ev-icon);
-  height: var(--ev-icon);
-  flex: none;
-  border-radius: var(--ev-r-mini);
-  corner-shape: squircle;
-  font-size: calc(var(--ev-ui) * 10 / 14);
-  font-weight: 600;
-  color: var(--ev-label-2);
-  background: color-mix(in oklab, var(--ev-label) 8%, transparent);
-}
-
 /* An anchored popup (the model picker). */
 .pop {
   position: absolute;
   z-index: 30;
-  padding: 4px;
+  padding: calc(4px * var(--ev-scale));
   border-radius: var(--ev-r-lg);
   corner-shape: squircle;
   background: var(--ev-raised);
@@ -185,10 +171,10 @@
 .pop-search {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 36px;
-  margin: -4px -4px 4px;
-  padding: 0 12px;
+  gap: calc(8px * var(--ev-scale));
+  height: calc(36px * var(--ev-scale));
+  margin: calc(-4px * var(--ev-scale)) calc(-4px * var(--ev-scale)) calc(4px * var(--ev-scale));
+  padding: 0 calc(12px * var(--ev-scale));
   color: var(--ev-label-3);
   box-shadow: inset 0 -1px 0 var(--ev-separator);
 }
@@ -211,8 +197,8 @@
 .model-pop {
   display: flex;
   flex-direction: column;
-  width: min(360px, calc(100vw - 40px));
-  max-height: 360px;
+  width: min(calc(360px * var(--ev-scale)), calc(100vw - calc(40px * var(--ev-scale))));
+  max-height: calc(360px * var(--ev-scale));
 }
 
 .model-pop .pop-list {
@@ -221,41 +207,41 @@
 }
 
 .model-pop .pop-row {
-  height: 32px;
+  height: calc(32px * var(--ev-scale));
 }
 
 /* A list of words hugs the longest one. */
 .level-pop {
   width: max-content;
-  min-width: 140px;
+  min-width: calc(140px * var(--ev-scale));
 }
 
 .level-pop .pop-row {
-  height: 32px;
+  height: calc(32px * var(--ev-scale));
 }
 
 /* Opened from a control at the bottom of the window, a menu rises above it. */
 .pop.up {
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + calc(6px * var(--ev-scale)));
   left: 0;
 }
 
 /* A submenu opens beside its row, past the parent's inset, growing up from the row's bottom edge. */
 .pop.side {
-  bottom: -4px;
-  left: calc(100% + 8px);
+  bottom: calc(-4px * var(--ev-scale));
+  left: calc(100% + calc(8px * var(--ev-scale)));
 }
 
 .model-pop.side {
-  width: 280px;
+  width: calc(280px * var(--ev-scale));
 }
 
 /* ——— Hover card ——— */
 .hovercard {
   position: absolute;
   z-index: 60;
-  width: 272px;
-  padding: 12px 14px;
+  width: calc(272px * var(--ev-scale));
+  padding: calc(12px * var(--ev-scale)) calc(14px * var(--ev-scale));
   border-radius: var(--ev-r-lg);
   corner-shape: squircle;
   background: var(--ev-raised);
@@ -264,8 +250,7 @@
   opacity: 0;
   transform: translateY(4px);
   visibility: hidden;
-  transition:
-    opacity var(--ev-regular) var(--ev-ease),
+  transition: opacity var(--ev-regular) var(--ev-ease),
     transform var(--ev-regular) var(--ev-ease),
     visibility 0s linear var(--ev-regular);
   --ev-glyph-cut: var(--ev-raised);
@@ -275,8 +260,7 @@
   opacity: 1;
   transform: none;
   visibility: visible;
-  transition:
-    opacity var(--ev-regular) var(--ev-ease),
+  transition: opacity var(--ev-regular) var(--ev-ease),
     transform var(--ev-regular) var(--ev-ease);
 }
 
@@ -287,7 +271,7 @@
 }
 
 .hc-ws {
-  margin-top: 2px;
+  margin-top: calc(2px * var(--ev-scale));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -298,14 +282,14 @@
 .hc-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 10px;
+  gap: calc(6px * var(--ev-scale));
+  margin-top: calc(10px * var(--ev-scale));
 }
 
 .hc-line {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
   font-size: var(--ev-footnote);
   color: var(--ev-label-2);
 }
@@ -324,7 +308,7 @@
 }
 
 .hc-foot {
-  margin-top: 10px;
+  margin-top: calc(10px * var(--ev-scale));
   font-size: var(--ev-footnote);
   color: var(--ev-label-3);
 }
@@ -332,13 +316,13 @@
 /* ——— Toasts: on the floating rung, a mark and a sentence, at the top ——— */
 .toasts {
   position: absolute;
-  top: 16px;
+  top: calc(16px * var(--ev-scale));
   left: 50%;
   z-index: 100;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
   transform: translateX(-50%);
   pointer-events: none;
 }
@@ -346,9 +330,9 @@
 .toast {
   display: flex;
   align-items: center;
-  gap: 8px;
-  max-width: min(480px, calc(100vw - 32px));
-  padding: 9px 14px 9px 12px;
+  gap: calc(8px * var(--ev-scale));
+  max-width: min(calc(480px * var(--ev-scale)), calc(100vw - calc(32px * var(--ev-scale))));
+  padding: calc(9px * var(--ev-scale)) calc(14px * var(--ev-scale)) calc(9px * var(--ev-scale)) calc(12px * var(--ev-scale));
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
   font-size: var(--ev-control);
@@ -361,8 +345,7 @@
 
 /* It leaves the way it came, rising back up as it fades; the ones below close the gap. */
 .toast-leave-active {
-  transition:
-    opacity var(--ev-regular) var(--ev-ease),
+  transition: opacity var(--ev-regular) var(--ev-ease),
     transform var(--ev-regular) var(--ev-ease);
 }
 
@@ -388,16 +371,16 @@
   display: grid;
   place-items: center;
   height: 100%;
-  padding: 24px;
+  padding: calc(24px * var(--ev-scale));
   background: var(--ev-region);
 }
 
 .connect-card {
-  width: min(400px, 100%);
+  width: min(calc(400px * var(--ev-scale)), 100%);
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 28px;
+  gap: calc(18px * var(--ev-scale));
+  padding: calc(28px * var(--ev-scale));
   border-radius: var(--ev-r-lg);
   corner-shape: squircle;
   background: var(--ev-card);
@@ -406,8 +389,8 @@
 }
 
 .connect-card .brand svg {
-  width: 28px;
-  height: 28px;
+  width: calc(28px * var(--ev-scale));
+  height: calc(28px * var(--ev-scale));
 }
 
 .connect-card h1 {
@@ -419,7 +402,7 @@
 .connect-steps {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
 }
 
 .boot {
@@ -429,7 +412,7 @@
 }
 
 .boot svg {
-  width: 28px;
-  height: 28px;
+  width: calc(28px * var(--ev-scale));
+  height: calc(28px * var(--ev-scale));
   animation: ev-breathe 1.6s var(--ev-ease) infinite;
 }

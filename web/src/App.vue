@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import type { ProjectSummary } from "@shared/api/contract.ts";
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
-import type { RailTab } from "./board.ts";
+import { countPendingQuestions, type RailTab } from "./board.ts";
 import AppShell from "./components/AppShell.vue";
 import BrandLogo from "./components/BrandLogo.vue";
 import CommandPalette from "./components/CommandPalette.vue";
 import ConnectPage from "./components/ConnectPage.vue";
+import HomePage from "./components/HomePage.vue";
 import Icon from "./components/Icon.vue";
 import MemoryPage from "./components/MemoryPage.vue";
 import NewProjectDialog from "./components/NewProjectDialog.vue";
@@ -24,6 +25,7 @@ import { buildPaletteItems, deriveProjectState, type PaletteItem } from "./proje
 import { formatRoute, type Route, resolveRoute } from "./router.ts";
 import { type SessionInfo, Unauthorized, openSession } from "./session.ts";
 import { useTheme } from "./theme.ts";
+import { useNotifications } from "./use-notifications.ts";
 
 const SIDE_KEY = "eevee.sideCollapsed";
 const PROJECT_KEY = "eevee.project";
@@ -206,10 +208,15 @@ function navigate(next: Route): void {
   location.hash = target;
 }
 
-function toggleSide(): void {
-  sideCollapsed.value = !sideCollapsed.value;
-  localStorage.setItem(SIDE_KEY, String(sideCollapsed.value));
+function setSideCollapsed(collapsed: boolean): void {
+  if (collapsed === sideCollapsed.value) return;
+  sideCollapsed.value = collapsed;
+  localStorage.setItem(SIDE_KEY, String(collapsed));
   hideHover();
+}
+
+function toggleSide(): void {
+  setSideCollapsed(!sideCollapsed.value);
 }
 
 function openRail(tab?: RailTab, jobId?: string): void {
@@ -242,6 +249,29 @@ function onPaletteSelect(item: PaletteItem): void {
     toggleSide();
   }
 }
+
+useNotifications({
+  boards: engine.boards,
+  projects: () => projects.value,
+  route: () => route.value,
+  open: navigate,
+});
+
+/** Open questions across every project; the document title carries the count. */
+const questionTotal = computed(() =>
+  projects.value.reduce(
+    (total, project) => total + countPendingQuestions(engine.boards.value[project.id]?.board),
+    0,
+  ),
+);
+
+watch(
+  questionTotal,
+  (count) => {
+    document.title = count > 0 ? `(${count}) Eevee` : "Eevee";
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -261,6 +291,7 @@ function onPaletteSelect(item: PaletteItem): void {
     :modal-open="paletteOpen || newProjectOpen || memoryModalOpen"
     @close-drawer="drawer = null"
     @toggle-side="toggleSide"
+    @collapse-side="setSideCollapsed"
   >
     <template #sidebar>
       <SideNav
@@ -302,6 +333,14 @@ function onPaletteSelect(item: PaletteItem): void {
         @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
         @close-ticket="navigate({ name: 'chat', pid: currentProject.id })"
         @project-changed="engine.refreshStatus()"
+      />
+    </template>
+
+    <template v-else-if="route.name === 'home' && projects.length > 0">
+      <HomePage
+        :projects="projects"
+        :boards="engine.boards.value"
+        @open-side="drawer = 'side'"
       />
     </template>
 

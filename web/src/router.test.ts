@@ -50,8 +50,10 @@ test("an empty hash, unknown paths and #code= are not treated as routes", () => 
   assert.equal(parseRoute("#code=secret123"), undefined);
 });
 
-test("resolveRoute falls back to the default project or home", () => {
-  assert.deepEqual(resolveRoute("", "p1"), { name: "chat", pid: "p1" });
+test("resolveRoute sends an empty hash home and an unknown path to the fallback project", () => {
+  assert.deepEqual(resolveRoute("", "p1"), { name: "home" });
+  assert.deepEqual(resolveRoute("#", "p1"), { name: "home" });
+  assert.deepEqual(resolveRoute("#/", "p1"), { name: "home" });
   assert.deepEqual(resolveRoute("#/unknown", "p1"), { name: "chat", pid: "p1" });
   assert.deepEqual(resolveRoute("", undefined), { name: "home" });
   assert.deepEqual(resolveRoute("#/settings/mcp", undefined), {

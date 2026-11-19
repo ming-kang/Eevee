@@ -10,9 +10,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: calc(6px * var(--ev-scale));
   height: var(--ev-h-md);
-  padding: 0 12px;
+  padding: 0 calc(12px * var(--ev-scale));
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
   font-size: var(--ev-control);
@@ -23,8 +23,7 @@
   background-color: var(--ev-raised);
   background-image: var(--ev-sheen-raised);
   box-shadow: var(--ev-shadow-raised);
-  transition:
-    background-color var(--ev-fast) var(--ev-ease),
+  transition: background-color var(--ev-fast) var(--ev-ease),
     color var(--ev-fast) var(--ev-ease),
     box-shadow var(--ev-fast) var(--ev-ease),
     transform var(--ev-fast) var(--ev-ease),
@@ -40,8 +39,7 @@
 .btn:active:not(:disabled) {
   transform: translateY(1px);
   background-image: none;
-  box-shadow:
-    0 0 0 0.5px color-mix(in oklab, var(--ev-label) 16%, transparent),
+  box-shadow: 0 0 0 0.5px color-mix(in oklab, var(--ev-label) 16%, transparent),
     inset 0 1px 1px color-mix(in oklab, var(--ev-label) 6%, transparent);
 }
 
@@ -55,9 +53,9 @@
 
 .btn.sm {
   height: var(--ev-h-sm);
-  padding: 0 10px;
+  padding: 0 calc(10px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
-  gap: 5px;
+  gap: calc(5px * var(--ev-scale));
 }
 
 .btn.icon {
@@ -128,7 +126,7 @@
 .input {
   width: 100%;
   height: var(--ev-h-md);
-  padding: 0 10px;
+  padding: 0 calc(10px * var(--ev-scale));
   border: 0;
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
@@ -166,19 +164,19 @@
 
 /* A preference sits at the end of its row, as wide as what it holds. */
 .input.pref {
-  width: 220px;
+  width: calc(220px * var(--ev-scale));
   height: var(--ev-h-sm);
 }
 
 .input.pref.size {
-  width: 64px;
+  width: calc(64px * var(--ev-scale));
   text-align: center;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: calc(6px * var(--ev-scale));
 }
 
 .field > label {
@@ -192,24 +190,23 @@
 .switch {
   position: relative;
   display: inline-block;
-  width: 28px;
-  height: 16px;
+  width: calc(28px * var(--ev-scale));
+  height: calc(16px * var(--ev-scale));
   flex: none;
   border-radius: 999px;
   background: var(--ev-well);
   box-shadow: var(--ev-shadow-well);
-  transition:
-    background-color var(--ev-fast) var(--ev-ease),
+  transition: background-color var(--ev-fast) var(--ev-ease),
     box-shadow var(--ev-fast) var(--ev-ease);
 }
 
 .switch::after {
   content: "";
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
+  top: calc(2px * var(--ev-scale));
+  left: calc(2px * var(--ev-scale));
+  width: calc(12px * var(--ev-scale));
+  height: calc(12px * var(--ev-scale));
   border-radius: 50%;
   background-color: var(--ev-raised);
   background-image: var(--ev-sheen-raised);
@@ -245,7 +242,7 @@
   align-items: stretch;
   gap: 0;
   height: var(--ev-h-md);
-  padding: 2px;
+  padding: calc(2px * var(--ev-scale));
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
   background: var(--ev-tray);
@@ -258,9 +255,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: calc(5px * var(--ev-scale));
   min-width: 0;
-  padding: 0 12px;
+  padding: 0 calc(12px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
   font-size: var(--ev-control);
@@ -289,8 +286,8 @@
 .seg-pill {
   position: absolute;
   z-index: 0;
-  top: 2px;
-  bottom: 2px;
+  top: calc(2px * var(--ev-scale));
+  bottom: calc(2px * var(--ev-scale));
   left: 0;
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
@@ -298,8 +295,7 @@
 }
 
 .seg.measured .seg-pill {
-  transition:
-    transform var(--ev-regular) var(--ev-ease),
+  transition: transform var(--ev-regular) var(--ev-ease),
     width var(--ev-regular) var(--ev-ease);
 }
 
@@ -311,7 +307,7 @@
 .seg.sm > button,
 .seg.sm .seg-pill {
   border-radius: 6px;
-  padding: 0 9px;
+  padding: 0 calc(9px * var(--ev-scale));
 }
 
 .seg.stretch {
@@ -327,9 +323,9 @@
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 20px;
-  padding: 0 6px;
+  gap: calc(4px * var(--ev-scale));
+  height: calc(20px * var(--ev-scale));
+  padding: 0 calc(6px * var(--ev-scale));
   border-radius: var(--ev-r-mini);
   corner-shape: squircle;
   font-size: var(--ev-footnote);
@@ -348,9 +344,9 @@
 .kbd {
   display: inline-grid;
   place-items: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
+  min-width: calc(18px * var(--ev-scale));
+  height: calc(18px * var(--ev-scale));
+  padding: 0 calc(4px * var(--ev-scale));
   border-radius: var(--ev-r-mini);
   font: 500 var(--ev-caption) / 1 var(--ev-font);
   color: var(--ev-label-3);
@@ -360,8 +356,8 @@
 
 .dot {
   display: inline-block;
-  width: 6px;
-  height: 6px;
+  width: calc(6px * var(--ev-scale));
+  height: calc(6px * var(--ev-scale));
   flex: none;
   border-radius: 50%;
   background: var(--ev-label-3);
@@ -384,13 +380,29 @@
   animation: ev-breathe 1.6s var(--ev-ease) infinite;
 }
 
+/* A project's identity colour: the id hashes to a stable hue (projectHue in projects.ts), set
+   inline as --hue. The inner ring keeps pale hues readable on the region rung. */
+.p-dot {
+  display: inline-block;
+  flex: none;
+  width: calc(10px * var(--ev-scale));
+  height: calc(10px * var(--ev-scale));
+  border-radius: 50%;
+  background: oklch(72% 0.13 var(--hue, 0));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ev-label) 20%, transparent);
+}
+
+[data-theme="dark"] .p-dot {
+  background: oklch(70% 0.12 var(--hue, 0));
+}
+
 /* The count of questions waiting for you: the one place amber stands in a row. */
 .count {
   display: inline-grid;
   place-items: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
+  min-width: calc(18px * var(--ev-scale));
+  height: calc(18px * var(--ev-scale));
+  padding: 0 calc(5px * var(--ev-scale));
   border-radius: 999px;
   font-size: var(--ev-caption);
   font-weight: 600;
@@ -403,6 +415,32 @@
 .count.user {
   color: var(--ev-on-user);
   background: var(--ev-user);
+}
+
+/* A 3×3 dot grid pulsing in a diagonal wave: work is in flight. 12px, so it sits in the same end
+   slot as a 14px glyph without crowding. */
+.wgrid {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: calc(1.5px * var(--ev-scale));
+  width: calc(12px * var(--ev-scale));
+  height: calc(12px * var(--ev-scale));
+  flex: none;
+  color: var(--ev-working);
+}
+
+.wgrid i {
+  display: block;
+  border-radius: 50%;
+  background: currentColor;
+  animation: ev-dotwave 1.6s var(--ev-ease) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wgrid i {
+    animation: none;
+    opacity: 0.45;
+  }
 }
 
 /* Stage glyphs: amber marks a question waiting for the user, red is blocked, everything else is gray and told apart by shape. */
@@ -464,8 +502,8 @@
    after a blink, so a fast load goes straight from blank to content. */
 .skeleton {
   display: grid;
-  gap: 12px;
-  padding-block: 4px;
+  gap: calc(12px * var(--ev-scale));
+  padding-block: calc(4px * var(--ev-scale));
   animation: ev-fade var(--ev-regular) var(--ev-ease) 240ms both;
 }
 
@@ -486,9 +524,9 @@
 
 .caret {
   display: inline-block;
-  width: 2px;
+  width: calc(2px * var(--ev-scale));
   height: 1.05em;
-  margin-left: 2px;
+  margin-left: calc(2px * var(--ev-scale));
   vertical-align: -0.16em;
   border-radius: 1px;
   background: var(--ev-label);
@@ -499,9 +537,9 @@
 .codeline {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: calc(4px * var(--ev-scale));
   min-height: var(--ev-h-md);
-  padding: 2px 2px 2px 10px;
+  padding: calc(2px * var(--ev-scale)) calc(2px * var(--ev-scale)) calc(2px * var(--ev-scale)) calc(10px * var(--ev-scale));
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
   background: var(--ev-well);
@@ -520,8 +558,8 @@
 .banner {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: calc(10px * var(--ev-scale));
+  padding: calc(10px * var(--ev-scale)) calc(12px * var(--ev-scale));
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
   font-size: var(--ev-control);
@@ -531,7 +569,7 @@
 }
 
 .banner > .ico {
-  margin-top: 1px;
+  margin-top: calc(1px * var(--ev-scale));
   color: var(--ev-label-2);
 }
 
@@ -544,8 +582,8 @@
 }
 
 .banner ul {
-  margin: 4px 0 0;
-  padding-left: 18px;
+  margin: calc(4px * var(--ev-scale)) 0 0;
+  padding-left: calc(18px * var(--ev-scale));
 }
 
 /* ——— Surfaces ——— */
@@ -561,9 +599,9 @@
 .card-h {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 0 14px;
+  gap: calc(8px * var(--ev-scale));
+  min-height: calc(40px * var(--ev-scale));
+  padding: 0 calc(14px * var(--ev-scale));
   font-size: var(--ev-control);
   font-weight: 500;
   color: var(--ev-label);
@@ -583,7 +621,7 @@
 }
 
 .panel-b {
-  padding: 14px 16px;
+  padding: calc(14px * var(--ev-scale)) calc(16px * var(--ev-scale));
 }
 
 /* A list of records is one card with ruled rows. */
@@ -599,9 +637,9 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 52px;
-  padding: 10px 16px;
+  gap: calc(12px * var(--ev-scale));
+  min-height: calc(52px * var(--ev-scale));
+  padding: calc(10px * var(--ev-scale)) calc(16px * var(--ev-scale));
 }
 
 .row + .row {
@@ -613,13 +651,13 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: calc(2px * var(--ev-scale));
 }
 
 .r-t {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(6px * var(--ev-scale));
   flex-wrap: wrap;
   font-size: var(--ev-body);
   font-weight: 500;
@@ -647,8 +685,8 @@
 }
 
 .table th {
-  height: 36px;
-  padding: 0 14px;
+  height: calc(36px * var(--ev-scale));
+  padding: 0 calc(14px * var(--ev-scale));
   text-align: left;
   font-size: var(--ev-footnote);
   font-weight: 500;
@@ -658,8 +696,8 @@
 }
 
 .table td {
-  height: 44px;
-  padding: 0 14px;
+  height: calc(44px * var(--ev-scale));
+  padding: 0 calc(14px * var(--ev-scale));
   box-shadow: inset 0 -1px 0 var(--ev-separator);
 }
 
@@ -687,7 +725,7 @@
 }
 
 .section-h {
-  margin: 28px 0 10px;
+  margin: calc(28px * var(--ev-scale)) 0 calc(10px * var(--ev-scale));
   font-size: var(--ev-footnote);
   font-weight: 500;
   color: var(--ev-label-2);
@@ -702,9 +740,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: calc(10px * var(--ev-scale));
   flex: 1;
-  padding: 48px 24px;
+  padding: calc(48px * var(--ev-scale)) calc(24px * var(--ev-scale));
   text-align: center;
   color: var(--ev-label-2);
 }
@@ -722,9 +760,9 @@
 }
 
 .empty .btn {
-  margin-top: 6px;
+  margin-top: calc(6px * var(--ev-scale));
 }
 
 .card-note {
-  padding: 12px 14px;
+  padding: calc(12px * var(--ev-scale)) calc(14px * var(--ev-scale));
 }

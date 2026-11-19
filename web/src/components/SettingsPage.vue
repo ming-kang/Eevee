@@ -27,6 +27,7 @@ import { useSubmit } from "../submit.ts";
 import { type ThemePreference, useTheme, useTypography } from "../theme.ts";
 import { showToast } from "../toasts.ts";
 import { readTextSize, TEXT_SIZE } from "../typography.ts";
+import { notifyEnabled, notifySupported, setNotifyEnabled } from "../use-notifications.ts";
 import Icon from "./Icon.vue";
 import LevelMenu from "./LevelMenu.vue";
 import MarkdownText from "./MarkdownText.vue";
@@ -52,6 +53,36 @@ defineEmits<{
 
 const { preference: themePref, setTheme } = useTheme();
 const { size: textSize, font, setTextSize, setFont } = useTypography();
+
+// ——— Desktop notifications: the switch persists `eevee.notify`; the browser keeps the permission ———
+const notifyPermission = ref<NotificationPermission | "unsupported">(
+  notifySupported() ? Notification.permission : "unsupported",
+);
+const notifyOn = ref(notifyEnabled());
+
+const notifyHint = computed(() => {
+  if (notifyPermission.value === "unsupported") {
+    return t("This browser cannot show desktop notifications");
+  }
+  if (notifyPermission.value === "denied") {
+    return t("Notifications are blocked in the browser settings");
+  }
+  return t("New questions, blocked tickets and Router failures");
+});
+
+async function toggleNotify(): Promise<void> {
+  if (notifyOn.value) {
+    setNotifyEnabled(false);
+    notifyOn.value = false;
+    return;
+  }
+  if (notifyPermission.value === "default") {
+    notifyPermission.value = await Notification.requestPermission();
+  }
+  if (notifyPermission.value !== "granted") return;
+  setNotifyEnabled(true);
+  notifyOn.value = true;
+}
 
 function onSizeInput(event: Event): void {
   const size = readTextSize((event.target as HTMLInputElement).value);
@@ -454,6 +485,21 @@ const streamBadge = computed(() => {
                   :value="textSize"
                   @input="onSizeInput"
                   @blur="onSizeBlur"
+                />
+              </div>
+              <div class="row">
+                <div class="r-main">
+                  <span class="r-t">{{ t("Desktop notifications") }}</span>
+                  <span class="r-d">{{ notifyHint }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="switch"
+                  :class="{ on: notifyOn }"
+                  :disabled="notifyPermission === 'unsupported' || notifyPermission === 'denied'"
+                  :aria-pressed="notifyOn"
+                  :aria-label="t('Desktop notifications')"
+                  @click="toggleNotify"
                 />
               </div>
             </div>

@@ -33,12 +33,12 @@
 
 .to-latest {
   position: absolute;
-  bottom: 28px;
+  bottom: calc(28px * var(--ev-scale));
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: calc(32px * var(--ev-scale));
+  height: calc(32px * var(--ev-scale));
   border-radius: 999px;
   color: var(--ev-label-2);
   background-color: var(--ev-raised);
@@ -69,8 +69,7 @@
 
 .to-latest-enter-active,
 .to-latest-leave-active {
-  transition:
-    opacity var(--ev-fast) var(--ev-ease),
+  transition: opacity var(--ev-fast) var(--ev-ease),
     transform var(--ev-fast) var(--ev-ease);
 }
 
@@ -81,18 +80,18 @@
 }
 
 .chat-inner {
-  max-width: calc(var(--ev-chat-max) + 64px);
+  max-width: calc(var(--ev-chat-max) + calc(64px * var(--ev-scale)));
   margin: 0 auto;
-  padding: 20px 32px 40px;
+  padding: calc(20px * var(--ev-scale)) var(--ev-gutter) calc(40px * var(--ev-scale));
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
 }
 
 /* ——— Landing: an empty conversation centers its title over the composer ——— */
 .landing-hero {
   margin-top: auto;
-  padding: 0 32px 20px;
+  padding: 0 var(--ev-gutter) calc(20px * var(--ev-scale));
   text-align: center;
   animation: ev-rise var(--ev-slow) var(--ev-ease);
 }
@@ -114,8 +113,8 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 4px;
-  margin: 20px 0 10px;
+  gap: calc(4px * var(--ev-scale));
+  margin: calc(20px * var(--ev-scale)) 0 calc(10px * var(--ev-scale));
 }
 
 .u-wrap:first-child {
@@ -125,9 +124,9 @@
 .msg-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 16px;
-  padding: 0 4px;
+  gap: calc(6px * var(--ev-scale));
+  min-height: calc(16px * var(--ev-scale));
+  padding: 0 calc(4px * var(--ev-scale));
   font-size: var(--ev-footnote);
   line-height: 1.333;
   color: var(--ev-label-3);
@@ -135,8 +134,8 @@
 }
 
 .msg-user {
-  max-width: min(80%, 560px);
-  padding: 10px 16px;
+  max-width: min(80%, calc(560px * var(--ev-scale)));
+  padding: calc(10px * var(--ev-scale)) calc(16px * var(--ev-scale));
   border-radius: var(--ev-r-lg);
   corner-shape: squircle;
   font-size: var(--ev-body);
@@ -157,7 +156,7 @@
 }
 
 .msg-user .via {
-  margin-bottom: 4px;
+  margin-bottom: calc(4px * var(--ev-scale));
   font-size: var(--ev-footnote);
   line-height: 1.333;
   color: var(--ev-label-2);
@@ -178,11 +177,11 @@
 
 .msg-ai > * + *,
 .msg-ai blockquote > * + * {
-  margin-top: 10px;
+  margin-top: calc(10px * var(--ev-scale));
 }
 
 .msg-ai > * + :is(h1, h2, h3, h4, h5, h6) {
-  margin-top: 20px;
+  margin-top: calc(20px * var(--ev-scale));
 }
 
 .msg-ai :is(h1, h2, h3, h4, h5, h6) {
@@ -202,12 +201,12 @@
 
 .msg-ai ul,
 .msg-ai ol {
-  padding-left: 22px;
+  padding-left: calc(22px * var(--ev-scale));
 }
 
 .msg-ai li + li,
 .msg-ai li > * + * {
-  margin-top: 4px;
+  margin-top: calc(4px * var(--ev-scale));
 }
 
 .msg-ai li::marker {
@@ -222,12 +221,12 @@
 /* A task's box sits where its bullet would, centred on the first line. */
 .msg-ai .check {
   position: absolute;
-  top: calc((var(--ev-reading) * 1em - 14px) / 2);
-  left: -20px;
+  top: calc((var(--ev-reading) * 1em - calc(14px * var(--ev-scale))) / 2);
+  left: calc(-20px * var(--ev-scale));
   display: grid;
   place-items: center;
-  width: 14px;
-  height: 14px;
+  width: calc(14px * var(--ev-scale));
+  height: calc(14px * var(--ev-scale));
   border: 1px solid var(--ev-label-3);
   border-radius: 4px;
   corner-shape: squircle;
@@ -240,8 +239,8 @@
 }
 
 .msg-ai .check .ico {
-  width: 10px;
-  height: 10px;
+  width: calc(10px * var(--ev-scale));
+  height: calc(10px * var(--ev-scale));
 }
 
 .msg-ai strong {
@@ -266,13 +265,13 @@
 }
 
 .msg-ai blockquote {
-  padding-left: 12px;
+  padding-left: calc(12px * var(--ev-scale));
   border-left: 2px solid var(--ev-separator);
   color: var(--ev-label-2);
 }
 
 .msg-ai > hr {
-  margin-block: 18px;
+  margin-block: calc(18px * var(--ev-scale));
   border: 0;
   border-top: 1px solid var(--ev-separator);
 }
@@ -290,7 +289,7 @@
 
 .msg-ai th,
 .msg-ai td {
-  padding: 6px 16px 6px 0;
+  padding: calc(6px * var(--ev-scale)) calc(16px * var(--ev-scale)) calc(6px * var(--ev-scale)) 0;
   border-bottom: 1px solid var(--ev-separator);
   text-align: left;
   vertical-align: top;
@@ -320,8 +319,8 @@
 
 .msg-ai .code .copy {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: calc(6px * var(--ev-scale));
+  right: calc(6px * var(--ev-scale));
   opacity: 0;
   transition: opacity var(--ev-fast) var(--ev-ease);
 }
@@ -340,7 +339,7 @@
 .msg-ai code,
 .panel-b code,
 .rdetail code {
-  padding: 1px 5px;
+  padding: calc(1px * var(--ev-scale)) calc(5px * var(--ev-scale));
   border-radius: var(--ev-r-mini);
   font-size: 0.86em;
   background: var(--ev-code);
@@ -349,7 +348,7 @@
 .msg-ai pre,
 .panel-b pre {
   margin: 0;
-  padding: 12px 14px;
+  padding: calc(12px * var(--ev-scale)) calc(14px * var(--ev-scale));
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
   overflow-x: auto;
@@ -368,8 +367,8 @@
 /* A ticket reference reads as a reference rather than a link: a quiet chip. */
 .tref {
   display: inline;
-  padding: 1px 4px;
-  margin: 0 1px;
+  padding: calc(1px * var(--ev-scale)) calc(4px * var(--ev-scale));
+  margin: 0 calc(1px * var(--ev-scale));
   border-radius: 4px;
   font: 500 0.88em / inherit var(--ev-font-mono);
   color: var(--ev-label);
@@ -394,12 +393,12 @@
 .note {
   display: flex;
   align-items: center;
-  gap: 7px;
-  min-height: 26px;
+  gap: calc(7px * var(--ev-scale));
+  min-height: calc(26px * var(--ev-scale));
   width: fit-content;
   max-width: 100%;
-  padding: 3px 6px;
-  margin-left: -6px;
+  padding: calc(3px * var(--ev-scale)) calc(6px * var(--ev-scale));
+  margin-left: calc(-6px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
 }
@@ -457,8 +456,7 @@
   .proc::details-content {
     block-size: 0;
     overflow: hidden;
-    transition:
-      block-size var(--ev-regular) var(--ev-ease),
+    transition: block-size var(--ev-regular) var(--ev-ease),
       content-visibility var(--ev-regular) allow-discrete;
   }
 
@@ -490,23 +488,23 @@
 
 /* Consecutive gray lines read as one block. */
 :is(.proc, .note) + :is(.proc, .note) {
-  margin-top: -6px;
+  margin-top: calc(-6px * var(--ev-scale));
 }
 
 .steps {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin: 2px 0 6px 13px;
-  padding-left: 12px;
+  gap: calc(2px * var(--ev-scale));
+  margin: calc(2px * var(--ev-scale)) 0 calc(6px * var(--ev-scale)) calc(13px * var(--ev-scale));
+  padding-left: calc(12px * var(--ev-scale));
   box-shadow: inset 1px 0 0 var(--ev-separator);
 }
 
 .step-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 24px;
+  gap: calc(8px * var(--ev-scale));
+  min-height: calc(24px * var(--ev-scale));
   font-size: var(--ev-footnote);
   color: var(--ev-label-2);
 }
@@ -530,16 +528,16 @@
 }
 
 .step-note {
-  padding: 0 0 4px;
+  padding: 0 0 calc(4px * var(--ev-scale));
   font-size: var(--ev-footnote);
   color: var(--ev-label-3);
   white-space: pre-wrap;
 }
 
 .step-out {
-  margin: 2px 0 6px;
-  padding: 10px 12px;
-  max-height: 280px;
+  margin: calc(2px * var(--ev-scale)) 0 calc(6px * var(--ev-scale));
+  padding: calc(10px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  max-height: calc(280px * var(--ev-scale));
   overflow: auto;
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
@@ -551,16 +549,17 @@
 }
 
 .proc > .step-out,
+.proc > .tsheet,
 .proc > .diff {
-  margin-left: 13px;
+  margin-left: calc(13px * var(--ev-scale));
 }
 
 /* A failed turn: an alert with the way out. */
 .failure {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 8px 8px 12px;
+  gap: calc(10px * var(--ev-scale));
+  padding: calc(8px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(12px * var(--ev-scale));
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
   font-size: var(--ev-control);
@@ -574,13 +573,13 @@
 
 /* A reset: one line across the column. */
 .reset {
-  margin: 10px 0;
+  margin: calc(10px * var(--ev-scale)) 0;
 }
 
 .reset-line {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: calc(12px * var(--ev-scale));
   font-size: var(--ev-footnote);
   color: var(--ev-label-3);
 }
@@ -589,12 +588,12 @@
 .reset-line::after {
   content: "";
   flex: 1;
-  height: 1px;
+  height: calc(1px * var(--ev-scale));
   background: var(--ev-separator);
 }
 
 .reset-line button {
-  padding: 2px 6px;
+  padding: calc(2px * var(--ev-scale)) calc(6px * var(--ev-scale));
   border-radius: var(--ev-r-mini);
   color: inherit;
   transition: color var(--ev-fast) var(--ev-ease);
@@ -605,8 +604,8 @@
 }
 
 .handoff {
-  margin-top: 10px;
-  padding: 12px 14px;
+  margin-top: calc(10px * var(--ev-scale));
+  padding: calc(12px * var(--ev-scale)) calc(14px * var(--ev-scale));
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
   font-size: var(--ev-control);
@@ -620,15 +619,14 @@
 .idle-mark,
 .more-line {
   align-self: center;
-  padding: 4px 8px;
+  padding: calc(4px * var(--ev-scale)) calc(8px * var(--ev-scale));
   font-size: var(--ev-footnote);
   color: var(--ev-label-3);
 }
 
 .more-line {
   border-radius: var(--ev-r-sm);
-  transition:
-    color var(--ev-fast) var(--ev-ease),
+  transition: color var(--ev-fast) var(--ev-ease),
     background-color var(--ev-fast) var(--ev-ease);
 }
 
@@ -639,7 +637,7 @@
 
 /* ——— Report ——— */
 .report {
-  padding: 12px 14px;
+  padding: calc(12px * var(--ev-scale)) calc(14px * var(--ev-scale));
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
   font-size: var(--ev-control);
@@ -650,13 +648,13 @@
 .report-h {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(6px * var(--ev-scale));
   font-size: var(--ev-footnote);
   color: var(--ev-label-2);
 }
 
 .report-sum {
-  margin-top: 6px;
+  margin-top: calc(6px * var(--ev-scale));
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -664,8 +662,8 @@
 .kv {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 4px 12px;
-  margin: 10px 0 0;
+  gap: calc(4px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  margin: calc(10px * var(--ev-scale)) 0 0;
   font-size: var(--ev-footnote);
   line-height: 1.55;
 }
@@ -680,7 +678,7 @@
 }
 
 .report .proc {
-  margin-top: 6px;
+  margin-top: calc(6px * var(--ev-scale));
 }
 
 /* ——— Diff ——— */
@@ -690,9 +688,9 @@
 }
 
 .proc > .diff {
-  margin-top: 2px;
-  margin-bottom: 6px;
-  max-height: 320px;
+  margin-top: calc(2px * var(--ev-scale));
+  margin-bottom: calc(6px * var(--ev-scale));
+  max-height: calc(320px * var(--ev-scale));
   overflow: auto;
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
@@ -701,17 +699,17 @@
 
 .diff .ln {
   display: grid;
-  grid-template-columns: 40px 40px 18px minmax(0, 1fr);
+  grid-template-columns: calc(40px * var(--ev-scale)) calc(40px * var(--ev-scale)) calc(18px * var(--ev-scale)) minmax(0, 1fr);
   white-space: pre;
   min-width: max-content;
 }
 
 .diff.single .ln {
-  grid-template-columns: 40px 18px minmax(0, 1fr);
+  grid-template-columns: calc(40px * var(--ev-scale)) calc(18px * var(--ev-scale)) minmax(0, 1fr);
 }
 
 .diff .ln > span:not(:last-child) {
-  padding-right: 8px;
+  padding-right: calc(8px * var(--ev-scale));
   text-align: right;
   color: var(--ev-label-3);
   user-select: none;
@@ -723,7 +721,7 @@
 }
 
 .diff .ln > span:last-child {
-  padding-right: 14px;
+  padding-right: calc(14px * var(--ev-scale));
 }
 
 .diff .add {
@@ -743,19 +741,19 @@
 }
 
 .diff .hunk {
-  padding: 4px 14px;
+  padding: calc(4px * var(--ev-scale)) calc(14px * var(--ev-scale));
   color: var(--ev-label-3);
   background: color-mix(in oklab, var(--ev-label) 3%, transparent);
 }
 
 .file-diff + .file-diff {
-  margin-top: 12px;
+  margin-top: calc(12px * var(--ev-scale));
 }
 
 /* ——— Dock & composer ——— */
 .dock {
   flex: none;
-  padding: 0 32px 16px;
+  padding: 0 var(--ev-gutter) calc(16px * var(--ev-scale));
 }
 
 .dock-inner {
@@ -763,11 +761,11 @@
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
 }
 
 .dock-note {
-  padding: 6px 0;
+  padding: calc(6px * var(--ev-scale)) 0;
   text-align: center;
   font-size: var(--ev-footnote);
   color: var(--ev-label-3);
@@ -776,8 +774,8 @@
 .composer {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 10px 10px 16px;
+  gap: calc(6px * var(--ev-scale));
+  padding: calc(12px * var(--ev-scale)) calc(10px * var(--ev-scale)) calc(10px * var(--ev-scale)) calc(16px * var(--ev-scale));
   border-radius: var(--ev-r-lg);
   corner-shape: squircle;
   background: var(--ev-card);
@@ -793,9 +791,9 @@
 .composer textarea {
   display: block;
   width: 100%;
-  min-height: 44px;
-  max-height: 220px;
-  padding: 0 6px 0 0;
+  min-height: calc(44px * var(--ev-scale));
+  max-height: calc(220px * var(--ev-scale));
+  padding: 0 calc(6px * var(--ev-scale)) 0 0;
   border: 0;
   resize: none;
   background: transparent;
@@ -816,7 +814,7 @@
 .c-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(6px * var(--ev-scale));
   min-height: var(--ev-h-sm);
   cursor: default;
 }
@@ -825,25 +823,24 @@
 .run-config {
   position: relative;
   min-width: 0;
-  margin-left: -4px;
+  margin-left: calc(-4px * var(--ev-scale));
 }
 
 .run-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(6px * var(--ev-scale));
   min-width: 0;
   max-width: 100%;
   height: var(--ev-h-sm);
-  padding: 0 8px;
+  padding: 0 calc(8px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
   font-size: var(--ev-control);
   font-weight: 400;
   white-space: nowrap;
   color: var(--ev-label-2);
-  transition:
-    background-color var(--ev-fast) var(--ev-ease),
+  transition: background-color var(--ev-fast) var(--ev-ease),
     color var(--ev-fast) var(--ev-ease);
 }
 
@@ -879,7 +876,7 @@
 
 /* Its menu: a row per setting, the current value at the end, the choices in a submenu beside it. */
 .run-menu {
-  min-width: 240px;
+  min-width: calc(240px * var(--ev-scale));
 }
 
 .run-item {
@@ -887,7 +884,7 @@
 }
 
 .run-menu > .run-item > .pop-row {
-  height: 32px;
+  height: calc(32px * var(--ev-scale));
 }
 
 .run-menu > .run-item > .pop-row > .ico {
@@ -898,7 +895,7 @@
   min-width: 0;
   max-width: 10rem;
   margin-left: auto;
-  padding-left: 16px;
+  padding-left: calc(16px * var(--ev-scale));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -913,8 +910,7 @@
   height: var(--ev-h-sm);
   flex: none;
   border-radius: 50%;
-  transition:
-    background-color var(--ev-fast) var(--ev-ease),
+  transition: background-color var(--ev-fast) var(--ev-ease),
     color var(--ev-fast) var(--ev-ease),
     box-shadow var(--ev-fast) var(--ev-ease),
     transform var(--ev-fast) var(--ev-ease);
@@ -955,7 +951,7 @@
 }
 
 .composer-error {
-  padding: 0 4px;
+  padding: 0 calc(4px * var(--ev-scale));
   font-size: var(--ev-footnote);
   color: var(--ev-bad-ink);
 }
@@ -974,9 +970,9 @@
 .qcard-h {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 44px;
-  padding: 0 10px 0 20px;
+  gap: calc(8px * var(--ev-scale));
+  height: calc(44px * var(--ev-scale));
+  padding: 0 calc(10px * var(--ev-scale)) 0 calc(20px * var(--ev-scale));
   font-size: var(--ev-footnote);
   font-weight: 500;
   color: var(--ev-label-2);
@@ -985,7 +981,7 @@
 .pager {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: calc(2px * var(--ev-scale));
   font-size: var(--ev-footnote);
   color: var(--ev-label-3);
   font-variant-numeric: tabular-nums;
@@ -994,8 +990,8 @@
 .pager button {
   display: inline-grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: calc(24px * var(--ev-scale));
+  height: calc(24px * var(--ev-scale));
   border-radius: var(--ev-r-mini);
   color: var(--ev-label-2);
 }
@@ -1008,21 +1004,21 @@
 .qbody {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  max-height: min(52vh, 460px);
+  gap: calc(16px * var(--ev-scale));
+  max-height: min(52vh, calc(460px * var(--ev-scale)));
   overflow-y: auto;
-  padding: 0 20px 4px;
+  padding: 0 calc(20px * var(--ev-scale)) calc(4px * var(--ev-scale));
 }
 
 .qitem {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
 }
 
 .qitem-t {
   display: flex;
-  gap: 6px;
+  gap: calc(6px * var(--ev-scale));
   font-size: var(--ev-body);
   font-weight: 500;
   line-height: 1.43;
@@ -1037,17 +1033,17 @@
 .opts-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: calc(2px * var(--ev-scale));
 }
 
 .opt,
 .opt-more {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 34px;
-  padding: 6px 10px;
-  margin: 0 -10px;
+  gap: calc(10px * var(--ev-scale));
+  min-height: calc(34px * var(--ev-scale));
+  padding: calc(6px * var(--ev-scale)) calc(10px * var(--ev-scale));
+  margin: 0 calc(-10px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
   font-size: var(--ev-body);
@@ -1072,8 +1068,8 @@
 
 .radio {
   position: relative;
-  width: 16px;
-  height: 16px;
+  width: calc(16px * var(--ev-scale));
+  height: calc(16px * var(--ev-scale));
   flex: none;
   border-radius: 50%;
   background: var(--ev-well);
@@ -1090,14 +1086,14 @@
 .opt.on .radio::after {
   content: "";
   position: absolute;
-  inset: 5px;
+  inset: calc(5px * var(--ev-scale));
   border-radius: 50%;
   background: var(--ev-page);
 }
 
 .rec {
   margin-left: auto;
-  padding: 2px 6px;
+  padding: calc(2px * var(--ev-scale)) calc(6px * var(--ev-scale));
   border-radius: var(--ev-r-mini);
   font-size: var(--ev-footnote);
   font-weight: 500;
@@ -1108,14 +1104,14 @@
 
 .opt-more {
   color: var(--ev-label-2);
-  padding-left: 36px;
+  padding-left: calc(36px * var(--ev-scale));
 }
 
 .opt-input {
   width: 100%;
   height: var(--ev-h-lg);
-  margin-top: 4px;
-  padding: 0 12px;
+  margin-top: calc(4px * var(--ev-scale));
+  padding: 0 calc(12px * var(--ev-scale));
   border: 0;
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
@@ -1131,7 +1127,7 @@
 }
 
 .why {
-  padding-left: 26px;
+  padding-left: calc(26px * var(--ev-scale));
   font-size: var(--ev-footnote);
   line-height: 1.55;
   color: var(--ev-label-2);
@@ -1141,16 +1137,16 @@
 .qfoot {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 12px 12px 12px 20px;
+  gap: calc(6px * var(--ev-scale));
+  padding: calc(12px * var(--ev-scale)) calc(12px * var(--ev-scale)) calc(12px * var(--ev-scale)) calc(20px * var(--ev-scale));
 }
 
 .qstrip {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 10px 0 14px;
+  gap: calc(8px * var(--ev-scale));
+  height: calc(36px * var(--ev-scale));
+  padding: 0 calc(10px * var(--ev-scale)) 0 calc(14px * var(--ev-scale));
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
   font-size: var(--ev-control);
@@ -1171,13 +1167,13 @@
   color: var(--ev-user-ink);
 }
 
-@container vp (max-width: 760px) {
+@container vp (max-width: 54.2857em) {
   .chat-inner {
-    padding: 16px 16px 32px;
+    padding: calc(16px * var(--ev-scale)) calc(16px * var(--ev-scale)) calc(32px * var(--ev-scale));
   }
 
   .dock {
-    padding: 0 12px 12px;
+    padding: 0 calc(12px * var(--ev-scale)) calc(12px * var(--ev-scale));
   }
 
   .msg-user {
@@ -1187,10 +1183,314 @@
 
 .diffstat {
   display: inline-flex;
-  gap: 5px;
+  gap: calc(5px * var(--ev-scale));
   font: var(--ev-footnote) / 1 var(--ev-font-mono);
 }
 
 .header > .back-btn {
-  margin-left: -10px;
+  margin-left: calc(-10px * var(--ev-scale));
+}
+
+/* ——— Message actions: copy the raw text, and when it arrived ——— */
+.msg-actions {
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--ev-scale));
+  min-height: calc(20px * var(--ev-scale));
+  margin-top: calc(2px * var(--ev-scale));
+  padding: 0 calc(4px * var(--ev-scale));
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+  opacity: 0;
+  transition: opacity var(--ev-fast) var(--ev-ease);
+}
+
+.msg-act {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ev-scale));
+  padding: calc(1px * var(--ev-scale)) calc(5px * var(--ev-scale));
+  margin-left: calc(-5px * var(--ev-scale));
+  border-radius: var(--ev-r-mini);
+  color: var(--ev-label-3);
+  transition: color var(--ev-fast) var(--ev-ease),
+    background-color var(--ev-fast) var(--ev-ease);
+}
+
+.msg-act:hover {
+  color: var(--ev-label);
+  background: var(--ev-hover);
+}
+
+.msg-act:focus-visible {
+  box-shadow: var(--ev-ring-in);
+}
+
+.msg-when {
+  font-variant-numeric: tabular-nums;
+}
+
+.turn:hover .msg-actions,
+.turn:focus-within .msg-actions,
+.u-wrap:hover .msg-actions,
+.u-wrap:focus-within .msg-actions,
+.msg-actions:focus-within {
+  opacity: 1;
+}
+
+/* Touch has no hover: the newest turn's row stays out, the rest stay tidy. */
+@media (hover: none) {
+  .msg-actions.latest {
+    opacity: 1;
+  }
+}
+
+/* ——— A finished turn folds to one quiet line ——— */
+.worked-h {
+  display: flex;
+  align-items: center;
+  gap: calc(7px * var(--ev-scale));
+  min-height: calc(26px * var(--ev-scale));
+  width: fit-content;
+  max-width: 100%;
+  padding: calc(3px * var(--ev-scale)) calc(6px * var(--ev-scale));
+  margin-left: calc(-6px * var(--ev-scale));
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+  font-size: var(--ev-control);
+  line-height: 1.385;
+  color: var(--ev-label-2);
+  text-align: left;
+  transition: color var(--ev-fast) var(--ev-ease);
+}
+
+.worked-h:hover,
+.worked.open .worked-h {
+  color: var(--ev-label);
+}
+
+.worked-h:focus-visible {
+  box-shadow: var(--ev-ring-in);
+}
+
+.worked-c {
+  color: var(--ev-label-3);
+}
+
+/* The chevron trails the line and appears only while the pointer is over it. */
+.worked-h .chev {
+  color: var(--ev-label-3);
+  opacity: 0;
+  transition: opacity var(--ev-fast) var(--ev-ease),
+    transform var(--ev-fast) var(--ev-ease);
+}
+
+.worked:hover .chev,
+.worked-h:focus-visible .chev,
+.worked.open .chev {
+  opacity: 1;
+}
+
+.worked.open .chev {
+  transform: rotate(90deg);
+}
+
+@media (hover: none) {
+  .worked-h .chev {
+    opacity: 1;
+  }
+}
+
+:is(.proc, .note, .worked) + :is(.proc, .note, .worked) {
+  margin-top: calc(-6px * var(--ev-scale));
+}
+
+/* ——— A step row opens into one detail sheet ——— */
+button.step-row {
+  width: 100%;
+  border-radius: var(--ev-r-mini);
+  text-align: left;
+  transition: background-color var(--ev-fast) var(--ev-ease);
+}
+
+button.step-row:hover {
+  background: var(--ev-hover);
+}
+
+button.step-row:focus-visible {
+  box-shadow: var(--ev-ring-in);
+}
+
+.tsheet {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--ev-scale));
+  margin: calc(4px * var(--ev-scale)) 0 calc(8px * var(--ev-scale));
+  padding: calc(10px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  background: var(--ev-card);
+  box-shadow: var(--ev-shadow-card);
+  animation: ev-fade var(--ev-regular) var(--ev-ease);
+}
+
+.tsheet-label,
+.tsheet :is(.shiki, .hcode-plain) {
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  font: var(--ev-footnote) / 1.6 var(--ev-font-mono);
+  color: var(--ev-label);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: none;
+}
+
+.tsheet .step-out {
+  margin: 0;
+}
+
+.tsheet-meta {
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+}
+
+/* Shiki paints with `--shiki-*` vars (defaultColor: false); our pre supplies the frame. */
+.shiki,
+.shiki span {
+  color: var(--shiki-light);
+}
+
+[data-theme="dark"] .shiki,
+[data-theme="dark"] .shiki span {
+  color: var(--shiki-dark);
+}
+
+/* ——— Conversation outline: a slim tick rail at the chat's right edge ——— */
+.outline-dock {
+  position: sticky;
+  top: 50%;
+  z-index: 6;
+  height: 0;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.outline {
+  position: relative;
+  width: calc(30px * var(--ev-scale));
+  height: min(calc(300px * var(--ev-scale)), 42vh);
+  transform: translateY(-50%);
+  margin-right: calc(2px * var(--ev-scale));
+  pointer-events: auto;
+}
+
+.outline-ticks {
+  position: absolute;
+  inset: 0;
+}
+
+.tick {
+  position: absolute;
+  right: calc(6px * var(--ev-scale));
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: calc(22px * var(--ev-scale));
+  height: calc(12px * var(--ev-scale));
+  padding: 0;
+  transform: translateY(-50%);
+}
+
+.tick::after {
+  content: "";
+  width: calc(10px * var(--ev-scale));
+  height: calc(2px * var(--ev-scale));
+  border-radius: 1px;
+  background: var(--ev-label-3);
+  transition: width var(--ev-fast) var(--ev-ease),
+    background-color var(--ev-fast) var(--ev-ease);
+}
+
+.tick:hover::after,
+.tick:focus-visible::after {
+  width: calc(14px * var(--ev-scale));
+  background: var(--ev-label-2);
+}
+
+.tick.on::after {
+  width: calc(16px * var(--ev-scale));
+  background: var(--ev-label);
+}
+
+/* The rail needs a gutter beside the 720px column; hide it when they would touch. */
+@container main (max-width: 57.1429em) {
+  .outline-dock {
+    display: none;
+  }
+}
+
+.outline-list {
+  top: 50%;
+  right: calc(100% + calc(4px * var(--ev-scale)));
+  left: auto;
+  bottom: auto;
+  width: min(calc(300px * var(--ev-scale)), calc(100vw - calc(80px * var(--ev-scale))));
+  max-height: calc(320px * var(--ev-scale));
+  overflow-y: auto;
+  transform: translateY(-50%);
+  animation: ev-fade var(--ev-regular) var(--ev-ease);
+}
+
+.outline-list .o-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ——— Quote a selection into the composer ——— */
+.chat {
+  position: relative;
+}
+
+.quote-btn {
+  position: absolute;
+  z-index: 7;
+  transform: translateX(-50%);
+  padding: calc(5px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  border-radius: 999px;
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+  color: var(--ev-label);
+  background-color: var(--ev-raised);
+  background-image: var(--ev-sheen-raised);
+  box-shadow: var(--ev-shadow-float);
+  animation: ev-fade var(--ev-fast) var(--ev-ease);
+}
+
+.quote-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ev-shadow-float), var(--ev-ring);
+}
+
+/* ——— @ticket mentions in the composer ——— */
+.composer {
+  position: relative;
+}
+
+.mention-pop {
+  width: min(calc(360px * var(--ev-scale)), 100%);
+}
+
+.mention-pop .mention-id {
+  flex: none;
+  font: var(--ev-footnote) / 1 var(--ev-font-mono);
+  color: var(--ev-label-2);
+}
+
+.mention-pop .mention-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--ev-body);
+  color: var(--ev-label);
 }

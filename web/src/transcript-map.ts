@@ -63,6 +63,14 @@ export type DispatchAction = {
 
 export type EventKind = "report" | "answer" | "intervene" | "deliver" | "job" | "notice";
 
+/** What a folded turn reports: tool steps, commands, files edited and tickets dispatched. */
+export type WorkedCounts = {
+  tools: number;
+  commands: number;
+  files: number;
+  dispatched: number;
+};
+
 export type TranscriptDisplayItem =
   | { kind: "more"; key: string }
   | { kind: "gap"; key: string; gap: GapItem }
@@ -121,7 +129,15 @@ export type TranscriptDisplayItem =
     }
   | { kind: "qa"; key: string; questionId?: string; question: string; answer: string; at?: number }
   | { kind: "failure"; key: string; reason: string; text: string }
-  | { kind: "idle"; key: string; text: string };
+  | { kind: "idle"; key: string; text: string }
+  | {
+      /** A finished turn's folded work; `items` holds the lines it hides until expanded. */
+      kind: "worked";
+      key: string;
+      items: TranscriptDisplayItem[];
+      ms?: number;
+      counts: WorkedCounts;
+    };
 
 type EventItem = Extract<TranscriptDisplayItem, { kind: "event" }>;
 type EventFields = Partial<

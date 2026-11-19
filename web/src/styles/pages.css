@@ -7,9 +7,9 @@
 }
 
 .page-inner {
-  max-width: 760px;
+  max-width: calc(760px * var(--ev-scale));
   margin: 0 auto;
-  padding: 8px 32px 48px;
+  padding: calc(8px * var(--ev-scale)) var(--ev-gutter) calc(48px * var(--ev-scale));
 }
 
 /* ——— Settings ——— */
@@ -17,22 +17,24 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 196px minmax(0, 1fr);
+  grid-template-columns: clamp(calc(240px * var(--ev-scale)), 24%, calc(380px * var(--ev-scale)))
+    minmax(0, calc(1200px * var(--ev-scale)));
+  justify-content: center;
 }
 
 .set-nav {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 4px 8px 16px 12px;
+  gap: calc(1px * var(--ev-scale));
+  padding: calc(4px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(16px * var(--ev-scale)) calc(12px * var(--ev-scale));
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 9px;
-  height: 32px;
-  padding: 0 10px;
+  gap: calc(9px * var(--ev-scale));
+  height: var(--ev-h-md);
+  padding: 0 calc(10px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
   font-size: var(--ev-body);
@@ -63,19 +65,19 @@
 }
 
 .set-inner {
-  max-width: 720px;
-  padding: 4px 32px 56px 24px;
+  max-width: calc(760px * var(--ev-scale));
+  padding: calc(4px * var(--ev-scale)) var(--ev-gutter) calc(56px * var(--ev-scale)) calc(24px * var(--ev-scale));
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: calc(12px * var(--ev-scale));
 }
 
 .set-head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 32px;
-  margin-bottom: 8px;
+  gap: calc(12px * var(--ev-scale));
+  min-height: var(--ev-h-md);
+  margin-bottom: calc(8px * var(--ev-scale));
 }
 
 .set-head h2 {
@@ -88,9 +90,9 @@
 .section-t {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 20px;
-  min-height: 28px;
+  gap: calc(8px * var(--ev-scale));
+  margin-top: calc(20px * var(--ev-scale));
+  min-height: var(--ev-h-sm);
 }
 
 .section-t h3 {
@@ -111,10 +113,10 @@
 .model-pick {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  width: min(260px, 46%);
+  gap: calc(8px * var(--ev-scale));
+  width: min(calc(260px * var(--ev-scale)), 46%);
   height: var(--ev-h-md);
-  padding: 0 10px;
+  padding: 0 calc(10px * var(--ev-scale));
   border-radius: var(--ev-r-md);
   corner-shape: squircle;
   font: 500 var(--ev-footnote) / 1 var(--ev-font-mono);
@@ -143,12 +145,12 @@
 }
 
 .level-slot > .pop {
-  top: calc(100% + 4px);
+  top: calc(100% + calc(4px * var(--ev-scale)));
   left: 0;
 }
 
 .model-pick.level {
-  width: 104px;
+  width: calc(104px * var(--ev-scale));
   font-family: var(--ev-font);
   font-size: var(--ev-control);
 }
@@ -162,8 +164,8 @@
 }
 
 .model-row-ctrl > .pop {
-  top: calc(100% - 6px);
-  right: 12px;
+  top: calc(100% - calc(6px * var(--ev-scale)));
+  right: calc(12px * var(--ev-scale));
 }
 
 /* Role capabilities: a segmented picker chooses the role; its panel lists what it may use. */
@@ -180,8 +182,8 @@
 /* A slim heading row inside a panel, over the group of rows it names. */
 .row.sect {
   min-height: 0;
-  padding-top: 14px;
-  padding-bottom: 4px;
+  padding-top: calc(14px * var(--ev-scale));
+  padding-bottom: calc(4px * var(--ev-scale));
 }
 
 .row.sect .r-t {
@@ -192,18 +194,18 @@
 .r-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: calc(4px * var(--ev-scale));
 }
 
 .input.turns {
-  width: 76px;
+  width: calc(76px * var(--ev-scale));
   text-align: center;
 }
 
 .status-text {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: calc(7px * var(--ev-scale));
   font-size: var(--ev-footnote);
   color: var(--ev-label-2);
   white-space: nowrap;
@@ -221,7 +223,9 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: clamp(calc(240px * var(--ev-scale)), 24%, calc(380px * var(--ev-scale)))
+    minmax(0, calc(1200px * var(--ev-scale)));
+  justify-content: center;
 }
 
 .split-list {
@@ -229,7 +233,7 @@
   flex-direction: column;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 8px 16px 12px;
+  padding: 0 calc(8px * var(--ev-scale)) calc(16px * var(--ev-scale)) calc(12px * var(--ev-scale));
 }
 
 .list-head {
@@ -238,25 +242,25 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 4px 0 10px;
+  gap: calc(6px * var(--ev-scale));
+  padding: calc(4px * var(--ev-scale)) 0 calc(10px * var(--ev-scale));
   background: var(--ev-page);
 }
 
 .list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: calc(1px * var(--ev-scale));
 }
 
 .commit {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-columns: calc(22px * var(--ev-scale)) minmax(0, 1fr);
   align-items: center;
-  column-gap: 10px;
-  row-gap: 2px;
+  column-gap: calc(10px * var(--ev-scale));
+  row-gap: calc(2px * var(--ev-scale));
   width: 100%;
-  padding: 8px 10px;
+  padding: calc(8px * var(--ev-scale)) calc(10px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
   text-align: left;
@@ -279,8 +283,8 @@
   grid-row: span 2;
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: calc(22px * var(--ev-scale));
+  height: calc(22px * var(--ev-scale));
   border-radius: 50%;
   color: var(--ev-label-2);
   background: color-mix(in oklab, var(--ev-label) 7%, transparent);
@@ -313,7 +317,7 @@
 .commit .meta {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: calc(5px * var(--ev-scale));
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -332,18 +336,24 @@
 }
 
 .detail-inner {
-  max-width: 860px;
-  padding: 4px 32px 48px 20px;
+  padding: calc(4px * var(--ev-scale)) var(--ev-gutter) calc(48px * var(--ev-scale)) calc(20px * var(--ev-scale));
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: calc(16px * var(--ev-scale));
   animation: ev-fade var(--ev-regular) var(--ev-ease);
+}
+
+/* The detail fills its column: diffs and file views take the full width while the head and
+   the prose around them keep a readable measure. */
+.detail-inner > .detail-head,
+.detail-inner > .hint {
+  max-width: calc(760px * var(--ev-scale));
 }
 
 .detail-head {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: calc(12px * var(--ev-scale));
 }
 
 .detail-head h2 {
@@ -360,9 +370,9 @@
 .detail-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
   flex-wrap: wrap;
-  margin-top: 6px;
+  margin-top: calc(6px * var(--ev-scale));
   font-size: var(--ev-footnote);
   color: var(--ev-label-3);
 }
@@ -380,8 +390,8 @@
 .stats > div {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 16px 18px;
+  gap: calc(4px * var(--ev-scale));
+  padding: calc(16px * var(--ev-scale)) calc(18px * var(--ev-scale));
 }
 
 .stats > div + div {
@@ -401,7 +411,7 @@
 }
 
 .usage-row {
-  min-height: 44px;
+  min-height: calc(44px * var(--ev-scale));
 }
 
 .usage-row .mono {
@@ -420,7 +430,7 @@
 }
 
 .usage-row .cost {
-  width: 72px;
+  width: calc(72px * var(--ev-scale));
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -428,7 +438,7 @@
 .conv-title {
   display: inline-flex;
   align-items: baseline;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
   min-width: 0;
   max-width: 100%;
 }
@@ -440,7 +450,7 @@
 }
 
 .inbar {
-  height: 4px;
+  height: calc(4px * var(--ev-scale));
   border-radius: 2px;
   background: var(--ev-tray);
   overflow: hidden;
@@ -522,20 +532,20 @@ a.row .go {
 .pv-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: calc(12px * var(--ev-scale));
 }
 
 .pv-form .section-t {
-  margin-top: 8px;
+  margin-top: calc(8px * var(--ev-scale));
 }
 
 .f-row {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
+  grid-template-columns: calc(120px * var(--ev-scale)) minmax(0, 1fr);
   align-items: center;
-  gap: 8px 16px;
-  min-height: 52px;
-  padding: 10px 16px;
+  gap: calc(8px * var(--ev-scale)) calc(16px * var(--ev-scale));
+  min-height: calc(52px * var(--ev-scale));
+  padding: calc(10px * var(--ev-scale)) calc(16px * var(--ev-scale));
 }
 
 .f-row.top {
@@ -544,7 +554,7 @@ a.row .go {
 
 .f-row.top > label:not(.toggle),
 .f-row.top > .f-label {
-  padding-top: 6px;
+  padding-top: calc(6px * var(--ev-scale));
 }
 
 .f-row + .f-row {
@@ -561,14 +571,14 @@ a.row .go {
 .f-ctrl {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: calc(6px * var(--ev-scale));
   min-width: 0;
 }
 
 .f-inline {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
 }
 
 .f-note {
@@ -588,39 +598,39 @@ a.row .go {
 }
 
 .f-row .seg + .f-note {
-  margin-top: 2px;
+  margin-top: calc(2px * var(--ev-scale));
 }
 
 .toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
   font-size: var(--ev-control);
   color: var(--ev-label);
   cursor: pointer;
 }
 
 select.input {
-  padding-right: 28px;
+  padding-right: calc(28px * var(--ev-scale));
 }
 
 textarea.input {
   height: auto;
-  min-height: 72px;
-  padding: 8px 10px;
+  min-height: calc(72px * var(--ev-scale));
+  padding: calc(8px * var(--ev-scale)) calc(10px * var(--ev-scale));
   line-height: 1.5;
   resize: vertical;
 }
 
 .input.short {
-  width: 96px;
+  width: calc(96px * var(--ev-scale));
 }
 
 .f-adv > summary {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 0;
+  gap: calc(6px * var(--ev-scale));
+  padding: calc(4px * var(--ev-scale)) 0;
   font-size: var(--ev-control);
   font-weight: 600;
   cursor: pointer;
@@ -633,8 +643,8 @@ textarea.input {
 
 .f-adv > summary::before {
   content: "";
-  width: 6px;
-  height: 6px;
+  width: calc(6px * var(--ev-scale));
+  height: calc(6px * var(--ev-scale));
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   transform: rotate(-45deg);
@@ -646,7 +656,7 @@ textarea.input {
 }
 
 .f-adv > .rows {
-  margin-top: 8px;
+  margin-top: calc(8px * var(--ev-scale));
 }
 
 /* The form's actions stay in reach at the bottom of the page while it scrolls. */
@@ -656,9 +666,9 @@ textarea.input {
   z-index: 2;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-  padding: 12px 0;
+  gap: calc(8px * var(--ev-scale));
+  margin-top: calc(4px * var(--ev-scale));
+  padding: calc(12px * var(--ev-scale)) 0;
   background: var(--ev-page);
   box-shadow: 0 -1px 0 var(--ev-separator);
 }
@@ -672,14 +682,14 @@ textarea.input {
 .kv {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: calc(6px * var(--ev-scale));
   min-width: 0;
 }
 
 .kv-row {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto;
-  gap: 6px;
+  gap: calc(6px * var(--ev-scale));
   align-items: center;
 }
 
@@ -693,8 +703,8 @@ textarea.input {
 }
 
 .m-head {
-  min-height: 44px;
-  padding: 4px 8px 4px 10px;
+  min-height: calc(44px * var(--ev-scale));
+  padding: calc(4px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(4px * var(--ev-scale)) calc(10px * var(--ev-scale));
 }
 
 .m-toggle {
@@ -702,9 +712,9 @@ textarea.input {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 6px;
+  gap: calc(8px * var(--ev-scale));
+  height: calc(36px * var(--ev-scale));
+  padding: 0 calc(6px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
   text-align: left;
   font-size: var(--ev-control);
@@ -727,22 +737,22 @@ textarea.input {
 .m-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 16px;
-  padding: 4px 16px 16px 36px;
+  gap: calc(12px * var(--ev-scale)) calc(16px * var(--ev-scale));
+  padding: calc(4px * var(--ev-scale)) calc(16px * var(--ev-scale)) calc(16px * var(--ev-scale)) calc(36px * var(--ev-scale));
   animation: ev-fade var(--ev-regular) var(--ev-ease);
 }
 
 .m-fields .toggles {
   grid-column: 1 / -1;
   flex-direction: row;
-  gap: 24px;
+  gap: calc(24px * var(--ev-scale));
 }
 
 .m-fields .prices {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  gap: calc(6px * var(--ev-scale));
   margin: 0;
   padding: 0;
   border: 0;
@@ -750,7 +760,7 @@ textarea.input {
 }
 
 .m-fields .prices > legend {
-  margin-bottom: 6px;
+  margin-bottom: calc(6px * var(--ev-scale));
   padding: 0;
   font-size: var(--ev-footnote);
   font-weight: 500;
@@ -762,7 +772,7 @@ textarea.input {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(10px * var(--ev-scale));
   min-width: 0;
 }
 
@@ -777,8 +787,8 @@ textarea.input {
 }
 
 .m-ref-head {
-  gap: 8px;
-  padding: 6px 8px 6px 12px;
+  gap: calc(8px * var(--ev-scale));
+  padding: calc(6px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(6px * var(--ev-scale)) calc(12px * var(--ev-scale));
 }
 
 .m-ref-head > .input {
@@ -801,8 +811,8 @@ textarea.input {
 }
 
 .m-ref-foot {
-  gap: 8px;
-  padding: 8px 12px;
+  gap: calc(8px * var(--ev-scale));
+  padding: calc(8px * var(--ev-scale)) calc(12px * var(--ev-scale));
 }
 
 /* ——— Picking from an endpoint's model list ——— */
@@ -811,18 +821,18 @@ textarea.input {
 }
 
 .probe-head {
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
 }
 
 .probe-list {
-  max-height: 320px;
+  max-height: calc(320px * var(--ev-scale));
   overflow-y: auto;
   box-shadow: inset 0 1px 0 var(--ev-separator);
 }
 
 .row.pick {
-  min-height: 44px;
-  padding: 6px 16px;
+  min-height: calc(44px * var(--ev-scale));
+  padding: calc(6px * var(--ev-scale)) calc(16px * var(--ev-scale));
   cursor: pointer;
 }
 
@@ -837,18 +847,18 @@ textarea.input {
 
 .row.pick > input {
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: calc(16px * var(--ev-scale));
+  height: calc(16px * var(--ev-scale));
   accent-color: var(--ev-accent);
 }
 
 .paste {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
 }
 
-@container vp (max-width: 900px) {
+@container vp (max-width: 64.2857em) {
   .settings {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
@@ -857,7 +867,7 @@ textarea.input {
   .set-nav {
     flex-direction: row;
     overflow-x: auto;
-    padding: 0 12px 8px;
+    padding: 0 calc(12px * var(--ev-scale)) calc(8px * var(--ev-scale));
   }
 
   .nav-item {
@@ -865,11 +875,11 @@ textarea.input {
   }
 
   .set-inner {
-    padding: 4px 16px 48px;
+    padding: calc(4px * var(--ev-scale)) calc(16px * var(--ev-scale)) calc(48px * var(--ev-scale));
   }
 }
 
-@container vp (max-width: 620px) {
+@container vp (max-width: 44.2857em) {
   .f-row {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -881,7 +891,7 @@ textarea.input {
 
   .m-fields {
     grid-template-columns: minmax(0, 1fr);
-    padding-left: 16px;
+    padding-left: calc(16px * var(--ev-scale));
   }
 
   .m-fields .prices {
@@ -889,7 +899,7 @@ textarea.input {
   }
 }
 
-@container vp (max-width: 760px) {
+@container vp (max-width: 54.2857em) {
   .split {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -901,15 +911,15 @@ textarea.input {
 
   .split-back {
     display: inline-flex;
-    margin: 0 0 8px 12px;
+    margin: 0 0 calc(8px * var(--ev-scale)) calc(12px * var(--ev-scale));
   }
 
   .detail-inner {
-    padding: 4px 16px 40px;
+    padding: calc(4px * var(--ev-scale)) calc(16px * var(--ev-scale)) calc(40px * var(--ev-scale));
   }
 
   .page-inner {
-    padding: 8px 16px 40px;
+    padding: calc(8px * var(--ev-scale)) calc(16px * var(--ev-scale)) calc(40px * var(--ev-scale));
   }
 
   .stats {
@@ -921,8 +931,7 @@ textarea.input {
   }
 
   .stats > div:nth-child(4) {
-    box-shadow:
-      inset 1px 0 0 var(--ev-separator),
+    box-shadow: inset 1px 0 0 var(--ev-separator),
       inset 0 1px 0 var(--ev-separator);
   }
 }
@@ -932,5 +941,74 @@ textarea.input {
 }
 
 .table .cost-cell {
-  width: 96px;
+  width: calc(96px * var(--ev-scale));
+}
+
+/* ——— Home: the Now page ——— */
+.page-inner.home {
+  max-width: calc(1100px * var(--ev-scale));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: calc(20px * var(--ev-scale)) calc(24px * var(--ev-scale));
+  align-content: start;
+}
+
+.home-block {
+  min-width: 0;
+}
+
+/* Needs you reads full width; Running and Recently done split the row below it. */
+.home-block:first-child {
+  grid-column: 1 / -1;
+}
+
+.home-h {
+  margin: calc(4px * var(--ev-scale)) calc(4px * var(--ev-scale)) calc(8px * var(--ev-scale));
+}
+
+.home-h h2 {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ev-scale));
+  font-size: var(--ev-headline);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ev-label);
+}
+
+.home-h .wgrid {
+  margin-inline-start: calc(1px * var(--ev-scale));
+}
+
+.home-h p {
+  margin-top: calc(2px * var(--ev-scale));
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+}
+
+/* A flex `.r-t` never ellipsizes its bare text; Home titles are one line of text, so block it. */
+.home .r-t {
+  display: block;
+}
+
+/* The identity dot inline before a project name inside a row detail. */
+.h-dot {
+  width: calc(9px * var(--ev-scale));
+  height: calc(9px * var(--ev-scale));
+  margin-right: calc(5px * var(--ev-scale));
+  vertical-align: -1px;
+}
+
+/* A row's relative time on its right edge. */
+.h-when {
+  flex: none;
+  font-size: var(--ev-footnote);
+  font-variant-numeric: tabular-nums;
+  color: var(--ev-label-3);
+}
+
+@container main (max-width: 51.4286em) {
+  .page-inner.home {
+    grid-template-columns: 1fr;
+  }
 }

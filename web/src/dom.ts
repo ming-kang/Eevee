@@ -4,6 +4,29 @@ import { isAtEnd, type Modality, modalityOfKey, pillGeometry } from "./dom-rules
 const CHOSEN =
   ":scope > button.on, :scope > [aria-selected='true'], :scope > [aria-pressed='true']";
 const observers = new WeakMap<HTMLElement, ResizeObserver>();
+const sashEndSubs = new WeakMap<HTMLElement, () => void>();
+
+const SASH_DRAG_END = "eevee:sash-drag-end";
+
+/** Whether a column sash is mid-drag: `Sash.vue` puts `ev-sash-drag` on `<html>` for it. */
+export function isSashDragging(): boolean {
+  return document.documentElement.classList.contains("ev-sash-drag");
+}
+
+/** `Sash.vue` broadcasts this once a pointer drag finishes or is cancelled. */
+export function announceSashDragEnd(): void {
+  document.dispatchEvent(new Event(SASH_DRAG_END));
+}
+
+/**
+ * Runs `cb` at each sash drag's end; returns an unsubscribe. Listeners that skip layout reads
+ * while `isSashDragging()` use it to do the one measure they deferred.
+ */
+export function onSashDragEnd(cb: () => void): () => void {
+  const handler = () => cb();
+  document.addEventListener(SASH_DRAG_END, handler);
+  return () => document.removeEventListener(SASH_DRAG_END, handler);
+}
 
 function place(el: HTMLElement): void {
   let pill = el.querySelector<HTMLElement>(":scope > .seg-pill");
@@ -36,16 +59,25 @@ function place(el: HTMLElement): void {
 export const vSeg: Directive<HTMLElement> = {
   mounted(el) {
     place(el);
-    const observer = new ResizeObserver(() => place(el));
+    // A sash drag resizes the pill's strip every frame; the reads wait for the drag's end.
+    const observer = new ResizeObserver(() => {
+      if (!isSashDragging()) place(el);
+    });
     observer.observe(el);
     observers.set(el, observer);
+    sashEndSubs.set(
+      el,
+      onSashDragEnd(() => place(el)),
+    );
   },
   updated(el) {
-    place(el);
+    if (!isSashDragging()) place(el);
   },
   unmounted(el) {
     observers.get(el)?.disconnect();
     observers.delete(el);
+    sashEndSubs.get(el)?.();
+    sashEndSubs.delete(el);
   },
 };
 

@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { BoardView, ProjectSummary, TicketView } from "../../src/api/contract.ts";
 import type { TicketId, TicketStage } from "../../src/contracts/index.ts";
-import { buildPaletteItems, deriveProjectState, filterPaletteItems } from "./projects.ts";
+import {
+  buildPaletteItems,
+  deriveProjectState,
+  filterPaletteItems,
+  projectHue,
+} from "./projects.ts";
 
 function makeTicket(id: TicketId, stage: TicketStage, jobs = 0, closed = false): TicketView {
   return {
@@ -130,6 +135,18 @@ test("buildPaletteItems and filterPaletteItems build and filter pages, tickets, 
     items.some((i) => i.group === "Projects" && i.meta === "1 open"),
     true,
   );
+  assert.deepEqual(
+    items.find((i) => i.id === "nav:home"),
+    {
+      id: "nav:home",
+      group: "Go to",
+      label: "Home",
+      search: "Home home now dashboard",
+      kind: "route",
+      route: { name: "home" },
+      icon: "home",
+    },
+  );
   assert.equal(filterPaletteItems(items, "t4").length, 1);
   assert.equal(filterPaletteItems(items, "eevee").length, 1);
 });
@@ -146,4 +163,16 @@ test("a palette page is found by plain English keywords, never a translated keyw
   );
   assert.equal(search("nav:settings:models"), "Settings · Models settings models thinking");
   assert.equal(search("nav:settings:roles"), "Settings · Roles settings roles");
+});
+
+test("projectHue is stable, in range, and spreads near ids", () => {
+  assert.equal(projectHue("pc071fd36"), projectHue("pc071fd36"));
+  for (const id of ["p1", "p2", "p99369cc8", "pc071fd36", "pba1d4828", ""]) {
+    const hue = projectHue(id);
+    assert.ok(Number.isInteger(hue) && hue >= 0 && hue < 360, `${id} -> ${hue}`);
+  }
+  // Ids that differ in one character hash to near seeds; the golden-angle step must keep their
+  // hues apart so neighbouring rows in the sidebar read as different projects.
+  const hues = new Set([...Array(12).keys()].map((i) => projectHue(`p${i}`)));
+  assert.ok(hues.size >= 10, `too many collisions: ${hues.size}/12`);
 });

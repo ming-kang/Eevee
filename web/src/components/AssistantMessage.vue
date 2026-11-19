@@ -2,11 +2,16 @@
 import type { TicketView } from "@shared/api/contract.ts";
 import { t } from "../i18n.ts";
 import MarkdownText from "./MarkdownText.vue";
+import MessageActions from "./MessageActions.vue";
 
 defineProps<{
   text: string;
   streaming?: boolean;
   tickets?: readonly TicketView[];
+  /** The turn's final message gets the action row; a streaming one never does. */
+  actions?: boolean;
+  at?: number;
+  latest?: boolean;
 }>();
 
 defineEmits<{
@@ -23,5 +28,6 @@ defineEmits<{
       :tickets="tickets"
       @open-ticket="$emit('open-ticket', $event)"
     />
+    <MessageActions v-if="actions" :text="text" :at="at" :latest="latest" />
   </div>
 </template>

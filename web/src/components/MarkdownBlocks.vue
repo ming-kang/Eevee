@@ -2,10 +2,13 @@
 import { ref } from "vue";
 import { t } from "../i18n.ts";
 import type { Block } from "../markdown.ts";
+import HighlightedCode from "./HighlightedCode.vue";
 import Icon from "./Icon.vue";
 import MarkdownInlines from "./MarkdownInlines.vue";
 
-defineProps<{ blocks: readonly Block[] }>();
+withDefaults(defineProps<{ blocks: readonly Block[]; streaming?: boolean }>(), {
+  streaming: false,
+});
 
 const copied = ref<number>();
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -41,7 +44,7 @@ async function copy(index: number, code: string): Promise<void> {
       </li>
     </component>
     <div v-else-if="block.type === 'code'" class="code">
-      <pre><code>{{ block.code }}</code></pre>
+      <HighlightedCode :code="block.code" :lang="block.language" :streaming="streaming" />
       <button
         type="button"
         class="btn ghost sm icon copy"

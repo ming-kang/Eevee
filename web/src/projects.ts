@@ -5,6 +5,19 @@ import { t } from "./i18n.ts";
 import { failureText, STAGE_LABEL } from "./labels.ts";
 import type { Route } from "./router.ts";
 
+/**
+ * A stable hue for a project id, the colour of its dot in the sidebar, palette and Home rows.
+ * The id hashes to a seed that steps by the golden angle, so ids that hash to nearby seeds do
+ * not land on near-identical hues either.
+ */
+export function projectHue(id: string): number {
+  let hash = 5381;
+  for (let i = 0; i < id.length; i++) {
+    hash = (Math.imul(hash, 33) ^ id.charCodeAt(i)) >>> 0;
+  }
+  return Math.round(hash * 137.508) % 360;
+}
+
 export type ProjectRowState = {
   kind: "user" | "bad" | "run" | "rest";
   questionCount: number;
@@ -56,7 +69,16 @@ export function deriveProjectState(input: {
   };
 }
 
-type PaletteIcon = "radio" | "book" | "chart" | "sliders" | "cpu" | "puzzle" | "plug" | "server";
+type PaletteIcon =
+  | "home"
+  | "radio"
+  | "book"
+  | "chart"
+  | "sliders"
+  | "cpu"
+  | "puzzle"
+  | "plug"
+  | "server";
 
 export type PaletteItem =
   | {
@@ -69,7 +91,7 @@ export type PaletteItem =
       route: Route;
       icon?: PaletteIcon;
       stage?: VisualStage;
-      projectTile?: string;
+      projectId?: string;
     }
   | {
       id: string;
@@ -101,6 +123,8 @@ export function buildPaletteItems(input: {
       route,
       icon,
     }) as const;
+
+  items.push(go("nav:home", t("Home"), "home now dashboard", { name: "home" }, "home"));
 
   if (pid) {
     items.push(
@@ -179,7 +203,7 @@ export function buildPaletteItems(input: {
       search: `${project.title} ${project.id} ${project.workspace}`,
       kind: "route",
       route: { name: "chat", pid: project.id },
-      projectTile: project.title.slice(0, 1) || t("P"),
+      projectId: project.id,
     });
   }
 

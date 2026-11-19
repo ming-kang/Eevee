@@ -65,10 +65,11 @@ export function parseRoute(hash: string): Route | undefined {
 }
 
 export function resolveRoute(hash: string, fallbackPid?: string): Route {
-  return (
-    parseRoute(hash) ??
-    (fallbackPid !== undefined ? { name: "chat", pid: fallbackPid } : { name: "home" })
-  );
+  const parsed = parseRoute(hash);
+  if (parsed !== undefined) return parsed;
+  // An empty hash is the Home page; only a non-empty unknown path falls back to the last project.
+  if (hash.replace(/^#\/?/, "") === "") return { name: "home" };
+  return fallbackPid !== undefined ? { name: "chat", pid: fallbackPid } : { name: "home" };
 }
 
 export function formatRoute(route: Route): string {

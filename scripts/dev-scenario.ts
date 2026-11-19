@@ -187,7 +187,7 @@ const brain: FauxResponseFactory = (context) => {
     }
     if (toolName(last) === "ticket" && lastText.includes("t1 is accepted and closed")) {
       return say(
-        "The template is in place and **t1** is accepted and closed. Next we can move on to the simulation and the references.",
+        "The template is in place and **t1** is accepted and closed. The generated `main.tex` now looks like:\n\n```latex\n\\documentclass{article}\n\\begin{document}\n\\input{chapters/03-sim}\n\\end{document}\n```\n\nNext we can move on to the simulation and the references.",
       );
     }
     if (last?.role === "user" && lastText.includes("First build the paper template")) {

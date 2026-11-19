@@ -12,17 +12,17 @@
 }
 
 .rtabs > button .dot {
-  width: 5px;
-  height: 5px;
+  width: calc(5px * var(--ev-scale));
+  height: calc(5px * var(--ev-scale));
 }
 
 .group-h {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: calc(4px * var(--ev-scale));
   width: 100%;
-  height: 30px;
-  padding: 8px 10px 0;
+  height: calc(30px * var(--ev-scale));
+  padding: calc(8px * var(--ev-scale)) calc(10px * var(--ev-scale)) 0;
   font-size: var(--ev-footnote);
   font-weight: 500;
   text-align: left;
@@ -30,8 +30,8 @@
 }
 
 .group-h:first-child {
-  padding-top: 2px;
-  height: 24px;
+  padding-top: calc(2px * var(--ev-scale));
+  height: calc(24px * var(--ev-scale));
 }
 
 .group-h.user {
@@ -68,11 +68,11 @@ button.group-h.closed .chev {
   display: grid;
   grid-template-columns: var(--ev-icon-sm) minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 9px;
-  row-gap: 1px;
+  column-gap: calc(9px * var(--ev-scale));
+  row-gap: calc(1px * var(--ev-scale));
   width: 100%;
-  min-height: 32px;
-  padding: 6px 10px;
+  min-height: calc(32px * var(--ev-scale));
+  padding: calc(6px * var(--ev-scale)) calc(10px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
   font-size: var(--ev-body);
@@ -135,7 +135,7 @@ button.group-h.closed .chev {
 .stage-h {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: calc(5px * var(--ev-scale));
   flex: none;
   font-size: var(--ev-footnote);
   color: var(--ev-label-3);
@@ -153,14 +153,13 @@ button.group-h.closed .chev {
 .jobs {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: calc(4px * var(--ev-scale));
 }
 
 .job {
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
-  transition:
-    background-color var(--ev-regular) var(--ev-ease),
+  transition: background-color var(--ev-regular) var(--ev-ease),
     box-shadow var(--ev-regular) var(--ev-ease);
 }
 
@@ -173,10 +172,10 @@ button.group-h.closed .chev {
   display: grid;
   grid-template-columns: var(--ev-icon-sm) minmax(0, 1fr);
   align-items: center;
-  column-gap: 9px;
-  row-gap: 1px;
+  column-gap: calc(9px * var(--ev-scale));
+  row-gap: calc(1px * var(--ev-scale));
   width: 100%;
-  padding: 6px 10px;
+  padding: calc(6px * var(--ev-scale)) calc(10px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
   text-align: left;
@@ -202,7 +201,7 @@ button.group-h.closed .chev {
   grid-column: 2;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(6px * var(--ev-scale));
   min-width: 0;
   font-size: var(--ev-footnote);
   color: var(--ev-label-3);
@@ -213,9 +212,9 @@ button.group-h.closed .chev {
 }
 
 .job-log {
-  margin: 0 10px 8px;
-  padding: 10px 12px;
-  max-height: 240px;
+  margin: 0 calc(10px * var(--ev-scale)) calc(8px * var(--ev-scale));
+  padding: calc(10px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  max-height: calc(240px * var(--ev-scale));
   overflow: auto;
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
@@ -228,7 +227,7 @@ button.group-h.closed .chev {
 }
 
 .job-note {
-  padding: 0 12px 6px;
+  padding: 0 calc(12px * var(--ev-scale)) calc(6px * var(--ev-scale));
   font-size: var(--ev-footnote);
   color: var(--ev-label-3);
 }
@@ -236,22 +235,22 @@ button.group-h.closed .chev {
 .job-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px 10px;
+  gap: calc(6px * var(--ev-scale));
+  padding: 0 calc(10px * var(--ev-scale)) calc(10px * var(--ev-scale));
 }
 
 /* ——— Detail ——— */
 .rdetail {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 4px 6px 0;
+  gap: calc(16px * var(--ev-scale));
+  padding: calc(4px * var(--ev-scale)) calc(6px * var(--ev-scale)) 0;
 }
 
 .rd-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(6px * var(--ev-scale));
   flex-wrap: wrap;
   font-size: var(--ev-footnote);
   color: var(--ev-label-2);
@@ -261,14 +260,14 @@ button.group-h.closed .chev {
 .brief {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: calc(16px * var(--ev-scale));
   margin: 0;
 }
 
 .b-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: calc(4px * var(--ev-scale));
 }
 
 .brief dt {
@@ -280,7 +279,7 @@ button.group-h.closed .chev {
 .brief dd {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: calc(4px * var(--ev-scale));
   margin: 0;
   font-size: var(--ev-body);
   line-height: 1.6;
@@ -294,7 +293,7 @@ button.group-h.closed .chev {
 .brief ul {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: calc(4px * var(--ev-scale));
   margin: 0;
   padding: 0;
   list-style: none;
@@ -302,18 +301,18 @@ button.group-h.closed .chev {
 
 .brief li {
   display: flex;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
 }
 
 .brief li .ico {
-  margin-top: 4px;
+  margin-top: calc(4px * var(--ev-scale));
   color: var(--ev-label-3);
 }
 
 .rd-reports {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
 }
 
 .rd-reports .section-h {
@@ -323,16 +322,16 @@ button.group-h.closed .chev {
 .rlist {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(8px * var(--ev-scale));
 }
 
 .rail-empty {
-  padding: 40px 12px;
+  padding: calc(40px * var(--ev-scale)) calc(12px * var(--ev-scale));
   text-align: center;
   font-size: var(--ev-control);
   color: var(--ev-label-3);
 }
 
 .rail-note {
-  padding: 6px 10px;
+  padding: calc(6px * var(--ev-scale)) calc(10px * var(--ev-scale));
 }

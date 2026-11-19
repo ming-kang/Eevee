@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { t } from "../i18n.ts";
 import { formatDurationMs } from "../time.ts";
 import type { ToolStepItem } from "../transcript-map.ts";
 import Icon from "./Icon.vue";
+import ToolSheet from "./ToolSheet.vue";
 
 const props = defineProps<{
   steps: readonly ToolStepItem[];
@@ -32,6 +33,12 @@ const summary = computed(() => {
     .map(([tool, count]) => (VERB[tool] ? VERB[tool](count) : `${tool} ×${count}`))
     .join(" · ");
 });
+
+/** One step's sheet at a time: opening another closes the last. */
+const openStep = ref<string>();
+function toggle(step: ToolStepItem): void {
+  openStep.value = openStep.value === step.id ? undefined : step.id;
+}
 </script>
 
 <template>
@@ -54,8 +61,13 @@ const summary = computed(() => {
       </template>
     </summary>
     <div class="steps">
-      <div v-for="step in steps" :key="step.id" class="step">
-        <div class="step-row">
+      <template v-for="step in steps" :key="step.id">
+        <button
+          type="button"
+          class="step-row"
+          :aria-expanded="openStep === step.id"
+          @click="toggle(step)"
+        >
           <Icon v-if="step.status === 'run'" name="spinner" size="xs" />
           <span v-else-if="step.status === 'err'" class="minus">
             <Icon name="x" size="xs" />
@@ -68,9 +80,14 @@ const summary = computed(() => {
           <span class="ms">
             {{ step.ms !== undefined ? formatDurationMs(step.ms) : step.status === "run" ? "…" : "" }}
           </span>
-        </div>
-        <div v-if="step.output" class="step-out">{{ step.output }}</div>
-      </div>
+        </button>
+        <ToolSheet
+          v-if="openStep === step.id"
+          :label="step.label"
+          :output="step.output"
+          :meta="step.status === 'err' ? t('Failed') : undefined"
+        />
+      </template>
     </div>
   </details>
 </template>

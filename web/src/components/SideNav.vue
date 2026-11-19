@@ -3,6 +3,7 @@ import type { ProjectSummary } from "@shared/api/contract.ts";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import type { RunSummary } from "@shared/contracts/index.ts";
 import type { BoardState } from "../engine-data.ts";
+import { countPendingQuestions } from "../board.ts";
 import { t } from "../i18n.ts";
 import { deriveProjectState, type ProjectRowState } from "../projects.ts";
 import { formatRoute, type Route } from "../router.ts";
@@ -37,6 +38,14 @@ const emit = defineEmits<{
 }>();
 
 const controlProject = computed(() => props.projects.find((p) => p.id === props.controlPid));
+
+/** Every open question across projects, the badge the Home row wears. */
+const questionTotal = computed(() =>
+  props.projects.reduce(
+    (total, project) => total + countPendingQuestions(props.boards[project.id]?.board),
+    0,
+  ),
+);
 
 const nowMs = ref(Date.now());
 let clockTimer: ReturnType<typeof setInterval> | undefined;
@@ -121,11 +130,7 @@ onUnmounted(() => {
 
 <template>
   <div class="side-top">
-    <a
-      class="brand"
-      :href="controlPid ? formatRoute({ name: 'chat', pid: controlPid }) : '#/'"
-      @click="$emit('navigate')"
-    >
+    <a class="brand" :href="formatRoute({ name: 'home' })" @click="$emit('navigate')">
       <BrandLogo />
       <span class="brand-name">Eevee</span>
     </a>
@@ -146,6 +151,17 @@ onUnmounted(() => {
   </div>
 
   <div class="side-actions">
+    <a
+      class="nav-row"
+      :class="{ on: route.name === 'home' }"
+      :href="formatRoute({ name: 'home' })"
+      :title="t('Home')"
+      @click="$emit('navigate')"
+    >
+      <Icon name="home" size="sm" />
+      <span class="label">{{ t("Home") }}</span>
+      <span v-if="questionTotal > 0" class="count user">{{ questionTotal }}</span>
+    </a>
     <button
       type="button"
       class="nav-row"

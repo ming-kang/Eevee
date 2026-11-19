@@ -60,9 +60,10 @@ const root = document.documentElement.style;
 const textSize = ref(readTextSize(localStorage.getItem(TEXT_SIZE_KEY)) ?? TEXT_SIZE.default);
 const font = ref(localStorage.getItem(FONT_KEY) ?? "");
 
-/** The root size every type role and icon scales from, and the font ahead of the bundled one. */
+/** The root size every type role, icon and geometry token scales from, ahead of the bundled font. */
 function applyTypography(): void {
   root.setProperty("--ev-ui", `${textSize.value}px`);
+  root.setProperty("--ev-scale", String(textSize.value / TEXT_SIZE.default));
   const stack = fontStack(font.value);
   if (stack === undefined) root.removeProperty("--ev-font");
   else root.setProperty("--ev-font", stack);

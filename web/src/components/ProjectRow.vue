@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type { ProjectSummary } from "@shared/api/contract.ts";
-import { t } from "../i18n.ts";
 import type { ProjectRowState } from "../projects.ts";
 import { formatRelativeTime } from "../time.ts";
-import Icon from "./Icon.vue";
+import ProjectDot from "./ProjectDot.vue";
 import StageGlyph from "./StageGlyph.vue";
+import WorkingGrid from "./WorkingGrid.vue";
 
 defineProps<{
   project: ProjectSummary;
@@ -32,13 +32,12 @@ defineEmits<{
     @mouseenter="$emit('hover-enter', $event.currentTarget as HTMLElement)"
     @mouseleave="$emit('hover-leave', $event)"
   >
-    <span class="p-lead"><Icon name="folder" size="sm" /></span>
-    <span class="p-tile">{{ project.title.slice(0, 1) || t("P") }}</span>
+    <ProjectDot :id="project.id" class="p-lead" />
     <span class="p-title">{{ project.title }}</span>
     <span class="p-end" :class="`s-${state.kind}`">
       <span v-if="state.kind === 'user'" class="count user">{{ state.questionCount }}</span>
       <StageGlyph v-else-if="state.kind === 'bad'" stage="blocked" />
-      <StageGlyph v-else-if="state.kind === 'run'" stage="working" />
+      <WorkingGrid v-else-if="state.kind === 'run'" />
       <span v-else-if="state.activeAt !== undefined" class="p-time">
         {{ formatRelativeTime(state.activeAt, nowMs, "short") }}
       </span>

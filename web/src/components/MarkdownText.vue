@@ -24,5 +24,5 @@ provide(TICKET_LINKS, {
 </script>
 
 <template>
-  <MarkdownBlocks :blocks="blocks" />
+  <MarkdownBlocks :blocks="blocks" :streaming="streaming" />
 </template>

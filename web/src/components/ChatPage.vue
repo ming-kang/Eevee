@@ -4,6 +4,7 @@ import type { BoardView, ProjectSummary } from "@shared/api/contract.ts";
 import type { QuestionId } from "@shared/contracts/index.ts";
 import { computed, ref, watch } from "vue";
 import type { RailTab } from "../board.ts";
+import { provideComposerInsert } from "../composer-bridge.ts";
 import type { ConversationWatch } from "../engine-data.ts";
 import { t } from "../i18n.ts";
 import { mapTranscript } from "../transcript-map.ts";
@@ -31,6 +32,7 @@ defineEmits<{
 
 const params = computed(() => ({ project: props.project.id }));
 const conversation = props.conversation;
+provideComposerInsert();
 
 const displayItems = computed(() =>
   mapTranscript(conversation.view.value?.items ?? [], {
@@ -97,6 +99,7 @@ async function answer(id: QuestionId, text: string): Promise<void> {
       v-else
       :items="displayItems"
       :tickets="board?.tickets"
+      :running="conversation.running.value"
       :loading-earlier="conversation.loadingEarlier.value"
       :filling-gaps="conversation.fillingGaps.value"
       :retry="retry"
@@ -127,6 +130,7 @@ async function answer(id: QuestionId, text: string): Promise<void> {
           <Composer
             :draft-key="`r:${project.id}`"
             :send="send"
+            :tickets="board?.tickets ?? []"
             :placeholder="conversation.running.value ? t('Add a message') : t('Tell the Router what to do')"
           >
             <template #actions>

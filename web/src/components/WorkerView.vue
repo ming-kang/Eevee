@@ -4,6 +4,7 @@ import type { TicketView } from "@shared/api/contract.ts";
 import type { Question, QuestionId, TicketId } from "@shared/contracts/index.ts";
 import { computed, ref, type ShallowRef, watch } from "vue";
 import { effectiveStage, type RailTab } from "../board.ts";
+import { provideComposerInsert } from "../composer-bridge.ts";
 import { useConversationWatch } from "../engine-data.ts";
 import { t } from "../i18n.ts";
 import { STAGE_LABEL } from "../labels.ts";
@@ -38,6 +39,7 @@ defineEmits<{
 }>();
 
 const params = computed(() => ({ project: props.project, ticket: props.ticketId }));
+provideComposerInsert();
 const conversation = useConversationWatch(props.stream, () => ({
   kind: "conversation",
   project: props.project,
@@ -181,6 +183,7 @@ async function answer(id: QuestionId, text: string): Promise<void> {
       :items="displayItems"
       :tickets="tickets"
       :running-job-ids="runningJobIds"
+      :running="conversation.running.value"
       :loading-earlier="conversation.loadingEarlier.value"
       :filling-gaps="conversation.fillingGaps.value"
       :retry="open ? retry : undefined"
@@ -211,7 +214,7 @@ async function answer(id: QuestionId, text: string): Promise<void> {
               :count="ticketQuestions.length"
               @expand="later = false"
             />
-            <Composer :draft-key="`w:${project}:${ticketId}`" :send="send" :placeholder="t('Message {ticket}', { ticket: ticketId })">
+            <Composer :draft-key="`w:${project}:${ticketId}`" :send="send" :tickets="tickets ?? []" :placeholder="t('Message {ticket}', { ticket: ticketId })">
               <template v-if="conversation.running.value" #actions>
                 <div
                   v-seg
