@@ -45,7 +45,7 @@ test("effectiveStage uses terminal status for closed tickets", () => {
   assert.equal(effectiveStage(makeTicket("t3", "blocked", { status: "cancelled" })), "cancelled");
 });
 
-test("groupTickets partitions into answer, active sorted by stage order, and closed", () => {
+test("groupTickets partitions into you, router (review + blocked), active sorted by stage order, and closed", () => {
   const input = [
     makeTicket("t1", "idle"),
     makeTicket("t2", "cancelled" as TicketStage, { status: "cancelled" }),
@@ -64,12 +64,16 @@ test("groupTickets partitions into answer, active sorted by stage order, and clo
   const groups = groupTickets(input);
 
   assert.deepEqual(
-    groups.answer.map((t) => t.ticket.id),
+    groups.you.map((t) => t.ticket.id),
     ["t4", "t12"],
   );
   assert.deepEqual(
+    groups.router.map((t) => t.ticket.id),
+    ["t6", "t8"],
+  );
+  assert.deepEqual(
     groups.active.map((t) => t.ticket.id),
-    ["t6", "t8", "t3", "t11", "t9", "t7", "t10", "t1"],
+    ["t3", "t11", "t9", "t7", "t10", "t1"],
   );
   assert.deepEqual(
     groups.closed.map((t) => t.ticket.id),

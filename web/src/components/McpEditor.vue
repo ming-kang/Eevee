@@ -4,13 +4,13 @@ import type { CapabilitiesView } from "@shared/api/contract.ts";
 import { computed, nextTick, reactive, ref, watch } from "vue";
 import { configIssueText, errorText } from "../errors.ts";
 import { t } from "../i18n.ts";
+import { EXPOSURE_LABEL } from "../labels.ts";
 import {
   fromMcpDraft,
   isServerName,
   MCP_EXPOSURES,
   type McpDraft,
   type McpDraftError,
-  type McpExposure,
   parsePastedServer,
   toMcpDraft,
 } from "../mcp-draft.ts";
@@ -32,13 +32,6 @@ const props = defineProps<{
 const emit = defineEmits<{ changed: [view: CapabilitiesView] }>();
 
 const LIST = formatRoute({ name: "settings", section: "mcp" });
-
-const EXPOSURE_LABEL: Record<McpExposure, { label: string; detail: string }> = {
-  deferred: { label: t("On demand"), detail: t("Found on demand with tool_search; best when there are many tools") },
-  direct: { label: t("Direct"), detail: t("Offered up front like any other tool; best when there are only a few tools") },
-  codemode: { label: t("Code mode"), detail: t("Called only from codemode scripts; best for batched or combined calls") },
-  hidden: { label: t("Hidden"), detail: t("Stays connected but offers no tools") },
-};
 
 const STATE_LABEL: Record<string, { dot: string; label: string }> = {
   connected: { dot: "ok", label: t("Connected") },

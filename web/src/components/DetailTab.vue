@@ -45,23 +45,26 @@ const sortedReports = computed(() =>
 
 const modelInfo = computed(() => {
   const ticket = props.view?.ticket;
-  if (!ticket) return { name: undefined, hint: undefined };
+  if (!ticket) return { text: undefined, mono: false, hint: undefined };
   if (ticket.model) {
     return {
-      name: formatModel(ticket.model),
+      text: formatModel(ticket.model),
+      mono: true,
       hint: ticket.modelReason ?? t("Chosen for this ticket"),
     };
   }
   const projectDefault = pickModel(ticket.role, props.projectModels);
   if (projectDefault) {
     return {
-      name: formatModel(projectDefault),
+      text: formatModel(projectDefault),
+      mono: true,
       hint: t("Project default"),
     };
   }
   return {
-    name: undefined,
-    hint: ticket.role === "dreamer" ? t("Dreamer default") : t("Worker default"),
+    text: ticket.role === "dreamer" ? t("Dreamer default") : t("Worker default"),
+    mono: false,
+    hint: undefined,
   };
 });
 </script>
@@ -72,31 +75,34 @@ const modelInfo = computed(() => {
   <div v-else class="rdetail">
     <div v-if="stage" class="rd-meta">
       <StageGlyph :stage="stage" />
-      <span>{{ STAGE_LABEL[stage] }}</span>
-      <span>·</span>
+      <span class="t-stage" :class="`s-${stage}`">{{ STAGE_LABEL[stage] }}</span>
+      <span class="t-id">{{ view.ticket.id }}</span>
+      <span class="dim">·</span>
       <span>{{ t("Created {time}", { time: formatRelativeTime(view.ticket.createdAt, nowMs) }) }}</span>
       <template v-if="view.ticket.closedAt">
-        <span>·</span>
+        <span class="dim">·</span>
         <span>{{ t("Closed {time}", { time: formatRelativeTime(view.ticket.closedAt, nowMs) }) }}</span>
       </template>
     </div>
 
-    <dl class="brief col">
-      <dt>{{ t("Goal") }}</dt>
-      <dd>
-        <span>{{ view.ticket.goal || "—" }}</span>
-      </dd>
+    <dl class="brief">
+      <div class="b-item">
+        <dt>{{ t("Goal") }}</dt>
+        <dd>
+          <span>{{ view.ticket.goal || "—" }}</span>
+        </dd>
+      </div>
 
-      <template v-if="view.ticket.inputs.length > 0">
+      <div v-if="view.ticket.inputs.length > 0" class="b-item">
         <dt>{{ t("Input") }}</dt>
         <dd>
           <span v-for="(input, index) in view.ticket.inputs" :key="index" class="mono">
             {{ input }}
           </span>
         </dd>
-      </template>
+      </div>
 
-      <template v-if="view.ticket.acceptance.length > 0">
+      <div v-if="view.ticket.acceptance.length > 0" class="b-item">
         <dt>{{ t("Acceptance criteria") }}</dt>
         <dd>
           <ul>
@@ -106,16 +112,16 @@ const modelInfo = computed(() => {
             </li>
           </ul>
         </dd>
-      </template>
+      </div>
 
-      <template v-if="view.ticket.output">
+      <div v-if="view.ticket.output" class="b-item">
         <dt>{{ t("Artifacts") }}</dt>
         <dd>
           <span class="mono">{{ view.ticket.output }}</span>
         </dd>
-      </template>
+      </div>
 
-      <template v-if="view.ticket.deliverTo.length > 0">
+      <div v-if="view.ticket.deliverTo.length > 0" class="b-item">
         <dt>{{ t("Delivers to") }}</dt>
         <dd>
           <span>
@@ -129,32 +135,38 @@ const modelInfo = computed(() => {
             </template>
           </span>
         </dd>
-      </template>
+      </div>
 
-      <dt>{{ t("Model") }}</dt>
-      <dd>
-        <span v-if="modelInfo.name" class="mono">{{ modelInfo.name }}</span>
-        <span v-if="modelInfo.hint" class="hint">{{ modelInfo.hint }}</span>
-      </dd>
+      <div class="b-item">
+        <dt>{{ t("Model") }}</dt>
+        <dd>
+          <span v-if="modelInfo.text" :class="modelInfo.mono ? 'mono' : 'muted'">
+            {{ modelInfo.text }}
+          </span>
+          <span v-if="modelInfo.hint" class="hint">{{ modelInfo.hint }}</span>
+        </dd>
+      </div>
 
-      <template v-if="view.ticket.closeNote">
+      <div v-if="view.ticket.closeNote" class="b-item">
         <dt>{{ t("Close note") }}</dt>
         <dd>
           <span>{{ view.ticket.closeNote }}</span>
         </dd>
-      </template>
+      </div>
     </dl>
 
-    <div class="section-h">{{ t("Reports") }}</div>
-    <div v-if="sortedReports.length > 0" class="rlist">
-      <ReportCard
-        v-for="report in sortedReports"
-        :key="report.seq"
-        :report="report"
-        :now-ms="nowMs"
-        full
-      />
+    <div class="rd-reports">
+      <div class="section-h">{{ t("Reports") }}</div>
+      <div v-if="sortedReports.length > 0" class="rlist">
+        <ReportCard
+          v-for="report in sortedReports"
+          :key="report.seq"
+          :report="report"
+          :now-ms="nowMs"
+          full
+        />
+      </div>
+      <p v-else class="hint">{{ t("No reports") }}</p>
     </div>
-    <p v-else class="hint">{{ t("No reports") }}</p>
   </div>
 </template>

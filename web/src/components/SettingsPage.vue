@@ -33,6 +33,7 @@ import MarkdownText from "./MarkdownText.vue";
 import McpEditor from "./McpEditor.vue";
 import ModelMenu from "./ModelMenu.vue";
 import ProviderEditor from "./ProviderEditor.vue";
+import RoleSettings from "./RoleSettings.vue";
 import Skeleton from "./Skeleton.vue";
 
 const props = defineProps<{
@@ -78,11 +79,6 @@ const capError = ref<string>();
 const loadingCap = ref(false);
 const savingRole = useSubmit();
 const reloadingMcp = useSubmit();
-const turnDrafts = ref<Record<RoleName, string>>({
-  router: "",
-  worker: "",
-  dreamer: "",
-});
 
 const MODEL_ROLES: { key: "default" | RoleName; label: string }[] = [
   { key: "default", label: t("Global default") },
@@ -119,21 +115,11 @@ const SECTIONS: { key: SettingsSection; label: string; icon: IconName }[] = [
   { key: "engine", label: "Engine", icon: "server" },
 ];
 
-function syncTurnDrafts(cap: CapabilitiesView): void {
-  const next: Record<RoleName, string> = { router: "", worker: "", dreamer: "" };
-  for (const r of cap.roles) {
-    next[r.role] = r.maxTurns !== undefined ? String(r.maxTurns) : "";
-  }
-  turnDrafts.value = next;
-}
-
 async function loadCapabilities(quiet = false): Promise<void> {
   loadingCap.value = !quiet;
   capError.value = undefined;
   try {
-    const view = await props.client.call("GET /api/capabilities");
-    capabilities.value = view;
-    syncTurnDrafts(view);
+    capabilities.value = await props.client.call("GET /api/capabilities");
   } catch (err) {
     capError.value = errorText(err);
   } finally {
@@ -177,7 +163,6 @@ async function toggleServer(name: string): Promise<void> {
 
 function applyCapabilities(view: CapabilitiesView): void {
   capabilities.value = view;
-  syncTurnDrafts(view);
 }
 
 // Servers connect in the background; while one is still connecting, look again shortly.
@@ -324,28 +309,18 @@ async function toggleExtension(role: RoleName, extName: string): Promise<void> {
   const next = has
     ? currentRole.enabled.filter((e) => e !== extName)
     : [...currentRole.enabled, extName];
-  const ok = await savingRole.run(async () => {
+  await savingRole.run(async () => {
     capabilities.value = await props.client.call(
       "POST /api/capabilities/roles/:role",
       { role },
       { extensions: next },
     );
   });
-  if (ok && capabilities.value) {
-    syncTurnDrafts(capabilities.value);
-  }
 }
 
-async function commitMaxTurns(role: RoleName): Promise<void> {
+async function commitMaxTurns(role: RoleName, nextValue: number | null): Promise<void> {
   const currentRole = capabilities.value?.roles.find((r) => r.role === role);
   if (!currentRole || savingRole.busy.value) return;
-  const raw = (turnDrafts.value[role] ?? "").trim();
-  const nextValue = raw === "" ? null : Number(raw);
-  if (nextValue !== null && (!Number.isInteger(nextValue) || nextValue < 1)) {
-    showToast(t("Turn limit must be a positive whole number, or empty for the default"), "error");
-    turnDrafts.value[role] = currentRole.maxTurns !== undefined ? String(currentRole.maxTurns) : "";
-    return;
-  }
   if ((currentRole.maxTurns ?? null) === nextValue) return;
   const ok = await savingRole.run(async () => {
     capabilities.value = await props.client.call(
@@ -354,17 +329,9 @@ async function commitMaxTurns(role: RoleName): Promise<void> {
       { maxTurns: nextValue },
     );
   });
-  if (ok && capabilities.value) {
-    syncTurnDrafts(capabilities.value);
+  if (ok) {
     showToast(t("Updated the {role} turn limit", { role: ROLE_LABEL[role] }));
   }
-}
-
-function mcpFailed(extName: string): boolean {
-  return (
-    capabilities.value?.mcp.some((m) => `mcp.${m.name}` === extName && m.state === "failed") ??
-    false
-  );
 }
 
 function rolesUsingExtension(extName: string): string[] {
@@ -373,28 +340,11 @@ function rolesUsingExtension(extName: string): string[] {
     .map((r) => ROLE_LABEL[r.role]);
 }
 
-/** Extensions a role still enables though they are no longer installed, listed so they can be turned off. */
-const uninstalledExtensions = computed(() => {
-  const cap = capabilities.value;
-  if (!cap) return [];
-  const installed = new Set(cap.available.map((e) => e.name));
-  return [...new Set(cap.roles.flatMap((r) => r.enabled))].filter((name) => !installed.has(name));
-});
-
-const builtInCount = computed(() => {
-  const set = new Set<string>();
-  for (const r of capabilities.value?.roles ?? []) {
-    for (const ext of r.builtIn) set.add(ext);
-  }
-  return set.size;
-});
-
 async function reloadMcp(): Promise<void> {
   const ok = await reloadingMcp.run(async () => {
     capabilities.value = await props.client.call("POST /api/mcp/reload");
   });
-  if (ok && capabilities.value) {
-    syncTurnDrafts(capabilities.value);
+  if (ok) {
     showToast(t("Reloaded MCP servers"));
   }
 }
@@ -670,103 +620,13 @@ const streamBadge = computed(() => {
               {{ capError ?? savingRole.error.value }}
             </p>
             <Skeleton v-else-if="loadingCap && !capabilities" />
-            <div v-else-if="capabilities" class="panel">
-              <table class="matrix">
-                <thead>
-                  <tr>
-                    <th>{{ t("Extension") }}</th>
-                    <th v-for="roleItem in capabilities.roles" :key="roleItem.role">
-                      {{ ROLE_LABEL[roleItem.role] }}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-if="capabilities.available.length === 0">
-                    <td colspan="4" class="muted">{{ t("No optional extensions") }}</td>
-                  </tr>
-                  <tr v-for="ext in capabilities.available" :key="ext.name">
-                    <td>
-                      <div class="ext">
-                        <b>
-                          <Icon :name="ext.name.startsWith('mcp.') ? 'plug' : 'puzzle'" size="xs" />
-                          <span>{{ ext.name }}</span>
-                          <span v-if="mcpFailed(ext.name)" class="dot bad" :title="t('The MCP server failed to connect')" />
-                        </b>
-                        <span>{{ t("{n} tool|{n} tools", { n: ext.tools }) }}</span>
-                      </div>
-                    </td>
-                    <td v-for="roleItem in capabilities.roles" :key="roleItem.role">
-                      <button
-                        type="button"
-                        class="switch"
-                        :class="{ on: roleItem.enabled.includes(ext.name) }"
-                        :disabled="savingRole.busy.value"
-                        :aria-label="t('{role} uses {extension}', { role: ROLE_LABEL[roleItem.role], extension: ext.name })"
-                        :aria-pressed="roleItem.enabled.includes(ext.name)"
-                        @click="toggleExtension(roleItem.role, ext.name)"
-                      />
-                    </td>
-                  </tr>
-                  <tr v-for="name in uninstalledExtensions" :key="name">
-                    <td>
-                      <div class="ext">
-                        <b>
-                          <Icon :name="name.startsWith('mcp.') ? 'plug' : 'puzzle'" size="xs" />
-                          <span>{{ name }}</span>
-                          <span class="dot bad" />
-                        </b>
-                        <span>{{ t("Not installed") }}</span>
-                      </div>
-                    </td>
-                    <td v-for="roleItem in capabilities.roles" :key="roleItem.role">
-                      <button
-                        v-if="roleItem.enabled.includes(name)"
-                        type="button"
-                        class="switch on"
-                        :disabled="savingRole.busy.value"
-                        :aria-label="t('{role} uses {extension}', { role: ROLE_LABEL[roleItem.role], extension: name })"
-                        aria-pressed="true"
-                        @click="toggleExtension(roleItem.role, name)"
-                      />
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>
-                      <div class="ext" :title="t('roles.<role>.maxTurns in settings.json')">
-                        <b>{{ t("Turn limit") }}</b>
-                      </div>
-                    </td>
-                    <td v-for="roleItem in capabilities.roles" :key="roleItem.role">
-                      <input
-                        v-model="turnDrafts[roleItem.role]"
-                        class="input mono"
-                        :placeholder="t('Default')"
-                        :aria-label="t('{role} turn limit', { role: ROLE_LABEL[roleItem.role] })"
-                        :disabled="savingRole.busy.value"
-                        @change="commitMaxTurns(roleItem.role)"
-                      />
-                    </td>
-                  </tr>
-                  <tr class="builtin">
-                    <td>
-                      <div class="ext" :title="t('Always on')">
-                        <b>
-                          <Icon name="lock" size="xs" />
-                          <span>{{ t("Built-in extensions") }}</span>
-                        </b>
-                      </div>
-                    </td>
-                    <td v-for="roleItem in capabilities.roles" :key="roleItem.role">
-                      <div class="builtin-list">
-                        <span v-for="builtin in roleItem.builtIn" :key="builtin">
-                          {{ builtin.replace(/^eevee\./, "") }}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <RoleSettings
+              v-else-if="capabilities"
+              :capabilities="capabilities"
+              :busy="savingRole.busy.value"
+              @toggle="toggleExtension"
+              @max-turns="commitMaxTurns"
+            />
           </template>
 
           <template v-else-if="section === 'mcp' && item !== undefined">

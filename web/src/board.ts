@@ -38,15 +38,20 @@ export function effectiveStage(
 }
 
 export type TicketGroups = {
-  answer: TicketView[];
+  /** Open tickets waiting on the user's answer. */
+  you: TicketView[];
+  /** Open tickets waiting on the Router: a report to review or a block to clear. */
+  router: TicketView[];
+  /** Every other open ticket. */
   active: TicketView[];
   closed: TicketView[];
   openCount: number;
 };
 
-/** Partition board tickets into `Needs answer`, `In progress`, and `Closed`, sorting within each group by stage order. */
+/** Partition board tickets into `Needs you`, `Needs the Router`, `In progress`, and `Closed`, sorting within each group by stage order. */
 export function groupTickets(tickets: readonly TicketView[]): TicketGroups {
-  const answer: TicketView[] = [];
+  const you: TicketView[] = [];
+  const router: TicketView[] = [];
   const active: TicketView[] = [];
   const closed: TicketView[] = [];
 
@@ -54,20 +59,27 @@ export function groupTickets(tickets: readonly TicketView[]): TicketGroups {
     if (view.ticket.status !== "open") {
       closed.push(view);
     } else if (view.stage === "answer") {
-      answer.push(view);
+      you.push(view);
+    } else if (view.stage === "review" || view.stage === "blocked") {
+      router.push(view);
     } else {
       active.push(view);
     }
   }
 
-  active.sort((a, b) => rankOf(effectiveStage(a)) - rankOf(effectiveStage(b)));
-  closed.sort((a, b) => rankOf(effectiveStage(a)) - rankOf(effectiveStage(b)));
+  const byStage = (a: TicketView, b: TicketView): number =>
+    rankOf(effectiveStage(a)) - rankOf(effectiveStage(b));
+  you.sort(byStage);
+  router.sort(byStage);
+  active.sort(byStage);
+  closed.sort(byStage);
 
   return {
-    answer,
+    you,
+    router,
     active,
     closed,
-    openCount: answer.length + active.length,
+    openCount: you.length + router.length + active.length,
   };
 }
 

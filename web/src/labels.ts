@@ -8,6 +8,7 @@ import {
   type TicketStage,
 } from "../../src/contracts/index.ts";
 import { t } from "./i18n.ts";
+import type { McpExposure } from "./mcp-draft.ts";
 import type { DispatchActionKind } from "./transcript-map.ts";
 
 /** Role names stay English in every language. */
@@ -48,6 +49,23 @@ export const DISPATCH_LABEL: Record<DispatchActionKind, string> = {
   interrupt: t("Interrupt"),
   close: t("Cancel"),
   model: t("Model::change"),
+};
+
+/** How a server's tools reach the model, and which one it suits. */
+export const EXPOSURE_LABEL: Record<McpExposure, { label: string; detail: string }> = {
+  deferred: {
+    label: t("On demand"),
+    detail: t("Found on demand with tool_search; best when there are many tools"),
+  },
+  direct: {
+    label: t("Direct"),
+    detail: t("Offered up front like any other tool; best when there are only a few tools"),
+  },
+  codemode: {
+    label: t("Code mode"),
+    detail: t("Called only from codemode scripts; best for batched or combined calls"),
+  },
+  hidden: { label: t("Hidden"), detail: t("Stays connected but offers no tools") },
 };
 
 /** A failed run: why, then what the provider or runtime said about it. */

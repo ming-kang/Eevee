@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { BoardView, TicketView } from "@shared/api/contract.ts";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { effectiveStage, type TicketGroups, ticketQuestionSummary } from "../board.ts";
 import { t } from "../i18n.ts";
-import { STAGE_LABEL } from "../labels.ts";
+import { reportSummary, STAGE_LABEL } from "../labels.ts";
 import Icon from "./Icon.vue";
 import StageGlyph from "./StageGlyph.vue";
 
@@ -19,24 +19,46 @@ defineEmits<{
 
 const showClosed = ref(false);
 
-function latestSummary(view: TicketView): string | undefined {
+const openGroups = computed(() => [
+  { key: "you", label: t("Needs you"), user: true, items: props.groups.you },
+  { key: "router", label: t("Needs the Router"), user: false, items: props.groups.router },
+  { key: "active", label: t("In progress"), user: false, items: props.groups.active },
+]);
+
+function latestReport(view: TicketView): TicketView["reports"][number] | undefined {
   let latest: TicketView["reports"][number] | undefined;
   for (const report of view.reports) {
     if (!latest || report.seq > latest.seq) latest = report;
   }
-  return latest?.summary;
+  return latest;
 }
 
 function rowTooltip(view: TicketView): string {
   const stage = effectiveStage(view);
-  return [STAGE_LABEL[stage], latestSummary(view) ?? view.ticket.closeNote]
+  return [STAGE_LABEL[stage], latestReport(view)?.summary ?? view.ticket.closeNote]
     .filter(Boolean)
     .join(" · ");
 }
 
-function questionLine(view: TicketView): string | undefined {
-  if (view.ticket.status !== "open" || view.stage !== "answer") return undefined;
-  return ticketQuestionSummary(view.ticket.id, props.board?.openQuestions ?? []);
+/**
+ * The row's second line after the stage label: the question it waits on for `answer`, the latest
+ * report otherwise, plus its running jobs when `jobs` is not already the stage.
+ */
+function contextLine(view: TicketView): string | undefined {
+  const report = latestReport(view);
+  const base =
+    view.stage === "answer"
+      ? ticketQuestionSummary(view.ticket.id, props.board?.openQuestions ?? [])
+      : report
+        ? reportSummary(report)
+        : undefined;
+  const running = view.jobs.filter((job) => job.status === "running").length;
+  const parts = [base];
+  if (running > 0 && view.stage !== "jobs") {
+    parts.push(t("{n} job|{n} jobs", { n: running }));
+  }
+  const line = parts.filter(Boolean).join(" · ");
+  return line === "" ? undefined : line;
 }
 </script>
 
@@ -45,44 +67,30 @@ function questionLine(view: TicketView): string | undefined {
     <p class="rail-empty">{{ t("No tickets") }}</p>
   </template>
   <template v-else-if="board">
-    <template v-if="groups.answer.length > 0">
-      <div class="group-h user">{{ t("Needs answer") }}</div>
-      <button
-        v-for="view in groups.answer"
-        :key="view.ticket.id"
-        type="button"
-        class="strip"
-        :class="{ on: activeTicketId === view.ticket.id }"
-        :title="rowTooltip(view)"
-        @click="$emit('open-ticket', view.ticket.id)"
-      >
-        <StageGlyph :stage="effectiveStage(view)" />
-        <span class="t-title">
-          <span class="t-id">{{ view.ticket.id }}</span>
+    <template v-for="group in openGroups" :key="group.key">
+      <template v-if="group.items.length > 0">
+        <div class="group-h" :class="{ user: group.user }">
+          <span>{{ group.label }}</span>
+          <span class="n">{{ group.items.length }}</span>
+        </div>
+        <button
+          v-for="view in group.items"
+          :key="view.ticket.id"
+          type="button"
+          class="strip"
+          :class="{ on: activeTicketId === view.ticket.id }"
+          :title="rowTooltip(view)"
+          @click="$emit('open-ticket', view.ticket.id)"
+        >
+          <StageGlyph :stage="effectiveStage(view)" />
           <span class="ellipsis">{{ view.ticket.title }}</span>
-        </span>
-        <span v-if="questionLine(view)" class="t-line">{{ questionLine(view) }}</span>
-      </button>
-    </template>
-
-    <template v-if="groups.active.length > 0">
-      <div class="group-h">{{ t("In progress") }}</div>
-      <button
-        v-for="view in groups.active"
-        :key="view.ticket.id"
-        type="button"
-        class="strip"
-        :class="{ on: activeTicketId === view.ticket.id }"
-        :title="rowTooltip(view)"
-        @click="$emit('open-ticket', view.ticket.id)"
-      >
-        <StageGlyph :stage="effectiveStage(view)" />
-        <span class="t-title">
           <span class="t-id">{{ view.ticket.id }}</span>
-          <span class="ellipsis">{{ view.ticket.title }}</span>
-        </span>
-        <span class="t-stage" :class="`s-${view.stage}`">{{ STAGE_LABEL[view.stage] }}</span>
-      </button>
+          <span class="t-line">
+            <span class="t-stage" :class="`s-${view.stage}`">{{ STAGE_LABEL[view.stage] }}</span>
+            <template v-if="contextLine(view)"> · {{ contextLine(view) }}</template>
+          </span>
+        </button>
+      </template>
     </template>
 
     <template v-if="groups.closed.length > 0">
@@ -107,10 +115,8 @@ function questionLine(view: TicketView): string | undefined {
           @click="$emit('open-ticket', view.ticket.id)"
         >
           <StageGlyph :stage="effectiveStage(view)" />
-          <span class="t-title">
-            <span class="t-id">{{ view.ticket.id }}</span>
-            <span class="ellipsis">{{ view.ticket.title }}</span>
-          </span>
+          <span class="ellipsis">{{ view.ticket.title }}</span>
+          <span class="t-id">{{ view.ticket.id }}</span>
         </button>
       </template>
     </template>
