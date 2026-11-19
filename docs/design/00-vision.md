@@ -31,15 +31,9 @@ Eevee 是一个基于 Pi-Durable 的 Proactive Agent，会话退化为底层实�
 ## 原则
 
 1. **占用人尽量少的注意力，产出尽量多的价值**：只在用户必须做决定、或者有成果值得展示时才通知；其余时间保持安静。
-2. **YOLO**：不设置逐命令审批，Ticket 和 Report 用于协同。
+2. **YOLO**：不设置逐命令审批。
 3. **降低认知负担**：新需求优先考虑能否复用现有概念。
 4. **状态持久化**：任何 `reset` 后还需要的信息（工单、依赖、待回答的问题）都必须是持久化状态。
 5. **可观测、可控制**：每个工单、Worker 和后台作业都能查看，用户随时可以中止或介入。
 
 正常路径由 Engine 自动流转；意外情况交给 Router；只有必须由用户决定的事情才请示用户。
-
-## 参考来源
-
-- 双层架构与工单调度：DeepSeek 《Super-agent 设计探索》 与 [`dsh-superagent-prototype`](https://github.com/deepseek-ai/dsh-superagent-prototype)
-- 持久化原语与缓存机制：[Pi-Durable](https://github.com/earendil-works/pi) 与 [DS-Bot](https://github.com/Fei2411/DS-Bot)
-- 记忆仓库与 Dreaming：Cognition [Memory and dreaming](https://devin.ai/blog/memory-and-dreaming) 与 [Agent Memory Repo 规范](https://cognition.com/agent-memory-repo)
