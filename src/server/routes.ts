@@ -7,12 +7,9 @@ import {
   type QuestionId,
   ROLE_NAMES,
   type RoleName,
-  THINKING_LEVELS,
-  type ThinkingLevel,
   type TicketId,
 } from "../contracts/index.ts";
 import type { Engine } from "../engine/engine.ts";
-import type { ProviderConfig } from "../models/models-config.ts";
 import type { Auth } from "./auth.ts";
 import type { RouteTable } from "./http.ts";
 
@@ -30,51 +27,33 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     if (host === undefined) throw new ProblemError({ code: "no_project", projectId: id });
     return host;
   };
-  const text = (value: unknown, field: string) => {
-    if (typeof value !== "string" || value.trim() === "") {
+  const text = (value: string, field: string) => {
+    if (value.trim() === "") {
       throw new ProblemError({ code: "required", field });
     }
     return value;
   };
 
-  const optionalText = (value: unknown, field: string): string | undefined => {
-    if (value === undefined) return undefined;
-    if (typeof value !== "string") throw new ProblemError({ code: "invalid", field });
-    return value.trim() === "" ? undefined : value.trim();
+  const optionalText = (value: string | undefined): string | undefined => {
+    if (value === undefined || value.trim() === "") return undefined;
+    return value.trim();
   };
-  const record = (value: unknown, field: string): Record<string, unknown> => {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      throw new ProblemError({ code: "invalid", field });
-    }
-    return value as Record<string, unknown>;
-  };
-
-  const role = (value: unknown): RoleName => {
-    if (!ROLE_NAMES.includes(value as RoleName)) {
+  const role = (value: string): RoleName => {
+    if (!(ROLE_NAMES as readonly string[]).includes(value)) {
       throw new ProblemError({ code: "invalid", field: "role", allowed: ROLE_NAMES });
     }
     return value as RoleName;
   };
-  const modelRole = (value: unknown): RoleName | "default" =>
+  const modelRole = (value: string | undefined): RoleName | "default" =>
     value === undefined || value === "default" ? "default" : role(value);
-  const model = (value: unknown): ModelChoice => {
-    const body = value as Record<string, unknown> | undefined;
-    const thinkingLevel = body?.thinkingLevel;
-    if (thinkingLevel !== undefined && !THINKING_LEVELS.includes(thinkingLevel as ThinkingLevel)) {
-      throw new ProblemError({
-        code: "invalid",
-        field: "thinkingLevel",
-        allowed: THINKING_LEVELS,
-      });
-    }
-    return {
-      provider: text(body?.provider, "provider"),
-      modelId: text(body?.modelId, "modelId"),
-      ...(thinkingLevel === undefined ? {} : { thinkingLevel: thinkingLevel as ThinkingLevel }),
-    };
-  };
+  /** The model a body names, blank fields counting as missing. */
+  const model = (body: ModelChoice): ModelChoice => ({
+    provider: text(body.provider, "provider"),
+    modelId: text(body.modelId, "modelId"),
+    ...(body.thinkingLevel === undefined ? {} : { thinkingLevel: body.thinkingLevel }),
+  });
   const scope = (value: string): MemoryScope => {
-    if (!MEMORY_SCOPES.includes(value as MemoryScope)) {
+    if (!(MEMORY_SCOPES as readonly string[]).includes(value)) {
       throw new ProblemError({ code: "invalid", field: "scope", allowed: MEMORY_SCOPES });
     }
     return value as MemoryScope;
@@ -99,7 +78,7 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     "POST /api/session": {
       public: true,
       handle: async ({ body }) => {
-        const token = auth.exchange(text(body?.code, "code"));
+        const token = auth.exchange(text(body.code, "code"));
         if (token === undefined) throw new ProblemError({ code: "bad_code" });
         return { token };
       },
@@ -108,13 +87,13 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     "GET /api/models": { handle: async () => engine.catalog() },
     "POST /api/settings/models": {
       handle: async ({ body }) => {
-        await engine.setDefaultModel(modelRole(body?.role), model(body));
+        await engine.setDefaultModel(modelRole(body.role), model(body));
         return { ok: true };
       },
     },
     "POST /api/auth/:provider": {
       handle: async ({ params, body }) => {
-        await engine.login(params.provider, text(body?.key, "key"));
+        await engine.login(params.provider, text(body.key, "key"));
         return { ok: true };
       },
     },
@@ -129,59 +108,33 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     },
     "PUT /api/models/providers/:provider": {
       // The Engine checks the entry against the models.json schema before writing it.
-      handle: async ({ params, body }) =>
-        engine.saveProvider(params.provider, record(body?.config, "config") as ProviderConfig),
+      handle: async ({ params, body }) => engine.saveProvider(params.provider, body.config),
     },
     "DELETE /api/models/providers/:provider": {
       handle: async ({ params }) => engine.saveProvider(params.provider, undefined),
     },
     "POST /api/models/builtin": {
-      handle: async ({ body }) => {
-        const api = optionalText(body?.api, "api");
-        return { models: engine.builtinModels(text(body?.query, "query"), api) };
-      },
+      handle: async ({ body }) => ({
+        models: engine.builtinModels(text(body.query, "query"), optionalText(body.api)),
+      }),
     },
     "POST /api/models/probe": {
-      handle: async ({ body }) => {
-        const provider = optionalText(body?.provider, "provider");
-        const key = optionalText(body?.key, "key");
-        const api = optionalText(body?.api, "api");
-        const headers = body?.headers === undefined ? undefined : record(body.headers, "headers");
-        if (headers !== undefined && Object.values(headers).some((v) => typeof v !== "string")) {
-          throw new ProblemError({ code: "invalid", field: "headers" });
-        }
-        return engine.probeModels({
-          ...(provider === undefined ? {} : { provider }),
-          baseUrl: text(body?.baseUrl, "baseUrl"),
-          ...(api === undefined ? {} : { api }),
-          ...(key === undefined ? {} : { key }),
-          ...(headers === undefined ? {} : { headers: headers as Record<string, string> }),
-        });
-      },
+      handle: async ({ body }) =>
+        engine.probeModels({
+          ...(body.provider === undefined ? {} : { provider: optionalText(body.provider) }),
+          baseUrl: text(body.baseUrl, "baseUrl"),
+          ...(body.api === undefined ? {} : { api: optionalText(body.api) }),
+          ...(body.key === undefined ? {} : { key: optionalText(body.key) }),
+          ...(body.headers === undefined ? {} : { headers: body.headers }),
+        }),
     },
     "GET /api/capabilities": { handle: async () => engine.capabilities() },
     "POST /api/capabilities/roles/:role": {
-      handle: async ({ params, body }) => {
-        const extensions = body?.extensions;
-        if (
-          extensions !== undefined &&
-          (!Array.isArray(extensions) || extensions.some((e) => typeof e !== "string"))
-        ) {
-          throw new ProblemError({ code: "invalid", field: "extensions" });
-        }
-        const maxTurns = body?.maxTurns;
-        if (
-          maxTurns !== undefined &&
-          maxTurns !== null &&
-          !(Number.isInteger(maxTurns) && maxTurns >= 1)
-        ) {
-          throw new ProblemError({ code: "invalid", field: "maxTurns" });
-        }
-        return engine.setRoleCapability(role(params.role), {
-          ...(extensions === undefined ? {} : { extensions }),
-          ...(maxTurns === undefined ? {} : { maxTurns }),
-        });
-      },
+      handle: async ({ params, body }) =>
+        engine.setRoleCapability(role(params.role), {
+          ...(body.extensions === undefined ? {} : { extensions: body.extensions }),
+          ...(body.maxTurns === undefined ? {} : { maxTurns: body.maxTurns }),
+        }),
     },
     "POST /api/mcp/reload": { handle: async () => engine.reloadMcp() },
     "GET /api/mcp/config": {
@@ -190,8 +143,7 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
       }),
     },
     "PUT /api/mcp/servers/:server": {
-      handle: async ({ params, body }) =>
-        engine.saveMcpServer(params.server, record(body?.config, "config")),
+      handle: async ({ params, body }) => engine.saveMcpServer(params.server, body.config),
     },
     "DELETE /api/mcp/servers/:server": {
       handle: async ({ params }) => engine.saveMcpServer(params.server, undefined),
@@ -199,16 +151,16 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     "POST /api/projects": {
       handle: async ({ body }) =>
         engine.createProject({
-          title: text(body?.title, "title"),
-          workspace: text(body?.workspace, "workspace"),
+          title: text(body.title, "title"),
+          workspace: text(body.workspace, "workspace"),
         }),
     },
     "POST /api/projects/:project/models": {
       handle: async ({ params, body }) =>
         engine.setProjectModel(
           project(params.project),
-          modelRole(body?.role),
-          body?.model === null ? null : model(body?.model),
+          modelRole(body.role),
+          body.model === null ? null : model(body.model),
         ),
     },
     "GET /api/projects/:project/board": {
@@ -248,7 +200,7 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
       handle: async ({ params, body }) => {
         await project(params.project).memoryRevert(
           scope(params.scope),
-          text(body?.commit, "commit"),
+          text(body.commit, "commit"),
         );
         return { ok: true };
       },
@@ -270,7 +222,7 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     },
     "POST /api/projects/:project/messages": {
       handle: async ({ params, body }) => {
-        await project(params.project).sendUserMessage(text(body?.text, "text"));
+        await project(params.project).sendUserMessage(text(body.text, "text"));
         return { ok: true };
       },
     },
@@ -286,18 +238,10 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     },
     "POST /api/projects/:project/tickets/:ticket/messages": {
       handle: async ({ params, body }) => {
-        const mode = body?.mode ?? "steer";
-        if (mode !== "steer" && mode !== "followUp") {
-          throw new ProblemError({
-            code: "invalid",
-            field: "mode",
-            allowed: ["steer", "followUp"],
-          });
-        }
         await project(params.project).messageWorker(
           params.ticket as TicketId,
-          text(body?.text, "text"),
-          mode,
+          text(body.text, "text"),
+          body.mode ?? "steer",
         );
         return { ok: true };
       },
@@ -312,7 +256,7 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
       handle: async ({ params, body }) => {
         await project(params.project).answerQuestion(
           params.question as QuestionId,
-          text(body?.answer, "answer"),
+          text(body.answer, "answer"),
         );
         return { ok: true };
       },

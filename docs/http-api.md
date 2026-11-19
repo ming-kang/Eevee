@@ -8,6 +8,7 @@
 
 - 地址为 `http://127.0.0.1:<port>`，端口见 `runtime/engine.json`。`Host` 和 `Origin`（若有）必须是回环地址。
 - 请求体和响应体都是 JSON，请求体最大 1 MB。
+- 请求体按接口的 schema 校验：缺字段报 `required`，类型或取值不对报 `invalid`，`field` 指出位置，嵌套字段用点分路径（如 `headers.X-Key`、`extensions.1`）。没有要传的字段可以省略，多出来的字段忽略。
 - 除 `GET /api/health` 和 `POST /api/session`，所有接口都要在 `x-eevee-token` 请求头中携带鉴权 token，见 [鉴权](integration.md#鉴权)。
 - 路径里的 `:project` 是项目编号（如 `p3f9a1c2e`），`:ticket` 是工单编号（如 `t3`），`:question` 是问题编号（如 `q2`），`:job` 是后台作业编号（如 `j7`），`:scope` 是 `project` 或 `global`，`:role` 是 `router`、`worker` 或 `dreamer`。路径参数要做 URL 编码，比如记忆文件 `notes/sim.md` 写成 `notes%2Fsim.md`。
 - 没有数据要返回的接口，响应为 `{ "ok": true }`，下表写作 `{ ok }`。
@@ -23,8 +24,8 @@
 | 状态 | `code` | 参数 | 含义 |
 |:-:|:-:|:-:|:-:|
 | 400 | `bad_json` | — | 请求体不是合法的 JSON |
-| 400 | `required` | `field` | 字段为空 |
-| 400 | `invalid` | `field`、`allowed?` | 字段不合法；`allowed` 是可选的取值 |
+| 400 | `required` | `field` | 字段缺失，或者只有空白 |
+| 400 | `invalid` | `field`、`allowed?` | 字段类型或取值不合法；`allowed` 是可选的取值 |
 | 401 | `unauthorized` | — | 缺少 token 或 token 无效 |
 | 401 | `bad_code` | — | 授权码无效或已过期 |
 | 403 | `forbidden_host` | — | 请求不是发往回环地址，或 `Origin` 不是回环地址 |
