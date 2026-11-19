@@ -1,6 +1,6 @@
 import type { Context } from "@earendil-works/chord/context";
 import type { ConversationId, RegistrySnapshot, Tx } from "@earendil-works/pi-durable";
-import type { Report, Ticket, TicketId } from "../../contracts/index.ts";
+import type { Report, Ticket } from "../../contracts/index.ts";
 
 /** How a ticket's conversation is set up; the roles module implements it. */
 export type TicketConversations = {
@@ -26,12 +26,7 @@ export type HandoffPolicy = {
   shouldHandoff(conversationId: ConversationId, context: Context): Promise<boolean>;
 };
 
-export type TicketJobs = {
-  stop(ticketId: TicketId): void;
-};
-
 export type OrchestrationDeps = {
   conversations: TicketConversations;
   handoff: HandoffPolicy;
-  jobs: TicketJobs;
 };

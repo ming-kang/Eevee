@@ -145,6 +145,10 @@ export class ProjectHost {
   #ticking = false;
   #lastUpkeep = 0;
   readonly #stopping = new Set<TicketId>();
+  /** The pass that stops settled tickets, and whether another one was asked for while it ran. */
+  #reaping: Promise<void> | undefined;
+  #reapAgain = false;
+  #closing = false;
 
   private constructor(parts: Parts) {
     this.#store = parts.store;
@@ -252,7 +256,6 @@ export class ProjectHost {
           return fraction > options.settings().handoffThreshold;
         },
       },
-      jobs,
     });
 
     const registry = createRegistry();
@@ -315,7 +318,7 @@ export class ProjectHost {
     await flush(delivery, context);
     await jobs.recover();
     await host.#seedStopping();
-    await host.#reap();
+    host.#kickReap();
     await ensureDreamTimer(harness, root, memory.timer, context);
     host.#watchActivity();
     harness.resume();
@@ -518,6 +521,7 @@ export class ProjectHost {
   async close(): Promise<void> {
     this.#activityWatch?.detach();
     clearInterval(this.#timer);
+    this.#closing = true;
     this.#feed.close();
     await this.#jobs.close();
     await this.#harness.close(this.#context);
@@ -540,6 +544,7 @@ export class ProjectHost {
             this.#stopping.add(ticket.id);
           }
         }
+        if (this.#stopping.size > 0) this.#kickReap();
       },
       end: () => {},
     });
@@ -555,7 +560,7 @@ export class ProjectHost {
     try {
       const host = deliveryHost(this.#harness, this.#root);
       const settings = this.#options.settings();
-      await this.#reap();
+      this.#kickReap();
       await pump(host, settings.maxActiveWorkers, this.#context);
       const now = Date.now();
       if (now - this.#lastUpkeep >= (this.#options.upkeepMs ?? UPKEEP_MS)) {
@@ -571,21 +576,61 @@ export class ProjectHost {
     }
   }
 
-  /** Stops the conversation and background jobs of every settled ticket whose stop has not been recorded yet. */
+  /**
+   * Reaps the settled tickets whose stop is not recorded yet, on the next tick of the event loop: many changes
+   * coalesce into one pass, a pass never runs twice at once, and one that is asked for again runs once more.
+   */
+  #kickReap(): void {
+    if (this.#closing) return;
+    if (this.#reaping !== undefined) {
+      this.#reapAgain = true;
+      return;
+    }
+    this.#reaping = new Promise<void>((resolve) => {
+      setImmediate(() => {
+        this.#reapAgain = false;
+        this.#reap()
+          .catch((error) =>
+            console.error(
+              `[${this.meta.id}] Stopping the execution of a settled ticket failed.`,
+              error,
+            ),
+          )
+          .finally(() => {
+            this.#reaping = undefined;
+            if (this.#reapAgain && !this.#closing) this.#kickReap();
+            resolve();
+          });
+      });
+    });
+  }
+
+  /**
+   * The one place that stops a settled ticket's execution: its background jobs, its conversation, and only then
+   * the record that it was stopped. A ticket whose stop fails stays queued for the next pass.
+   */
   async #reap(): Promise<void> {
-    if (this.#stopping.size === 0) return;
+    if (this.#closing) return;
     for (const id of [...this.#stopping]) {
-      this.#stopping.delete(id);
       const ticket = await readTicket(this.#harness, id, this.#context);
       if (ticket === undefined || ticket.status === "open" || ticket.stoppedAt !== undefined) {
+        this.#stopping.delete(id);
         continue;
       }
-      this.#jobs.stop(ticket.id);
-      const conversation = await this.#harness.conversation(conversationOf(ticket), this.#context);
-      await conversation?.abort(this.#context);
-      await this.#harness.commit(async (tx) => {
-        Object.assign(await tx.doc(TicketDoc, ticket.id, ticket), { stoppedAt: Date.now() });
-      }, this.#context);
+      try {
+        this.#jobs.stop(ticket.id);
+        const conversation = await this.#harness.conversation(
+          conversationOf(ticket),
+          this.#context,
+        );
+        await conversation?.abort(this.#context);
+        await this.#harness.commit(async (tx) => {
+          Object.assign(await tx.doc(TicketDoc, ticket.id, ticket), { stoppedAt: Date.now() });
+        }, this.#context);
+        this.#stopping.delete(id);
+      } catch (error) {
+        console.error(`[${this.meta.id}] Could not stop ${id}; it will be tried again.`, error);
+      }
     }
   }
 

@@ -39,6 +39,56 @@ test("when a Worker run fails, the Engine files a failed report for it and wakes
   }
 });
 
+test("the dreamer's automatic acceptance withdraws the question that was waiting on its ticket", async () => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const brain: Brain = ({ role, last }) => {
+    if (role === "dreamer") {
+      // Hold the tidying ticket open until the question it should have withdrawn is on the board.
+      return gate.then(() =>
+        call("report", { status: "ready", summary: "tidied up", artifacts: [] }),
+      );
+    }
+    if (last?.role === "user" && textOf(last).includes("ask about the tidying ticket")) {
+      return call("ask_user", {
+        items: [{ text: "which one", options: ["alpha", "beta"], recommended: "alpha" }],
+        ticketId: "t1",
+      });
+    }
+    return say("OK.");
+  };
+
+  const project = await openTestProject(brain, { dreamIntervalMs: 300 });
+  try {
+    await project.host.sendUserMessage("hello");
+    const dreaming = await project.until(async () => {
+      const ticket = (await project.host.board()).tickets.find((t) => t.ticket.role === "dreamer");
+      return ticket?.ticket.status === "open" ? ticket : false;
+    });
+    await project.host.sendUserMessage("ask about the tidying ticket");
+    const question = await project.until(async () => (await project.host.board()).openQuestions[0]);
+    assert.equal(question.ticketId, dreaming.ticket.id);
+
+    release();
+    const closed = await project.until(async () => {
+      const ticket = (await project.host.board()).tickets[0];
+      return ticket?.ticket.status === "done" ? ticket : false;
+    });
+    assert.equal(closed.ticket.role, "dreamer");
+    assert.deepEqual((await project.host.board()).openQuestions, []);
+    await assert.rejects(
+      project.host.answerQuestion(question.id, "alpha"),
+      (error: unknown) =>
+        (error as { problem?: { code?: string } }).problem?.code === "no_question",
+    );
+  } finally {
+    release();
+    await project.close();
+  }
+});
+
 test("after the dreaming interval passes, a tidying ticket lists the new records; tidying closes it and commits the memory", async () => {
   const brain: Brain = ({ role, last }) => {
     if (role !== "dreamer") return say("OK.");

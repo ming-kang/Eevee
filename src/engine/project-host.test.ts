@@ -194,6 +194,77 @@ test("a long command moves to the background, and the Worker is woken when the j
   }
 });
 
+test("accepting a ticket stops its background job, leaves its Worker alone, and records the stop", async () => {
+  const brain: Brain = ({ role, last }) => {
+    if (role === "router") {
+      if (last?.role === "user" && textOf(last).includes("run simulation")) {
+        return call("ticket", {
+          action: "create",
+          title: "simulation",
+          goal: "run",
+          acceptance: ["done running"],
+        });
+      }
+      if (last?.role === "user" && textOf(last).includes("report · ready")) {
+        return call("ticket", {
+          action: "review",
+          ticketId: "t1",
+          verdict: "accept",
+          note: "the scan keeps running in the background",
+        });
+      }
+      return say("OK.");
+    }
+    if (toolName(last) === "bash") {
+      return call("report", {
+        status: "ready",
+        summary: "the scan runs in the background",
+        artifacts: [],
+      });
+    }
+    if (last?.role === "user") return call("bash", { command: "sleep 30; echo finished" });
+    return say("…");
+  };
+
+  const project = await openTestProject(brain, { backgroundAfterMs: 100 });
+  try {
+    await project.host.sendUserMessage("run simulation");
+    const running = await project.until(async () => {
+      const ticket = (await project.host.board()).tickets[0];
+      const job = ticket?.jobs[0];
+      return ticket?.stage === "jobs" && job?.status === "running" ? ticket : false;
+    });
+    const jobId = running.jobs[0]?.id;
+    assert.ok(jobId !== undefined);
+
+    const closed = await project.until(async () => {
+      const ticket = (await project.host.board()).tickets[0];
+      const settled =
+        ticket?.ticket.status === "done" &&
+        ticket.ticket.stoppedAt !== undefined &&
+        ticket.jobs.length === 0;
+      return settled ? ticket : false;
+    });
+    assert.equal(closed.ticket.closeNote, "the scan keeps running in the background");
+
+    const log = await project.until(async () => {
+      const found = await project.host.jobLog(jobId);
+      return found.job.status === "killed" ? found : false;
+    });
+    assert.match(log.content, /\[killed\]/);
+    // The job's ticket closed under it, so the Engine stops it without telling the Worker.
+    await sleep(400);
+    assert.equal(
+      project.calls.some((c) =>
+        c.role === "worker" ? textOf(c.last).includes("Background job job://j1") : false,
+      ),
+      false,
+    );
+  } finally {
+    await project.close();
+  }
+});
+
 test("when an Engine restart interrupts a background job, the Worker is told to check the scene first", async () => {
   const brain: Brain = ({ role, last }) => {
     if (role === "router") {

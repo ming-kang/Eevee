@@ -90,52 +90,6 @@ export async function markHandled(tx: Tx, id: TicketId): Promise<void> {
   if (latest !== undefined) latest.handled = true;
 }
 
-export type TicketClose = {
-  status: "done" | "cancelled";
-  note: string;
-  at: number;
-};
-
-/**
- * The only way a ticket leaves `open`: it re-reads the ticket and, for an acceptance, the report the Router saw, and
- * withdraws the questions that were waiting on it.
- */
-export async function settleTicket(
-  tx: Tx,
-  ticket: Ticket,
-  close: TicketClose,
-  options: { reportSeq?: number; questions?: readonly Question[] } = {},
-): Promise<void> {
-  const stored = await tx.doc(TicketDoc, ticket.id, ticket);
-  if (stored.status !== "open")
-    throw new ProblemError({ code: "ticket_closed", ticketId: ticket.id });
-  const log = await tx.doc(ReportLog, ticket.id, null);
-  const latest = latestFinalReport(log.reports);
-  if (options.reportSeq !== undefined) {
-    const ready = latest?.seq === options.reportSeq && latest.status === "ready" && !latest.handled;
-    if (!ready) throw new ProblemError({ code: "report_changed", ticketId: ticket.id });
-  }
-  Object.assign(stored, {
-    status: close.status,
-    closeNote: close.note,
-    closedAt: close.at,
-  });
-  if (latest !== undefined) latest.handled = true;
-  const board = await tx.doc(Board);
-  for (const seed of options.questions ?? []) {
-    const question = await tx.doc(QuestionDoc, seed.id, seed);
-    if (
-      question.ticketId !== ticket.id ||
-      question.answer !== undefined ||
-      question.withdrawnAt !== undefined
-    ) {
-      continue;
-    }
-    question.withdrawnAt = close.at;
-    board.openQuestions = board.openQuestions.filter((id) => id !== seed.id);
-  }
-}
-
 /** Records `answer` for a question nobody answered yet; a second answer fails instead of overwriting. */
 export async function answerQuestion(
   tx: Tx,

@@ -19,7 +19,6 @@ export {
   flush,
   NOTICE_KIND,
   pump,
-  purgeDeliveries,
   queuedTickets,
   submitReport,
   toSubmission,
@@ -30,7 +29,7 @@ export { describeJobOutcome, route } from "./delivery.ts";
 export { reportRunFailures } from "./failures.ts";
 export { registerJob, runningJobs, settleJob } from "./jobs.ts";
 export { openTicket, type TicketDraft } from "./open.ts";
-export type { HandoffPolicy, OrchestrationDeps, TicketConversations, TicketJobs } from "./ports.ts";
+export type { HandoffPolicy, OrchestrationDeps, TicketConversations } from "./ports.ts";
 export { contextUsage, remindRouter, routerIdle } from "./upkeep.ts";
 
 /** The Router's side: creating and steering tickets, and asking the user. */

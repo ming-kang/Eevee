@@ -13,20 +13,13 @@ import {
   type TicketDetails,
   type TicketId,
 } from "../../../contracts/index.ts";
-import {
-  conversationOf,
-  markHandled,
-  readQuestions,
-  readReports,
-  readTicket,
-  saveTicket,
-  settleTicket,
-} from "../board.ts";
-import { deliver, purgeDeliveries } from "../deliver.ts";
+import { conversationOf, markHandled, readReports, readTicket, saveTicket } from "../board.ts";
+import { deliver } from "../deliver.ts";
 import { route } from "../delivery.ts";
 import { openTicket } from "../open.ts";
 import type { OrchestrationDeps } from "../ports.ts";
 import { fail, missing, ok } from "../result.ts";
+import { prepareSettlement, settle } from "../settle.ts";
 
 export const TICKET_TOOL = "ticket";
 
@@ -136,9 +129,9 @@ export function createTicketTool(deps: OrchestrationDeps) {
         case "interrupt":
           return interrupt(ticket, api, context);
         case "review":
-          return review(deps, ticket, args, api, context);
+          return review(ticket, args, api, context);
         case "close":
-          return close(deps, ticket, args, api, context);
+          return close(ticket, args, api, context);
         case "model":
           return retarget(ticket, args, api, context);
       }
@@ -234,13 +227,7 @@ async function interrupt(ticket: Ticket, api: ToolExecutionApi, context: Context
   return ok(`Interrupted the current turn of ${ticket.id}; the ticket is still open.`);
 }
 
-async function review(
-  deps: OrchestrationDeps,
-  ticket: Ticket,
-  args: Args,
-  api: ToolExecutionApi,
-  context: Context,
-) {
+async function review(ticket: Ticket, args: Args, api: ToolExecutionApi, context: Context) {
   if (args.verdict === undefined || !args.note) return fail("review needs verdict and note.");
   const latest = latestFinalReport(await readReports(api, ticket.id, context));
   if (latest?.status !== "ready" || latest.handled) {
@@ -259,63 +246,46 @@ async function review(
     return ok(`Sent ${ticket.id} back for rework.`);
   }
 
-  const questions = (await readQuestions(api, context)).filter(
-    (question) => question.ticketId === ticket.id,
-  );
+  const prepared = await prepareSettlement(api, ticket, context);
   try {
     await deliver(
       api,
       route({ type: "ticket-accepted", ticket, report: latest }),
       context,
       async (tx) => {
-        await settleTicket(
+        await settle(
           tx,
-          ticket,
+          prepared,
           { status: "done", note: args.note ?? "", at: api.now() },
-          { reportSeq: latest.seq, questions },
+          { reportSeq: latest.seq },
         );
-        await purgeDeliveries(tx, ticket.id);
       },
     );
   } catch (error) {
     return fail(settleRefusal(error, ticket.id));
   }
-  deps.jobs.stop(ticket.id);
-  await (await api.conversation(conversationOf(ticket), context))?.abort(context);
   return ok(`${ticket.id} is accepted and closed.`);
 }
 
-async function close(
-  deps: OrchestrationDeps,
-  ticket: Ticket,
-  args: Args,
-  api: ToolExecutionApi,
-  context: Context,
-) {
+async function close(ticket: Ticket, args: Args, api: ToolExecutionApi, context: Context) {
   if (!args.note) return fail("close needs a note that says why.");
-  const questions = (await readQuestions(api, context)).filter(
-    (question) => question.ticketId === ticket.id,
-  );
+  const prepared = await prepareSettlement(api, ticket, context);
   try {
     await deliver(
       api,
       route({ type: "ticket-cancelled", ticket, reason: args.note }),
       context,
       async (tx) => {
-        await settleTicket(
-          tx,
-          ticket,
-          { status: "cancelled", note: args.note ?? "", at: api.now() },
-          { questions },
-        );
-        await purgeDeliveries(tx, ticket.id);
+        await settle(tx, prepared, {
+          status: "cancelled",
+          note: args.note ?? "",
+          at: api.now(),
+        });
       },
     );
   } catch (error) {
     return fail(settleRefusal(error, ticket.id));
   }
-  deps.jobs.stop(ticket.id);
-  await (await api.conversation(conversationOf(ticket), context))?.abort(context);
   return ok(`${ticket.id} is cancelled.`);
 }
 

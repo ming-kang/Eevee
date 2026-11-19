@@ -9,10 +9,11 @@ import {
   REPORT_SUMMARY_LIMIT,
   type Report,
 } from "../../../contracts/index.ts";
-import { readBinding, readTicket, settleTicket } from "../board.ts";
-import { purgeDeliveries, submitReport } from "../deliver.ts";
+import { readBinding, readTicket } from "../board.ts";
+import { submitReport } from "../deliver.ts";
 import type { OrchestrationDeps } from "../ports.ts";
 import { fail, ok } from "../result.ts";
+import { prepareSettlement, settle } from "../settle.ts";
 
 export const REPORT_TOOL = "report";
 
@@ -71,6 +72,7 @@ export function createReportTool(deps: OrchestrationDeps) {
         return fail("The root conversation is missing, the report cannot be submitted.");
 
       let report: Report;
+      const settlement = autoAccept ? await prepareSettlement(api, ticket, context) : undefined;
       try {
         report = await api.commit(async (tx) => {
           const current = await tx.doc(TicketDoc, ticket.id, ticket);
@@ -78,13 +80,12 @@ export function createReportTool(deps: OrchestrationDeps) {
             throw new ProblemError({ code: "ticket_closed", ticketId: ticket.id });
           }
           const stored = await submitReport(tx, router, current, draft);
-          if (autoAccept) {
-            await settleTicket(tx, current, {
+          if (settlement !== undefined) {
+            await settle(tx, settlement, {
               status: "done",
               note: "Auto-accepted when the dreamer ticket finished tidying up",
               at: api.now(),
             });
-            await purgeDeliveries(tx, current.id);
           }
           return stored;
         }, context);
@@ -95,16 +96,18 @@ export function createReportTool(deps: OrchestrationDeps) {
         throw error;
       }
 
-      if (autoAccept) deps.jobs.stop(ticket.id);
       const address = formatAddress({ kind: "report", ticketId: ticket.id, seq: report.seq });
       if (!final) return ok(`Recorded ${address}; keep working.`);
 
-      const handoff = (await deps.handoff.shouldHandoff(api.conversationId, context))
-        ? await deps.conversations.opening(ticket, context, {
-            conversationId: api.conversationId,
-            latest: report,
-          })
-        : undefined;
+      // The Engine stops this ticket's execution as soon as the commit lands, so a handoff for it is pointless.
+      const handoff = autoAccept
+        ? undefined
+        : (await deps.handoff.shouldHandoff(api.conversationId, context))
+          ? await deps.conversations.opening(ticket, context, {
+              conversationId: api.conversationId,
+              latest: report,
+            })
+          : undefined;
       return ok(`Submitted ${address}; this turn is over.`, undefined, {
         terminate: true,
         ...(handoff === undefined ? {} : { handoff }),
