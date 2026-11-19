@@ -134,7 +134,8 @@ export async function openTestProject(
   const settings: Settings = {
     ...DEFAULT_SETTINGS,
     models: { default: { provider: "faux", modelId: "brain" } },
-    dreamIntervalMs: 0,
+    // Dreaming stays off in tests unless one asks for it; its trigger would open tickets of its own.
+    dreaming: { ...DEFAULT_SETTINGS.dreaming, enabled: false },
     ...overrides,
   };
   const meta = await createProjectMeta(paths, { title: "Test project", workspace });

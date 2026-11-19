@@ -20,8 +20,6 @@ import { Engine } from "./engine.ts";
 test("the Engine collects the extensions that can be enabled; a role only gets what is installed, written to settings.json and applied to every project", async () => {
   const home = await mkdtemp(join(tmpdir(), "eevee-engine-"));
   const paths = eeveePaths(home);
-  await mkdir(paths.extensions, { recursive: true });
-  await writeFile(join(paths.extensions, "notes.mjs"), `export default { name: "notes" };`);
   await writeFile(paths.mcp, JSON.stringify({ mcpServers: { weather: { command: "unused" } } }));
   const server = fakeMcpServer([weatherTool]);
 
@@ -43,7 +41,7 @@ test("the Engine collects the extensions that can be enabled; a role only gets w
     const view = engine.capabilities();
     assert.deepEqual(
       view.available.map((e) => e.name),
-      ["tool-search", "codemode", "mcp.weather", "notes"],
+      ["tool-search", "codemode", "mcp.weather"],
     );
     assert.equal(view.mcp[0]?.tools, 1);
     assert.deepEqual(view.roles.find((r) => r.role === "worker")?.builtIn, [
@@ -56,14 +54,17 @@ test("the Engine collects the extensions that can be enabled; a role only gets w
       problem: { code: "no_extension", names: ["mcp.nope"] },
     });
     const updated = await engine.setRoleCapability("worker", {
-      extensions: ["mcp.weather", "notes", "notes"],
+      extensions: ["mcp.weather", "tool-search", "tool-search"],
       maxTurns: 30,
     });
     const worker = updated.roles.find((r) => r.role === "worker");
-    assert.deepEqual(worker?.enabled, ["mcp.weather", "notes"]);
+    assert.deepEqual(worker?.enabled, ["mcp.weather", "tool-search"]);
     assert.equal(worker?.maxTurns, 30);
     const stored = JSON.parse(await readFile(paths.settings, "utf8"));
-    assert.deepEqual(stored.roles.worker, { extensions: ["mcp.weather", "notes"], maxTurns: 30 });
+    assert.deepEqual(stored.roles.worker, {
+      extensions: ["mcp.weather", "tool-search"],
+      maxTurns: 30,
+    });
 
     await engine.setRoleCapability("worker", { maxTurns: null });
     assert.equal(engine.capabilities().roles.find((r) => r.role === "worker")?.maxTurns, undefined);
@@ -76,8 +77,6 @@ test("the Engine collects the extensions that can be enabled; a role only gets w
 test("an extension a role enabled and that was later uninstalled does not block edits and can be removed one by one; a newly enabled one still has to be installed", async () => {
   const home = await mkdtemp(join(tmpdir(), "eevee-engine-"));
   const paths = eeveePaths(home);
-  await mkdir(paths.extensions, { recursive: true });
-  await writeFile(join(paths.extensions, "notes.mjs"), `export default { name: "notes" };`);
   const settings = await SettingsStore.open(paths.settings);
   await settings.update((s) => ({
     ...s,
@@ -91,17 +90,19 @@ test("an extension a role enabled and that was later uninstalled does not block 
   });
   const enabled = () => engine.capabilities().roles.find((r) => r.role === "worker")?.enabled;
   try {
-    await engine.setRoleCapability("worker", { extensions: ["mcp.gone", "mcp.left", "notes"] });
-    assert.deepEqual(enabled(), ["mcp.gone", "mcp.left", "notes"]);
+    await engine.setRoleCapability("worker", {
+      extensions: ["mcp.gone", "mcp.left", "tool-search"],
+    });
+    assert.deepEqual(enabled(), ["mcp.gone", "mcp.left", "tool-search"]);
 
-    await engine.setRoleCapability("worker", { extensions: ["mcp.left", "notes"] });
-    assert.deepEqual(enabled(), ["mcp.left", "notes"]);
+    await engine.setRoleCapability("worker", { extensions: ["mcp.left", "tool-search"] });
+    assert.deepEqual(enabled(), ["mcp.left", "tool-search"]);
 
     await assert.rejects(
       engine.setRoleCapability("worker", { extensions: ["mcp.left", "mcp.gone"] }),
       { problem: { code: "no_extension", names: ["mcp.gone"] } },
     );
-    assert.deepEqual(enabled(), ["mcp.left", "notes"]);
+    assert.deepEqual(enabled(), ["mcp.left", "tool-search"]);
   } finally {
     await engine.close();
     await rm(home, { recursive: true, force: true, maxRetries: 5 });
@@ -169,8 +170,8 @@ test("the HTTP API exposes structured models, project activeAt, Board.router and
     const status = await client.call("GET /api/status");
     assert.equal(status.projects[0]?.activeAt, created.createdAt);
 
-    const board = await client.call("GET /api/projects/:project/board", { project: created.id });
-    assert.deepEqual(board.router, { running: false });
+    const board = await engine.project(created.id)?.board();
+    assert.deepEqual(board?.router, { running: false });
 
     await mkdir(join(paths.project(created.id).memory, "topics"), { recursive: true });
     await writeFile(join(paths.project(created.id).memory, "topics", "a.md"), "# Note A\n");

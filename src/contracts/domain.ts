@@ -141,3 +141,40 @@ export type Question = {
   /** Set when the ticket closed before the user answered; the question can no longer be answered. */
   withdrawnAt?: number;
 };
+
+/** Who made a change in a memory store: the Router, Dreaming, the user editing files by hand, or Eevee itself. */
+export type MemorySource = {
+  kind: "router" | "dreaming" | "user" | "system";
+  ticketId?: TicketId;
+};
+
+export type MemoryFileChange = {
+  path: string;
+  status: "added" | "modified" | "deleted";
+  added: number;
+  removed: number;
+};
+
+/** One version of a memory store: every edit of one run, or one batch of the user's own edits. */
+export type MemoryChange = {
+  /** Position in the history, counting up from 1 (the store's first change). */
+  id: number;
+  at: string;
+  source: MemorySource;
+  summary: string;
+  files: MemoryFileChange[];
+};
+
+export type MemoryDiffLine = {
+  kind: "context" | "add" | "del";
+  old?: number;
+  new?: number;
+  text: string;
+};
+
+export type MemoryChangeDetail = Omit<MemoryChange, "files"> & {
+  files: (MemoryFileChange & {
+    binary?: boolean;
+    hunks: { header: string; lines: MemoryDiffLine[] }[];
+  })[];
+};

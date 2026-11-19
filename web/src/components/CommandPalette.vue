@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUpdate, ref, watch } from "vue";
 import { trapTab, useFocusReturn } from "../focus.ts";
 import { t } from "../i18n.ts";
+import { listStep } from "../keyboard.ts";
 import { filterPaletteItems, type PaletteItem } from "../projects.ts";
 import Icon from "./Icon.vue";
 import StageGlyph from "./StageGlyph.vue";
@@ -70,15 +71,15 @@ function onKeydown(event: KeyboardEvent): void {
     return;
   }
   trapTab(event, dialogEl.value);
-  const len = filtered.value.length;
-  if (len === 0) return;
-  if (event.key === "ArrowDown") {
+  // Home and End stay with the search field's caret.
+  const arrow = event.key === "ArrowDown" || event.key === "ArrowUp";
+  const next = arrow ? listStep(event.key, selected.value, filtered.value.length) : undefined;
+  if (next !== undefined) {
     event.preventDefault();
-    selected.value = (selected.value + 1) % len;
-  } else if (event.key === "ArrowUp") {
-    event.preventDefault();
-    selected.value = (selected.value + len - 1) % len;
-  } else if (event.key === "Enter" && !event.isComposing) {
+    selected.value = next;
+    return;
+  }
+  if (event.key === "Enter" && !event.isComposing) {
     event.preventDefault();
     choose(filtered.value[selected.value]);
   }

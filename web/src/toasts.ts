@@ -1,6 +1,6 @@
 import { readonly, ref } from "vue";
 
-export type ToastItem = {
+type ToastItem = {
   id: number;
   message: string;
   tone?: "ok" | "error";

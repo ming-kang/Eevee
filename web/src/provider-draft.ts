@@ -43,7 +43,7 @@ const REQUEST_PATHS: Readonly<Record<string, string>> = {
 };
 
 /** How an API wants its baseUrl: with the version path, or the bare origin. */
-export type BaseUrlShape = "versioned" | "v1beta" | "origin";
+type BaseUrlShape = "versioned" | "v1beta" | "origin";
 
 export function baseUrlShape(api: string | undefined): BaseUrlShape | undefined {
   switch (api) {
@@ -245,7 +245,7 @@ export function isProviderId(id: string): boolean {
 // ── Built-in data ────────────────────────────────────────────────────────────
 
 /** The model fields a built-in model can fill in. Its id, API and endpoint stay the model's own. */
-export const REFERENCE_FIELDS = [
+const REFERENCE_FIELDS = [
   "name",
   "reasoning",
   "image",
@@ -255,7 +255,7 @@ export const REFERENCE_FIELDS = [
 ] as const;
 export type ReferenceField = (typeof REFERENCE_FIELDS)[number];
 
-export type ReferenceChange = {
+type ReferenceChange = {
   field: ReferenceField;
   /** The model already has the reference's value; nothing to copy. */
   same: boolean;

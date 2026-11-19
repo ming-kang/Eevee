@@ -2,7 +2,7 @@ import { computed, onScopeDispose, ref } from "vue";
 import { FONT_KEY, fontStack, readTextSize, TEXT_SIZE, TEXT_SIZE_KEY } from "./typography.ts";
 
 export type ThemePreference = "system" | "light" | "dark";
-export type ResolvedTheme = "light" | "dark";
+type ResolvedTheme = "light" | "dark";
 
 const THEME_KEY = "eevee.theme";
 
@@ -15,11 +15,11 @@ function systemTheme(): ResolvedTheme {
   return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-export function resolveTheme(pref: ThemePreference): ResolvedTheme {
+function resolveTheme(pref: ThemePreference): ResolvedTheme {
   return pref === "system" ? systemTheme() : pref;
 }
 
-export function applyTheme(pref: ThemePreference): ResolvedTheme {
+function applyTheme(pref: ThemePreference): ResolvedTheme {
   const resolved = resolveTheme(pref);
   document.documentElement.dataset.theme = resolved;
   return resolved;

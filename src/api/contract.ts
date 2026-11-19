@@ -3,6 +3,8 @@ import type {
   ConfigIssue,
   ConfigProblem,
   Job,
+  MemoryChange,
+  MemoryChangeDetail,
   MemoryScope,
   ModelChoice,
   ModelDefaults,
@@ -82,8 +84,6 @@ export type UsageView = {
   router: UsageSummary;
   tickets: { ticketId: TicketId; title: string; usage: UsageSummary }[];
 };
-
-export type MemoryCommitView = { commit: string; at: string; subject: string };
 
 export type MemoryFileEntry = {
   path: string;
@@ -198,8 +198,6 @@ export type McpServerView = {
   error?: ConfigIssue;
 };
 
-export type UserExtensionView = { file: string; name?: string; tools: number; error?: ConfigIssue };
-
 export type RoleCapabilityView = {
   role: RoleName;
   /** The role's own extensions, always selected. */
@@ -210,11 +208,10 @@ export type RoleCapabilityView = {
 };
 
 export type CapabilitiesView = {
-  /** Every installed extension that a role can enable: MCP servers and user extensions. */
+  /** Every installed extension that a role can enable: MCP servers. */
   available: { name: string; tools: number }[];
   roles: RoleCapabilityView[];
   mcp: McpServerView[];
-  userExtensions: UserExtensionView[];
   problems: readonly ConfigProblem[];
 };
 
@@ -274,18 +271,16 @@ export type ApiRoutes = {
     body: Static<BodySchema<"POST /api/projects/:project/models">>;
     response: ProjectSummary;
   };
-  "GET /api/projects/:project/board": { response: BoardView };
-  "GET /api/projects/:project/conversation": { response: ConversationView };
   "GET /api/projects/:project/usage": { response: UsageView };
-  "GET /api/projects/:project/memory/:scope/log": { response: { commits: MemoryCommitView[] } };
+  "GET /api/projects/:project/memory/:scope/changes": {
+    response: { changes: MemoryChange[] };
+  };
+  "GET /api/projects/:project/memory/:scope/changes/:change": { response: MemoryChangeDetail };
+  "POST /api/projects/:project/memory/:scope/changes/:change/undo": {
+    response: MemoryChange;
+  };
   "GET /api/projects/:project/memory/:scope/files": { response: { files: MemoryFileEntry[] } };
   "GET /api/projects/:project/memory/:scope/files/:file": { response: MemoryFileView };
-  "GET /api/projects/:project/memory/:scope/commits/:commit": { response: { diff: string } };
-  "GET /api/projects/:project/memory/:scope/diff": { response: { diff: string } };
-  "POST /api/projects/:project/memory/:scope/revert": {
-    body: Static<BodySchema<"POST /api/projects/:project/memory/:scope/revert">>;
-    response: Ok;
-  };
   "GET /api/projects/:project/jobs/:job/log": { response: JobLogView };
   "POST /api/projects/:project/jobs/:job/kill": { response: Ok };
   "POST /api/projects/:project/conversation/retry": { response: Ok };
@@ -293,7 +288,6 @@ export type ApiRoutes = {
     body: Static<BodySchema<"POST /api/projects/:project/messages">>;
     response: Ok;
   };
-  "GET /api/projects/:project/tickets/:ticket/conversation": { response: ConversationView };
   "POST /api/projects/:project/tickets/:ticket/retry": { response: Ok };
   "POST /api/projects/:project/tickets/:ticket/messages": {
     body: Static<BodySchema<"POST /api/projects/:project/tickets/:ticket/messages">>;

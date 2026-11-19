@@ -2,7 +2,7 @@
 import type { TicketView } from "@shared/api/contract.ts";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import type { GapItem } from "../conversation.ts";
-import { isAtEnd } from "../dom-rules.ts";
+import { type FollowEnd, followEnd } from "../dom.ts";
 import { t } from "../i18n.ts";
 import { formatClockTime } from "../time.ts";
 import type { TranscriptDisplayItem } from "../transcript-map.ts";
@@ -65,6 +65,7 @@ const tailKey = computed(() => {
  * one that lands while the reader is further up leaves them where they are.
  */
 const following = ref(true);
+let follow: FollowEnd | undefined;
 
 /** Something is being written at the end right now. */
 const live = computed(() => {
@@ -75,38 +76,30 @@ const live = computed(() => {
   return last.kind === "bash" && last.status === "run";
 });
 
-function toEnd(): void {
-  const el = scroller.value;
-  if (el) el.scrollTop = el.scrollHeight;
-}
-
-function onScroll(): void {
-  const el = scroller.value;
-  if (el) following.value = isAtEnd(el);
-}
-
 /** Back to the newest line, gliding unless the reader asked for less motion. */
 function toLatest(): void {
   const el = scroller.value;
-  if (!el) return;
+  if (!el || follow === undefined) return;
+  follow.following = true;
   following.value = true;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
 }
 
 onMounted(() => {
-  scroller.value?.addEventListener("scroll", onScroll, { passive: true });
-  toEnd();
-  // Fonts and code blocks can still change heights after the first frame.
-  requestAnimationFrame(toEnd);
+  const el = scroller.value;
+  if (el === undefined) return;
+  follow = followEnd(el, (yes) => {
+    following.value = yes;
+  });
 });
 
-onUnmounted(() => scroller.value?.removeEventListener("scroll", onScroll));
+onUnmounted(() => follow?.detach());
 
 watch(tailKey, async () => {
   if (!following.value) return;
   await nextTick();
-  toEnd();
+  follow?.toEnd();
 });
 </script>
 

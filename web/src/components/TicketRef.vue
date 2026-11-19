@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TicketView } from "@shared/api/contract.ts";
 import { computed } from "vue";
+import { effectiveStage } from "../board.ts";
 import { STAGE_LABEL } from "../labels.ts";
 
 const props = defineProps<{
@@ -16,11 +17,7 @@ defineEmits<{
 const tooltip = computed(() => {
   const found = props.tickets?.find((t) => t.ticket.id === props.ticketId);
   if (!found) return props.ticketId;
-  const stage =
-    found.ticket.status !== "open"
-      ? STAGE_LABEL[found.ticket.status]
-      : STAGE_LABEL[found.stage];
-  return `${found.ticket.title} · ${stage}`;
+  return `${found.ticket.title} · ${STAGE_LABEL[effectiveStage(found)]}`;
 });
 </script>
 

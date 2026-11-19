@@ -1,36 +1,8 @@
-export type MemoryAuthor = "dreaming" | "router" | "user" | "eevee";
+import type { MemoryChangeDetail, MemoryDiffLine } from "../../contracts/index.ts";
 
-export type GitDiffLine = {
-  k: "ctx" | "add" | "del";
-  o?: number;
-  n?: number;
-  s: string;
-};
+export type FileDiff = MemoryChangeDetail["files"][number];
 
-export type GitDiffHunk = {
-  head: string;
-  lines: GitDiffLine[];
-};
-
-export type GitFileDiff = {
-  file: string;
-  newFile?: boolean;
-  deletedFile?: boolean;
-  binary?: boolean;
-  hunks: GitDiffHunk[];
-  added: number;
-  removed: number;
-};
-
-export function classifyCommitAuthor(subject: string): MemoryAuthor {
-  const trimmed = subject.trim();
-  if (trimmed.startsWith("dreaming")) return "dreaming";
-  if (trimmed === "user edit" || trimmed.startsWith("user edit:")) return "user";
-  if (trimmed === "memory: init" || trimmed.startsWith("Revert ")) return "eevee";
-  return "router";
-}
-
-function unquoteGitPath(raw: string): string {
+function unquotePath(raw: string): string {
   const trimmed = raw.trim();
   if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
     return trimmed.slice(1, -1);
@@ -38,10 +10,11 @@ function unquoteGitPath(raw: string): string {
   return trimmed;
 }
 
-export function parseGitDiff(raw: string): GitFileDiff[] {
-  const files: GitFileDiff[] = [];
-  let current: GitFileDiff | undefined;
-  let currentHunk: GitDiffHunk | undefined;
+/** The patch of one change, split into files, hunks and numbered lines. */
+export function parseDiff(raw: string): FileDiff[] {
+  const files: FileDiff[] = [];
+  let current: FileDiff | undefined;
+  let currentHunk: FileDiff["hunks"][number] | undefined;
   let oldLine = 1;
   let newLine = 1;
 
@@ -56,10 +29,11 @@ export function parseGitDiff(raw: string): GitFileDiff[] {
       pushCurrent();
       const match = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
       current = {
-        file: match ? unquoteGitPath(match[2] ?? "") : line.slice("diff --git ".length),
-        hunks: [],
+        path: match ? unquotePath(match[2] ?? "") : line.slice("diff --git ".length),
+        status: "modified",
         added: 0,
         removed: 0,
+        hunks: [],
       };
       continue;
     }
@@ -67,11 +41,11 @@ export function parseGitDiff(raw: string): GitFileDiff[] {
     if (!current) continue;
 
     if (line.startsWith("new file mode ")) {
-      current.newFile = true;
+      current.status = "added";
       continue;
     }
     if (line.startsWith("deleted file mode ")) {
-      current.deletedFile = true;
+      current.status = "deleted";
       continue;
     }
     if (line.startsWith("--- ")) {
@@ -80,7 +54,7 @@ export function parseGitDiff(raw: string): GitFileDiff[] {
     if (line.startsWith("+++ ")) {
       const target = line.slice(4).trim();
       if (target !== "/dev/null") {
-        current.file = unquoteGitPath(target.startsWith("b/") ? target.slice(2) : target);
+        current.path = unquotePath(target.startsWith("b/") ? target.slice(2) : target);
       }
       continue;
     }
@@ -101,7 +75,7 @@ export function parseGitDiff(raw: string): GitFileDiff[] {
     if (hunkHeader) {
       oldLine = Number(hunkHeader[1]);
       newLine = Number(hunkHeader[2]);
-      currentHunk = { head: line, lines: [] };
+      currentHunk = { header: line, lines: [] };
       current.hunks.push(currentHunk);
       continue;
     }
@@ -109,16 +83,23 @@ export function parseGitDiff(raw: string): GitFileDiff[] {
     if (!currentHunk) continue;
 
     if (line.startsWith("+")) {
-      currentHunk.lines.push({ k: "add", n: newLine++, s: line.slice(1) });
+      currentHunk.lines.push({ kind: "add", new: newLine++, text: line.slice(1) });
       current.added++;
     } else if (line.startsWith("-")) {
-      currentHunk.lines.push({ k: "del", o: oldLine++, s: line.slice(1) });
+      currentHunk.lines.push({ kind: "del", old: oldLine++, text: line.slice(1) });
       current.removed++;
     } else if (line.startsWith(" ")) {
-      currentHunk.lines.push({ k: "ctx", o: oldLine++, n: newLine++, s: line.slice(1) });
+      currentHunk.lines.push({
+        kind: "context",
+        old: oldLine++,
+        new: newLine++,
+        text: line.slice(1),
+      });
     }
   }
 
   pushCurrent();
   return files;
 }
+
+export type { MemoryDiffLine };

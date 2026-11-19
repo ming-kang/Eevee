@@ -39,6 +39,8 @@ test("when a Worker run fails, the Engine files a failed report for it and wakes
   }
 });
 
+const DREAMING = { enabled: true, idleMs: 0, minGapMs: 0, afterTickets: 1, afterLessons: 5 };
+
 test("the dreamer's automatic acceptance withdraws the question that was waiting on its ticket", async () => {
   let release: () => void = () => {};
   const gate = new Promise<void>((resolve) => {
@@ -51,18 +53,32 @@ test("the dreamer's automatic acceptance withdraws the question that was waiting
         call("report", { status: "ready", summary: "tidied up", artifacts: [] }),
       );
     }
+    if (role === "worker") {
+      return call("report", { status: "ready", summary: "did the work", artifacts: [] });
+    }
+    if (last?.role === "user" && textOf(last).includes("start work")) {
+      return call("ticket", {
+        action: "create",
+        title: "some work",
+        goal: "do it",
+        acceptance: ["done"],
+      });
+    }
+    if (last?.role === "user" && textOf(last).includes("report · ready")) {
+      return call("ticket", { action: "review", ticketId: "t1", verdict: "accept", note: "ok" });
+    }
     if (last?.role === "user" && textOf(last).includes("ask about the tidying ticket")) {
       return call("ask_user", {
         items: [{ text: "which one", options: ["alpha", "beta"], recommended: "alpha" }],
-        ticketId: "t1",
+        ticketId: "t2",
       });
     }
     return say("OK.");
   };
 
-  const project = await openTestProject(brain, { dreamIntervalMs: 300 });
+  const project = await openTestProject(brain, { dreaming: DREAMING });
   try {
-    await project.host.sendUserMessage("hello");
+    await project.host.sendUserMessage("start work");
     const dreaming = await project.until(async () => {
       const ticket = (await project.host.board()).tickets.find((t) => t.ticket.role === "dreamer");
       return ticket?.ticket.status === "open" ? ticket : false;
@@ -73,7 +89,7 @@ test("the dreamer's automatic acceptance withdraws the question that was waiting
 
     release();
     const closed = await project.until(async () => {
-      const ticket = (await project.host.board()).tickets[0];
+      const ticket = (await project.host.board()).tickets.find((t) => t.ticket.role === "dreamer");
       return ticket?.ticket.status === "done" ? ticket : false;
     });
     assert.equal(closed.ticket.role, "dreamer");
@@ -89,35 +105,55 @@ test("the dreamer's automatic acceptance withdraws the question that was waiting
   }
 });
 
-test("after the dreaming interval passes, a tidying ticket lists the new records; tidying closes it and commits the memory", async () => {
+test("once the project is idle with finished work, a tidying ticket lists the new records; tidying closes it and commits the memory", async () => {
   const brain: Brain = ({ role, last }) => {
-    if (role !== "dreamer") return say("OK.");
-    if (toolName(last) === "memory") {
-      return call("report", { status: "ready", summary: "tidied up", artifacts: [] });
+    if (role === "dreamer") {
+      if (toolName(last) === "memory") {
+        return call("report", { status: "ready", summary: "tidied up", artifacts: [] });
+      }
+      if (last?.role === "user") {
+        return call("memory", {
+          action: "create",
+          scope: "project",
+          file: "dream.md",
+          content: "- tidied\n",
+        });
+      }
+      return say("OK.");
     }
-    if (last?.role === "user") {
-      return call("memory", {
+    if (role === "worker") {
+      return call("report", { status: "ready", summary: "did the work", artifacts: [] });
+    }
+    if (last?.role === "user" && textOf(last).includes("start work")) {
+      return call("ticket", {
         action: "create",
-        scope: "project",
-        file: "dream.md",
-        content: "- tidied\n",
+        title: "some work",
+        goal: "do it",
+        acceptance: ["done"],
       });
+    }
+    if (last?.role === "user" && textOf(last).includes("report · ready")) {
+      return call("ticket", { action: "review", ticketId: "t1", verdict: "accept", note: "ok" });
     }
     return say("OK.");
   };
-  const project = await openTestProject(brain, { dreamIntervalMs: 300 });
+  const project = await openTestProject(brain, { dreaming: DREAMING });
   try {
-    await project.host.sendUserMessage("hello");
+    await project.host.sendUserMessage("start work");
     const done = await project.until(async () => {
       const ticket = (await project.host.board()).tickets.find((t) => t.ticket.role === "dreamer");
       return ticket?.ticket.status === "done" && ticket;
     });
     assert.equal(done.ticket.title, "Tidy up the memory store");
     assert.ok(done.ticket.inputs.some((input) => input.startsWith("transcript://")));
-    // The round is committed once the run has ended, which may be just after the ticket closed.
-    const subject = `dreaming ${done.ticket.id}: create dream.md`;
+    // The round is saved as a change once the run has ended, which may be just after the ticket closed.
     await project.until(async () =>
-      (await project.host.memoryLog("project")).some((c) => c.subject === subject),
+      (await project.host.memory("project").history()).some(
+        (c) =>
+          c.source.kind === "dreaming" &&
+          c.source.ticketId === done.ticket.id &&
+          c.summary === "create dream.md",
+      ),
     );
     // Nothing new happened since, so the next check opens no ticket.
     await sleep(700);

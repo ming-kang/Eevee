@@ -1,11 +1,11 @@
-import type { RunFailureReason } from "@earendil-works/pi-durable";
-import type {
-  JobOutcome,
-  Report,
-  ReportStatus,
-  RoleName,
-  RunFailureView,
-  TicketStage,
+import {
+  describeRunFailure,
+  type JobOutcome,
+  type Report,
+  type ReportStatus,
+  type RoleName,
+  type RunFailureView,
+  type TicketStage,
 } from "../../src/contracts/index.ts";
 import { t } from "./i18n.ts";
 import type { DispatchActionKind } from "./transcript-map.ts";
@@ -50,25 +50,9 @@ export const DISPATCH_LABEL: Record<DispatchActionKind, string> = {
   model: t("Model::change"),
 };
 
-export const FAILURE_LABEL: Record<RunFailureReason, string> = {
-  model_error: t("Model call failed"),
-  no_model: t("No model configured"),
-  aborted: t("Aborted"),
-  reset: t("Context was reset"),
-  faulted: t("The run hit an error"),
-  orphaned: t("The run can't continue"),
-  interrupted: t("The run was interrupted"),
-  restart_limit: t("Gave up after repeated restarts"),
-  nothing_to_answer: t("Nothing to answer"),
-  turn_limit: t("Turn limit reached"),
-};
-
 /** A failed run: why, then what the provider or runtime said about it. */
 export function failureText(failure: RunFailureView): string {
-  const label = FAILURE_LABEL[failure.reason] ?? failure.reason;
-  return failure.detail === undefined
-    ? label
-    : t("{label}: {detail}", { label, detail: failure.detail });
+  return describeRunFailure(failure, t);
 }
 
 /** Where a background job stands, or how it ended. */

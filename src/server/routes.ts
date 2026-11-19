@@ -59,6 +59,14 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     return value as MemoryScope;
   };
 
+  const changeId = (value: string): number => {
+    const id = Number(value);
+    if (!Number.isInteger(id) || id < 1) {
+      throw new ProblemError({ code: "invalid", field: "change", allowed: ["a change number"] });
+    }
+    return id;
+  };
+
   return {
     "GET /api/health": { public: true, handle: async () => ({ ok: true }) },
     "GET /api/status": {
@@ -163,47 +171,32 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
           body.model === null ? null : model(body.model),
         ),
     },
-    "GET /api/projects/:project/board": {
-      handle: async ({ params }) => project(params.project).board(),
-    },
-    "GET /api/projects/:project/conversation": {
-      handle: async ({ params }) => project(params.project).conversation(),
-    },
     "GET /api/projects/:project/usage": {
       handle: async ({ params }) => project(params.project).usage(),
     },
-    "GET /api/projects/:project/memory/:scope/log": {
+    "GET /api/projects/:project/memory/:scope/changes": {
       handle: async ({ params }) => ({
-        commits: await project(params.project).memoryLog(scope(params.scope)),
+        changes: await project(params.project).memory(scope(params.scope)).history(),
       }),
+    },
+    "GET /api/projects/:project/memory/:scope/changes/:change": {
+      handle: async ({ params }) =>
+        project(params.project).memory(scope(params.scope)).show(changeId(params.change)),
+    },
+    "POST /api/projects/:project/memory/:scope/changes/:change/undo": {
+      handle: async ({ params }) =>
+        project(params.project)
+          .memory(scope(params.scope))
+          .undo(changeId(params.change), { kind: "user" }),
     },
     "GET /api/projects/:project/memory/:scope/files": {
       handle: async ({ params }) => ({
-        files: await project(params.project).memoryFiles(scope(params.scope)),
+        files: await project(params.project).memory(scope(params.scope)).listFiles(),
       }),
     },
     "GET /api/projects/:project/memory/:scope/files/:file": {
       handle: async ({ params }) =>
         project(params.project).memoryFile(scope(params.scope), params.file),
-    },
-    "GET /api/projects/:project/memory/:scope/commits/:commit": {
-      handle: async ({ params }) => ({
-        diff: await project(params.project).memoryDiff(scope(params.scope), params.commit),
-      }),
-    },
-    "GET /api/projects/:project/memory/:scope/diff": {
-      handle: async ({ params }) => ({
-        diff: await project(params.project).memoryDiff(scope(params.scope)),
-      }),
-    },
-    "POST /api/projects/:project/memory/:scope/revert": {
-      handle: async ({ params, body }) => {
-        await project(params.project).memoryRevert(
-          scope(params.scope),
-          text(body.commit, "commit"),
-        );
-        return { ok: true };
-      },
     },
     "GET /api/projects/:project/jobs/:job/log": {
       handle: async ({ params }) => project(params.project).jobLog(params.job as JobId),
@@ -225,10 +218,6 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
         await project(params.project).sendUserMessage(text(body.text, "text"));
         return { ok: true };
       },
-    },
-    "GET /api/projects/:project/tickets/:ticket/conversation": {
-      handle: async ({ params }) =>
-        project(params.project).ticketConversation(params.ticket as TicketId),
     },
     "POST /api/projects/:project/tickets/:ticket/retry": {
       handle: async ({ params }) => {

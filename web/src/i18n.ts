@@ -1,3 +1,4 @@
+import { fill, type Params } from "../../src/contracts/index.ts";
 import { zhCN } from "./locales/zh-CN.ts";
 
 /**
@@ -5,8 +6,8 @@ import { zhCN } from "./locales/zh-CN.ts";
  * the English it shows, and the Chinese table maps it. A missing entry falls back to the English.
  */
 export const LOCALES = ["en", "zh-CN"] as const;
-export type Locale = (typeof LOCALES)[number];
-export const LOCALE_KEY = "eevee.locale";
+type Locale = (typeof LOCALES)[number];
+const LOCALE_KEY = "eevee.locale";
 export const LOCALE_NAME: Record<Locale, string> = { en: "English", "zh-CN": "简体中文" };
 
 /** The stored choice, else the browser's language: Chinese for any `zh`, English otherwise. */
@@ -15,21 +16,11 @@ export function pickLocale(stored: string | null, browser: string | undefined): 
   return browser?.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
 }
 
-type Params = Record<string, string | number>;
-
 /** `one|many` picks a form by `n`; without a numeric `n`, or without a `|`, the text is left alone. */
 export function pickForm(text: string, params?: Params): string {
   if (params === undefined || typeof params.n !== "number") return text;
   const forms = text.split("|");
   return forms.length === 2 ? (forms[params.n === 1 ? 0 : 1] ?? text) : text;
-}
-
-/** `text` with each `{name}` replaced by its parameter; a parameter the text does not use is left alone. */
-export function fill(text: string, params?: Params): string {
-  if (params === undefined) return text;
-  return text.replace(/\{(\w+)\}/g, (whole, name: string) =>
-    name in params ? String(params[name]) : whole,
-  );
 }
 
 type Browser = {

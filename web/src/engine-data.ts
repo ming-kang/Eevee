@@ -21,7 +21,7 @@ export type BoardState = {
   error?: string;
 };
 
-export type EngineData = {
+type EngineData = {
   stream: ShallowRef<StreamClient | undefined>;
   streamState: Ref<StreamState>;
   status: ShallowRef<EngineStatus | undefined>;

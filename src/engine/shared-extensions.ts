@@ -2,11 +2,10 @@ import { CodemodeSandbox } from "@earendil-works/pi-codemode";
 import type { Extension } from "@earendil-works/pi-durable";
 import { createCodemodeExtension } from "@earendil-works/pi-durable/codemode";
 import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search";
-import type { McpServerView, UserExtensionView } from "../api/contract.ts";
+import type { McpServerView } from "../api/contract.ts";
 import type { ConfigProblem } from "../contracts/index.ts";
 import { McpHub, type McpHubOptions } from "../extensions/mcp/index.ts";
 import type { EeveePaths } from "../shared/paths.ts";
-import { loadUserExtensions } from "./user-extensions.ts";
 
 export type SharedExtensionsOptions = {
   paths: EeveePaths;
@@ -19,8 +18,8 @@ export type SharedExtensionsOptions = {
 
 /**
  * Extensions every project installs on top of Eevee's own: Durable's `tool-search` and `codemode`, one per MCP
- * server, and the user's. Roles bring `tool-search` and `codemode` along when their tools need them, and enable
- * the others by name in settings.json.
+ * server. Roles bring `tool-search` and `codemode` along when their tools need them, and enable the others by
+ * name in settings.json.
  */
 export class SharedExtensions {
   readonly #toolSearch = createToolSearchExtension();
@@ -28,8 +27,6 @@ export class SharedExtensions {
   readonly #hub: McpHub;
   readonly #onChange: () => void;
   #codemode: Extension;
-  #user: Extension[] = [];
-  #userStatus: UserExtensionView[] = [];
 
   private constructor(options: SharedExtensionsOptions) {
     this.#onChange = options.onChange;
@@ -46,26 +43,19 @@ export class SharedExtensions {
     });
   }
 
-  /** Loads the user's extensions and starts connecting MCP servers, without waiting for them. */
+  /** Starts connecting MCP servers, without waiting for them. */
   static async open(options: SharedExtensionsOptions): Promise<SharedExtensions> {
     const shared = new SharedExtensions(options);
-    const { extensions, status } = await loadUserExtensions(options.paths.extensions);
-    shared.#user = extensions;
-    shared.#userStatus = status;
     await shared.#hub.start();
     return shared;
   }
 
   list(): Extension[] {
-    return [this.#toolSearch, this.#codemode, ...this.#hub.extensions(), ...this.#user];
+    return [this.#toolSearch, this.#codemode, ...this.#hub.extensions()];
   }
 
   mcpServers(): McpServerView[] {
     return this.#hub.status();
-  }
-
-  userExtensions(): UserExtensionView[] {
-    return this.#userStatus;
   }
 
   problems(): readonly ConfigProblem[] {

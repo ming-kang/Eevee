@@ -7,50 +7,52 @@ import {
   GenerationTask,
   hook,
 } from "@earendil-works/pi-durable";
-import { obj, oneOf, opt, str } from "@earendil-works/pi-schema";
+import { int, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import { TicketBinding, TicketDoc } from "../../contracts/docs.ts";
-import { type MemoryScope, ProblemError } from "../../contracts/index.ts";
-import { createDreamTimer, type DreamingPort } from "./dreaming.ts";
+import {
+  type MemoryChangeDetail,
+  type MemoryScope,
+  type MemorySource,
+  ProblemError,
+} from "../../contracts/index.ts";
+import { RETIRE_DREAM_TIMER } from "./dreaming.ts";
 import { MemoryConflict, type MemoryRepo } from "./repo.ts";
 
 export {
   type DreamDraft,
   type DreamingPort,
   DreamLog,
-  type DreamTimer,
-  ensureDreamTimer,
+  type DreamPolicy,
+  dreamIfDue,
 } from "./dreaming.ts";
-export { type MemoryCommit, MemoryConflict, MemoryRepo } from "./repo.ts";
+export { MemoryConflict, MemoryRepo } from "./repo.ts";
 
 export const MEMORY_TOOL = "memory";
-/** The Router's memory: both repositories, and the Dreaming timer. */
+/** The Router's memory: both repositories. */
 export const MEMORY_EXTENSION = "eevee.memory";
 /** Dreaming's memory: the project repository only. */
 export const PROJECT_MEMORY_EXTENSION = "eevee.memory-project";
 
 export type MemoryDeps = {
   repos: Record<MemoryScope, MemoryRepo>;
-  dreaming: DreamingPort;
 };
 
 export function createMemory(deps: MemoryDeps) {
   const commitRound = hook(GenerationTask, {
     async afterRun(_run, api, context) {
-      const label = await roundLabel(api, api.conversationId, context);
+      const source = await roundSource(api, api.conversationId, context);
       const round = String(api.conversationId);
-      await Promise.all(Object.values(deps.repos).map((repo) => repo.commitRound(round, label)));
+      await Promise.all(Object.values(deps.repos).map((repo) => repo.commitRound(round, source)));
       return undefined;
     },
   });
-  const timer = createDreamTimer(deps.dreaming);
 
   return {
-    timer,
     memory: defineExtension({
       name: MEMORY_EXTENSION,
       tools: [createMemoryTool(deps.repos, ["project", "global"])],
       hooks: [commitRound],
-      tasks: [timer],
+      tasks: [RETIRE_DREAM_TIMER],
     }),
     projectMemory: defineExtension({
       name: PROJECT_MEMORY_EXTENSION,
@@ -60,16 +62,50 @@ export function createMemory(deps: MemoryDeps) {
   };
 }
 
-/** `memory` for the Router's commits, `dreaming tN` for a dreamer ticket's. */
-async function roundLabel(
+/** The change's author: the dreamer behind a dreamer ticket, the Router otherwise. */
+async function roundSource(
   reader: Pick<DocumentReader, "snapshot">,
   conversationId: ConversationId,
   context: Context,
-): Promise<string> {
+): Promise<MemorySource> {
   const ticketId = (await reader.snapshot(TicketBinding, conversationId, context))?.ticketId;
-  if (!ticketId) return "memory";
+  if (!ticketId) return { kind: "router" };
   const ticket = await reader.snapshot(TicketDoc, ticketId, context);
-  return ticket?.role === "dreamer" ? `dreaming ${ticketId}` : `memory ${ticketId}`;
+  return { kind: ticket?.role === "dreamer" ? "dreaming" : "router", ticketId };
+}
+
+function sourceLabel(source: MemorySource): string {
+  const name =
+    source.kind === "dreaming"
+      ? "Dreaming"
+      : source.kind === "user"
+        ? "User"
+        : source.kind === "system"
+          ? "Eevee"
+          : "Router";
+  return source.ticketId === undefined ? name : `${name} ${source.ticketId}`;
+}
+
+/** Renders one change's edits as readable unified-style text. */
+function renderChange(detail: MemoryChangeDetail): string {
+  const out: string[] = [];
+  for (const file of detail.files) {
+    const status =
+      file.status === "added" ? "added" : file.status === "deleted" ? "deleted" : "modified";
+    out.push(`${file.path} (${status}, +${file.added} -${file.removed})`);
+    if (file.binary) {
+      out.push("  binary file");
+      continue;
+    }
+    for (const hunk of file.hunks) {
+      out.push(`  ${hunk.header}`);
+      for (const line of hunk.lines) {
+        const mark = line.kind === "add" ? "+" : line.kind === "del" ? "-" : " ";
+        out.push(`  ${mark}${line.text}`);
+      }
+    }
+  }
+  return out.join("\n");
 }
 
 function createMemoryTool(
@@ -78,8 +114,8 @@ function createMemoryTool(
 ) {
   const withGlobal = scopes.includes("global");
   const Parameters = obj({
-    action: oneOf(["edit", "create", "log", "diff", "revert"], {
-      description: "Which action to run: edit, create, log, diff or revert",
+    action: oneOf(["edit", "create", "history", "show", "undo"], {
+      description: "Which action to run: edit, create, history, show or undo",
     }),
     scope: oneOf(scopes, {
       description: withGlobal
@@ -97,20 +133,20 @@ function createMemoryTool(
     ),
     newText: opt(str({ description: "For edit: the text that replaces oldText" })),
     content: opt(str({ description: "For create: the full content of the new file" })),
-    commit: opt(str({ description: "For diff and revert: the target commit" })),
+    change: opt(int({ description: "For show and undo: the number of the change, from history" })),
   });
 
   return defineTool({
     name: MEMORY_TOOL,
     description:
-      "Write to the memory store and manage its Git history." +
-      "Use edit to replace matching text, create to add a new file, log to view the history, diff to view a commit's changes, and revert to undo one commit." +
-      "Changes are committed automatically when the turn ends." +
+      "Write to the memory store and browse its history." +
+      "Use edit to replace matching text, create to add a new file, history to list recent changes, show to view one change's edits, and undo to reverse one change." +
+      "Your edits are saved as one change when this run ends." +
       "Record only experience that stays useful across sessions. Do not record task progress.",
     parameters: Parameters,
     replay: "unsafe",
     executionMode: "sequential",
-    async execute(args, api) {
+    async execute(args, api, context) {
       const repo = repos[args.scope];
       if (args.scope === "global" && args.file !== undefined && args.file !== "MEMORY.md") {
         return text("The global memory store has only one file, MEMORY.md.", true);
@@ -123,20 +159,35 @@ function createMemoryTool(
               return text("The edit action needs file, oldText and newText.", true);
             }
             await repo.edit(args.file, args.oldText, args.newText, round);
-            return text(`Modified ${args.file}. The change is committed when the turn ends.`);
+            return text(`Modified ${args.file}; saved as one change when this run ends.`);
           case "create":
             if (!args.file || args.content === undefined)
               return text("The create action needs file and content.", true);
             await repo.create(args.file, args.content, round);
-            return text(`Created ${args.file}. The change is committed when the turn ends.`);
-          case "log":
-            return text((await repo.log()) || "No history yet.");
-          case "diff":
-            return text((await repo.diff(args.commit)) || "No differences.");
-          case "revert":
-            if (!args.commit) return text("The revert action needs commit.", true);
-            await repo.revert(args.commit);
-            return text(`Reverted ${args.commit}.`);
+            return text(`Created ${args.file}; saved as one change when this run ends.`);
+          case "history": {
+            const changes = await repo.history();
+            if (changes.length === 0) return text("No history yet.");
+            return text(
+              changes
+                .map((c) => `#${c.id} ${c.at.slice(0, 10)} ${sourceLabel(c.source)} — ${c.summary}`)
+                .join("\n"),
+            );
+          }
+          case "show": {
+            if (args.change === undefined) return text("The show action needs change.", true);
+            const detail = await repo.show(args.change);
+            const body = renderChange(detail);
+            return text(
+              `#${detail.id} ${detail.at.slice(0, 10)} ${sourceLabel(detail.source)} — ${detail.summary}\n${body || "(no text changes)"}`,
+            );
+          }
+          case "undo": {
+            if (args.change === undefined) return text("The undo action needs change.", true);
+            const source = await roundSource(api, api.conversationId, context);
+            const undone = await repo.undo(args.change, source);
+            return text(`Undone as change #${undone.id}.`);
+          }
         }
       } catch (error) {
         if (error instanceof MemoryConflict) {

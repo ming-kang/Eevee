@@ -7,26 +7,35 @@ import {
   defineDoc,
   defineTask,
   type EntryRecord,
-  type RegistrySnapshot,
   ROOT_CONVERSATION_ID,
-  type TaskId,
   type Tx,
   UserEntry,
 } from "@earendil-works/pi-durable";
-import { Board, TicketDoc } from "../../contracts/docs.ts";
+import { Board, ReportLog, TicketDoc } from "../../contracts/docs.ts";
 import { formatAddress, type Ticket, type TicketId } from "../../contracts/index.ts";
+
+/** Dreaming's trigger policy; the settings' resolved `dreaming` object carries it. */
+export type DreamPolicy = {
+  /** How long the project must be idle before dreaming may run. */
+  idleMs: number;
+  /** Least time between two dreamings. */
+  minGapMs: number;
+  /** Closed tickets since the last dreaming that make it due. */
+  afterTickets: number;
+  /** Lessons in reports since the last dreaming that make it due. */
+  afterLessons: number;
+};
 
 /** What Dreaming needs from outside the memory module. */
 export type DreamingPort = {
-  /** Least time between two dreaming tickets, read at every check; 0 or less turns Dreaming off. */
-  intervalMs(): number;
+  /** The current policy; `undefined` while Dreaming is off or the dreamer has no model. */
+  policy(): DreamPolicy | undefined;
+  /** When the project went idle; `undefined` while the Router, a Worker or a job runs. */
+  idleSince(context: Context): Promise<number | undefined>;
+  /** A conversation's entries, for listing the records a dreaming has not seen. */
+  contextOf(id: ConversationId, context: Context): Promise<{ entries: readonly EntryRecord[] }>;
   /** Opens the dreamer ticket in `tx`. */
-  open(
-    tx: Tx,
-    draft: DreamDraft,
-    at: { now: number; registry: RegistrySnapshot },
-    context: Context,
-  ): Promise<TicketId>;
+  open(tx: Tx, draft: DreamDraft, now: number, context: Context): Promise<TicketId>;
 };
 
 export type DreamDraft = {
@@ -37,8 +46,6 @@ export type DreamDraft = {
 };
 
 export type DreamLogState = {
-  /** The timer task. */
-  timer: TaskId | null;
   /** When the last dreaming ticket was opened. */
   lastAt: number | null;
   ticket: TicketId | null;
@@ -47,7 +54,7 @@ export type DreamLogState = {
 };
 
 function emptyLog(): DreamLogState {
-  return { timer: null, lastAt: null, ticket: null, seen: {} };
+  return { lastAt: null, ticket: null, seen: {} };
 }
 
 export const DreamLog = defineDoc<DreamLogState>({
@@ -58,98 +65,78 @@ export const DreamLog = defineDoc<DreamLogState>({
   checkpointWhen: () => true,
 });
 
-/** How often a disabled or busy Dreaming looks again. */
-const RECHECK_MS = 60 * 60 * 1000;
 const NOTE_LIMIT = 80;
 
 type Reader = Pick<DocumentReader, "snapshot">;
+type DreamHost = Reader & Pick<Conversation, "commit">;
 
 /**
- * A background task of the root conversation: it sleeps, and when it wakes and something happened since the
- * last time, it opens one dreamer ticket that lists where to look. Sleeps are stored, so it survives restarts.
+ * The one place a dreamer ticket comes from, called by the Scheduler whenever it runs upkeep. It opens one once
+ * enough new material piled up since the last dreaming — closed tickets or lessons in their reports — and the
+ * project has been idle for a while; two dreamings keep `minGapMs` between them and at most one is open.
  */
-export function createDreamTimer(port: DreamingPort) {
-  return defineTask<null, { phase: "check" }, null>({
-    name: "eevee.dream-timer",
-    version: 1,
-    initial: () => ({ phase: "check" }),
-    phases: {
-      check: async (_task, runtime, context) => {
-        const now = runtime.now();
-        const interval = port.intervalMs();
-        const log = (await runtime.snapshot(DreamLog, context)) ?? emptyLog();
-        const sleep = (until: number) =>
-          ({ status: "sleeping", until, checkpoint: { phase: "check" } }) as const;
-
-        if (interval <= 0 || (await dreaming(runtime, log, context))) {
-          return runtime.commit(() => sleep(now + RECHECK_MS), context);
-        }
-        // The first dreaming comes one interval after Dreaming is first on, not at once.
-        if (log.lastAt === null) {
-          return runtime.commit(async (tx) => {
-            (await tx.doc(DreamLog)).lastAt = now;
-            return sleep(now + interval);
-          }, context);
-        }
-        const due = log.lastAt + interval;
-        if (due > now) return runtime.commit(() => sleep(due), context);
-
-        const records = await newRecords(
-          runtime,
-          log,
-          (id) => runtime.context(id, context),
-          context,
-        );
-        if (records.inputs.length === 0)
-          return runtime.commit(() => sleep(now + interval), context);
-        await runtime.commit(async (tx) => {
-          const id = await port.open(
-            tx,
-            draft(records.inputs),
-            { now, registry: runtime.registry },
-            context,
-          );
-          const doc = await tx.doc(DreamLog);
-          doc.lastAt = now;
-          doc.ticket = id;
-          doc.seen = records.seen;
-          return sleep(now + interval);
-        }, context);
-      },
-    },
-    abort: (_task, runtime, context) =>
-      runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context),
-  });
-}
-
-export type DreamTimer = ReturnType<typeof createDreamTimer>;
-
-/** Starts the timer unless one is live; call once the Harness is open. */
-export async function ensureDreamTimer(
-  host: Reader & {
-    getTask(id: TaskId, context: Context): Promise<{ state: { status: string } } | undefined>;
-  },
-  root: Pick<Conversation, "commit">,
-  timer: DreamTimer,
+export async function dreamIfDue(
+  host: DreamHost,
+  port: DreamingPort,
+  now: number,
   context: Context,
-): Promise<void> {
-  const current = (await host.snapshot(DreamLog, context))?.timer;
-  if (current) {
-    const status = (await host.getTask(current, context))?.state.status;
-    if (status !== undefined && status !== "terminal" && status !== "completing") return;
-  }
-  await root.commit(async (tx) => {
-    const id = await tx.createTask(timer, null, {
-      ownership: { kind: "conversation" },
-      background: true,
-    });
-    (await tx.doc(DreamLog)).timer = id;
+): Promise<TicketId | undefined> {
+  const policy = port.policy();
+  if (policy === undefined) return undefined;
+  const log = (await host.snapshot(DreamLog, context)) ?? emptyLog();
+  if (log.ticket !== null && (await dreaming(host, log.ticket, context))) return undefined;
+  if (log.lastAt !== null && now - log.lastAt < policy.minGapMs) return undefined;
+  const idleSince = await port.idleSince(context);
+  if (idleSince === undefined || now - idleSince < policy.idleMs) return undefined;
+
+  const tickets = await nonDreamerTickets(host, context);
+  const since = log.lastAt ?? 0;
+  const closed = tickets.filter(
+    (ticket) => ticket.status !== "open" && (ticket.closedAt ?? 0) > since,
+  );
+  const lessons = await lessonsSince(host, tickets, since, context);
+  if (closed.length < policy.afterTickets && lessons < policy.afterLessons) return undefined;
+
+  const records = await newRecords(host, log, (id) => port.contextOf(id, context), context);
+  if (records.inputs.length === 0) return undefined;
+  return host.commit(async (tx) => {
+    const id = await port.open(tx, draft(records.inputs), now, context);
+    const doc = await tx.doc(DreamLog);
+    doc.lastAt = now;
+    doc.ticket = id;
+    doc.seen = records.seen;
+    return id;
   }, context);
 }
 
-async function dreaming(reader: Reader, log: DreamLogState, context: Context): Promise<boolean> {
-  if (log.ticket === null) return false;
-  return (await reader.snapshot(TicketDoc, log.ticket, context))?.status === "open";
+/** Whether `log.ticket` still names an open dreamer ticket. */
+async function dreaming(reader: Reader, ticket: TicketId, context: Context): Promise<boolean> {
+  return (await reader.snapshot(TicketDoc, ticket, context))?.status === "open";
+}
+
+/** Every ticket but the dreamer's own; dreaming never tidies itself into more dreaming. */
+async function nonDreamerTickets(reader: Reader, context: Context): Promise<Ticket[]> {
+  const tickets: Ticket[] = [];
+  for (const id of (await reader.snapshot(Board, context))?.tickets ?? []) {
+    const ticket = await reader.snapshot(TicketDoc, id, context);
+    if (ticket !== undefined && ticket.role !== "dreamer") tickets.push(ticket);
+  }
+  return tickets;
+}
+
+/** Lessons reported on `tickets` since `since`, over every report they carry. */
+async function lessonsSince(
+  reader: Reader,
+  tickets: readonly Ticket[],
+  since: number,
+  context: Context,
+): Promise<number> {
+  let count = 0;
+  for (const ticket of tickets) {
+    const reports = (await reader.snapshot(ReportLog, ticket.id, context))?.reports ?? [];
+    count += reports.filter((r) => r.at > since).reduce((n, r) => n + (r.lessons?.length ?? 0), 0);
+  }
+  return count;
 }
 
 type ContextOf = (id: ConversationId) => Promise<{ entries: readonly EntryRecord[] }>;
@@ -164,11 +151,7 @@ async function newRecords(
   contextOf: ContextOf,
   context: Context,
 ): Promise<{ inputs: string[]; seen: Record<string, number> }> {
-  const tickets: Ticket[] = [];
-  for (const id of (await reader.snapshot(Board, context))?.tickets ?? []) {
-    const ticket = await reader.snapshot(TicketDoc, id, context);
-    if (ticket !== undefined && ticket.role !== "dreamer") tickets.push(ticket);
-  }
+  const tickets = await nonDreamerTickets(reader, context);
   const conversations: { id: ConversationId; label: string }[] = [
     { id: ROOT_CONVERSATION_ID, label: "Router" },
     ...tickets
@@ -210,3 +193,22 @@ function draft(inputs: string[]): DreamDraft {
     ],
   };
 }
+
+/**
+ * Only retires the stored timers of versions that kept a `eevee.dream-timer` task per project: the trigger now
+ * lives in the Scheduler, so any still live ends at once.
+ */
+export const RETIRE_DREAM_TIMER = defineTask<null, { phase: "check" }, null>({
+  name: "eevee.dream-timer",
+  version: 1,
+  initial: () => ({ phase: "check" }),
+  phases: {
+    check: (_task, runtime, context) =>
+      runtime.commit(
+        () => ({ status: "terminal", outcome: { status: "completed", result: null } }),
+        context,
+      ),
+  },
+  abort: (_task, runtime, context) =>
+    runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context),
+});

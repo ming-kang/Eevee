@@ -422,14 +422,6 @@
   gap: 8px;
 }
 
-.connect-foot {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--ev-footnote);
-  color: var(--ev-label-3);
-}
-
 .boot {
   display: grid;
   place-items: center;

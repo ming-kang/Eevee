@@ -590,14 +590,14 @@ test("read the tail of a background job's log and kill the job while it runs", a
   }
 });
 
-test("memoryFiles and memoryFile list and safely read project and global memory files", async () => {
+test("listFiles and memoryFile list and safely read project and global memory files", async () => {
   const project = await openTestProject(() => say("OK."));
   try {
     const projectMemoryDir = join(project.home, "projects", project.host.meta.id, "memory");
     await mkdir(join(projectMemoryDir, "topics"), { recursive: true });
     await writeFile(join(projectMemoryDir, "topics", "sim.md"), "# simulation\n- dt = 0.01\n");
 
-    const files = await project.host.memoryFiles("project");
+    const files = await project.host.memory("project").listFiles();
     assert.equal(files[0]?.path, "MEMORY.md");
     assert.equal(
       files.some((f) => f.path === "topics/sim.md"),
@@ -612,7 +612,7 @@ test("memoryFiles and memoryFile list and safely read project and global memory 
     assert.equal(file.path, "topics/sim.md");
     assert.match(file.content, /dt = 0\.01/);
 
-    const globalFiles = await project.host.memoryFiles("global");
+    const globalFiles = await project.host.memory("global").listFiles();
     assert.equal(globalFiles[0]?.path, "MEMORY.md");
 
     for (const file of ["missing.md", "../project.json", ".git/HEAD"]) {

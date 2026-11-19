@@ -1,6 +1,6 @@
 /** The decisions behind `dom.ts`, kept free of the DOM so they can be tested. */
 
-export type SegmentBox = { left: number; width: number; chosen: boolean };
+type SegmentBox = { left: number; width: number; chosen: boolean };
 
 /** Where the sliding pill of a segmented strip stands: over the chosen button, or nowhere. */
 export function pillGeometry(
@@ -10,7 +10,7 @@ export function pillGeometry(
   return chosen ? { x: chosen.left, width: chosen.width } : undefined;
 }
 
-export type ScrollBox = { scrollTop: number; scrollHeight: number; clientHeight: number };
+type ScrollBox = { scrollTop: number; scrollHeight: number; clientHeight: number };
 
 /** A scroller counts as following its end when it sits within `slack` pixels of the bottom. */
 export function isAtEnd(box: ScrollBox, slack = 8): boolean {

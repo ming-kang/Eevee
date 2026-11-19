@@ -38,7 +38,7 @@ export type SocketLike = {
   addEventListener(type: "error", listener: () => void): void;
 };
 
-export type TimerLike = {
+type TimerLike = {
   setTimeout(fn: () => void, ms: number): unknown;
   clearTimeout(id: unknown): void;
 };
@@ -47,19 +47,19 @@ export type WatchEvent =
   | Extract<StreamEvent, { type: "value" | "ops" | "board" | "end" }>
   | { type: "error"; id: string; error: ProblemBody };
 
-export type WatchRegistration = {
+type WatchRegistration = {
   topic: ConversationTopic | BoardTopic;
   window?: () => ConversationWindow | undefined;
   onReset?: () => void;
   onEvent: (event: WatchEvent) => void;
 };
 
-export type HelloInfo = {
+type HelloInfo = {
   bootId: string;
   bootChanged: boolean;
 };
 
-export type StreamClientOptions = {
+type StreamClientOptions = {
   baseUrl: string;
   token: string;
   createSocket?: (url: string, protocols: string[]) => SocketLike;

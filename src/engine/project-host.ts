@@ -1,12 +1,9 @@
-import { type FileHandle, open } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
 import type { WatchHandle } from "@earendil-works/chord/watch";
 import type { Models } from "@earendil-works/pi-ai";
 import {
-  AssistantEntry,
   type CommitObservation,
-  type CommitPublication,
   type Conversation,
   type ConversationId,
   type ConversationWindow,
@@ -20,10 +17,7 @@ import {
   Harness,
   LiveDoc,
   type Registry,
-  type ToolExecutionApi,
-  ToolResultEntry,
   type Tx,
-  UserEntry,
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -31,43 +25,39 @@ import type {
   BoardView,
   ConversationView,
   JobLogView,
-  MemoryCommitView,
-  MemoryFileEntry,
   MemoryFileView,
   ProjectSummary,
   UsageView,
 } from "../api/contract.ts";
-import { Board, JobBoard, JobDoc, QuestionDoc, ReportLog, TicketDoc } from "../contracts/docs.ts";
+import { Board, JobDoc, QuestionDoc, TicketDoc } from "../contracts/docs.ts";
 import {
   type JobId,
-  jobId,
   type MemoryScope,
   type ModelChoice,
   ProblemError,
   pickModel,
   type QuestionId,
-  questionId,
   ROLE_NAMES,
   type RoleName,
   type Ticket,
   type TicketId,
 } from "../contracts/index.ts";
-import { createMemory, ensureDreamTimer, MemoryRepo } from "../extensions/memory/index.ts";
 import {
-  contextUsage,
+  createMemory,
+  type DreamingPort,
+  dreamIfDue,
+  MemoryRepo,
+} from "../extensions/memory/index.ts";
+import {
   conversationOf,
   createOrchestration,
   type DeliveryContext,
   deliver,
   type EngineEvent,
   flush,
-  NOTICE_KIND,
   openTicket,
-  pump,
   readTicket,
   answerQuestion as recordAnswer,
-  remindRouter,
-  reportRunFailures,
   route,
   routerIdle,
   WorkerQueue,
@@ -76,21 +66,17 @@ import { createResources } from "../extensions/resources/index.ts";
 import { createWorkspace } from "../extensions/workspace/index.ts";
 import { renderCatalog } from "../models/catalog.ts";
 import { createRoles, type Roles } from "../roles/index.ts";
-import { isNotFound, readText } from "../shared/fs.ts";
+import { readText } from "../shared/fs.ts";
 import { type EeveePaths, resolveInside } from "../shared/paths.ts";
-import { SerialPass } from "../shared/serial-pass.ts";
 import { enabledExtensions, type Settings } from "../shared/settings.ts";
-import { BoardFeed, type BoardListener } from "./board-feed.ts";
-import { JobHost } from "./jobs.ts";
+import { initialActiveAt, isActivityCommit } from "./activity.ts";
+import { BoardFeed, type BoardListener, isBoardCommit } from "./board-feed.ts";
+import { JOB_LOG_DEFAULT_LINES, JobHost, readLogTail } from "./jobs.ts";
 import { type ProjectMeta, ProjectStore } from "./project.ts";
-import { Reaper } from "./reaper.ts";
+import { contextFraction, deliveryHost, Scheduler } from "./scheduler.ts";
 import { recentRounds, transcriptSource } from "./transcript.ts";
 import { boardView, conversationView, usageView } from "./views.ts";
 
-const TICK_MS = 250;
-const UPKEEP_MS = 5_000;
-const JOB_LOG_MAX_BYTES = 64 * 1024;
-const JOB_LOG_DEFAULT_LINES = 200;
 const INITIAL_MEMORY =
   "# Project memory\n\nThe core conventions every conversation needs to know, plus an index pointing to the topic notes.\n";
 const INITIAL_GLOBAL_MEMORY =
@@ -142,12 +128,8 @@ export class ProjectHost {
   /** Names of the shared extensions installed now. */
   #shared: Set<string>;
   #activeAt: number;
-  #activityWatch: CommitObservation | undefined;
-  readonly #timer: NodeJS.Timeout;
-  /** The dispatch loop: starts queued tickets and runs upkeep, on every timer tick. */
-  readonly #ticker: SerialPass;
-  readonly #reaper: Reaper;
-  #lastUpkeep = 0;
+  #watcher: CommitObservation | undefined;
+  #scheduler: Scheduler | undefined;
 
   private constructor(parts: Parts) {
     this.#store = parts.store;
@@ -162,19 +144,6 @@ export class ProjectHost {
     this.#repos = parts.repos;
     this.#shared = parts.shared;
     this.#activeAt = parts.activeAt;
-    this.#reaper = new Reaper({
-      harness: parts.harness,
-      jobs: parts.jobs,
-      context: parts.options.context,
-      label: parts.store.current.id,
-    });
-    this.#ticker = new SerialPass(
-      () => this.#tick(),
-      (error) => console.error(`[${this.meta.id}] The dispatch loop hit an error.`, error),
-    );
-    this.#timer = setInterval(() => this.#ticker.request(), TICK_MS);
-    this.#timer.unref();
-    this.#ticker.request();
   }
 
   static async open(options: ProjectHostOptions): Promise<ProjectHost> {
@@ -236,25 +205,7 @@ export class ProjectHost {
       },
     });
 
-    const memory = createMemory({
-      repos,
-      dreaming: {
-        // Off while the dreamer has no model, so the timer never opens a ticket that cannot run.
-        intervalMs: () =>
-          defaultModel("dreamer") === undefined ? 0 : options.settings().dreamIntervalMs,
-        open: async (tx, draft, { now, registry }, ctx) => {
-          const ticket = await openTicket(
-            tx,
-            roles.ticketConversations,
-            registry,
-            { role: "dreamer", ...draft, deliverTo: [] },
-            now,
-            ctx,
-          );
-          return ticket.id;
-        },
-      },
-    });
+    const memory = createMemory({ repos });
     const orchestration = createOrchestration({
       conversations: roles.ticketConversations,
       handoff: {
@@ -326,9 +277,18 @@ export class ProjectHost {
       await root.reset(await roles.routerOpening(harness, context), context);
     await flush(delivery, context);
     await jobs.recover();
-    await host.#reaper.start();
-    await ensureDreamTimer(harness, root, memory.timer, context);
-    host.#watchActivity();
+    host.#watchCommits();
+    host.#scheduler = await Scheduler.start({
+      harness,
+      root,
+      jobs,
+      settings: options.settings,
+      models: options.models,
+      context,
+      label: meta.id,
+      ...(options.upkeepMs === undefined ? {} : { upkeepMs: options.upkeepMs }),
+      dream: (now) => host.#dream(now),
+    });
     harness.resume();
     return host;
   }
@@ -397,8 +357,9 @@ export class ProjectHost {
   }
 
   /** Re-derives the agents of the Router and the open tickets, after a change to the settings' defaults. */
-  applyModels(): Promise<void> {
-    return this.#applyRoles();
+  async applyModels(): Promise<void> {
+    await this.#applyRoles();
+    this.#scheduler?.request();
   }
 
   // ── Views ──────────────────────────────────────────────────────────────────
@@ -463,20 +424,8 @@ export class ProjectHost {
 
   // ── Memory ─────────────────────────────────────────────────────────────────
 
-  memoryLog(scope: MemoryScope, limit?: number): Promise<MemoryCommitView[]> {
-    return this.#repos[scope].history(limit);
-  }
-
-  memoryDiff(scope: MemoryScope, commit?: string): Promise<string> {
-    return this.#repos[scope].diff(commit);
-  }
-
-  memoryRevert(scope: MemoryScope, commit: string): Promise<void> {
-    return this.#repos[scope].revert(commit);
-  }
-
-  memoryFiles(scope: MemoryScope): Promise<MemoryFileEntry[]> {
-    return this.#repos[scope].listFiles();
+  memory(scope: MemoryScope): MemoryRepo {
+    return this.#repos[scope];
   }
 
   async memoryFile(scope: MemoryScope, file: string): Promise<MemoryFileView> {
@@ -501,6 +450,7 @@ export class ProjectHost {
   async refreshExtensions(): Promise<void> {
     this.#shared = installShared(this.#registry, this.#shared, this.#options.shared());
     await this.#applyRoles();
+    this.#scheduler?.request();
   }
 
   /**
@@ -526,17 +476,20 @@ export class ProjectHost {
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
-  /** Stops taking work, waits for every background pass under way, then closes the jobs and the Session they use. */
+  /**
+   * Stops hearing commits first, then waits for every background pass under way, so nothing they do reaches the
+   * jobs and the Session once they are closed.
+   */
   async close(): Promise<void> {
-    this.#activityWatch?.detach();
-    clearInterval(this.#timer);
-    await Promise.all([this.#ticker.close(), this.#reaper.close(), this.#feed.close()]);
+    this.#watcher?.detach();
+    await Promise.all([this.#scheduler?.close(), this.#feed.close()]);
     await this.#jobs.close();
     await this.#harness.close(this.#context);
   }
 
-  #watchActivity(): void {
-    this.#activityWatch = this.#harness.observeCommits({
+  /** The project's one commit observer: activity time, the board feed, and the Scheduler all hear the same commit. */
+  #watchCommits(): void {
+    this.#watcher = this.#harness.observeCommits({
       advance: (pub) => {
         if (isActivityCommit(pub)) {
           this.#activeAt = Math.max(this.#activeAt, Date.now());
@@ -544,6 +497,7 @@ export class ProjectHost {
         if (isBoardCommit(pub)) {
           this.#feed.invalidate();
         }
+        this.#scheduler?.hear(pub);
       },
       end: () => {},
     });
@@ -553,30 +507,68 @@ export class ProjectHost {
     return this.#options.context;
   }
 
-  async #tick(): Promise<void> {
-    const host = deliveryHost(this.#harness, this.#root);
-    const settings = this.#options.settings();
-    this.#reaper.request();
-    await pump(host, settings.maxActiveWorkers, this.#context);
-    const now = Date.now();
-    if (now - this.#lastUpkeep >= (this.#options.upkeepMs ?? UPKEEP_MS)) {
-      this.#lastUpkeep = now;
-      await reportRunFailures(host, now, this.#context);
-      await remindRouter(host, { olderThan: settings.reminderAfterMs, now }, this.#context);
-      await this.#nudgeHandoff(host, settings.handoffThreshold);
-    }
-  }
-
-  async #nudgeHandoff(host: DeliveryContext, threshold: number): Promise<void> {
-    if (!(await routerIdle(host, this.#context))) return;
-    const fraction = await contextFraction(this.#root, this.#options.models(), this.#context);
-    if (fraction <= threshold) return;
-    const { epoch } = await contextUsage(this.#root, this.#context);
-    await this.#dispatch({ type: "handoff-nudge", epoch });
-  }
-
   async #dispatch(event: EngineEvent, change?: (tx: Tx) => Promise<void>): Promise<void> {
     await deliver(deliveryHost(this.#harness, this.#root), route(event), this.#context, change);
+  }
+
+  // ── Dreaming ───────────────────────────────────────────────────────────────
+
+  /** The Scheduler's dream check; logs the ticket it opens. */
+  async #dream(now: number): Promise<void> {
+    const port: DreamingPort = {
+      // Off while the dreamer has no model, so it never opens a ticket that cannot run.
+      policy: () => {
+        const dreaming = this.#options.settings().dreaming;
+        const model = pickModel(
+          "dreamer",
+          this.#store.current.models,
+          this.#options.settings().models,
+        );
+        return dreaming.enabled && model !== undefined ? dreaming : undefined;
+      },
+      idleSince: (context) => this.#idleSince(context),
+      contextOf: async (id, context) => {
+        const found = await this.#harness.conversation(id, context);
+        if (found === undefined) return { entries: [] };
+        return { entries: [...(await found.context(context)).entries] };
+      },
+      open: async (tx, draft, now, context) => {
+        const ticket = await openTicket(
+          tx,
+          this.#roles.ticketConversations,
+          this.#registry.snapshot(),
+          { role: "dreamer", ...draft, deliverTo: [] },
+          now,
+          context,
+        );
+        return ticket.id;
+      },
+    };
+    const opened = await dreamIfDue(
+      deliveryHost(this.#harness, this.#root),
+      port,
+      now,
+      this.#context,
+    );
+    if (opened !== undefined) console.error(`[${this.meta.id}] Dreaming opened ${opened}.`);
+  }
+
+  /** When the project went idle: `undefined` while the Router, a Worker, a queued start or a job runs. */
+  async #idleSince(context: Context): Promise<number | undefined> {
+    const host = deliveryHost(this.#harness, this.#root);
+    if (!(await routerIdle(host, context))) return undefined;
+    if (((await host.snapshot(WorkerQueue, context))?.pending.length ?? 0) > 0) {
+      return undefined;
+    }
+    for (const id of (await host.snapshot(Board, context))?.tickets ?? []) {
+      const ticket = await readTicket(host, id, context);
+      if (ticket?.status !== "open") continue;
+      if ((await host.snapshot(LiveDoc, conversationOf(ticket), context))?.run !== undefined) {
+        return undefined;
+      }
+    }
+    if (this.#jobs.running().length > 0) return undefined;
+    return this.#activeAt;
   }
 
   async #openTicket(id: TicketId) {
@@ -609,162 +601,4 @@ function installShared(
   }
   for (const extension of next) registry.install(extension);
   return names;
-}
-
-async function contextFraction(
-  conversation: Conversation,
-  models: Models,
-  context: Context,
-): Promise<number> {
-  const model = (await conversation.agent(context)).model;
-  const window = model && models.getModel(model.provider, model.modelId)?.contextWindow;
-  if (!window) return 0;
-  return (await contextUsage(conversation, context)).tokens / window;
-}
-
-function deliveryHost(harness: Harness, root: Conversation): DeliveryContext {
-  return {
-    snapshot: harness.snapshot.bind(harness) as ToolExecutionApi["snapshot"],
-    conversation: (id: ConversationId, ctx: Context) => harness.conversation(id, ctx),
-    commit: (change, ctx) => root.commit(change, ctx),
-  };
-}
-
-const ACTIVITY_ENTRY_KINDS = new Set([
-  UserEntry.kind,
-  AssistantEntry.kind,
-  ToolResultEntry.kind,
-  NOTICE_KIND,
-]);
-
-const ACTIVITY_DOC_KINDS = new Set([
-  Board.definition.kind,
-  TicketDoc.definition.kind,
-  ReportLog.definition.kind,
-  QuestionDoc.definition.kind,
-  JobDoc.definition.kind,
-  JobBoard.definition.kind,
-  LiveDoc.definition.kind,
-]);
-
-const BOARD_DOC_KINDS = new Set([
-  Board.definition.kind,
-  TicketDoc.definition.kind,
-  ReportLog.definition.kind,
-  QuestionDoc.definition.kind,
-  LiveDoc.definition.kind,
-  WorkerQueue.definition.kind,
-]);
-
-function isActivityCommit(pub: CommitPublication): boolean {
-  return pub.changes.some(
-    (c) =>
-      (c.type === "entry" && ACTIVITY_ENTRY_KINDS.has(c.value.kind)) ||
-      (c.type === "document" && ACTIVITY_DOC_KINDS.has(c.record.kind)),
-  );
-}
-
-function isBoardCommit(pub: CommitPublication): boolean {
-  return pub.changes.some((c) => c.type === "document" && BOARD_DOC_KINDS.has(c.record.kind));
-}
-
-async function initialActiveAt(
-  harness: Harness,
-  root: Conversation,
-  createdAt: number,
-  context: Context,
-): Promise<number> {
-  let latest = createdAt;
-  const max = (t: number | undefined) => {
-    if (typeof t === "number" && t > latest) latest = t;
-  };
-  const scanConversation = async (conv: Conversation, limit: number) => {
-    const entries = await conv.entries({ order: "descending" }, limit, undefined, context);
-    for (const entry of entries.items) {
-      for (const msg of entry.model ?? []) {
-        max((msg as { timestamp?: number }).timestamp);
-      }
-    }
-  };
-  const board = await harness.snapshot(Board, context);
-  const ticketIds = (board?.tickets ?? []) as TicketId[];
-  for (const id of ticketIds) {
-    const ticket = await harness.snapshot(TicketDoc, id, context);
-    max(ticket?.createdAt);
-    max(ticket?.closedAt);
-    const reports = await harness.snapshot(ReportLog, id, context);
-    for (const report of reports?.reports ?? []) max(report.at);
-    // A closed ticket's conversation ended by `closedAt`; only open ones can be newer than their docs.
-    if (ticket?.status === "open") {
-      const conv = await harness.conversation(conversationOf(ticket), context);
-      if (conv !== undefined) await scanConversation(conv, 4);
-    }
-  }
-  const jobBoard = await harness.snapshot(JobBoard, context);
-  const nextJob = jobBoard?.nextJob ?? 1;
-  for (let i = Math.max(1, nextJob - 10); i < nextJob; i++) {
-    const job = await harness.snapshot(JobDoc, jobId(i), context);
-    max(job?.startedAt);
-    max(job?.endedAt);
-  }
-  const nextQuestion = board?.nextQuestion ?? 1;
-  for (let i = Math.max(1, nextQuestion - 10); i < nextQuestion; i++) {
-    const q = await harness.snapshot(QuestionDoc, questionId(i), context);
-    max(q?.askedAt);
-    max(q?.answeredAt);
-  }
-  await scanConversation(root, 10);
-  return latest;
-}
-
-async function readLogTail(
-  path: string,
-  maxLines: number,
-): Promise<{ content: string; truncated: boolean }> {
-  let handle: FileHandle;
-  try {
-    handle = await open(path, "r");
-  } catch (error) {
-    if (isNotFound(error)) return { content: "", truncated: false };
-    throw error;
-  }
-  try {
-    const { size } = await handle.stat();
-    if (size === 0) return { content: "", truncated: false };
-    const readBytes = Math.min(size, JOB_LOG_MAX_BYTES);
-    const offset = size - readBytes;
-    const buf = Buffer.allocUnsafe(readBytes);
-    let totalRead = 0;
-    while (totalRead < readBytes) {
-      const { bytesRead } = await handle.read(
-        buf,
-        totalRead,
-        readBytes - totalRead,
-        offset + totalRead,
-      );
-      if (bytesRead === 0) break;
-      totalRead += bytesRead;
-    }
-    let text = buf.subarray(0, totalRead).toString("utf8");
-    const truncatedByBytes = offset > 0;
-    if (truncatedByBytes) {
-      const nl = text.indexOf("\n");
-      if (nl >= 0) {
-        text = text.slice(nl + 1);
-      } else if (text.startsWith("\uFFFD")) {
-        text = text.replace(/^\uFFFD+/, "");
-      }
-    }
-    const lines = text.split(/\r?\n/);
-    const hasTrailingNewline = lines.length > 1 && lines.at(-1) === "";
-    const bodyLines = hasTrailingNewline ? lines.slice(0, -1) : lines;
-    const truncatedByLines = bodyLines.length > maxLines;
-    const tailLines = truncatedByLines ? bodyLines.slice(-maxLines) : bodyLines;
-    return {
-      content: tailLines.join("\n") + (hasTrailingNewline && tailLines.length > 0 ? "\n" : ""),
-      truncated: truncatedByBytes || truncatedByLines,
-    };
-  } finally {
-    await handle.close();
-  }
 }

@@ -90,21 +90,6 @@ process.env.GIT_COMMITTER_NAME ??= "eevee-dev";
 process.env.GIT_AUTHOR_EMAIL ??= "eevee@dev.invalid";
 process.env.GIT_COMMITTER_EMAIL ??= "eevee@dev.invalid";
 
-await mkdir(paths.extensions, { recursive: true });
-await writeFile(
-  join(paths.extensions, "notes.mjs"),
-  `export default {
-  name: "notes",
-  tools: [
-    {
-      name: "note_search",
-      description: "Search the experiment notes by keyword",
-      parameters: { type: "object", properties: { q: { type: "string" } }, required: ["q"] },
-      async execute(args) { return { output: [{ type: "text", text: "Found 3 notes about " + args.q }] }; },
-    },
-  ],
-};\n`,
-);
 await writeFile(paths.mcp, JSON.stringify({ mcpServers: { weather: { command: "unused" } } }));
 await writeFile(
   paths.modelProfiles,
@@ -127,10 +112,9 @@ const initialSettings: Settings = {
   },
   maxActiveWorkers: 4,
   backgroundAfterMs: 300_000,
-  dreamIntervalMs: 0,
+  dreaming: { ...DEFAULT_SETTINGS.dreaming, enabled: false },
   roles: {
-    router: { extensions: ["notes"] },
-    worker: { extensions: ["notes", "mcp.weather", "mcp.gone"], maxTurns: 25 },
+    worker: { extensions: ["mcp.weather", "mcp.gone"], maxTurns: 25 },
   },
 };
 await mkdir(paths.home, { recursive: true });
@@ -543,7 +527,7 @@ await globalRepo.edit(
   "# Global memory\n\n- Prefer replies in English, and keep a space between numbers and units\n",
   "seed-global",
 );
-await globalRepo.commitRound("seed-global", "memory");
+await globalRepo.commitRound("seed-global", { kind: "router" });
 
 // Create Project 1: optics
 const ws1 = join(home, "workspaces", "optics");
@@ -595,13 +579,13 @@ await p1Repo.create(
   "## FDTD simulation\n- the mesh defaults to λ/15\n- above 45° the PML needs 12 layers\n",
   "seed-p1",
 );
-await p1Repo.commitRound("seed-p1", "dreaming t0");
+await p1Repo.commitRound("seed-p1", { kind: "dreaming", ticketId: "t0" });
 await p1Repo.create(
   "writing-style.md",
   "# Writing preferences\n- give the conclusion first, then the evidence\n- use the passive voice sparingly\n",
   "seed-p1-2",
 );
-await p1Repo.commitRound("seed-p1-2", "memory");
+await p1Repo.commitRound("seed-p1-2", { kind: "router" });
 
 // Round 1 on p1: t1 created & accepted
 await host1.sendUserMessage("First build the paper template, then review and close the ticket.");
@@ -632,10 +616,10 @@ await until(async () => {
   );
 }, "every p1 ticket reaches its target stage");
 
-// Leave an uncommitted manual edit in project memory
+// Leave a manual edit in project memory (saved as a user change when first read)
 await writeFile(
   join(paths.project(p1.id).memory, "writing-style.md"),
-  "# Writing preferences\n- give the conclusion first, then the evidence\n- use the passive voice sparingly\n- legends go in the top right of the figure (local uncommitted edit)\n",
+  "# Writing preferences\n- give the conclusion first, then the evidence\n- use the passive voice sparingly\n- legends go in the top right of the figure (local manual edit)\n",
 );
 
 // Project 2: Router failure state
@@ -660,13 +644,15 @@ seeded = true;
 if (checkOnly) {
   const board1 = await host1.board();
   const conv2 = await host2.conversation();
-  const diff1 = await host1.memoryDiff("project");
+  const changes = await host1.memory("project").history();
   console.log("Scenario self-check passed:", {
     projects: engine.projects().map((p) => p.title),
     p1Stages: board1.tickets.map((t) => `${t.ticket.id}:${t.stage}`),
     openQuestions: board1.openQuestions.map((q) => `${q.id}${q.ticketId ? `->${q.ticketId}` : ""}`),
     p2Failure: conv2.failure,
-    hasUncommittedMemoryDiff: diff1.includes("local uncommitted edit"),
+    manualEditChange:
+      changes[0]?.source.kind === "user" &&
+      changes[0].files.some((f) => f.path === "writing-style.md"),
   });
   await engine.close();
   if (ownHome) await rm(home, { recursive: true, force: true, maxRetries: 5 });

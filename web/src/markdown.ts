@@ -41,9 +41,9 @@ export type Inline =
   | { type: "break" }
   | { type: "caret" };
 
-export type Cell = { align?: "left" | "center" | "right"; children: Inline[] };
+type Cell = { align?: "left" | "center" | "right"; children: Inline[] };
 
-export type ListItem = { checked?: boolean; children: Block[] };
+type ListItem = { checked?: boolean; children: Block[] };
 
 export type Block =
   | { type: "paragraph"; children: Inline[] }
@@ -55,7 +55,7 @@ export type Block =
   | { type: "rule" };
 
 /** The tickets a message can point at, and how to open one; provided by MarkdownText. */
-export type TicketLinks = {
+type TicketLinks = {
   tickets: () => readonly TicketView[] | undefined;
   open: (ticketId: string) => void;
 };

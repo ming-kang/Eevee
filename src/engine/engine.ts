@@ -235,7 +235,6 @@ export class Engine {
         };
       }),
       mcp: shared.mcpServers(),
-      userExtensions: shared.userExtensions(),
       problems: shared.problems(),
     };
   }

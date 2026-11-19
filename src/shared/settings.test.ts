@@ -44,14 +44,38 @@ test("a malformed settings.json names the offending fields", async () => {
 test("an update writes only the given fields and validates before writing", async () => {
   await withFile({ port: 20000 }, async (path) => {
     const store = await SettingsStore.open(path);
-    await store.update((stored) => ({ ...stored, dreamIntervalMs: 0 }));
-    assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { port: 20000, dreamIntervalMs: 0 });
-    assert.equal(store.current.dreamIntervalMs, 0);
+    await store.update((stored) => ({
+      ...stored,
+      dreaming: { enabled: false, idleMs: 0, minGapMs: 0, afterTickets: 1, afterLessons: 1 },
+    }));
+    assert.deepEqual(JSON.parse(await readFile(path, "utf8")), {
+      port: 20000,
+      dreaming: { enabled: false, idleMs: 0, minGapMs: 0, afterTickets: 1, afterLessons: 1 },
+    });
+    assert.equal(store.current.dreaming.enabled, false);
     await assert.rejects(
       store.update((stored) => ({ ...stored, handoffThreshold: 2 })),
       ConfigError,
     );
     assert.equal(store.current.handoffThreshold, DEFAULT_SETTINGS.handoffThreshold);
+  });
+});
+
+test("a stored dreamIntervalMs still reads: 0 turns Dreaming off, other values are ignored, and no update writes it back", async () => {
+  await withFile({ dreamIntervalMs: 0 }, async (path) => {
+    assert.equal((await loadSettings(path)).dreaming.enabled, false);
+  });
+  await withFile({ dreamIntervalMs: 60_000, dreaming: { enabled: false } }, async (path) => {
+    const settings = await loadSettings(path);
+    assert.equal(settings.dreaming.enabled, false);
+    assert.equal(settings.dreaming.idleMs, DEFAULT_SETTINGS.dreaming.idleMs);
+  });
+  await withFile({ port: 20000, dreamIntervalMs: 0 }, async (path) => {
+    const store = await SettingsStore.open(path);
+    assert.equal(store.current.dreaming.enabled, false);
+    await store.update((stored) => ({ ...stored, port: 20001 }));
+    assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { port: 20001 });
+    assert.equal(store.current.dreaming.enabled, DEFAULT_SETTINGS.dreaming.enabled);
   });
 });
 

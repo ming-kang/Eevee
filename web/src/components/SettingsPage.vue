@@ -395,7 +395,7 @@ async function reloadMcp(): Promise<void> {
   });
   if (ok && capabilities.value) {
     syncTurnDrafts(capabilities.value);
-    showToast(t("Reloaded MCP and user extensions"));
+    showToast(t("Reloaded MCP servers"));
   }
 }
 
@@ -848,23 +848,6 @@ const streamBadge = computed(() => {
                     :aria-label="t('Enable {name}', { name: server.name })"
                     @click="toggleServer(server.name)"
                   />
-                </div>
-              </div>
-              <div class="section-t"><h3 title="~/.eevee/extensions/">{{ t("User extensions") }}</h3></div>
-              <div class="rows">
-                <div v-if="capabilities.userExtensions.length === 0" class="row">
-                  <span class="muted">{{ t("No user extensions") }}</span>
-                </div>
-                <div v-for="ext in capabilities.userExtensions" :key="ext.file" class="row">
-                  <div class="r-main">
-                    <span class="r-t"><span class="mono">{{ ext.file }}</span></span>
-                    <span class="r-d">{{ ext.name ? `${ext.name} · ${t("{n} tool|{n} tools", { n: ext.tools })}` : t("Not loaded") }}</span>
-                    <span v-if="ext.error" class="err">{{ configIssueText(ext.error) }}</span>
-                  </div>
-                  <span class="status-text">
-                    <span class="dot" :class="ext.error ? 'bad' : 'ok'" />
-                    <span>{{ ext.error ? t("Failed to load") : t("Loaded") }}</span>
-                  </span>
                 </div>
               </div>
             </template>

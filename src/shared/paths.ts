@@ -26,8 +26,6 @@ export type EeveePaths = {
   models: string;
   modelProfiles: string;
   mcp: string;
-  /** User extensions: `*.ts`, `*.js` or `*.mjs` files whose default export is an extension. */
-  extensions: string;
   globalMemory: string;
   runtime: {
     dir: string;
@@ -55,7 +53,6 @@ export function eeveePaths(home: string = resolveHome()): EeveePaths {
     models: join(home, "models.json"),
     modelProfiles: join(home, "models.md"),
     mcp: join(home, "mcp.json"),
-    extensions: join(home, "extensions"),
     globalMemory: join(home, "memory"),
     runtime: {
       dir: runtime,

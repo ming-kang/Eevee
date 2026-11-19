@@ -19,7 +19,10 @@ test("a refusal is worded by code and parameters, not by the Engine's own words"
     problemText({ code: "invalid", field: "mode", allowed: ["steer", "followUp"] }),
     "mode must be one of steer / followUp",
   );
-  assert.equal(problemText({ code: "model_unset", role: "worker" }), "Worker has no model");
+  assert.equal(
+    problemText({ code: "model_unset", role: "worker" }),
+    "worker has no model. Under models in settings.json, set a default or the worker model. You can also name a provider and modelId when you create the ticket.",
+  );
 });
 
 test("an unexpected error shows its own text", () => {
@@ -50,6 +53,6 @@ test("a config problem names the entry and leaves the file to its heading", () =
   );
   assert.equal(
     configIssueText({ code: "env_unset", name: "API_TOKEN" }),
-    "API_TOKEN refers to an environment variable that isn't set",
+    "API_TOKEN refers to an environment variable that is not set",
   );
 });

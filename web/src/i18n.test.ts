@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import test from "node:test";
-import { fill, pickForm, pickLocale, t } from "./i18n.ts";
+import { fill } from "../../src/contracts/text.ts";
+import { pickForm, pickLocale, t } from "./i18n.ts";
 import { zhCN } from "./locales/zh-CN.ts";
 
 test("pickLocale uses the stored choice, else the browser: zh means Chinese, otherwise English", () => {
@@ -29,6 +30,12 @@ test("a form written one|many is picked by n", () => {
 });
 const root = new URL(".", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const CJK = /[　-〿一-鿿＀-￯]/;
+
+/** Files outside web/src whose `t()` calls are interface text too. */
+const CONTRACT_TEXT = [
+  join(root, "../../src/contracts/problem.ts"),
+  join(root, "../../src/contracts/failure.ts"),
+];
 
 function sources(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -59,7 +66,7 @@ function lookups(key: string): string[] {
 test("every interface string goes through t(), each has Chinese, and the table has no extras", () => {
   const used = new Set<string>();
   const leftovers: string[] = [];
-  for (const file of sources(root)) {
+  for (const file of [...sources(root), ...CONTRACT_TEXT]) {
     const text = code(readFileSync(file, "utf8"));
     for (const match of text.matchAll(KEY)) {
       const key = (match[2] ?? "").replace(/\\(.)/g, "$1");

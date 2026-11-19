@@ -49,15 +49,48 @@ export const vSeg: Directive<HTMLElement> = {
   },
 };
 
-const following = new WeakMap<HTMLElement, boolean>();
+/**
+ * Follow-the-end mechanics behind `v-tail` and the transcript's scroller: the scroller opens at the
+ * newest line and `toEnd` keeps it there, until the reader scrolls up to look at something;
+ * scrolling back to the bottom resumes it. `onChange` hears every change of that.
+ */
+export type FollowEnd = {
+  /** Whether the scroller still counts as following; writable to re-follow without a scroll. */
+  following: boolean;
+  /** Jumps to the end while following. */
+  toEnd(): void;
+  /** Stops listening. */
+  detach(): void;
+};
 
-function toEnd(el: HTMLElement): void {
-  if (following.get(el) !== false) el.scrollTop = el.scrollHeight;
+export function followEnd(el: HTMLElement, onChange?: (following: boolean) => void): FollowEnd {
+  let following = true;
+  const onScroll = () => {
+    following = isAtEnd(el);
+    onChange?.(following);
+  };
+  const toEnd = () => {
+    if (following) el.scrollTop = el.scrollHeight;
+  };
+  el.addEventListener("scroll", onScroll, { passive: true });
+  el.scrollTop = el.scrollHeight;
+  // Fonts and code blocks can still change heights after the first frame.
+  requestAnimationFrame(toEnd);
+  return {
+    get following() {
+      return following;
+    },
+    set following(yes: boolean) {
+      following = yes;
+    },
+    toEnd,
+    detach() {
+      el.removeEventListener("scroll", onScroll);
+    },
+  };
 }
 
-function onTailScroll(this: HTMLElement): void {
-  following.set(this, isAtEnd(this));
-}
+const tails = new WeakMap<HTMLElement, FollowEnd>();
 
 /**
  * `v-tail` on a scroller of growing output (a job log): it opens at the newest line and keeps
@@ -66,16 +99,14 @@ function onTailScroll(this: HTMLElement): void {
  */
 export const vTail: Directive<HTMLElement> = {
   mounted(el) {
-    el.addEventListener("scroll", onTailScroll, { passive: true });
-    toEnd(el);
-    requestAnimationFrame(() => toEnd(el));
+    tails.set(el, followEnd(el));
   },
   updated(el) {
-    toEnd(el);
+    tails.get(el)?.toEnd();
   },
   unmounted(el) {
-    el.removeEventListener("scroll", onTailScroll);
-    following.delete(el);
+    tails.get(el)?.detach();
+    tails.delete(el);
   },
 };
 

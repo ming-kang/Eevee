@@ -1,4 +1,4 @@
-export const SETTINGS_SECTIONS = ["general", "models", "roles", "mcp", "engine"] as const;
+const SETTINGS_SECTIONS = ["general", "models", "roles", "mcp", "engine"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 /** The item a settings page opens on its own: a provider on the models page, a server on the MCP page. */
@@ -30,7 +30,7 @@ export function extractAuthCode(hash: string): string | undefined {
   return code && code !== "" ? code : undefined;
 }
 
-export function isSettingsSection(value: string): value is SettingsSection {
+function isSettingsSection(value: string): value is SettingsSection {
   return (SETTINGS_SECTIONS as readonly string[]).includes(value);
 }
 

@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import type { Client } from "@shared/api/client.ts";
+import type { MemoryFileEntry, ProjectSummary } from "@shared/api/contract.ts";
 import type {
-  MemoryCommitView,
-  MemoryFileEntry,
-  ProjectSummary,
-} from "@shared/api/contract.ts";
-import type { MemoryScope } from "@shared/contracts/index.ts";
+  MemoryChange,
+  MemoryChangeDetail,
+  MemoryScope,
+  MemorySource,
+} from "@shared/contracts/index.ts";
 import { computed, onUnmounted, ref, watch } from "vue";
 import { errorText } from "../errors.ts";
 import { focusFirst, onRovingKeydown, trapTab, useFocusReturn } from "../focus.ts";
 import { t } from "../i18n.ts";
-import { classifyCommitAuthor, type MemoryAuthor, parseGitDiff } from "../memory.ts";
 import { vSeg } from "../dom.ts";
 import { useSubmit } from "../submit.ts";
 import { formatRelativeTime } from "../time.ts";
@@ -32,10 +32,9 @@ const emit = defineEmits<{
 const scope = ref<MemoryScope>("project");
 const MEMORY_TABS = ["history", "files"] as const;
 const tab = ref<(typeof MEMORY_TABS)[number]>("history");
-const commits = ref<MemoryCommitView[]>([]);
-const uncommittedRaw = ref("");
-const commitDiffs = ref<Record<string, string>>({});
-const selected = ref<string>();
+const changes = ref<MemoryChange[]>([]);
+const changeDetails = ref<Record<string, MemoryChangeDetail>>({});
+const selected = ref<number>();
 const files = ref<MemoryFileEntry[]>([]);
 const fileContents = ref<Record<string, string>>({});
 const selectedFile = ref<string>();
@@ -48,47 +47,52 @@ const listError = ref<string>();
 const diffError = ref<string>();
 const filesError = ref<string>();
 const fileError = ref<string>();
-const confirmCommit = ref<MemoryCommitView>();
+const confirmChange = ref<MemoryChange>();
 const confirmEl = ref<HTMLElement>();
 useFocusReturn(
-  () => confirmCommit.value !== undefined,
+  () => confirmChange.value !== undefined,
   () => focusFirst(confirmEl.value),
 );
 
 function onConfirmKeydown(event: KeyboardEvent): void {
   if (event.key === "Escape") {
     event.preventDefault();
-    confirmCommit.value = undefined;
+    confirmChange.value = undefined;
     return;
   }
   trapTab(event, confirmEl.value);
 }
-const reverting = useSubmit();
+const undoing = useSubmit();
 
 let requestSeq = 0;
 let filesSeq = 0;
 
-const AUTHOR_META: Record<MemoryAuthor, { icon: "moon" | "radio" | "user" | "commit"; label: string; badgeClass: string }> = {
+const SOURCE_META: Record<
+  MemorySource["kind"],
+  { icon: "moon" | "radio" | "user" | "commit"; label: string; badgeClass: string }
+> = {
   dreaming: { icon: "moon", label: "Dreaming", badgeClass: "dreaming" },
   router: { icon: "radio", label: "Router", badgeClass: "" },
   user: { icon: "user", label: t("You"), badgeClass: "user" },
-  eevee: { icon: "commit", label: "Eevee", badgeClass: "" },
+  system: { icon: "commit", label: "Eevee", badgeClass: "" },
 };
 
-const uncommittedDiffs = computed(() => parseGitDiff(uncommittedRaw.value));
-const hasUncommitted = computed(() => uncommittedRaw.value.trim() !== "");
+const sourceOf = (source: MemorySource) => SOURCE_META[source.kind];
+const sourceLabel = (source: MemorySource) =>
+  source.ticketId === undefined
+    ? sourceOf(source).label
+    : `${sourceOf(source).label} ${source.ticketId}`;
 
-const selectedCommit = computed(() =>
-  selected.value && selected.value !== "uncommitted"
-    ? commits.value.find((c) => c.commit === selected.value)
-    : undefined,
+const selectedChange = computed(() =>
+  selected.value === undefined
+    ? undefined
+    : changes.value.find((c) => c.id === selected.value),
 );
 
-const selectedCommitDiffs = computed(() => {
-  const c = selectedCommit.value;
-  if (!c) return [];
-  const raw = commitDiffs.value[`${scope.value}:${c.commit}`] ?? "";
-  return parseGitDiff(raw);
+const selectedChangeDetail = computed(() => {
+  const c = selectedChange.value;
+  if (!c) return undefined;
+  return changeDetails.value[`${scope.value}:${c.id}`];
 });
 
 const activeFileEntry = computed(() =>
@@ -116,7 +120,7 @@ function formatBytes(bytes: number): string {
 }
 
 watch(
-  confirmCommit,
+  confirmChange,
   (val) => emit("modal-change", val !== undefined),
 );
 
@@ -124,9 +128,9 @@ onUnmounted(() => {
   emit("modal-change", false);
 });
 
-async function loadCommitDiff(targetScope: MemoryScope, commit: string): Promise<void> {
-  const cacheKey = `${targetScope}:${commit}`;
-  if (commitDiffs.value[cacheKey] !== undefined) {
+async function loadChangeDetail(targetScope: MemoryScope, id: number): Promise<void> {
+  const cacheKey = `${targetScope}:${id}`;
+  if (changeDetails.value[cacheKey] !== undefined) {
     diffError.value = undefined;
     return;
   }
@@ -134,10 +138,10 @@ async function loadCommitDiff(targetScope: MemoryScope, commit: string): Promise
   diffError.value = undefined;
   try {
     const res = await props.client.call(
-      "GET /api/projects/:project/memory/:scope/commits/:commit",
-      { project: props.project.id, scope: targetScope, commit },
+      "GET /api/projects/:project/memory/:scope/changes/:change",
+      { project: props.project.id, scope: targetScope, change: String(id) },
     );
-    commitDiffs.value = { ...commitDiffs.value, [cacheKey]: res.diff };
+    changeDetails.value = { ...changeDetails.value, [cacheKey]: res };
   } catch (err) {
     diffError.value = errorText(err);
   } finally {
@@ -145,43 +149,32 @@ async function loadCommitDiff(targetScope: MemoryScope, commit: string): Promise
   }
 }
 
-async function loadScope(preferredSelection?: string): Promise<void> {
+async function loadScope(preferredSelection?: number): Promise<void> {
   const token = ++requestSeq;
   const targetScope = scope.value;
   loadingList.value = true;
   listError.value = undefined;
   diffError.value = undefined;
   try {
-    const [logRes, diffRes] = await Promise.all([
-      props.client.call("GET /api/projects/:project/memory/:scope/log", {
-        project: props.project.id,
-        scope: targetScope,
-      }),
-      props.client.call("GET /api/projects/:project/memory/:scope/diff", {
-        project: props.project.id,
-        scope: targetScope,
-      }),
-    ]);
+    const res = await props.client.call("GET /api/projects/:project/memory/:scope/changes", {
+      project: props.project.id,
+      scope: targetScope,
+    });
     if (token !== requestSeq) return;
-    commits.value = logRes.commits;
-    uncommittedRaw.value = diffRes.diff;
+    changes.value = res.changes;
 
     let nextSel = preferredSelection;
-    if (
-      nextSel !== "uncommitted" &&
-      (!nextSel || !logRes.commits.some((c) => c.commit === nextSel))
-    ) {
-      nextSel = diffRes.diff.trim() !== "" ? "uncommitted" : logRes.commits[0]?.commit;
+    if (nextSel === undefined || !res.changes.some((c) => c.id === nextSel)) {
+      nextSel = res.changes[0]?.id;
     }
     selected.value = nextSel;
-    if (nextSel && nextSel !== "uncommitted") {
-      await loadCommitDiff(targetScope, nextSel);
+    if (nextSel !== undefined) {
+      await loadChangeDetail(targetScope, nextSel);
     }
   } catch (err) {
     if (token !== requestSeq) return;
     listError.value = errorText(err);
-    commits.value = [];
-    uncommittedRaw.value = "";
+    changes.value = [];
     selected.value = undefined;
   } finally {
     if (token === requestSeq) loadingList.value = false;
@@ -265,12 +258,10 @@ watch(tab, (next) => {
   }
 });
 
-async function selectItem(id: string): Promise<void> {
+async function selectItem(id: number): Promise<void> {
   selected.value = id;
   mobileDetail.value = true;
-  if (id !== "uncommitted") {
-    await loadCommitDiff(scope.value, id);
-  }
+  await loadChangeDetail(scope.value, id);
 }
 
 async function selectFile(filePath: string): Promise<void> {
@@ -288,27 +279,24 @@ function formatCommitAt(iso: string): { relative: string; title: string } {
   };
 }
 
-const authorOf = (commit: MemoryCommitView) => AUTHOR_META[classifyCommitAuthor(commit.subject)];
-
-function canRevert(commit: MemoryCommitView): boolean {
-  return commit.subject.trim() !== "memory: init";
+function canUndo(change: MemoryChange): boolean {
+  return change.id !== 1;
 }
 
-async function performRevert(): Promise<void> {
-  const target = confirmCommit.value;
+async function performUndo(): Promise<void> {
+  const target = confirmChange.value;
   if (!target) return;
-  const ok = await reverting.run(async () => {
+  const ok = await undoing.run(async () => {
     await props.client.call(
-      "POST /api/projects/:project/memory/:scope/revert",
-      { project: props.project.id, scope: scope.value },
-      { commit: target.commit },
+      "POST /api/projects/:project/memory/:scope/changes/:change/undo",
+      { project: props.project.id, scope: scope.value, change: String(target.id) },
     );
   });
   if (ok) {
-    confirmCommit.value = undefined;
-    commitDiffs.value = {};
+    confirmChange.value = undefined;
+    changeDetails.value = {};
     fileContents.value = {};
-    showToast(t("Reverted {commit}", { commit: target.commit }));
+    showToast(t("Undone change #{change}", { change: target.id }));
     await loadScope();
     if (tab.value === "files") await loadFiles();
     else files.value = [];
@@ -378,41 +366,29 @@ async function performRevert(): Promise<void> {
 
         <template v-if="tab === 'history'">
           <p v-if="listError" class="error hint">{{ listError }}</p>
-          <Skeleton v-else-if="loadingList && commits.length === 0" />
+          <Skeleton v-else-if="loadingList && changes.length === 0" />
           <div v-else class="list">
             <button
-              v-if="hasUncommitted"
+              v-for="change in changes"
+              :key="change.id"
               type="button"
               class="commit"
-              :class="{ on: selected === 'uncommitted' }"
-              :title="t('The next commit records this as user edit')"
-              @click="selectItem('uncommitted')"
+              :class="{ on: selected === change.id }"
+              @click="selectItem(change.id)"
             >
-              <span class="who pending"><Icon name="pencil" size="xs" /></span>
-              <span class="subj">{{ t("Uncommitted changes") }}</span>
-              <span class="meta ellipsis">{{ uncommittedDiffs.map((d) => d.file).join(t(", ")) }}</span>
-            </button>
-            <button
-              v-for="commit in commits"
-              :key="commit.commit"
-              type="button"
-              class="commit"
-              :class="{ on: selected === commit.commit }"
-              @click="selectItem(commit.commit)"
-            >
-              <span class="who" :class="authorOf(commit).badgeClass">
-                <Icon :name="authorOf(commit).icon" size="xs" />
+              <span class="who" :class="sourceOf(change.source).badgeClass">
+                <Icon :name="sourceOf(change.source).icon" size="xs" />
               </span>
-              <span class="subj ellipsis">{{ commit.subject }}</span>
+              <span class="subj ellipsis">{{ change.summary }}</span>
               <span class="meta">
-                <span>{{ authorOf(commit).label }}</span>
+                <span>{{ sourceLabel(change.source) }}</span>
                 <span>·</span>
-                <span :title="formatCommitAt(commit.at).title">{{ formatCommitAt(commit.at).relative }}</span>
+                <span :title="formatCommitAt(change.at).title">{{ formatCommitAt(change.at).relative }}</span>
                 <span>·</span>
-                <span class="mono">{{ commit.commit }}</span>
+                <span class="mono">#{{ change.id }}</span>
               </span>
             </button>
-            <p v-if="!hasUncommitted && commits.length === 0" class="hint">{{ t("No history") }}</p>
+            <p v-if="changes.length === 0" class="hint">{{ t("No history") }}</p>
           </div>
         </template>
         <template v-else>
@@ -468,55 +444,50 @@ async function performRevert(): Promise<void> {
           </div>
         </template>
         <template v-else>
-          <div v-if="selected === 'uncommitted'" key="uncommitted" class="detail-inner">
+          <div v-if="selectedChange" :key="selectedChange.id" class="detail-inner">
             <div class="detail-head">
               <div class="spacer">
-                <h2>{{ t("Uncommitted changes") }}</h2>
-                <div class="detail-meta">{{ t("The next commit records this as") }} <span class="mono">user edit</span></div>
-              </div>
-            </div>
-            <FileDiffs :diffs="uncommittedDiffs" :empty-text="t('No uncommitted changes')" />
-          </div>
-          <div v-else-if="selectedCommit" :key="selectedCommit.commit" class="detail-inner">
-            <div class="detail-head">
-              <div class="spacer">
-                <h2>{{ selectedCommit.subject }}</h2>
+                <h2>{{ selectedChange.summary }}</h2>
                 <div class="detail-meta">
                   <span class="chip mono">
                     <Icon name="commit" size="xs" />
-                    <span>{{ selectedCommit.commit }}</span>
+                    <span>#{{ selectedChange.id }}</span>
                   </span>
-                  <span>{{ authorOf(selectedCommit).label }}</span>
-                  <span :title="formatCommitAt(selectedCommit.at).title">
-                    {{ formatCommitAt(selectedCommit.at).relative }}
+                  <span>{{ sourceLabel(selectedChange.source) }}</span>
+                  <span :title="formatCommitAt(selectedChange.at).title">
+                    {{ formatCommitAt(selectedChange.at).relative }}
                   </span>
                 </div>
               </div>
               <button
-                v-if="canRevert(selectedCommit)"
+                v-if="canUndo(selectedChange)"
                 type="button"
                 class="btn sm danger"
                 @click="
-                  reverting.error.value = undefined;
-                  confirmCommit = selectedCommit;
+                  undoing.error.value = undefined;
+                  confirmChange = selectedChange;
                 "
               >
                 <Icon name="undo" size="xs" />
-                <span>{{ t("Revert") }}</span>
+                <span>{{ t("Undo") }}</span>
               </button>
             </div>
             <p v-if="diffError" class="error hint">{{ diffError }}</p>
             <Skeleton v-else-if="loadingDiff" :lines="6" />
-            <FileDiffs v-else :diffs="selectedCommitDiffs" :empty-text="t('No text changes')" />
+            <FileDiffs
+              v-else-if="selectedChangeDetail"
+              :diffs="selectedChangeDetail.files"
+              :empty-text="t('No text changes')"
+            />
           </div>
         </template>
       </div>
     </div>
 
     <div
-      v-if="confirmCommit"
+      v-if="confirmChange"
       class="overlay"
-      @click.self="confirmCommit = undefined"
+      @click.self="confirmChange = undefined"
       @keydown="onConfirmKeydown"
     >
       <div
@@ -524,32 +495,32 @@ async function performRevert(): Promise<void> {
         class="modal"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="revert-title"
+        aria-labelledby="undo-title"
       >
         <div class="modal-h">
-          <h2 id="revert-title">{{ t("Revert this commit?") }}</h2>
+          <h2 id="undo-title">{{ t("Undo this change?") }}</h2>
           <span class="spacer" />
-          <button type="button" class="btn ghost sm icon" :aria-label="t('Close')" @click="confirmCommit = undefined">
+          <button type="button" class="btn ghost sm icon" :aria-label="t('Close')" @click="confirmChange = undefined">
             <Icon name="x" size="sm" />
           </button>
         </div>
         <div class="modal-b">
           <p class="muted">
-            {{ t("This adds a commit that reverses") }} <span class="mono">{{ confirmCommit.commit }}</span>{{ t(", leaving the earlier history untouched.") }}
+            {{ t("This adds a change that reverses change") }} <span class="mono">#{{ confirmChange.id }}</span>{{ t(", leaving the earlier history untouched.") }}
           </p>
           <div class="codeline">
-            <code>{{ confirmCommit.subject }}</code>
+            <code>{{ confirmChange.summary }}</code>
           </div>
-          <p v-if="reverting.error.value" class="composer-error" role="alert">
-            {{ reverting.error.value }}
+          <p v-if="undoing.error.value" class="composer-error" role="alert">
+            {{ undoing.error.value }}
           </p>
         </div>
         <div class="modal-f">
-          <button type="button" class="btn" :disabled="reverting.busy.value" @click="confirmCommit = undefined">
+          <button type="button" class="btn" :disabled="undoing.busy.value" @click="confirmChange = undefined">
             {{ t("Cancel") }}
           </button>
-          <button type="button" class="btn primary" :disabled="reverting.busy.value" @click="performRevert">
-            {{ reverting.busy.value ? t("Reverting…") : t("Revert") }}
+          <button type="button" class="btn primary" :disabled="undoing.busy.value" @click="performUndo">
+            {{ undoing.busy.value ? t("Undoing…") : t("Undo") }}
           </button>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { arr, int, num, obj, oneOf, opt, type Static, str } from "@earendil-works/pi-schema";
+import { arr, bool, int, num, obj, oneOf, opt, type Static, str } from "@earendil-works/pi-schema";
 import { type RoleName, THINKING_LEVELS } from "../contracts/domain.ts";
 import { loadConfig, parseConfig } from "./config.ts";
 import { readJson, writeJsonAtomic } from "./fs.ts";
@@ -17,11 +17,35 @@ export const ModelDefaultsSchema = obj({
 });
 
 const RoleSettingsSchema = obj({
-  /** Extensions enabled on top of the role's own, by name: MCP servers (`mcp.<name>`), user extensions. */
+  /** Extensions enabled on top of the role's own, by name: MCP servers (`mcp.<name>`). */
   extensions: opt(arr(str({ minLength: 1 }))),
   /** Most model turns a run may take; unset is Durable's default. */
   maxTurns: opt(int({ minimum: 1 })),
 });
+
+const DreamingSchema = obj({
+  /** Off turns Dreaming off entirely. */
+  enabled: opt(bool()),
+  /** How long the project must be idle before dreaming may run. */
+  idleMs: opt(int({ minimum: 0 })),
+  /** Least time between two dreamings. */
+  minGapMs: opt(int({ minimum: 0 })),
+  /** Closed tickets since the last dreaming that make it due. */
+  afterTickets: opt(int({ minimum: 1 })),
+  /** Lessons in reports since the last dreaming that make it due. */
+  afterLessons: opt(int({ minimum: 1 })),
+});
+
+/** Dreaming's trigger policy, every field resolved. */
+export type DreamingSettings = Required<Static<typeof DreamingSchema>>;
+
+export const DEFAULT_DREAMING: DreamingSettings = {
+  enabled: true,
+  idleMs: 30 * 60_000,
+  minGapMs: 6 * 60 * 60_000,
+  afterTickets: 3,
+  afterLessons: 5,
+};
 
 /** `~/.eevee/settings.json`, as stored: every field may be left out. */
 export const StoredSettingsSchema = obj({
@@ -30,7 +54,8 @@ export const StoredSettingsSchema = obj({
   backgroundAfterMs: opt(int({ minimum: 0 })),
   handoffThreshold: opt(num({ exclusiveMinimum: 0, maximum: 1 })),
   reminderAfterMs: opt(int({ minimum: 0 })),
-  /** Least time between two Dreaming runs; 0 turns Dreaming off. */
+  dreaming: opt(DreamingSchema),
+  /** Deprecated: `0` meant Dreaming off and now resolves to `dreaming.enabled: false`; any other value is ignored. */
   dreamIntervalMs: opt(int({ minimum: 0 })),
   models: opt(ModelDefaultsSchema),
   roles: opt(
@@ -47,7 +72,9 @@ export const StoredSettingsSchema = obj({
 export type StoredSettings = Static<typeof StoredSettingsSchema>;
 export type RoleSettings = Static<typeof RoleSettingsSchema>;
 
-export type Settings = Required<Omit<StoredSettings, "$comment">>;
+export type Settings = Required<
+  Omit<StoredSettings, "$comment" | "dreamIntervalMs" | "dreaming">
+> & { dreaming: DreamingSettings };
 
 export const DEFAULT_SETTINGS: Settings = {
   port: 19190,
@@ -55,7 +82,7 @@ export const DEFAULT_SETTINGS: Settings = {
   backgroundAfterMs: 5_000,
   handoffThreshold: 0.6,
   reminderAfterMs: 30 * 60_000,
-  dreamIntervalMs: 24 * 60 * 60_000,
+  dreaming: DEFAULT_DREAMING,
   models: {},
   roles: {},
 };
@@ -65,12 +92,17 @@ export async function loadSettings(path: string): Promise<Settings> {
 }
 
 function resolveSettings(stored: StoredSettings): Settings {
-  const { $comment: _, ...fields } = stored;
+  const { $comment: _, dreamIntervalMs, dreaming, ...fields } = stored;
   return {
     ...DEFAULT_SETTINGS,
     ...fields,
     models: { ...stored.models },
     roles: { ...stored.roles },
+    dreaming: {
+      ...DEFAULT_DREAMING,
+      ...dreaming,
+      ...(dreamIntervalMs === 0 ? { enabled: false } : {}),
+    },
   };
 }
 
@@ -97,7 +129,10 @@ export class SettingsStore {
     const next = this.#queue.then(async () => {
       const raw = (await readJson<unknown>(this.#path)) ?? {};
       const current = parseConfig(StoredSettingsSchema, raw, this.#path);
-      const stored = parseConfig(StoredSettingsSchema, change(current), this.#path);
+      const changed = change(current);
+      // A write never puts the deprecated key back.
+      delete changed.dreamIntervalMs;
+      const stored = parseConfig(StoredSettingsSchema, changed, this.#path);
       await writeJsonAtomic(this.#path, stored, { mode: 0o600 });
       this.#current = resolveSettings(stored);
       return this.#current;

@@ -11,7 +11,7 @@ import type {
 export type RailTab = "tickets" | "jobs" | "detail";
 export type VisualStage = TicketStage | "done" | "cancelled" | "progress";
 
-export const STAGE_ORDER: readonly (TicketStage | "done" | "cancelled")[] = [
+const STAGE_ORDER: readonly (TicketStage | "done" | "cancelled")[] = [
   "answer",
   "review",
   "blocked",

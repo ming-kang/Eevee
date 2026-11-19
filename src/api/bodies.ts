@@ -69,7 +69,6 @@ const schemas = {
     /** `null` drops the project's own choice, so the role follows the settings again. */
     model: nullable(body(modelFields)),
   }),
-  "POST /api/projects/:project/memory/:scope/revert": body({ commit: str() }),
   "POST /api/projects/:project/messages": body({ text: str() }),
   "POST /api/projects/:project/tickets/:ticket/messages": body({
     text: str(),

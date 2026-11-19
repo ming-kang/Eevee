@@ -1,5 +1,5 @@
 import { createWriteStream, type WriteStream } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { type FileHandle, mkdir, open } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
@@ -20,8 +20,12 @@ import type {
   CommandResult,
   RunningCommand,
 } from "../extensions/workspace/index.ts";
+import { isNotFound } from "../shared/fs.ts";
 
 const TAIL_CHARS = 2000;
+const JOB_LOG_MAX_BYTES = 64 * 1024;
+/** A job log view without a `maxLines` carries this many lines from the log's end. */
+export const JOB_LOG_DEFAULT_LINES = 200;
 
 export type JobHostDeps = {
   logPath(id: JobId): string;
@@ -175,4 +179,60 @@ export class JobHost implements BackgroundJobs {
 async function openLog(path: string): Promise<WriteStream> {
   await mkdir(dirname(path), { recursive: true });
   return createWriteStream(path, { flags: "a" });
+}
+
+/**
+ * The last `maxLines` lines of a job's log, within the last `JOB_LOG_MAX_BYTES`; a missing or empty log is an
+ * empty, untruncated view.
+ */
+export async function readLogTail(
+  path: string,
+  maxLines: number,
+): Promise<{ content: string; truncated: boolean }> {
+  let handle: FileHandle;
+  try {
+    handle = await open(path, "r");
+  } catch (error) {
+    if (isNotFound(error)) return { content: "", truncated: false };
+    throw error;
+  }
+  try {
+    const { size } = await handle.stat();
+    if (size === 0) return { content: "", truncated: false };
+    const readBytes = Math.min(size, JOB_LOG_MAX_BYTES);
+    const offset = size - readBytes;
+    const buf = Buffer.allocUnsafe(readBytes);
+    let totalRead = 0;
+    while (totalRead < readBytes) {
+      const { bytesRead } = await handle.read(
+        buf,
+        totalRead,
+        readBytes - totalRead,
+        offset + totalRead,
+      );
+      if (bytesRead === 0) break;
+      totalRead += bytesRead;
+    }
+    let text = buf.subarray(0, totalRead).toString("utf8");
+    const truncatedByBytes = offset > 0;
+    if (truncatedByBytes) {
+      const nl = text.indexOf("\n");
+      if (nl >= 0) {
+        text = text.slice(nl + 1);
+      } else if (text.startsWith("�")) {
+        text = text.replace(/^�+/, "");
+      }
+    }
+    const lines = text.split(/\r?\n/);
+    const hasTrailingNewline = lines.length > 1 && lines.at(-1) === "";
+    const bodyLines = hasTrailingNewline ? lines.slice(0, -1) : lines;
+    const truncatedByLines = bodyLines.length > maxLines;
+    const tailLines = truncatedByLines ? bodyLines.slice(-maxLines) : bodyLines;
+    return {
+      content: tailLines.join("\n") + (hasTrailingNewline && tailLines.length > 0 ? "\n" : ""),
+      truncated: truncatedByBytes || truncatedByLines,
+    };
+  } finally {
+    await handle.close();
+  }
 }

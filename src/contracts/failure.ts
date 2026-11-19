@@ -1,17 +1,32 @@
 import type { LiveState, RunFailure, RunFailureReason } from "@earendil-works/pi-durable";
+import { fill, type Translate } from "./text.ts";
 
-const FAILURE_LABEL: Record<RunFailureReason, string> = {
-  model_error: "Model call failed",
-  no_model: "No model configured",
-  aborted: "Aborted",
-  reset: "Context was reset",
-  faulted: "The run failed",
-  orphaned: "The run cannot continue",
-  interrupted: "The run was interrupted",
-  restart_limit: "Gave up after repeated restarts",
-  nothing_to_answer: "Nothing left to answer",
-  turn_limit: "Turn limit reached",
-};
+function reasonText(reason: RunFailureReason, t: Translate): string {
+  switch (reason) {
+    case "model_error":
+      return t("Model call failed");
+    case "no_model":
+      return t("No model configured");
+    case "aborted":
+      return t("Aborted");
+    case "reset":
+      return t("Context was reset");
+    case "faulted":
+      return t("The run hit an error");
+    case "orphaned":
+      return t("The run cannot continue");
+    case "interrupted":
+      return t("The run was interrupted");
+    case "restart_limit":
+      return t("Gave up after repeated restarts");
+    case "nothing_to_answer":
+      return t("Nothing to answer");
+    case "turn_limit":
+      return t("Turn limit reached");
+    default:
+      return reason;
+  }
+}
 
 /** Ends that are someone's decision, not a failure: an interrupt, a reset, a continue with nothing to do. */
 const DELIBERATE: ReadonlySet<RunFailureReason> = new Set([
@@ -24,9 +39,14 @@ export function isDeliberateEnd(reason: RunFailureReason): boolean {
   return DELIBERATE.has(reason);
 }
 
-export function describeRunFailure(failure: Pick<RunFailure, "reason" | "detail">): string {
-  const label = FAILURE_LABEL[failure.reason] ?? failure.reason;
-  return failure.detail === undefined ? label : `${label}: ${failure.detail}`;
+export function describeRunFailure(
+  failure: Pick<RunFailure, "reason" | "detail">,
+  t: Translate = fill,
+): string {
+  const label = reasonText(failure.reason, t);
+  return failure.detail === undefined
+    ? label
+    : t("{label}: {detail}", { label, detail: failure.detail });
 }
 
 /** Why a run failed, and the provider's or runtime's own words for it, if any: each reader words the reason. */

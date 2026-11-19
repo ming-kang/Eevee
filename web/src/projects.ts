@@ -1,6 +1,6 @@
 import type { BoardView, ProjectSummary } from "../../src/api/contract.ts";
 import type { RunSummary } from "../../src/contracts/index.ts";
-import { effectiveStage, type VisualStage } from "./board.ts";
+import { countPendingQuestions, effectiveStage, type VisualStage } from "./board.ts";
 import { t } from "./i18n.ts";
 import { failureText, STAGE_LABEL } from "./labels.ts";
 import type { Route } from "./router.ts";
@@ -27,9 +27,7 @@ export function deriveProjectState(input: {
 }): ProjectRowState {
   const board = input.board;
   const openTickets = (board?.tickets ?? []).filter((t) => t.ticket.status === "open");
-  const questionCount = board
-    ? board.openQuestions.filter((q) => q.answer === undefined).length
-    : 0;
+  const questionCount = countPendingQuestions(board);
   const runningTickets = openTickets.filter(
     (t) => t.stage === "working" || t.stage === "jobs",
   ).length;
@@ -58,15 +56,7 @@ export function deriveProjectState(input: {
   };
 }
 
-export type PaletteIcon =
-  | "radio"
-  | "book"
-  | "chart"
-  | "sliders"
-  | "cpu"
-  | "puzzle"
-  | "plug"
-  | "server";
+type PaletteIcon = "radio" | "book" | "chart" | "sliders" | "cpu" | "puzzle" | "plug" | "server";
 
 export type PaletteItem =
   | {

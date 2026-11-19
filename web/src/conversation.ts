@@ -21,7 +21,7 @@ export type ConversationSnapshot = {
   ended: string | undefined;
 };
 
-export type ConversationWatcherOptions = {
+type ConversationWatcherOptions = {
   stream: StreamClient;
   watchId: string;
   topic: ConversationTopic;

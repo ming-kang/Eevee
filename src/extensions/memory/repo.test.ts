@@ -8,8 +8,9 @@ import { MemoryConflict, MemoryRepo } from "./repo.ts";
 
 let dir: string;
 let repo: MemoryRepo;
-const log = () =>
+const subjects = () =>
   execFileSync("git", ["log", "--format=%s"], { cwd: dir, encoding: "utf8" }).trim().split("\n");
+const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, encoding: "utf8" });
 
 before(async () => {
   dir = await mkdtemp(join(tmpdir(), "eevee-memory-"));
@@ -21,27 +22,42 @@ before(async () => {
 
 after(() => rm(dir, { recursive: true, force: true }));
 
-test("this round's changes become one commit, and a user's own edit is committed separately", async () => {
+test("a run's edits become one change, and a user's own edit becomes a separate user change", async () => {
   await repo.create("sim.md", "- simulation step 0.1\n", "0");
   await repo.edit("MEMORY.md", "# Memory\n", "# Memory\n- [[sim]] simulation lessons\n", "0");
   await writeFile(join(dir, "notes.md"), "written by the user\n");
-  await repo.commitRound("0", "memory");
-  assert.deepEqual(log().slice(0, 2), ["memory: edit MEMORY.md; create sim.md", "user edit"]);
+  const change = await repo.commitRound("0", { kind: "router" });
+  assert.ok(change);
+  assert.equal(change.summary, "edit MEMORY.md; create sim.md");
+  assert.deepEqual(change.source, { kind: "router" });
+  const history = await repo.history();
+  const latest = history[0];
+  const manual = history[1];
+  assert.equal(latest?.id, change.id);
+  assert.equal(manual?.source.kind, "user");
+  assert.equal(manual?.summary, "create notes.md");
+  assert.deepEqual(
+    manual?.files.map((f) => f.path),
+    ["notes.md"],
+  );
+  assert.match(subjects()[1] ?? "", /create notes\.md/);
 });
 
-test("each conversation commits its own changes, and an unfinished round stays in the workspace", async () => {
+test("each conversation saves its own change with its source, and an unfinished round stays in the workspace", async () => {
   await repo.create("dream.md", "- tidied lessons\n", "7");
   await repo.create("router.md", "- user preferences\n", "0");
-  await repo.commitRound("7", "dreaming t2");
-  assert.equal(log()[0], "dreaming t2: create dream.md");
-  await repo.commitRound("0", "memory");
-  assert.equal(log()[0], "memory: create router.md");
+  const dreaming = await repo.commitRound("7", { kind: "dreaming", ticketId: "t2" });
+  assert.deepEqual(dreaming?.source, { kind: "dreaming", ticketId: "t2" });
+  assert.equal(dreaming?.summary, "create dream.md");
+  const router = await repo.commitRound("0", { kind: "router", ticketId: "t3" });
+  assert.deepEqual(router?.source, { kind: "router", ticketId: "t3" });
+  assert.equal(router?.summary, "create router.md");
 });
 
-test("committing does nothing when there are no changes", async () => {
-  const before = log().length;
-  await repo.commitRound("0", "memory");
-  assert.equal(log().length, before);
+test("saving does nothing when there are no changes", async () => {
+  const before = subjects().length;
+  assert.equal(await repo.commitRound("0", { kind: "router" }), undefined);
+  assert.equal(subjects().length, before);
 });
 
 test("an edit is refused when the original text does not match, and the latest content comes back", async () => {
@@ -59,27 +75,164 @@ test("a path cannot escape the memory store", async () => {
   await assert.rejects(repo.create("../escape.md", "x", "0"), /must stay inside/);
 });
 
-test("history lists by commit, and reverting one creates the reverse commit", async () => {
-  await repo.create("revert-me.md", "temporary\n", "r");
-  await repo.commitRound("r", "memory");
-  const [latest] = await repo.history(1);
-  assert.equal(latest?.subject, "memory: create revert-me.md");
-  assert.match(latest?.at ?? "", /^\d{4}-\d{2}-\d{2}T/);
-  assert.match(await repo.diff(latest?.commit), /\+temporary/);
-
-  await repo.revert(latest?.commit ?? "");
-  assert.equal(await repo.read("revert-me.md"), undefined);
-  assert.match(log()[0] ?? "", /^Revert "memory: create revert-me.md"/);
+test("history numbers changes from the first and reads their sources", async () => {
+  const history = await repo.history(50);
+  assert.equal(history[history.length - 1]?.id, 1);
+  assert.deepEqual(history[history.length - 1]?.source, { kind: "system" });
+  assert.equal(history[history.length - 1]?.summary, "init");
+  assert.deepEqual(
+    history.map((c) => c.id),
+    history.map((_, i) => history.length - i),
+  );
+  assert.ok(history.some((c) => c.source.kind === "router"));
+  assert.ok(history.some((c) => c.source.kind === "dreaming"));
+  assert.ok(history.some((c) => c.source.kind === "user"));
 });
 
-test("something that is not a commit, or cannot be reverted, gives a clear error and leaves the store alone", async () => {
-  const before = log().length;
-  await assert.rejects(repo.revert("--hard"), { problem: { code: "no_commit", commit: "--hard" } });
-  await assert.rejects(repo.diff("HEAD~1"), { problem: { code: "no_commit", commit: "HEAD~1" } });
-  await assert.rejects(repo.revert("deadbeef"), {
-    problem: { code: "revert_failed", commit: "deadbeef" },
+test("a pending round's files are not saved as user edits when history is read mid-run", async () => {
+  await repo.create("pending.md", "- mid-run note\n", "mid");
+  await writeFile(join(dir, "manual.md"), "touched by hand\n");
+  const during = await repo.history(5);
+  const userChange = during.find(
+    (c) => c.source.kind === "user" && c.summary.includes("manual.md"),
+  );
+  assert.ok(userChange);
+  assert.equal(
+    userChange.files.some((f) => f.path === "pending.md"),
+    false,
+  );
+  const change = await repo.commitRound("mid", { kind: "router" });
+  assert.equal(change?.summary, "create pending.md");
+});
+
+test("show gives the structured edits of a change, including non-ASCII file names", async () => {
+  await repo.create("münchen.md", "grüße\n", "u");
+  await repo.edit("sim.md", "- simulation step 0.1\n", "- simulation step 0.2\n", "u");
+  await writeFile(join(dir, "to-delete.md"), "gone soon\n");
+  await repo.commitRound("pre-del", { kind: "router" });
+  await repo.edit("to-delete.md", "gone soon\n", "", "u");
+  const { rm: rmFile } = await import("node:fs/promises");
+  await rmFile(join(dir, "to-delete.md"));
+  const change = await repo.commitRound("u", { kind: "router" });
+  assert.ok(change);
+  const detail = await repo.show(change.id);
+  const added = detail.files.find((f) => f.path === "münchen.md");
+  assert.equal(added?.status, "added");
+  assert.equal(added?.added, 1);
+  assert.deepEqual(added?.hunks[0]?.lines[0], { kind: "add", new: 1, text: "grüße" });
+  const modified = detail.files.find((f) => f.path === "sim.md");
+  assert.equal(modified?.status, "modified");
+  assert.equal(modified?.added, 1);
+  assert.equal(modified?.removed, 1);
+  const deleted = detail.files.find((f) => f.path === "to-delete.md");
+  assert.equal(deleted?.status, "deleted");
+  assert.equal(deleted?.removed, 1);
+});
+
+test("show and undo reject unknown change numbers with no_change", async () => {
+  await assert.rejects(repo.show(9999), { problem: { code: "no_change", change: 9999 } });
+  await assert.rejects(repo.undo(9999, { kind: "user" }), {
+    problem: { code: "no_change", change: 9999 },
   });
-  assert.equal(log().length, before);
+  await assert.rejects(repo.undo(1, { kind: "user" }), {
+    problem: { code: "undo_failed", change: 1 },
+  });
+});
+
+test("undo appends a new change and restores the earlier content", async () => {
+  await repo.create("undo-me.md", "temporary\n", "r");
+  const change = await repo.commitRound("r", { kind: "router" });
+  assert.ok(change);
+  assert.equal(await repo.read("undo-me.md"), "temporary\n");
+
+  const undone = await repo.undo(change.id, { kind: "user" });
+  assert.equal(await repo.read("undo-me.md"), undefined);
+  assert.equal(undone.id, change.id + 1);
+  assert.equal(undone.summary, `Undo change #${change.id}`);
+  assert.deepEqual(undone.source, { kind: "user" });
+  assert.equal((await repo.history(1))[0]?.id, undone.id);
+});
+
+test("a conflicting undo fails and leaves the store alone", async () => {
+  await repo.create("conflict.md", "original\n", "c1");
+  await repo.commitRound("c1", { kind: "router" });
+  await repo.edit("conflict.md", "original\n", "changed\n", "c2");
+  const edit = await repo.commitRound("c2", { kind: "router" });
+  assert.ok(edit);
+  await repo.edit("conflict.md", "changed\n", "changed again\n", "c3");
+  await repo.commitRound("c3", { kind: "router" });
+
+  const count = (await repo.history(50)).length;
+  const content = await repo.read("conflict.md");
+  await assert.rejects(repo.undo(edit.id, { kind: "user" }), {
+    problem: { code: "undo_failed", change: edit.id },
+  });
+  assert.equal(await repo.read("conflict.md"), content);
+  assert.equal((await repo.history(50)).length, count);
+});
+
+test("a failed undo keeps a pending round's unsaved edits", async () => {
+  await repo.create("undo-a.md", "first\n", "r1");
+  const change = await repo.commitRound("r1", { kind: "router" });
+  assert.ok(change);
+  await repo.edit("undo-a.md", "first\n", "second (still being written)\n", "rX");
+
+  await assert.rejects(repo.undo(change.id, { kind: "user" }), {
+    problem: { code: "undo_failed", change: change.id },
+  });
+  assert.equal(await repo.read("undo-a.md"), "second (still being written)\n");
+  const saved = await repo.commitRound("rX", { kind: "router" });
+  assert.equal(saved?.summary, "edit undo-a.md");
+  assert.equal(await repo.read("undo-a.md"), "second (still being written)\n");
+});
+
+test("an undo touching other files keeps a pending round's edits pending", async () => {
+  await repo.create("undo-b.md", "temporary\n", "r2");
+  const change = await repo.commitRound("r2", { kind: "router" });
+  assert.ok(change);
+  await repo.edit(
+    "MEMORY.md",
+    "- [[sim]] simulation lessons\n",
+    "- [[sim]] simulation lessons v2\n",
+    "rY",
+  );
+
+  const undone = await repo.undo(change.id, { kind: "user" });
+  assert.equal(await repo.read("undo-b.md"), undefined);
+  // The pending file went into neither the undo change nor a user change.
+  assert.equal(
+    undone.files.some((f) => f.path === "MEMORY.md"),
+    false,
+  );
+  const saved = await repo.commitRound("rY", { kind: "router" });
+  assert.equal(saved?.summary, "edit MEMORY.md");
+  assert.deepEqual(saved?.source, { kind: "router" });
+});
+
+test("versions saved before sources existed still read back with the right source", async () => {
+  git("commit", "--quiet", "--allow-empty", "-m", "memory t3: edit a.md");
+  git("commit", "--quiet", "--allow-empty", "-m", "dreaming t7: create x.md");
+  git("commit", "--quiet", "--allow-empty", "-m", "user edit");
+  git("commit", "--quiet", "--allow-empty", "-m", 'Revert "memory t3: edit a.md"');
+  const history = await repo.history(4);
+  assert.deepEqual(history[0]?.source, { kind: "system" });
+  assert.equal(history[0]?.summary, "Undo edit a.md");
+  assert.deepEqual(history[1]?.source, { kind: "user" });
+  assert.equal(history[1]?.summary, "user edit");
+  assert.deepEqual(history[2]?.source, { kind: "dreaming", ticketId: "t7" });
+  assert.equal(history[2]?.summary, "create x.md");
+  assert.deepEqual(history[3]?.source, { kind: "router", ticketId: "t3" });
+  assert.equal(history[3]?.summary, "edit a.md");
+});
+
+test("nothing on a change or its detail looks like a hash", async () => {
+  const hex = /\b[0-9a-f]{7,40}\b/;
+  const history = await repo.history(5);
+  for (const change of history) {
+    assert.equal(hex.test(JSON.stringify(change)), false, JSON.stringify(change));
+    const detail = await repo.show(change.id);
+    assert.equal(hex.test(JSON.stringify(detail)), false, JSON.stringify(detail));
+  }
 });
 
 test("listFiles lists every memory file, MEMORY.md first and .git excluded", async () => {

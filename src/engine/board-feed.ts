@@ -1,5 +1,22 @@
+import { type CommitPublication, LiveDoc } from "@earendil-works/pi-durable";
 import type { BoardView } from "../api/contract.ts";
+import { Board, QuestionDoc, ReportLog, TicketDoc } from "../contracts/docs.ts";
+import { WorkerQueue } from "../extensions/orchestration/index.ts";
 import { SerialPass } from "../shared/serial-pass.ts";
+
+const BOARD_DOC_KINDS = new Set([
+  Board.definition.kind,
+  TicketDoc.definition.kind,
+  ReportLog.definition.kind,
+  QuestionDoc.definition.kind,
+  LiveDoc.definition.kind,
+  WorkerQueue.definition.kind,
+]);
+
+/** Whether a stored commit changed a document the board view is built from. */
+export function isBoardCommit(pub: CommitPublication): boolean {
+  return pub.changes.some((c) => c.type === "document" && BOARD_DOC_KINDS.has(c.record.kind));
+}
 
 /** Hears a board: each distinct snapshot in the order they were taken, or why one could not be built. */
 export type BoardListener = {

@@ -8,7 +8,7 @@ export class ConfigError extends Error {
   readonly problems: readonly ConfigProblem[];
 
   constructor(problems: readonly ConfigProblem[]) {
-    super(problems.map(describeConfigProblem).join("\n"));
+    super(problems.map((p) => describeConfigProblem(p)).join("\n"));
     this.problems = problems;
   }
 }

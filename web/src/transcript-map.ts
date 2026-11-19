@@ -134,7 +134,7 @@ const detailsOf = <T>(result: ToolResultMessage | undefined): Partial<T> =>
 
 const NOTICE_KIND = "eevee.notice";
 
-export type MapTranscriptOptions = {
+type MapTranscriptOptions = {
   mode: "router" | "worker";
   live?: LiveState;
   ticketId?: TicketId;
@@ -757,8 +757,8 @@ function formatToolLabel(name: string, args: Record<string, unknown>): string {
     const target =
       typeof args.file === "string"
         ? `/${args.file}`
-        : typeof args.commit === "string"
-          ? ` ${args.commit}`
+        : typeof args.change === "number"
+          ? ` #${args.change}`
           : "";
     return `${action} ${scope}${target}`.trim() || "memory";
   }
