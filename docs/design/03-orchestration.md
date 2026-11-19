@@ -25,7 +25,7 @@
 | | `model` | 为执行对话设置模型，从下一次请求起生效 |
 | `ask_user` | 问题列表（可附带 `ticketId`） | 以非阻塞方式向用户提问 |
 | `read` | 地址、分页、`query` | 引用持久对象的统一地址，见 [01 概念](01-concepts.md) |
-| `memory` | `edit` / `create` / `log` / `diff` / `revert` | 见 [04 记忆](04-memory.md) |
+| `memory` | `edit` / `create` / `history` / `show` / `undo` | 见 [04 记忆](04-memory.md) |
 | `handoff` | 交接小结 | 写下当前小结并重置自己的上下文 |
 
 追加的消息有两种进入方式：**引导**（`steer`）在当前这批工具调用结束后即刻进入；**排队**（`followUp`）等这一轮结束后再进入。
