@@ -42,7 +42,13 @@ import { mistralConversationsApi } from "@earendil-works/pi-ai/api/mistral-conve
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { piMessagesApi } from "@earendil-works/pi-ai/api/pi-messages.lazy";
-import { arr, bool, map, num, obj, oneOf, opt, type Static, str } from "@earendil-works/pi-schema";
+import type { Static } from "@earendil-works/pi-schema";
+import {
+  type ModelDefinitionSchema,
+  type ModelOverrideSchema,
+  ModelsConfigSchema,
+  type ProviderConfigSchema,
+} from "../api/models-config.ts";
 import type { ConfigIssue, ConfigProblem } from "../contracts/index.ts";
 import {
   ConfigError,
@@ -52,56 +58,10 @@ import {
   resolveConfigValue,
 } from "../shared/config.ts";
 
-const Headers = map(str());
-const Positive = num({ exclusiveMinimum: 0 });
-
-const overrideFields = {
-  name: opt(str({ minLength: 1 })),
-  reasoning: opt(bool()),
-  input: opt(arr(oneOf(["text", "image"]))),
-  contextWindow: opt(Positive),
-  maxTokens: opt(Positive),
-  cost: opt(
-    obj({
-      input: opt(num()),
-      output: opt(num()),
-      cacheRead: opt(num()),
-      cacheWrite: opt(num()),
-    }),
-  ),
-  promptCache: opt(obj({ short: opt(num()), long: opt(num()) })),
-  headers: opt(Headers),
-};
-
-const ModelOverride = obj(overrideFields);
-
-const ModelDefinition = obj({
-  id: str({ minLength: 1 }),
-  api: opt(str({ minLength: 1 })),
-  baseUrl: opt(str({ minLength: 1 })),
-  ...overrideFields,
-});
-
-const ProviderConfig = obj({
-  name: opt(str({ minLength: 1 })),
-  baseUrl: opt(str({ minLength: 1 })),
-  api: opt(str({ minLength: 1 })),
-  apiKey: opt(str({ minLength: 1 })),
-  headers: opt(Headers),
-  authHeader: opt(bool()),
-  models: opt(arr(ModelDefinition)),
-  modelOverrides: opt(map(ModelOverride)),
-});
-
-export const ModelsConfigSchema = obj({
-  $schema: opt(str()),
-  providers: opt(map(ProviderConfig)),
-});
-
 export type ModelsConfig = Static<typeof ModelsConfigSchema>;
-export type ProviderConfig = Static<typeof ProviderConfig>;
-type ModelOverride = Static<typeof ModelOverride>;
-type ModelDefinition = Static<typeof ModelDefinition>;
+export type ProviderConfig = Static<typeof ProviderConfigSchema>;
+type ModelOverride = Static<typeof ModelOverrideSchema>;
+type ModelDefinition = Static<typeof ModelDefinitionSchema>;
 
 export const loadModelsConfig = (path: string): Promise<ModelsConfig> =>
   loadConfig(ModelsConfigSchema, path, {});

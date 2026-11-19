@@ -232,6 +232,120 @@ test("the HTTP API exposes structured models, project activeAt, Board.router and
   }
 });
 
+test("the HTTP boundary refuses a body that is missing a field, of the wrong type, blank, or off an enum", async () => {
+  const home = await mkdtemp(join(tmpdir(), "eevee-http-body-"));
+  const paths = eeveePaths(home);
+  const settings = await SettingsStore.open(paths.settings);
+  await writeFile(
+    paths.models,
+    JSON.stringify({
+      providers: {
+        local: {
+          baseUrl: "http://127.0.0.1:11434/v1",
+          api: "openai-completions",
+          models: [{ id: "demo" }],
+        },
+      },
+    }),
+  );
+  await settings.update((s) => ({
+    ...s,
+    models: { default: { provider: "local", modelId: "demo" } },
+  }));
+  const engine = await Engine.open({
+    paths,
+    settings,
+    models: await createModelRuntime(paths),
+    context: BACKGROUND_CONTEXT,
+  });
+  const { client, close } = await serve(engine, paths);
+  const workspace = join(home, "ws");
+  await mkdir(workspace);
+  try {
+    // A field the route needs is missing: `required` names it, an absent body included.
+    await assert.rejects(client.call("POST /api/session", refused({})), {
+      status: 400,
+      problem: { code: "required", field: "code" },
+    });
+    await assert.rejects(client.call("POST /api/projects", refused({ title: "HTTP" })), {
+      status: 400,
+      problem: { code: "required", field: "workspace" },
+    });
+
+    // A field of the wrong type is `invalid`, not a missing one.
+    await assert.rejects(client.call("POST /api/session", refused({ code: 1 })), {
+      status: 400,
+      problem: { code: "invalid", field: "code" },
+    });
+    await assert.rejects(
+      client.call("POST /api/projects/:project/messages", { project: "p0" }, refused({ text: 7 })),
+      { status: 400, problem: { code: "invalid", field: "text" } },
+    );
+
+    // Blank counts as missing for a field that has to carry something.
+    await assert.rejects(client.call("POST /api/projects", refused({ title: " ", workspace })), {
+      status: 400,
+      problem: { code: "required", field: "title" },
+    });
+
+    // An enum names the values it takes.
+    await assert.rejects(
+      client.call(
+        "POST /api/settings/models",
+        refused({
+          role: "x",
+          provider: "local",
+          modelId: "demo",
+        }),
+      ),
+      {
+        status: 400,
+        problem: {
+          code: "invalid",
+          field: "role",
+          allowed: ["router", "worker", "dreamer", "default"],
+        },
+      },
+    );
+    await assert.rejects(
+      client.call(
+        "POST /api/projects/:project/tickets/:ticket/messages",
+        { project: "p0", ticket: "t1" },
+        refused({ text: "go on", mode: "now" }),
+      ),
+      {
+        status: 400,
+        problem: { code: "invalid", field: "mode", allowed: ["steer", "followUp"] },
+      },
+    );
+    await assert.rejects(
+      client.call(
+        "POST /api/settings/models",
+        refused({
+          provider: "local",
+          modelId: "demo",
+          thinkingLevel: "loud",
+        }),
+      ),
+      {
+        status: 400,
+        problem: {
+          code: "invalid",
+          field: "thinkingLevel",
+          allowed: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+        },
+      },
+    );
+  } finally {
+    await close();
+    await engine.close();
+    await rm(home, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
+
+/** A body the route's type would refuse, sent on purpose to see the boundary refuse it too. */
+const refused = (body: unknown) => body as never;
+
 /** Serves the Engine's routes on a free port, with a client holding the token. */
 async function serve(engine: Engine, paths: ReturnType<typeof eeveePaths>) {
   const auth = await Auth.open({ tokenPath: paths.runtime.token });

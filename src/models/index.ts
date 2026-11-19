@@ -1,5 +1,6 @@
 import type { CredentialStore, Models, MutableModels, Provider } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
+import { ModelsConfigSchema } from "../api/models-config.ts";
 import { type ConfigProblem, describeConfigProblem, ProblemError } from "../contracts/index.ts";
 import { ConfigError, configIssue, parseConfig } from "../shared/config.ts";
 import { readJson, writeJsonAtomic } from "../shared/fs.ts";
@@ -11,7 +12,6 @@ import {
   composeProvider,
   loadModelsConfig,
   type ModelsConfig,
-  ModelsConfigSchema,
   type ProviderConfig,
 } from "./models-config.ts";
 
