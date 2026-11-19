@@ -1,19 +1,17 @@
 import type { CredentialStore, Models, MutableModels, Provider } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
-import { ModelsConfigSchema } from "../api/models-config.ts";
 import { type ConfigProblem, describeConfigProblem, ProblemError } from "../contracts/index.ts";
+import {
+  type ModelsConfig,
+  ModelsConfigSchema,
+  type ProviderConfig,
+} from "../contracts/models-config.ts";
 import { ConfigError, configIssue, parseConfig } from "../shared/config.ts";
 import { readJson, writeJsonAtomic } from "../shared/fs.ts";
 import type { EeveePaths } from "../shared/paths.ts";
 import { FileCredentialStore } from "./auth-store.ts";
 import { type BuiltinModelRef, builtinCatalog } from "./builtin-catalog.ts";
-import {
-  applyModelsConfig,
-  composeProvider,
-  loadModelsConfig,
-  type ModelsConfig,
-  type ProviderConfig,
-} from "./models-config.ts";
+import { applyModelsConfig, composeProvider, loadModelsConfig } from "./models-config.ts";
 
 /** What a built-in provider looks like before models.json changes it. */
 export type BuiltinProvider = { name: string; baseUrl?: string };

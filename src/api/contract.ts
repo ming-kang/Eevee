@@ -17,8 +17,8 @@ import type {
   TicketId,
   TicketStage,
 } from "../contracts/index.ts";
+import type { ModelDefinition, ProviderConfig } from "../contracts/models-config.ts";
 import type { BodySchema } from "./bodies.ts";
-import type { ModelDefinitionSchema, ProviderConfigSchema } from "./models-config.ts";
 
 export type ProjectSummary = {
   id: string;
@@ -135,10 +135,10 @@ export type ModelProviderView = {
 };
 
 /** A models.json provider entry, as written; the Engine checks it against the schema. */
-export type ProviderConfigView = Static<typeof ProviderConfigSchema>;
+export type ProviderConfigView = ProviderConfig;
 
 /** One model entry of a provider, as written. */
-export type ProviderModelConfig = Static<typeof ModelDefinitionSchema>;
+export type ProviderModelConfig = ModelDefinition;
 
 /**
  * What to ask an endpoint for its models with. `key` may be a literal or an environment variable reference;

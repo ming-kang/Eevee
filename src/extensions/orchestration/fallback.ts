@@ -36,7 +36,7 @@ export const FallbackReport = defineTask<FallbackInput, { phase: "report" }, nul
       if (router === undefined) return runtime.commit(done, context);
 
       await runtime.commit(async (tx) => {
-        const current = await tx.doc(TicketDoc, ticket.id, ticket);
+        const current = await tx.doc(TicketDoc, ticket.id, null);
         if (current.status !== "open") return done();
         await submitReport(tx, router, current, {
           ticketId: ticket.id,

@@ -239,9 +239,9 @@ async function seedTicket(
 }
 
 /** Whether a ticket is still open, re-read in the committing transaction; anything without a ticket passes. */
-async function stillOpen(tx: Tx, seed: Ticket | undefined): Promise<boolean> {
-  if (seed === undefined) return true;
-  return (await tx.doc(TicketDoc, seed.id, seed)).status === "open";
+async function stillOpen(tx: Tx, ticket: Ticket | undefined): Promise<boolean> {
+  if (ticket === undefined) return true;
+  return (await tx.doc(TicketDoc, ticket.id, null)).status === "open";
 }
 
 async function resolveHandle(

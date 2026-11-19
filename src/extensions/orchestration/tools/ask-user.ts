@@ -36,13 +36,13 @@ export const askUserTool = defineTool({
   replay: "unsafe",
   async execute(args, api, context) {
     const ticketId = args.ticketId as TicketId | undefined;
-    const seed = ticketId === undefined ? undefined : await readTicket(api, ticketId, context);
-    if (ticketId !== undefined && seed === undefined) return fail(`No ticket ${ticketId}.`);
+    if (ticketId !== undefined && (await readTicket(api, ticketId, context)) === undefined)
+      return fail(`No ticket ${ticketId}.`);
     const question = await api.commit(async (tx) => {
-      if (seed !== undefined) {
-        const current = await tx.doc(TicketDoc, seed.id, seed);
+      if (ticketId !== undefined) {
+        const current = await tx.doc(TicketDoc, ticketId, null);
         if (current.status !== "open") {
-          throw new ProblemError({ code: "ticket_closed", ticketId: seed.id });
+          throw new ProblemError({ code: "ticket_closed", ticketId });
         }
       }
       const created = await addQuestion(tx, {

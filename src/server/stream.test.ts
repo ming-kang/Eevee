@@ -4,6 +4,7 @@ import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { WatchCall, WatchEnd, WatchHandle } from "@earendil-works/chord/watch";
 import type { ConversationView } from "@earendil-works/pi-durable";
 import type { BoardView } from "../api/contract.ts";
@@ -14,6 +15,7 @@ import {
   type StreamRequest,
   TOKEN_PROTOCOL_PREFIX,
 } from "../api/stream.ts";
+import { BoardFeed, type BoardListener } from "../engine/board-feed.ts";
 import { Auth } from "./auth.ts";
 import { attachStream, type ProjectStream } from "./stream.ts";
 
@@ -49,16 +51,16 @@ let board: BoardView = { tickets: [], openQuestions: [], router: emptyRouter };
 let watch = fakeWatch(view);
 const watched: unknown[] = [];
 
-const boardListeners = new Set<() => void>();
+const boardListeners = new Set<BoardListener>();
 const setBoard = (next: BoardView) => {
   board = next;
-  for (const listener of boardListeners) listener();
+  for (const listener of boardListeners) listener.view(board);
 };
 
 const project: ProjectStream = {
-  board: async () => board,
-  subscribeBoard: (listener) => {
+  watchBoard: (listener) => {
     boardListeners.add(listener);
+    listener.view(board);
     return () => boardListeners.delete(listener);
   },
   watch: async (ticket, _context, window) => {
@@ -66,6 +68,27 @@ const project: ProjectStream = {
     return watch.handle;
   },
   entries: async (_ticket, query, limit) => [{ id: query.minEntryId ?? 0, limit } as never],
+};
+
+/** A real board feed whose builds the test finishes one at a time; each returns the board as it was when it began. */
+const boardWith = (question: string): BoardView => ({
+  tickets: [],
+  openQuestions: [{ id: question } as never],
+  router: emptyRouter,
+});
+let slowState = boardWith("q0");
+const slowBuilds: (() => void)[] = [];
+const slowFeed = new BoardFeed(() => {
+  const seen = slowState;
+  return new Promise<BoardView>((resolve) => slowBuilds.push(() => resolve(seen)));
+});
+const setSlowBoard = (next: BoardView) => {
+  slowState = next;
+  slowFeed.invalidate();
+};
+const slowProject: ProjectStream = {
+  ...project,
+  watchBoard: (listener) => slowFeed.subscribe(listener),
 };
 
 let dir: string;
@@ -80,7 +103,10 @@ before(async () => {
   token = (await readFile(join(dir, "token"), "utf8")).trim();
   server = createServer((_request, response) => response.end());
   stream = attachStream(server, {
-    source: { bootId: "boot-1", project: (id) => (id === "p1" ? project : undefined) },
+    source: {
+      bootId: "boot-1",
+      project: (id) => (id === "p1" ? project : id === "p2" ? slowProject : undefined),
+    },
     auth,
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -90,6 +116,7 @@ before(async () => {
 
 after(async () => {
   await stream.close();
+  await slowFeed.close();
   await new Promise((resolve) => server.close(resolve));
   await rm(dir, { recursive: true, force: true });
 });
@@ -185,6 +212,42 @@ test("a board watch sends the current board then changes, and stops after unwatc
     limit: 1,
   });
   assert.equal((await client.next()).type, "entries");
+  client.ws.close();
+});
+
+test("a board watch never sends an older board after a newer one, however its builds finish", async () => {
+  const client = await connect();
+  await client.next();
+  client.send({ type: "watch", id: "b", topic: { kind: "board", project: "p2" } });
+  while (slowBuilds.length === 0) await sleep(5);
+  slowBuilds.shift()?.();
+  assert.deepEqual(await client.next(), { type: "board", id: "b", board: boardWith("q0") });
+
+  setSlowBoard(boardWith("q1"));
+  while (slowBuilds.length === 0) await sleep(5);
+  setSlowBoard(boardWith("q2"));
+  // Finish the newest build first each time, as a quick build overtaking a slow one would.
+  for (;;) {
+    await sleep(30);
+    const finish = slowBuilds.pop();
+    if (finish === undefined) break;
+    finish();
+  }
+
+  client.send({
+    type: "entries",
+    id: "e",
+    topic: { kind: "conversation", project: "p1" },
+    query: {},
+    limit: 1,
+  });
+  const boards: string[] = [];
+  for (;;) {
+    const event = await client.next();
+    if (event.type === "entries") break;
+    if (event.type === "board") boards.push(event.board.openQuestions[0]?.id ?? "");
+  }
+  assert.equal(boards.at(-1), "q2");
   client.ws.close();
 });
 

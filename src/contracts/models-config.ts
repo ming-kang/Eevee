@@ -21,10 +21,10 @@
  * `auth.json` wins over `apiKey`. `modelOverrides` changes fields of existing models, merging `cost` and
  * `promptCache` field by field.
  *
- * The schema lives here, away from the IO that applies it, so the API contract and the panel can derive their
- * types from the same definition the Engine validates with.
+ * This is the configuration's contract, apart from the IO that reads and applies it (`src/models/`): the Engine
+ * validates with these schemas, and the Engine, the HTTP API and the panel all take their types from them.
  */
-import { arr, bool, map, num, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
+import { arr, bool, map, num, obj, oneOf, opt, type Static, str } from "@earendil-works/pi-schema";
 
 const Headers = map(str());
 const Positive = num({ exclusiveMinimum: 0 });
@@ -75,3 +75,8 @@ export const ModelsConfigSchema = obj({
   $schema: opt(str()),
   providers: opt(map(ProviderConfigSchema)),
 });
+
+export type ModelsConfig = Static<typeof ModelsConfigSchema>;
+export type ProviderConfig = Static<typeof ProviderConfigSchema>;
+export type ModelDefinition = Static<typeof ModelDefinitionSchema>;
+export type ModelOverride = Static<typeof ModelOverrideSchema>;

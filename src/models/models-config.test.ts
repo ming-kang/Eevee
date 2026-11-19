@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createModels, fauxProvider } from "@earendil-works/pi-ai";
-import { ModelsConfigSchema } from "../api/models-config.ts";
+import { ModelsConfigSchema } from "../contracts/models-config.ts";
 import { ConfigError, parseConfig } from "../shared/config.ts";
 import { applyModelsConfig } from "./models-config.ts";
 

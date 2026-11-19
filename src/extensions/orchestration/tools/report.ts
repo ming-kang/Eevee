@@ -13,7 +13,7 @@ import { readBinding, readTicket } from "../board.ts";
 import { submitReport } from "../deliver.ts";
 import type { OrchestrationDeps } from "../ports.ts";
 import { fail, ok } from "../result.ts";
-import { prepareSettlement, settle } from "../settle.ts";
+import { settle } from "../settle.ts";
 
 export const REPORT_TOOL = "report";
 
@@ -72,16 +72,15 @@ export function createReportTool(deps: OrchestrationDeps) {
         return fail("The root conversation is missing, the report cannot be submitted.");
 
       let report: Report;
-      const settlement = autoAccept ? await prepareSettlement(api, ticket, context) : undefined;
       try {
         report = await api.commit(async (tx) => {
-          const current = await tx.doc(TicketDoc, ticket.id, ticket);
+          const current = await tx.doc(TicketDoc, ticket.id, null);
           if (current.status !== "open") {
             throw new ProblemError({ code: "ticket_closed", ticketId: ticket.id });
           }
           const stored = await submitReport(tx, router, current, draft);
-          if (settlement !== undefined) {
-            await settle(tx, settlement, {
+          if (autoAccept) {
+            await settle(tx, ticket.id, {
               status: "done",
               note: "Auto-accepted when the dreamer ticket finished tidying up",
               at: api.now(),

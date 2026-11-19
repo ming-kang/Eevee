@@ -1,25 +1,6 @@
 /**
- * `~/.eevee/models.json`: custom providers and models, and changes to built-in ones. The format follows
- * pi's coding agent (`packages/coding-agent/docs/models-configuration.md`), a subset of it:
- *
- * ```json
- * {
- *   "providers": {
- *     "local": {
- *       "baseUrl": "http://127.0.0.1:11434/v1",
- *       "api": "openai-completions",
- *       "apiKey": "ollama",
- *       "models": [{ "id": "qwen3", "contextWindow": 32768 }]
- *     },
- *     "anthropic": { "modelOverrides": { "claude-opus-4-7": { "contextWindow": 500000 } } }
- *   }
- * }
- * ```
- *
- * A built-in provider id changes that provider; any other id adds one, which needs `baseUrl` and `api`.
- * `apiKey` and `headers` values may reference environment variables (`$NAME`, `${NAME}`); a key stored
- * in `auth.json` wins over `apiKey`. `modelOverrides` changes fields of existing models, merging
- * `cost` and `promptCache` field by field.
+ * Applies `~/.eevee/models.json` to pi-ai's models: composes the providers it adds and changes. The file's format
+ * and schema are its contract, in `src/contracts/models-config.ts`.
  */
 import {
   type Api,
@@ -42,14 +23,14 @@ import { mistralConversationsApi } from "@earendil-works/pi-ai/api/mistral-conve
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { piMessagesApi } from "@earendil-works/pi-ai/api/pi-messages.lazy";
-import type { Static } from "@earendil-works/pi-schema";
-import {
-  type ModelDefinitionSchema,
-  type ModelOverrideSchema,
-  ModelsConfigSchema,
-  type ProviderConfigSchema,
-} from "../api/models-config.ts";
 import type { ConfigIssue, ConfigProblem } from "../contracts/index.ts";
+import {
+  type ModelDefinition,
+  type ModelOverride,
+  type ModelsConfig,
+  ModelsConfigSchema,
+  type ProviderConfig,
+} from "../contracts/models-config.ts";
 import {
   ConfigError,
   configIssue,
@@ -57,11 +38,6 @@ import {
   processEnv,
   resolveConfigValue,
 } from "../shared/config.ts";
-
-export type ModelsConfig = Static<typeof ModelsConfigSchema>;
-export type ProviderConfig = Static<typeof ProviderConfigSchema>;
-type ModelOverride = Static<typeof ModelOverrideSchema>;
-type ModelDefinition = Static<typeof ModelDefinitionSchema>;
 
 export const loadModelsConfig = (path: string): Promise<ModelsConfig> =>
   loadConfig(ModelsConfigSchema, path, {});

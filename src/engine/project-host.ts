@@ -78,10 +78,12 @@ import { renderCatalog } from "../models/catalog.ts";
 import { createRoles, type Roles } from "../roles/index.ts";
 import { isNotFound, readText } from "../shared/fs.ts";
 import { type EeveePaths, resolveInside } from "../shared/paths.ts";
+import { SerialPass } from "../shared/serial-pass.ts";
 import { enabledExtensions, type Settings } from "../shared/settings.ts";
-import { BoardFeed } from "./board-feed.ts";
+import { BoardFeed, type BoardListener } from "./board-feed.ts";
 import { JobHost } from "./jobs.ts";
 import { type ProjectMeta, ProjectStore } from "./project.ts";
+import { Reaper } from "./reaper.ts";
 import { recentRounds, transcriptSource } from "./transcript.ts";
 import { boardView, conversationView, usageView } from "./views.ts";
 
@@ -142,13 +144,10 @@ export class ProjectHost {
   #activeAt: number;
   #activityWatch: CommitObservation | undefined;
   readonly #timer: NodeJS.Timeout;
-  #ticking = false;
+  /** The dispatch loop: starts queued tickets and runs upkeep, on every timer tick. */
+  readonly #ticker: SerialPass;
+  readonly #reaper: Reaper;
   #lastUpkeep = 0;
-  readonly #stopping = new Set<TicketId>();
-  /** The pass that stops settled tickets, and whether another one was asked for while it ran. */
-  #reaping: Promise<void> | undefined;
-  #reapAgain = false;
-  #closing = false;
 
   private constructor(parts: Parts) {
     this.#store = parts.store;
@@ -163,9 +162,19 @@ export class ProjectHost {
     this.#repos = parts.repos;
     this.#shared = parts.shared;
     this.#activeAt = parts.activeAt;
-    this.#timer = setInterval(() => void this.#tick(), TICK_MS);
+    this.#reaper = new Reaper({
+      harness: parts.harness,
+      jobs: parts.jobs,
+      context: parts.options.context,
+      label: parts.store.current.id,
+    });
+    this.#ticker = new SerialPass(
+      () => this.#tick(),
+      (error) => console.error(`[${this.meta.id}] The dispatch loop hit an error.`, error),
+    );
+    this.#timer = setInterval(() => this.#ticker.request(), TICK_MS);
     this.#timer.unref();
-    void this.#tick();
+    this.#ticker.request();
   }
 
   static async open(options: ProjectHostOptions): Promise<ProjectHost> {
@@ -317,8 +326,7 @@ export class ProjectHost {
       await root.reset(await roles.routerOpening(harness, context), context);
     await flush(delivery, context);
     await jobs.recover();
-    await host.#seedStopping();
-    host.#kickReap();
+    await host.#reaper.start();
     await ensureDreamTimer(harness, root, memory.timer, context);
     host.#watchActivity();
     harness.resume();
@@ -337,7 +345,7 @@ export class ProjectHost {
     const now = Date.now();
     const answered = { ...seed, answer, answeredAt: now };
     await this.#dispatch({ type: "question-answered", question: answered }, async (tx) => {
-      await recordAnswer(tx, seed, answer, now);
+      await recordAnswer(tx, id, answer, now);
     });
   }
 
@@ -403,7 +411,7 @@ export class ProjectHost {
     return this.#feed.read();
   }
 
-  subscribeBoard(listener: () => void): () => void {
+  watchBoard(listener: BoardListener): () => void {
     return this.#feed.subscribe(listener);
   }
 
@@ -518,11 +526,11 @@ export class ProjectHost {
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
+  /** Stops taking work, waits for every background pass under way, then closes the jobs and the Session they use. */
   async close(): Promise<void> {
     this.#activityWatch?.detach();
     clearInterval(this.#timer);
-    this.#closing = true;
-    this.#feed.close();
+    await Promise.all([this.#ticker.close(), this.#reaper.close(), this.#feed.close()]);
     await this.#jobs.close();
     await this.#harness.close(this.#context);
   }
@@ -536,15 +544,6 @@ export class ProjectHost {
         if (isBoardCommit(pub)) {
           this.#feed.invalidate();
         }
-        for (const change of pub.changes) {
-          if (change.type !== "document" || change.kind !== "change") continue;
-          if (change.record.kind !== TicketDoc.definition.kind) continue;
-          const ticket = change.value as unknown as Ticket;
-          if (ticket.status !== "open" && ticket.stoppedAt === undefined) {
-            this.#stopping.add(ticket.id);
-          }
-        }
-        if (this.#stopping.size > 0) this.#kickReap();
       },
       end: () => {},
     });
@@ -555,94 +554,16 @@ export class ProjectHost {
   }
 
   async #tick(): Promise<void> {
-    if (this.#ticking) return;
-    this.#ticking = true;
-    try {
-      const host = deliveryHost(this.#harness, this.#root);
-      const settings = this.#options.settings();
-      this.#kickReap();
-      await pump(host, settings.maxActiveWorkers, this.#context);
-      const now = Date.now();
-      if (now - this.#lastUpkeep >= (this.#options.upkeepMs ?? UPKEEP_MS)) {
-        this.#lastUpkeep = now;
-        await reportRunFailures(host, now, this.#context);
-        await remindRouter(host, { olderThan: settings.reminderAfterMs, now }, this.#context);
-        await this.#nudgeHandoff(host, settings.handoffThreshold);
-      }
-    } catch (error) {
-      console.error(`[${this.meta.id}] The dispatch loop hit an error.`, error);
-    } finally {
-      this.#ticking = false;
-    }
-  }
-
-  /**
-   * Reaps the settled tickets whose stop is not recorded yet, on the next tick of the event loop: many changes
-   * coalesce into one pass, a pass never runs twice at once, and one that is asked for again runs once more.
-   */
-  #kickReap(): void {
-    if (this.#closing) return;
-    if (this.#reaping !== undefined) {
-      this.#reapAgain = true;
-      return;
-    }
-    this.#reaping = new Promise<void>((resolve) => {
-      setImmediate(() => {
-        this.#reapAgain = false;
-        this.#reap()
-          .catch((error) =>
-            console.error(
-              `[${this.meta.id}] Stopping the execution of a settled ticket failed.`,
-              error,
-            ),
-          )
-          .finally(() => {
-            this.#reaping = undefined;
-            if (this.#reapAgain && !this.#closing) this.#kickReap();
-            resolve();
-          });
-      });
-    });
-  }
-
-  /**
-   * The one place that stops a settled ticket's execution: its background jobs, its conversation, and only then
-   * the record that it was stopped. A ticket whose stop fails stays queued for the next pass.
-   */
-  async #reap(): Promise<void> {
-    if (this.#closing) return;
-    for (const id of [...this.#stopping]) {
-      const ticket = await readTicket(this.#harness, id, this.#context);
-      if (ticket === undefined || ticket.status === "open" || ticket.stoppedAt !== undefined) {
-        this.#stopping.delete(id);
-        continue;
-      }
-      try {
-        this.#jobs.stop(ticket.id);
-        const conversation = await this.#harness.conversation(
-          conversationOf(ticket),
-          this.#context,
-        );
-        await conversation?.abort(this.#context);
-        await this.#harness.commit(async (tx) => {
-          Object.assign(await tx.doc(TicketDoc, ticket.id, ticket), { stoppedAt: Date.now() });
-        }, this.#context);
-        this.#stopping.delete(id);
-      } catch (error) {
-        console.error(`[${this.meta.id}] Could not stop ${id}; it will be tried again.`, error);
-      }
-    }
-  }
-
-  /** Collects the tickets an earlier process settled but could not stop. */
-  async #seedStopping(): Promise<void> {
-    for (const id of ((await this.#harness.snapshot(Board, this.#context))?.tickets ??
-      []) as TicketId[]) {
-      const ticket = await readTicket(this.#harness, id, this.#context);
-      if (ticket === undefined || ticket.status === "open" || ticket.stoppedAt !== undefined) {
-        continue;
-      }
-      this.#stopping.add(ticket.id);
+    const host = deliveryHost(this.#harness, this.#root);
+    const settings = this.#options.settings();
+    this.#reaper.request();
+    await pump(host, settings.maxActiveWorkers, this.#context);
+    const now = Date.now();
+    if (now - this.#lastUpkeep >= (this.#options.upkeepMs ?? UPKEEP_MS)) {
+      this.#lastUpkeep = now;
+      await reportRunFailures(host, now, this.#context);
+      await remindRouter(host, { olderThan: settings.reminderAfterMs, now }, this.#context);
+      await this.#nudgeHandoff(host, settings.handoffThreshold);
     }
   }
 

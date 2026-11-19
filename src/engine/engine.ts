@@ -6,12 +6,12 @@ import type {
   ProjectSummary,
 } from "../api/contract.ts";
 import { type ModelChoice, ProblemError, ROLE_NAMES, type RoleName } from "../contracts/index.ts";
+import type { ProviderConfig } from "../contracts/models-config.ts";
 import { mcpExtensionName } from "../extensions/mcp/index.ts";
 import { MemoryRepo } from "../extensions/memory/index.ts";
 import { type BuiltinModelRef, matchBuiltinModels } from "../models/builtin-catalog.ts";
 import { buildModelsView } from "../models/catalog.ts";
 import type { ModelRuntime } from "../models/index.ts";
-import type { ProviderConfig } from "../models/models-config.ts";
 import { type ProbeResult, probeModels } from "../models/probe.ts";
 import { roleExtensions } from "../roles/index.ts";
 import { ConfigError, processEnv, resolveConfigValue } from "../shared/config.ts";

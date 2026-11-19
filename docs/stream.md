@@ -100,7 +100,7 @@ Eevee 自己写进对话的内容带着数据，界面按数据措辞，不要�
 { "type": "watch", "id": "b1", "topic": { "kind": "board", "project": "p3f9a1c2e" } }
 ```
 
-Engine 立即发送一次完整看板，之后每当项目的工单、报告、问题、Router 运行状态或运行中的后台作业变化时，就再发一次完整看板。看板的格式与 [`GET /api/projects/:project/board`](http-api.md#项目) 相同。
+Engine 立即发送一次完整看板，之后每当项目的工单、报告、问题、Router 运行状态或运行中的后台作业变化时，就再发一次完整看板。看板按变化的先后送达，不会在较新的看板之后再收到较旧的；短时间内的多次变化可能合并成一次，内容没变时不重发。看板的格式与 [`GET /api/projects/:project/board`](http-api.md#项目) 相同。
 
 ## 断线重连
 

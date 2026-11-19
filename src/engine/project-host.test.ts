@@ -842,16 +842,18 @@ test("the opening is written into the worker conversation when the ticket is cre
   }
 });
 
-test("a board subscriber receives changes without calling board()", async () => {
+test("a board watcher hears the current board, then its changes, without calling board()", async () => {
   const project = await openTestProject(() => say("OK."));
-  let notifications = 0;
-  const unsubscribe = project.host.subscribeBoard(() => {
-    notifications += 1;
+  const views: BoardView[] = [];
+  const unsubscribe = project.host.watchBoard({
+    view: (board) => views.push(board),
+    failed: (error) => assert.fail(String(error)),
   });
   try {
+    await project.until(async () => views.length > 0, 1500);
     await project.host.sendUserMessage("hello");
-    await project.until(async () => notifications > 0, 1500);
-    assert.ok(notifications > 0);
+    await project.until(async () => views.some((board) => board.router.running), 1500);
+    await project.until(async () => views.at(-1)?.router.running === false, 1500);
   } finally {
     unsubscribe();
     await project.close();
@@ -888,11 +890,9 @@ test("a board subscriber is notified when a background job starts and finishes, 
 
   const project = await openTestProject(brain, { backgroundAfterMs: 200 });
   const snapshots: BoardView[] = [];
-  let pendingReads = Promise.resolve();
-  const unsubscribe = project.host.subscribeBoard(() => {
-    pendingReads = pendingReads.then(async () => {
-      snapshots.push(await project.host.board());
-    });
+  const unsubscribe = project.host.watchBoard({
+    view: (board) => snapshots.push(board),
+    failed: (error) => assert.fail(String(error)),
   });
   try {
     await project.host.sendUserMessage("run simulation");
@@ -924,7 +924,6 @@ test("a board subscriber is notified when a background job starts and finishes, 
   } finally {
     releaseAfterAdopt();
     unsubscribe();
-    await pendingReads.catch(() => {});
     await project.close();
   }
 });

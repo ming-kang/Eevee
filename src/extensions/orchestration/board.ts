@@ -6,6 +6,7 @@ import {
   latestFinalReport,
   ProblemError,
   type Question,
+  type QuestionId,
   questionId,
   type Report,
   type Ticket,
@@ -36,16 +37,6 @@ export async function readReports(
   context: Context,
 ): Promise<readonly Report[]> {
   return (await reader.snapshot(ReportLog, id, context))?.reports ?? [];
-}
-
-export async function readQuestions(reader: DocReader, context: Context): Promise<Question[]> {
-  const ids = (await reader.snapshot(Board, context))?.openQuestions ?? [];
-  const questions: Question[] = [];
-  for (const id of ids) {
-    const question = await reader.snapshot(QuestionDoc, id, context);
-    if (question !== undefined) questions.push(question);
-  }
-  return questions;
 }
 
 export async function readBinding(
@@ -93,21 +84,21 @@ export async function markHandled(tx: Tx, id: TicketId): Promise<void> {
 /** Records `answer` for a question nobody answered yet; a second answer fails instead of overwriting. */
 export async function answerQuestion(
   tx: Tx,
-  seed: Question,
+  id: QuestionId,
   answer: string,
   at: number,
 ): Promise<Question> {
-  const stored = await tx.doc(QuestionDoc, seed.id, seed);
+  const stored = await tx.doc(QuestionDoc, id, null);
   if (stored.answer !== undefined) {
-    throw new ProblemError({ code: "answered", questionId: seed.id });
+    throw new ProblemError({ code: "answered", questionId: id });
   }
   if (stored.withdrawnAt !== undefined) {
-    throw new ProblemError({ code: "no_question", questionId: seed.id });
+    throw new ProblemError({ code: "no_question", questionId: id });
   }
   const answered: Question = { ...stored, answer, answeredAt: at };
   Object.assign(stored, answered);
   const board = await tx.doc(Board);
-  board.openQuestions = board.openQuestions.filter((id) => id !== seed.id);
+  board.openQuestions = board.openQuestions.filter((open) => open !== id);
   return answered;
 }
 

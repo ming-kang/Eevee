@@ -16,7 +16,7 @@ import { route } from "../delivery.ts";
 import { openTicket } from "../open.ts";
 import type { OrchestrationDeps } from "../ports.ts";
 import { fail, ok } from "../result.ts";
-import { prepareSettlement, settle } from "../settle.ts";
+import { settle } from "../settle.ts";
 import {
   type ModelRequest,
   Parameters,
@@ -180,20 +180,14 @@ async function review(
     return ok(`Sent ${ticket.id} back for rework.`);
   }
 
-  const prepared = await prepareSettlement(api, ticket, context);
   try {
-    await deliver(
-      api,
-      route({ type: "ticket-accepted", ticket, report: latest }),
-      context,
-      async (tx) => {
-        await settle(
-          tx,
-          prepared,
-          { status: "done", note: command.note, at: api.now() },
-          { reportSeq: latest.seq },
-        );
-      },
+    await deliver(api, route({ type: "ticket-accepted", ticket, report: latest }), context, (tx) =>
+      settle(
+        tx,
+        ticket.id,
+        { status: "done", note: command.note, at: api.now() },
+        { reportSeq: latest.seq },
+      ),
     );
   } catch (error) {
     return fail(settleRefusal(error, ticket.id));
@@ -207,19 +201,12 @@ async function close(
   api: ToolExecutionApi,
   context: Context,
 ) {
-  const prepared = await prepareSettlement(api, ticket, context);
   try {
     await deliver(
       api,
       route({ type: "ticket-cancelled", ticket, reason: command.note }),
       context,
-      async (tx) => {
-        await settle(tx, prepared, {
-          status: "cancelled",
-          note: command.note,
-          at: api.now(),
-        });
-      },
+      (tx) => settle(tx, ticket.id, { status: "cancelled", note: command.note, at: api.now() }),
     );
   } catch (error) {
     return fail(settleRefusal(error, ticket.id));

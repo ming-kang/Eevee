@@ -92,7 +92,7 @@ contracts ──► orchestration ─┐
 
 | 目录 | 内容 |
 |---|---|
-| `src/contracts/` | 共享定义：领域类型（工单、报告、问题）、持久状态、资源地址、工单阶段推导。没有 IO |
+| `src/contracts/` | 共享定义：领域类型（工单、报告、问题）、持久状态、资源地址、工单阶段推导、`models.json` 的格式。没有 IO |
 | `src/extensions/orchestration/` | `ticket`、`ask_user`、`report` 工具；投递表；兜底报告；并发槽位；后台作业的跟踪 |
 | `src/extensions/resources/` | 统一的 `read` 工具、地址解析和分页 |
 | `src/extensions/workspace/` | 工作目录里的 `write`、`edit`、`bash`；长命令转为后台作业 |
@@ -113,6 +113,8 @@ contracts ──► orchestration ─┐
 - **安装与启用分开**：项目安装了哪些扩展，和每个角色选用哪些扩展是两回事。`roles` 只声明名字，应用角色时按名字解析，不持有扩展实例。
 - **状态写进存储**：任何重置后还需要的信息（工单、依赖、待回答的问题）都必须是持久状态，不能只留在模型的上下文里。
 - **每个存储只有一条写入路径**：`session.sqlite` 只由 Engine 写；记忆库只经由 `memory` 模块提交；`settings.json`、`auth.json`、`models.json`、`mcp.json` 各有一个串行的写入者。
+- **事务里按 key 读文档**：工单和问题只在创建时传入完整的值作为 seed，其余事务一律用 `tx.doc(TicketDoc, id, null)` 查找，不拿事务外读到的快照当 seed；要依据的状态都在提交的事务里读。
+- **后台工作有主人**：Engine 里由定时器或提交触发的异步工作用 `src/shared/serial-pass.ts` 的 `SerialPass` 调度，关闭时先等它们结束，再关闭它们用到的作业和 Session。
 - **能力优先于缓存**：同一角色尽量保持稳定的配置以复用缓存，但不为了缓存前缀限制角色需要的能力。
 - **代码用英文写**：源码、注释、测试名称、CLI 输出、日志和给模型看的文字一律英文。例外只有 `web/src/locales/zh-CN.ts` 的翻译值、`LOCALE_NAME` 里语言自己的名字，以及匹配这些中文的测试断言和正则；文档是中文的用户文档，不在此列。这条规则由 `src/shared/language.test.ts` 看守。
 - **只用可擦除的 TypeScript 语法**（`erasableSyntaxOnly`）：不用 `enum`、`namespace` 和构造器参数属性。代码须在 Windows 和 POSIX 上都能运行，注意路径、shell 与进程的差异。

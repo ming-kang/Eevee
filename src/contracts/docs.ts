@@ -16,12 +16,25 @@ export const Board = defineDoc<BoardState>({
   checkpointWhen: () => false,
 });
 
-export const TicketDoc = defineDocFamily<Ticket, Ticket>({
+/**
+ * `initial` of a family whose members one writer creates whole and every other commit only looks up: creating
+ * passes the member as its seed, looking up passes `null`. A lookup that finds no member fails its commit instead
+ * of inventing one, so a transaction reads a member by its key alone, never through a snapshot taken before it.
+ */
+function createdWhole<T>(kind: string): (seed: T | null) => T {
+  return (seed) => {
+    if (seed === null) throw new Error(`There is no ${kind} document to look up.`);
+    return seed;
+  };
+}
+
+/** Created by `saveTicket`; every other commit looks a ticket up with `tx.doc(TicketDoc, id, null)`. */
+export const TicketDoc = defineDocFamily<Ticket, Ticket | null>({
   kind: "eevee.ticket",
   version: 1,
   scope: "session",
   family: true,
-  initial: (seed) => seed,
+  initial: createdWhole("eevee.ticket"),
   checkpointWhen: () => false,
 });
 
@@ -48,12 +61,13 @@ export const TicketBinding = defineDoc<TicketBindingState>({
   checkpointWhen: () => false,
 });
 
-export const QuestionDoc = defineDocFamily<Question, Question>({
+/** Created by `addQuestion`; every other commit looks a question up with `tx.doc(QuestionDoc, id, null)`. */
+export const QuestionDoc = defineDocFamily<Question, Question | null>({
   kind: "eevee.question",
   version: 1,
   scope: "session",
   family: true,
-  initial: (seed) => seed,
+  initial: createdWhole("eevee.question"),
   checkpointWhen: () => false,
 });
 

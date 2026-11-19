@@ -9,7 +9,6 @@ import type {
   EntryRecord,
 } from "@earendil-works/pi-durable";
 import { type WebSocket, WebSocketServer } from "ws";
-import type { BoardView } from "../api/contract.ts";
 import {
   type ConversationTopic,
   parseStreamRequest,
@@ -21,6 +20,7 @@ import {
 } from "../api/stream.ts";
 import type { TicketId } from "../contracts/index.ts";
 import { ProblemError, problemOf } from "../contracts/index.ts";
+import type { BoardListener } from "../engine/board-feed.ts";
 import { type Auth, isLoopbackRequest } from "./auth.ts";
 
 /** What the stream reads: the Engine, or a stand-in in tests. */
@@ -40,9 +40,8 @@ export type ProjectStream = {
     query: Omit<EntryQuery, "conversationId">,
     limit: number,
   ): Promise<EntryRecord[]>;
-  board(): Promise<BoardView>;
-  /** Calls `listener` after the board changed. */
-  subscribeBoard(listener: () => void): () => void;
+  /** Feeds `listener` the current board and each change, in order, until the returned function is called. */
+  watchBoard(listener: BoardListener): () => void;
 };
 
 export type StreamOptions = {
@@ -216,26 +215,12 @@ function serve(ws: WebSocket, options: StreamOptions): void {
     send({ type: "end", id, reason: end.kind });
   }
 
-  async function watchBoard(id: string, host: ProjectStream): Promise<void> {
-    let last = "";
-    let stopped = false;
-    const push = async () => {
-      try {
-        const board = await host.board();
-        const serialized = JSON.stringify(board);
-        if (serialized === last || stopped) return;
-        last = serialized;
-        send({ type: "board", id, board });
-      } catch (error) {
-        fail(id, error);
-      }
-    };
-    const unsubscribe = host.subscribeBoard(() => void push());
-    watches.set(id, () => {
-      stopped = true;
-      unsubscribe();
+  function watchBoard(id: string, host: ProjectStream): void {
+    const stop = host.watchBoard({
+      view: (board) => send({ type: "board", id, board }),
+      failed: (error) => fail(id, error),
     });
-    await push();
+    watches.set(id, stop);
   }
 
   send({ type: "hello", bootId: source.bootId });
