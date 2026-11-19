@@ -23,6 +23,8 @@ export type Problem =
   | { code: "no_job"; jobId: string }
   | { code: "no_memory_file"; file: string }
   | { code: "no_change"; change: number }
+  | { code: "no_submission"; submissionId: string }
+  | { code: "already_delivered" }
   | { code: "no_model"; provider: string; modelId: string }
   | { code: "no_provider"; provider: string }
   | { code: "no_extension"; names: readonly string[] }
@@ -97,6 +99,10 @@ export function describeProblem(problem: Problem, t: Translate = fill): string {
       return t("No memory file {file}", problem);
     case "no_change":
       return t("No change #{change}", problem);
+    case "no_submission":
+      return t("That message is not in the queue any more", problem);
+    case "already_delivered":
+      return t("That message already reached the conversation");
     case "no_model":
       return t("No model {provider}/{modelId}", problem);
     case "no_provider":

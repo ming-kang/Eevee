@@ -10,6 +10,7 @@ import {
   fauxAssistantMessage,
   fauxProvider,
   fauxText,
+  fauxThinking,
   fauxToolCall,
   type Message,
 } from "@earendil-works/pi-ai";
@@ -37,6 +38,11 @@ const calls = (items: { name: string; args: JsonObject }[]) =>
     items.map((item) => fauxToolCall(item.name, item.args)),
     { stopReason: "toolUse" },
   );
+
+const thinkCall = (thinking: string, name: string, args: JsonObject) =>
+  fauxAssistantMessage([fauxThinking(thinking), fauxToolCall(name, args)], {
+    stopReason: "toolUse",
+  });
 
 function textOf(message: Message | undefined): string {
   if (message === undefined) return "";
@@ -191,7 +197,11 @@ const brain: FauxResponseFactory = (context) => {
       );
     }
     if (last?.role === "user" && lastText.includes("First build the paper template")) {
-      return call("read", { path: "chapters/03-sim.tex" });
+      return thinkCall(
+        "The chapter file tells me what the template has to cover before I split this into tickets.",
+        "read",
+        { path: "chapters/03-sim.tex" },
+      );
     }
     if (
       toolName(last) === "read" &&
@@ -354,11 +364,15 @@ const brain: FauxResponseFactory = (context) => {
 
   if (opening.includes("Build the paper template and directory structure")) {
     if (last?.role === "user") {
-      return call("write", {
-        path: "main.tex",
-        content:
-          "\\documentclass{article}\n\\begin{document}\n\\input{chapters/03-sim}\n\\end{document}\n",
-      });
+      return thinkCall(
+        "main.tex is a thin master file: article class, then the chapter inputs. I will start with chapter 3.",
+        "write",
+        {
+          path: "main.tex",
+          content:
+            "\\documentclass{article}\n\\begin{document}\n\\input{chapters/03-sim}\n\\end{document}\n",
+        },
+      );
     }
     if (toolName(last) === "write") {
       return call("edit", {

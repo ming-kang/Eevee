@@ -14,20 +14,19 @@
 .frame {
   /* The sidebar's rendered column width; the collapsed class below swaps in the icon column. */
   --ev-side-col: var(--ev-sidebar-w);
+  /* The rail's track carries the boundary gap inside it, so a collapsed rail leaves no stub:
+     each column's gap is a margin-left on the card that follows it, not a grid column-gap. */
+  --ev-rail-col: calc(var(--ev-rail-w) + var(--ev-gap));
   display: grid;
   grid-template-columns: var(--ev-sidebar-w) minmax(0, 1fr);
   height: 100%;
-  padding: calc(var(--ev-inset) + env(safe-area-inset-top, 0px))
-    calc(var(--ev-inset) + env(safe-area-inset-right, 0px))
-    calc(var(--ev-inset) + env(safe-area-inset-bottom, 0px))
-    calc(var(--ev-inset) + env(safe-area-inset-left, 0px));
-  column-gap: var(--ev-gap);
+  padding: calc(var(--ev-inset) + env(safe-area-inset-top, 0px)) calc(var(--ev-inset) + env(safe-area-inset-right, 0px)) calc(var(--ev-inset) + env(safe-area-inset-bottom, 0px)) calc(var(--ev-inset) + env(safe-area-inset-left, 0px));
   position: relative;
   transition: grid-template-columns var(--ev-slow) var(--ev-ease);
 }
 
 .frame.with-rail {
-  grid-template-columns: var(--ev-sidebar-w) minmax(0, 1fr) var(--ev-rail-w);
+  grid-template-columns: var(--ev-sidebar-w) minmax(0, 1fr) var(--ev-rail-col);
 }
 
 .frame.side-collapsed {
@@ -36,7 +35,11 @@
 }
 
 .frame.with-rail.side-collapsed {
-  grid-template-columns: var(--ev-side-collapsed) minmax(0, 1fr) var(--ev-rail-w);
+  grid-template-columns: var(--ev-side-collapsed) minmax(0, 1fr) var(--ev-rail-col);
+}
+
+.frame.rail-collapsed {
+  --ev-rail-col: 0px;
 }
 
 .sidebar,
@@ -220,8 +223,9 @@
 
 .side-foot {
   flex: none;
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: calc(2px * var(--ev-scale));
   padding: calc(8px * var(--ev-scale));
 }
@@ -229,7 +233,7 @@
 .foot-tile {
   display: inline-grid;
   place-items: center;
-  width: var(--ev-h-md);
+  width: auto;
   height: var(--ev-h-md);
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
@@ -269,15 +273,11 @@
 }
 
 .sash.s-left {
-  left: calc(
-    var(--ev-inset) + env(safe-area-inset-left, 0px) + var(--ev-side-col) + var(--ev-gap) / 2 - calc(4px * var(--ev-scale))
-  );
+  left: calc(var(--ev-inset) + env(safe-area-inset-left, 0px) + var(--ev-side-col) + var(--ev-gap) / 2 - calc(4px * var(--ev-scale)));
 }
 
 .sash.s-right {
-  right: calc(
-    var(--ev-inset) + env(safe-area-inset-right, 0px) + var(--ev-rail-w) + var(--ev-gap) / 2 - calc(4px * var(--ev-scale))
-  );
+  right: calc(var(--ev-inset) + env(safe-area-inset-right, 0px) + var(--ev-rail-w) + var(--ev-gap) / 2 - calc(4px * var(--ev-scale)));
 }
 
 .sash::before {
@@ -327,6 +327,7 @@
 .main {
   /* Named container so a page can react to the card's width (the Home grid stacks below 720). */
   container: main / inline-size;
+  margin-left: var(--ev-gap);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -365,12 +366,55 @@
 }
 
 .menu-btn,
-.rail-btn,
-.rail-close {
+.rail-close,
+.rail-fold {
   display: none;
 }
 
+/* The rail's bring-it-back control sits in the page header, where the rail's own collapse button
+   lands in the rail head: both headers pad their right edge by the same 8px and share
+   --ev-header-h, so the icon does not move between states. Its waiting-status column hangs below
+   the button over the chat's gutter, out of flow so the header keeps its height. */
+.rail-toggle {
+  position: relative;
+  display: none;
+}
+
+.rail-toggle.closed {
+  display: flex;
+}
+
+.rt-marks {
+  position: absolute;
+  top: calc(100% + calc(4px * var(--ev-scale)));
+  left: 50%;
+  z-index: 7;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(10px * var(--ev-scale));
+}
+
+.rt-mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(1px * var(--ev-scale));
+  font-size: var(--ev-caption);
+  color: var(--ev-label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.rt-mark:hover {
+  color: var(--ev-label);
+}
+
 /* ——— Rail ——— */
+.rail {
+  margin-left: var(--ev-gap);
+}
+
 .rail-head {
   flex: none;
   display: flex;
@@ -501,7 +545,26 @@
   }
 
   .sidebar.collapsed .side-foot {
+    display: flex;
     flex-direction: column;
+  }
+
+  .sidebar.collapsed .foot-tile {
+    width: var(--ev-h-md);
+  }
+}
+
+/* ——— Wide: the rail collapses as a column instead of becoming a drawer ——— */
+@container vp (min-width: 1241px) {
+  .rail-fold {
+    display: inline-flex;
+  }
+
+  /* A zero-width card would still cast its shadow; keep it visible through the shrink, then
+     hide it when the track has closed. Expanding makes it visible at once. */
+  .frame.rail-collapsed .rail {
+    visibility: hidden;
+    transition: visibility 0s linear var(--ev-slow);
   }
 }
 
@@ -524,10 +587,8 @@
     top: calc(var(--ev-inset) + env(safe-area-inset-top, 0px));
     right: calc(var(--ev-inset) + env(safe-area-inset-right, 0px));
     bottom: calc(var(--ev-inset) + env(safe-area-inset-bottom, 0px));
-    width: min(
-      var(--ev-rail-w),
-      calc(100% - 2 * var(--ev-inset) - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))
-    );
+    width: min(var(--ev-rail-w),
+        calc(100% - 2 * var(--ev-inset) - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
     z-index: 20;
     --ev-glyph-cut: var(--ev-raised);
     --ev-shimmer-bg: var(--ev-raised);
@@ -551,9 +612,12 @@
     transition: none;
   }
 
-  .rail-btn,
   .rail-close {
     display: inline-flex;
+  }
+
+  .rail-toggle {
+    display: flex;
   }
 
   .drawer-bg {
@@ -581,6 +645,7 @@
 
 /* ——— Narrower: the sidebar becomes a drawer too ——— */
 @container vp (max-width: 760px) {
+
   .frame,
   .frame.with-rail,
   .frame.side-collapsed,
@@ -592,15 +657,17 @@
     display: none;
   }
 
+  .main {
+    margin-left: 0;
+  }
+
   .sidebar {
     position: absolute;
     top: calc(var(--ev-inset) + env(safe-area-inset-top, 0px));
     left: calc(var(--ev-inset) + env(safe-area-inset-left, 0px));
     bottom: calc(var(--ev-inset) + env(safe-area-inset-bottom, 0px));
-    width: min(
-      calc(280px * var(--ev-scale)),
-      calc(100% - 2 * var(--ev-inset) - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))
-    );
+    width: min(calc(280px * var(--ev-scale)),
+        calc(100% - 2 * var(--ev-inset) - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
     z-index: 25;
     --ev-glyph-cut: var(--ev-raised);
     background: var(--ev-raised);
@@ -647,6 +714,7 @@
 
 /* ——— Touch: a finger needs a bigger row than a cursor does ——— */
 @media (pointer: coarse) {
+
   .nav-row,
   .p-row {
     height: calc(40px * var(--ev-scale));

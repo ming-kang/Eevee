@@ -2,8 +2,9 @@
 import type { TicketView } from "@shared/api/contract.ts";
 import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from "vue";
 import { effectiveStage } from "../board.ts";
-import { useComposerInsert } from "../composer-bridge.ts";
+import { type InsertAt, useComposerInsert } from "../composer-bridge.ts";
 import { t } from "../i18n.ts";
+import { doublePressed } from "../keyboard.ts";
 import { mentionQuery, rankTickets } from "../mentions.ts";
 import { useSubmit } from "../submit.ts";
 import Icon from "./Icon.vue";
@@ -15,6 +16,8 @@ const props = withDefaults(
     placeholder?: string;
     draftKey?: string;
     disabled?: boolean;
+    /** Called when Escape is pressed twice quickly while a turn runs; omitted when nothing runs. */
+    stop?: () => void;
     /** Tickets "@…" can mention; their ids render as references once sent. */
     tickets?: readonly TicketView[];
   }>(),
@@ -22,9 +25,13 @@ const props = withDefaults(
     placeholder: t("Tell the Router what to do"),
     draftKey: "",
     disabled: false,
+    stop: undefined,
     tickets: () => [],
   },
 );
+
+/** When the previous Escape landed, for the double-press stop. */
+const lastEsc = ref<number>();
 
 const draftStore = new Map<string, string>();
 const text = ref(props.draftKey ? (draftStore.get(props.draftKey) ?? "") : "");
@@ -91,7 +98,19 @@ function insertMention(view: TicketView): void {
 
 const bridge = useComposerInsert();
 
-function insertSnippet(snippet: string): void {
+function insertSnippet(snippet: string, at: InsertAt = "caret"): void {
+  if (at === "start") {
+    const draft = text.value;
+    text.value = draft === "" ? snippet : `${snippet}\n\n${draft}`;
+    const caretPos = snippet.length;
+    caret.value = caretPos;
+    lastCaret.value = caretPos;
+    void nextTick(() => {
+      textarea.value?.focus();
+      textarea.value?.setSelectionRange(caretPos, caretPos);
+    });
+    return;
+  }
   const pos = Math.min(lastCaret.value ?? text.value.length, text.value.length);
   const before = text.value.slice(0, pos);
   const lead = before !== "" && !before.endsWith("\n") ? "\n" : "";
@@ -167,6 +186,17 @@ function onKeydown(event: KeyboardEvent): void {
       if (m !== undefined) dismissed.value = `${m.start}:${m.query}`;
       return;
     }
+  }
+  if (event.key === "Escape" && props.stop !== undefined) {
+    const now = Date.now();
+    if (doublePressed(lastEsc.value, now)) {
+      lastEsc.value = undefined;
+      event.preventDefault();
+      props.stop();
+      return;
+    }
+    lastEsc.value = now;
+    return;
   }
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();

@@ -17,8 +17,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: clamp(calc(240px * var(--ev-scale)), 24%, calc(380px * var(--ev-scale)))
-    minmax(0, calc(1200px * var(--ev-scale)));
+  grid-template-columns: clamp(calc(240px * var(--ev-scale)), 24%, calc(380px * var(--ev-scale))) minmax(0, calc(1200px * var(--ev-scale)));
   justify-content: center;
 }
 
@@ -66,7 +65,8 @@
 
 .set-inner {
   max-width: calc(760px * var(--ev-scale));
-  padding: calc(4px * var(--ev-scale)) var(--ev-gutter) calc(56px * var(--ev-scale)) calc(24px * var(--ev-scale));
+  margin-inline: auto;
+  padding: calc(4px * var(--ev-scale)) var(--ev-gutter) calc(56px * var(--ev-scale));
   display: flex;
   flex-direction: column;
   gap: calc(12px * var(--ev-scale));
@@ -127,7 +127,7 @@
   transition: box-shadow var(--ev-fast) var(--ev-ease);
 }
 
-.model-pick > .ico {
+.model-pick>.ico {
   color: var(--ev-label-3);
 }
 
@@ -144,7 +144,7 @@
   position: relative;
 }
 
-.level-slot > .pop {
+.level-slot>.pop {
   top: calc(100% + calc(4px * var(--ev-scale)));
   left: 0;
 }
@@ -163,7 +163,7 @@
   opacity: 0.45;
 }
 
-.model-row-ctrl > .pop {
+.model-row-ctrl>.pop {
   top: calc(100% - calc(6px * var(--ev-scale)));
   right: calc(12px * var(--ev-scale));
 }
@@ -173,7 +173,7 @@
   align-self: flex-start;
 }
 
-.role-seg > button .n {
+.role-seg>button .n {
   font-size: var(--ev-caption);
   color: var(--ev-label-3);
   font-variant-numeric: tabular-nums;
@@ -223,8 +223,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: clamp(calc(240px * var(--ev-scale)), 24%, calc(380px * var(--ev-scale)))
-    minmax(0, calc(1200px * var(--ev-scale)));
+  grid-template-columns: clamp(calc(240px * var(--ev-scale)), 24%, calc(380px * var(--ev-scale))) minmax(0, calc(1200px * var(--ev-scale)));
   justify-content: center;
 }
 
@@ -336,7 +335,7 @@
 }
 
 .detail-inner {
-  padding: calc(4px * var(--ev-scale)) var(--ev-gutter) calc(48px * var(--ev-scale)) calc(20px * var(--ev-scale));
+  padding: calc(4px * var(--ev-scale)) var(--ev-gutter) calc(48px * var(--ev-scale));
   display: flex;
   flex-direction: column;
   gap: calc(16px * var(--ev-scale));
@@ -344,10 +343,12 @@
 }
 
 /* The detail fills its column: diffs and file views take the full width while the head and
-   the prose around them keep a readable measure. */
-.detail-inner > .detail-head,
-.detail-inner > .hint {
+   the prose around them keep a readable measure, centered like the settings column. */
+.detail-inner>.detail-head,
+.detail-inner>.hint {
   max-width: calc(760px * var(--ev-scale));
+  margin-inline: auto;
+  width: 100%;
 }
 
 .detail-head {
@@ -387,14 +388,14 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.stats > div {
+.stats>div {
   display: flex;
   flex-direction: column;
   gap: calc(4px * var(--ev-scale));
   padding: calc(16px * var(--ev-scale)) calc(18px * var(--ev-scale));
 }
 
-.stats > div + div {
+.stats>div+div {
   box-shadow: inset 1px 0 0 var(--ev-separator);
 }
 
@@ -518,7 +519,7 @@ a.row .go {
   inset: 0;
 }
 
-.row.has-link > :not(.row-link) {
+.row.has-link> :not(.row-link) {
   position: relative;
   z-index: 1;
 }
@@ -552,16 +553,16 @@ a.row .go {
   align-items: start;
 }
 
-.f-row.top > label:not(.toggle),
-.f-row.top > .f-label {
+.f-row.top>label:not(.toggle),
+.f-row.top>.f-label {
   padding-top: calc(6px * var(--ev-scale));
 }
 
-.f-row + .f-row {
+.f-row+.f-row {
   box-shadow: inset 0 1px 0 var(--ev-separator);
 }
 
-.f-row > label:not(.toggle),
+.f-row>label:not(.toggle),
 .f-label {
   font-size: var(--ev-control);
   font-weight: 500;
@@ -597,7 +598,7 @@ a.row .go {
   align-self: flex-start;
 }
 
-.f-row .seg + .f-note {
+.f-row .seg+.f-note {
   margin-top: calc(2px * var(--ev-scale));
 }
 
@@ -626,7 +627,7 @@ textarea.input {
   width: calc(96px * var(--ev-scale));
 }
 
-.f-adv > summary {
+.f-adv>summary {
   display: inline-flex;
   align-items: center;
   gap: calc(6px * var(--ev-scale));
@@ -637,11 +638,11 @@ textarea.input {
   list-style: none;
 }
 
-.f-adv > summary::-webkit-details-marker {
+.f-adv>summary::-webkit-details-marker {
   display: none;
 }
 
-.f-adv > summary::before {
+.f-adv>summary::before {
   content: "";
   width: calc(6px * var(--ev-scale));
   height: calc(6px * var(--ev-scale));
@@ -651,11 +652,11 @@ textarea.input {
   transition: transform var(--ev-fast) var(--ev-ease);
 }
 
-.f-adv[open] > summary::before {
+.f-adv[open]>summary::before {
   transform: rotate(45deg);
 }
 
-.f-adv > .rows {
+.f-adv>.rows {
   margin-top: calc(8px * var(--ev-scale));
 }
 
@@ -698,7 +699,7 @@ textarea.input {
 }
 
 /* ——— Models inside the provider editor ——— */
-.m-item + .m-item {
+.m-item+.m-item {
   box-shadow: inset 0 1px 0 var(--ev-separator);
 }
 
@@ -759,7 +760,7 @@ textarea.input {
   min-width: 0;
 }
 
-.m-fields .prices > legend {
+.m-fields .prices>legend {
   margin-bottom: calc(6px * var(--ev-scale));
   padding: 0;
   font-size: var(--ev-footnote);
@@ -791,12 +792,12 @@ textarea.input {
   padding: calc(6px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(6px * var(--ev-scale)) calc(12px * var(--ev-scale));
 }
 
-.m-ref-head > .input {
+.m-ref-head>.input {
   flex: 1;
   min-width: 0;
 }
 
-.m-ref-head > .r-main {
+.m-ref-head>.r-main {
   flex: 1;
 }
 
@@ -845,7 +846,7 @@ textarea.input {
   opacity: 0.6;
 }
 
-.row.pick > input {
+.row.pick>input {
   flex: none;
   width: calc(16px * var(--ev-scale));
   height: calc(16px * var(--ev-scale));
@@ -884,8 +885,8 @@ textarea.input {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .f-row.top > label:not(.toggle),
-  .f-row.top > .f-label {
+  .f-row.top>label:not(.toggle),
+  .f-row.top>.f-label {
     padding-top: 0;
   }
 
@@ -926,11 +927,11 @@ textarea.input {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .stats > div:nth-child(3) {
+  .stats>div:nth-child(3) {
     box-shadow: inset 0 1px 0 var(--ev-separator);
   }
 
-  .stats > div:nth-child(4) {
+  .stats>div:nth-child(4) {
     box-shadow: inset 1px 0 0 var(--ev-separator),
       inset 0 1px 0 var(--ev-separator);
   }
@@ -978,12 +979,6 @@ textarea.input {
 
 .home-h .wgrid {
   margin-inline-start: calc(1px * var(--ev-scale));
-}
-
-.home-h p {
-  margin-top: calc(2px * var(--ev-scale));
-  font-size: var(--ev-footnote);
-  color: var(--ev-label-3);
 }
 
 /* A flex `.r-t` never ellipsizes its bare text; Home titles are one line of text, so block it. */

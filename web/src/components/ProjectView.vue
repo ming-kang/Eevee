@@ -15,6 +15,8 @@ const props = defineProps<{
   board: BoardView | undefined;
   routerConversation: ConversationWatch;
   ticketId?: string;
+  railCollapsed: boolean;
+  railShortcut: string;
 }>();
 
 defineEmits<{
@@ -42,6 +44,8 @@ const selectedView = computed(() =>
     :tickets="board?.tickets"
     :open-questions="board?.openQuestions"
     :board-loaded="board !== undefined"
+    :rail-collapsed="railCollapsed"
+    :rail-shortcut="railShortcut"
     @close="$emit('close-ticket')"
     @open-side="$emit('open-side')"
     @open-rail="(tab, jobId) => $emit('open-rail', tab, jobId)"
@@ -53,6 +57,8 @@ const selectedView = computed(() =>
     :project="project"
     :board="board"
     :conversation="routerConversation"
+    :rail-collapsed="railCollapsed"
+    :rail-shortcut="railShortcut"
     @open-side="$emit('open-side')"
     @open-rail="(tab) => $emit('open-rail', tab)"
     @open-ticket="$emit('open-ticket', $event)"

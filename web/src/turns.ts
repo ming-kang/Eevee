@@ -1,10 +1,12 @@
-import type { TranscriptDisplayItem, WorkedCounts } from "./transcript-map.ts";
+import { countWork } from "./activity.ts";
+import type { TranscriptDisplayItem } from "./transcript-map.ts";
 
 /**
  * Turn folding: a turn opens on an inbound line (something you sent or that arrived for you) and
- * holds the work that answers it. When the turn is finished and its work ends in a visible reply,
- * everything before the reply folds into one "Worked for …" line; the reply stays on the page.
- * A turn that is still running, or that never produced a reply, keeps every line out in the open.
+ * holds everything that answers it — work and replies alike. When the turn is finished and it did
+ * real work, the whole turn folds into one "Worked for …" line whose closed view still shows every
+ * reply and dispatch. A turn that is still running, that never produced a reply, or that did
+ * nothing but talk keeps every line out in the open.
  */
 
 /** Lines that open a turn — the agent works in answer to them. */
@@ -25,16 +27,26 @@ const STANDALONE: ReadonlySet<TranscriptDisplayItem["kind"]> = new Set([
 /** A turn that ends in one of these was interrupted or failed: it stays fully expanded. */
 const BROKEN_END: ReadonlySet<TranscriptDisplayItem["kind"]> = new Set(["idle", "failure"]);
 
-/** The reply a finished turn leaves visible: its trailing run of messages and dispatches. */
-const TAIL: ReadonlySet<TranscriptDisplayItem["kind"]> = new Set(["assistant", "dispatch"]);
+/**
+ * The lines that are not work: replies the turn wrote and the Router's dispatch lines. A folded
+ * group keeps them visible while closed; a turn needs at least one other kind to fold at all.
+ */
+const VISIBLE_WHEN_CLOSED: ReadonlySet<TranscriptDisplayItem["kind"]> = new Set([
+  "assistant",
+  "dispatch",
+]);
 
-const isWork = (item: TranscriptDisplayItem): boolean =>
+const isTurnBody = (item: TranscriptDisplayItem): boolean =>
   !INBOUND.has(item.kind) && !STANDALONE.has(item.kind);
+
+const isWork = (item: TranscriptDisplayItem): boolean => !VISIBLE_WHEN_CLOSED.has(item.kind);
 
 /** A line that is still being written or run right now keeps its turn expanded. */
 const isLive = (item: TranscriptDisplayItem): boolean => {
   switch (item.kind) {
     case "assistant":
+      return item.streaming === true;
+    case "thinking":
       return item.streaming === true;
     case "tools":
     case "dispatch":
@@ -64,23 +76,17 @@ const atOf = (item: TranscriptDisplayItem): number | undefined => {
   }
 };
 
-const countWork = (items: readonly TranscriptDisplayItem[]): WorkedCounts => {
-  const counts: WorkedCounts = { tools: 0, commands: 0, files: 0, dispatched: 0 };
-  for (const item of items) {
-    if (item.kind === "tools") counts.tools += item.steps.length;
-    else if (item.kind === "bash") counts.commands += 1;
-    else if (item.kind === "edit") counts.files += 1;
-    else if (item.kind === "dispatch") {
-      counts.dispatched += item.actions.filter((a) => a.kind === "create").length;
-    }
-  }
-  return counts;
-};
+type Worked = Extract<TranscriptDisplayItem, { kind: "worked" }>;
+
+/** The children a folded group shows while closed: the turn's replies and dispatches, in order. */
+export function closedItems(item: Worked): TranscriptDisplayItem[] {
+  return item.items.filter((child) => !isWork(child));
+}
 
 /**
  * Folds the finished turns in a mapped transcript. `live` means the conversation is still running:
- * the last turn then always stays expanded, whatever its lines look like. All other turns fold when
- * they end in a reply and did something to get there.
+ * the last turn then always stays expanded, whatever its lines look like. All other turns fold
+ * when they contain work — tools, edits, commands, thinking — and at least one reply.
  */
 export function foldTurns(
   items: readonly TranscriptDisplayItem[],
@@ -92,42 +98,34 @@ export function foldTurns(
 
   const flush = (mayFold: boolean) => {
     if (turn.length === 0) return;
-    if (mayFold && !turn.some(isLive)) {
-      // The tail stays on the page: the contiguous run of replies the turn ends with.
-      let tailStart = turn.length;
-      while (tailStart > 0 && TAIL.has((turn[tailStart - 1] as TranscriptDisplayItem).kind)) {
-        tailStart -= 1;
+    const hasWork = turn.some(isWork);
+    const hasReply = turn.some((i) => i.kind === "assistant" && i.text.trim() !== "");
+    if (mayFold && hasWork && hasReply && !turn.some(isLive)) {
+      let latestAt: number | undefined;
+      for (const i of turn) {
+        const at = atOf(i);
+        if (at !== undefined && (latestAt === undefined || at > latestAt)) latestAt = at;
       }
-      const folded = turn.slice(0, tailStart);
-      const tail = turn.slice(tailStart);
-      if (folded.length > 0 && tail.some((i) => i.kind === "assistant" && i.text.trim() !== "")) {
-        let latestAt: number | undefined;
-        for (const i of turn) {
-          const at = atOf(i);
-          if (at !== undefined && (latestAt === undefined || at > latestAt)) latestAt = at;
-        }
-        const ms =
-          boundaryAt !== undefined && latestAt !== undefined && latestAt > boundaryAt
-            ? latestAt - boundaryAt
-            : undefined;
-        out.push({
-          kind: "worked",
-          key: `worked:${(folded[0] as TranscriptDisplayItem).key}`,
-          items: folded,
-          ...(ms === undefined ? {} : { ms }),
-          counts: countWork(folded),
-        });
-        out.push(...tail);
-        turn = [];
-        return;
-      }
+      const ms =
+        boundaryAt !== undefined && latestAt !== undefined && latestAt > boundaryAt
+          ? latestAt - boundaryAt
+          : undefined;
+      out.push({
+        kind: "worked",
+        key: `worked:${(turn[0] as TranscriptDisplayItem).key}`,
+        items: turn,
+        ...(ms === undefined ? {} : { ms }),
+        activity: countWork(turn),
+      });
+      turn = [];
+      return;
     }
     out.push(...turn);
     turn = [];
   };
 
   for (const item of items) {
-    if (isWork(item)) {
+    if (isTurnBody(item)) {
       turn.push(item);
       continue;
     }
@@ -142,14 +140,18 @@ export function foldTurns(
 
 /**
  * Keys of the last assistant message of every turn — the ones a message-action row belongs to.
- * Runs on the folded transcript, so an assistant folded into a group never counts as final.
+ * Descends into folded groups, where the last assistant child is that turn's final reply.
  */
 export function finalAssistantKeys(items: readonly TranscriptDisplayItem[]): Set<string> {
   const keys = new Set<string>();
-  for (let i = 0; i < items.length; i += 1) {
-    const item = items[i] as TranscriptDisplayItem;
+  for (const [i, item] of items.entries()) {
+    if (item.kind === "worked") {
+      const last = item.items.findLast((child) => child.kind === "assistant");
+      if (last) keys.add(last.key);
+      continue;
+    }
     if (item.kind !== "assistant") continue;
-    // Final within its turn: the next non-work line, or another assistant, decides.
+    // Final within its turn: the next boundary line, or another assistant, decides.
     let final = true;
     for (let j = i + 1; j < items.length; j += 1) {
       const next = items[j] as TranscriptDisplayItem;
@@ -157,7 +159,7 @@ export function finalAssistantKeys(items: readonly TranscriptDisplayItem[]): Set
         final = false;
         break;
       }
-      if (isWork(next)) continue;
+      if (isTurnBody(next)) continue;
       break;
     }
     if (final) keys.add(item.key);

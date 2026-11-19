@@ -60,6 +60,41 @@ test("qa entries take the answer shown in the bubble", () => {
   assert.equal(entries[0]?.text, "Yes, all of them");
 });
 
+test("each entry carries an excerpt of the last reply before the next entry", () => {
+  const workedItem: TranscriptDisplayItem = {
+    kind: "worked",
+    key: "w1",
+    items: [
+      { kind: "tools", key: "t", live: false, steps: [] },
+      { kind: "assistant", key: "a1", text: "first reply" },
+      { kind: "assistant", key: "a2", text: "inside the fold,\nlast reply" },
+    ],
+    activity: [],
+  };
+  const items: TranscriptDisplayItem[] = [
+    user("u1", "one"),
+    assistant("a0"),
+    workedItem,
+    user("u2", "two"),
+    assistant("a3"),
+    user("u3", "three"),
+  ];
+  const entries = outlineEntries(items);
+  assert.equal(entries[0]?.reply, "inside the fold, last reply");
+  assert.equal(entries[1]?.reply, "done");
+  assert.equal(entries[2]?.reply, undefined);
+});
+
+test("reply excerpts collapse whitespace and cut around 120 chars", () => {
+  const items: TranscriptDisplayItem[] = [
+    user("u1"),
+    { kind: "assistant", key: "a", text: `  spaced\n\nout   words\n${"x".repeat(140)}` },
+  ];
+  const entry = outlineEntries(items)[0];
+  assert.ok(entry?.reply?.endsWith("…"));
+  assert.equal(entry?.reply?.length, 120);
+});
+
 test("activeEntry is the last entry at or above the line", () => {
   const tops = [100, 400, 900];
   assert.equal(activeEntry(tops, 0, 0), -1);

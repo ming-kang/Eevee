@@ -29,7 +29,7 @@ defineProps<{
       <div class="hc-body">
         <div v-if="state.questionCount > 0" class="hc-line user">
           <span class="dot user" />
-          <span>{{ t("{n} question for you|{n} questions for you", { n: state.questionCount }) }}</span>
+          <span>{{ t("{n} question needs an answer|{n} questions need an answer", { n: state.questionCount }) }}</span>
         </div>
         <div v-if="state.routerFailed" class="hc-line bad">
           <StageGlyph stage="blocked" />

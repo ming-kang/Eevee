@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TicketView } from "@shared/api/contract.ts";
+import type { QuestionId } from "@shared/contracts/index.ts";
 import { computed } from "vue";
 import { t } from "../i18n.ts";
 import { DISPATCH_LABEL } from "../labels.ts";
@@ -15,6 +16,7 @@ const props = defineProps<{
 
 defineEmits<{
   "open-ticket": [ticketId: string];
+  "open-question": [questionId: QuestionId];
 }>();
 
 const summary = computed(() => {
@@ -51,7 +53,14 @@ const hasRunning = computed(() => props.actions.some((a) => a.status === "run"))
             :tickets="tickets"
             @open-ticket="$emit('open-ticket', $event)"
           />
-          <span v-else-if="act.questionId" class="mono">{{ act.questionId }}</span>
+          <button
+            v-else-if="act.questionId"
+            type="button"
+            class="mono link"
+            @click="$emit('open-question', act.questionId)"
+          >
+            {{ act.questionId }}
+          </button>
           <span class="ellipsis">{{ act.title }}</span>
           <span v-if="act.status === 'err'" class="ms minus">{{ t("Failed") }}</span>
         </div>

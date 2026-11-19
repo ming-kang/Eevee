@@ -38,17 +38,6 @@ const home = computed(() =>
   buildHomeBoard({ projects: props.projects, boards: props.boards, now: nowMs.value }),
 );
 
-const summary = computed(() => {
-  const parts: string[] = [];
-  const { questionCount, runningCount, doneCount } = home.value;
-  if (questionCount > 0) {
-    parts.push(t("{n} question needs you|{n} questions need you", { n: questionCount }));
-  }
-  if (runningCount > 0) parts.push(t("{n} running", { n: runningCount }));
-  if (doneCount > 0) parts.push(t("{n} done today", { n: doneCount }));
-  return parts.length === 0 ? t("Nothing needs you right now") : parts.join(" · ");
-});
-
 function needsYouTitle(row: NeedsYouRow): string {
   return row.kind === "question" ? row.text || row.question.id : row.failure;
 }
@@ -79,17 +68,15 @@ function runningRest(row: Extract<RunningRow, { kind: "ticket" }>): string {
         <Icon name="menu" size="sm" />
       </button>
       <h1>{{ t("Now") }}</h1>
-      <span class="sub ellipsis hide-sm">{{ summary }}</span>
     </header>
     <div class="page">
       <div class="page-inner home">
         <section class="home-block">
           <header class="home-h">
             <h2>
-              {{ t("Needs you") }}
+              {{ t("Pending") }}
               <span v-if="home.questionCount > 0" class="count user">{{ home.questionCount }}</span>
             </h2>
-            <p>{{ t("Questions and failed Router runs across every project") }}</p>
           </header>
           <div class="rows">
             <a
@@ -124,7 +111,6 @@ function runningRest(row: Extract<RunningRow, { kind: "ticket" }>): string {
               {{ t("Running") }}
               <span v-if="home.runningCount > 0" class="count">{{ home.runningCount }}</span>
             </h2>
-            <p>{{ t("Tickets and Routers working right now") }}</p>
           </header>
           <div class="rows">
             <a
@@ -167,7 +153,6 @@ function runningRest(row: Extract<RunningRow, { kind: "ticket" }>): string {
               {{ t("Recently done") }}
               <span v-if="home.doneCount > 0" class="count">{{ home.doneCount }}</span>
             </h2>
-            <p>{{ t("Tickets closed in the last 24 hours") }}</p>
           </header>
           <div class="rows">
             <a

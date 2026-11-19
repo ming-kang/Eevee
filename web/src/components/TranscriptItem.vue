@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { TicketView } from "@shared/api/contract.ts";
+import type { QuestionId } from "@shared/contracts/index.ts";
+import { computed } from "vue";
 import type { GapItem } from "../conversation.ts";
 import { t } from "../i18n.ts";
+import { splitFormattedAnswer } from "../questions.ts";
 import type { TranscriptDisplayItem } from "../transcript-map.ts";
 import AssistantMessage from "./AssistantMessage.vue";
 import BashLine from "./BashLine.vue";
@@ -14,13 +17,14 @@ import MessageActions from "./MessageActions.vue";
 import ProcessLine from "./ProcessLine.vue";
 import ReportCard from "./ReportCard.vue";
 import ResetMark from "./ResetMark.vue";
+import ThinkingLine from "./ThinkingLine.vue";
 import UserMessage from "./UserMessage.vue";
 
 /**
  * One line of the conversation, whichever shape it takes. Also used by WorkedGroup so a folded
  * turn's lines draw exactly as they did in place.
  */
-withDefaults(
+const props = withDefaults(
   defineProps<{
     item: TranscriptDisplayItem;
     tickets?: readonly TicketView[];
@@ -34,6 +38,8 @@ withDefaults(
     turnFinal?: boolean;
     /** Part of the newest turn, where touch pointers keep actions visible. */
     latest?: boolean;
+    /** The conversation's fold-memory scope: persisted open/closed choices key off it. */
+    foldScope?: string;
   }>(),
   {
     tickets: () => [],
@@ -45,14 +51,35 @@ withDefaults(
     fillGap: undefined,
     turnFinal: false,
     latest: false,
+    foldScope: "",
   },
 );
 
-defineEmits<{
+const emit = defineEmits<{
   "open-ticket": [ticketId: string];
   "open-detail": [];
   "open-job": [jobId: string];
+  "open-question": [questionId: QuestionId];
 }>();
+
+/** Multi-item QA answers split per item, only when the text still matches the formatter's shape. */
+const qaParts = computed(() => {
+  if (props.item.kind !== "qa" || props.item.items === undefined) return undefined;
+  return splitFormattedAnswer(props.item.items.map((text) => ({ text })), props.item.answer);
+});
+
+function openQuestionReview(): void {
+  if (props.item.kind === "qa" && props.item.questionId !== undefined) {
+    emit("open-question", props.item.questionId);
+  }
+}
+
+/** A real text selection means the reader is quoting the bubble, not opening the review. */
+function onQaClick(): void {
+  const selection = window.getSelection();
+  if (selection !== null && !selection.isCollapsed) return;
+  openQuestionReview();
+}
 </script>
 
 <template>
@@ -79,7 +106,6 @@ defineEmits<{
     v-else-if="item.kind === 'opening'"
     type="button"
     class="note link"
-    :title="t('The ticket\'s goal, inputs, acceptance criteria and project memory')"
     @click="$emit('open-detail')"
   >
     <Icon name="flag" size="xs" />
@@ -96,9 +122,30 @@ defineEmits<{
     @open-ticket="$emit('open-ticket', $event)"
   />
   <div v-else-if="item.kind === 'qa'" class="u-wrap" :data-outline-key="item.key">
-    <div class="msg-user">
-      <div class="via">{{ item.question }}</div>
-      {{ item.answer }}
+    <div
+      class="msg-user qa"
+      :class="{ clickable: item.questionId !== undefined }"
+      :role="item.questionId !== undefined ? 'button' : undefined"
+      :tabindex="item.questionId !== undefined ? 0 : undefined"
+      :title="item.questionId !== undefined ? t('Review this question') : undefined"
+      @click="onQaClick"
+      @keydown.enter.prevent="openQuestionReview"
+      @keydown.space.prevent="openQuestionReview"
+    >
+      <template v-if="item.items !== undefined && qaParts !== undefined">
+        <div v-for="(part, i) in qaParts" :key="i" class="qa-item">
+          <div class="via">{{ item.items[i] }}</div>
+          {{ part }}
+        </div>
+      </template>
+      <template v-else-if="item.items !== undefined && item.items.length > 1">
+        <div v-for="(text, i) in item.items" :key="i" class="via">{{ text }}</div>
+        {{ item.answer }}
+      </template>
+      <template v-else>
+        <div class="via">{{ item.question }}</div>
+        {{ item.answer }}
+      </template>
     </div>
     <MessageActions :text="item.answer" :at="item.at" :latest="latest" />
   </div>
@@ -113,6 +160,11 @@ defineEmits<{
     @open-ticket="$emit('open-ticket', $event)"
   />
   <ProcessLine v-else-if="item.kind === 'tools'" :steps="item.steps" :live="item.live" />
+  <ThinkingLine
+    v-else-if="item.kind === 'thinking'"
+    :item="item"
+    :fold-id="`${foldScope}|${item.key}`"
+  />
   <EditLine
     v-else-if="item.kind === 'edit'"
     :action="item.action"
@@ -122,6 +174,7 @@ defineEmits<{
     :added="item.added"
     :removed="item.removed"
     :error="item.error"
+    :data-edit-key="item.key"
   />
   <BashLine
     v-else-if="item.kind === 'bash'"
@@ -142,6 +195,7 @@ defineEmits<{
     :live="item.live"
     :tickets="tickets"
     @open-ticket="$emit('open-ticket', $event)"
+    @open-question="$emit('open-question', $event)"
   />
   <EventNote
     v-else-if="item.kind === 'event'"

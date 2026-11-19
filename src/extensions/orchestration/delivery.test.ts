@@ -117,3 +117,33 @@ test("What the Engine says carries notice data, the user's own words do not", ()
     tail: "done",
   });
 });
+
+test("a single-item answer names the question; the withdrawn-message record goes to the Router", () => {
+  const [toWorker, routerCopy] = route({
+    type: "question-answered",
+    question: {
+      id: "q2",
+      ticketId: "t1",
+      items: [{ text: "which port", options: ["1550nm"] }],
+      answer: "1550nm",
+      askedAt: 0,
+    },
+  });
+  assert.equal(toWorker?.text, "The user answered question q2 (“which port”):\n1550nm");
+  assert.deepEqual(toWorker?.notice, {
+    type: "answer",
+    questionId: "q2",
+    question: ["which port"],
+    answer: "1550nm",
+  });
+  assert.equal(routerCopy?.notice?.type, "answer");
+
+  const [withdrawn] = route({ type: "panel-withdrawn", id: "s4", ticketId: "t1", text: "wait" });
+  assert.deepEqual(withdrawn?.target, { kind: "router" });
+  assert.equal(withdrawn?.mode, "record");
+  assert.equal(
+    withdrawn?.text,
+    "The user withdrew the message sent to t1 before it was read:\nwait",
+  );
+  assert.equal(withdrawn?.requestId, "panel-withdrawn:s4");
+});

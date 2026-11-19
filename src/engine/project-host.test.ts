@@ -3,9 +3,20 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { InboxItem, InboxState } from "@earendil-works/pi-durable";
 import type { BoardView } from "../api/contract.ts";
+import type { TicketId } from "../contracts/index.ts";
 import { eeveePaths } from "../shared/paths.ts";
-import { type Brain, call, openTestProject, say, textOf, toolName } from "./testing.ts";
+import {
+  type Brain,
+  call,
+  openTestProject,
+  say,
+  type TestProject,
+  textOf,
+  toolName,
+} from "./testing.ts";
 
 test("the Router creates a ticket, the Worker submits ready, the Router accepts and closes it", async () => {
   const brain: Brain = ({ role, last }) => {
@@ -924,6 +935,249 @@ test("a board subscriber is notified when a background job starts and finishes, 
   } finally {
     releaseAfterAdopt();
     unsubscribe();
+    await project.close();
+  }
+});
+
+const inboxItems = async (
+  project: TestProject,
+  ticketId: TicketId | undefined,
+): Promise<readonly InboxItem[]> => {
+  const watch = await project.host.watch(ticketId, BACKGROUND_CONTEXT);
+  try {
+    const inbox = watch.value.docs["pi.inbox"] as InboxState | undefined;
+    return inbox?.items ?? [];
+  } finally {
+    await watch.stop();
+  }
+};
+
+test("interrupting the Router ends its run, keeps queued Engine notices, and drops queued user lines", async () => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let gating = false;
+  const brain: Brain = async ({ role, last }) => {
+    if (role !== "router") return say("OK.");
+    if (last?.role === "user" && textOf(last).includes("ask me")) {
+      return call("ask_user", { items: [{ text: "which one", options: ["alpha", "beta"] }] });
+    }
+    if (last?.role === "user" && textOf(last).includes("keep working")) {
+      gating = true;
+      await gate;
+    }
+    return say("OK.");
+  };
+  const project = await openTestProject(brain);
+  try {
+    await project.host.sendUserMessage("ask me something");
+    const question = await project.until(async () => (await project.host.board()).openQuestions[0]);
+    await project.host.sendUserMessage("keep working on it");
+    await project.until(async () => gating && (await project.host.conversation()).running);
+
+    await project.host.answerQuestion(question.id, "alpha");
+    await project.host.sendUserMessage("a second thought");
+
+    // The answer is the Engine's queued notice; the user line is theirs to withdraw.
+    const queued = await inboxItems(project, undefined);
+    const notice = queued.find((item) => item.mode !== "write" && item.entry !== undefined);
+    assert.ok(notice !== undefined);
+    await assert.rejects(
+      () => project.host.withdrawQueued(undefined, String(notice.id)),
+      /not in the queue/,
+    );
+
+    const interrupting = project.host.interruptRouter();
+    await sleep(50);
+    release();
+    await interrupting;
+
+    const view = await project.until(async () => {
+      const current = await project.host.conversation();
+      return current.failure?.reason === "aborted" ? current : false;
+    });
+    assert.equal(view.running, false);
+
+    await project.host.sendUserMessage("carry on");
+    await project.until(async () =>
+      project.calls.some(
+        (c) =>
+          c.role === "router" &&
+          c.messages.some((m) => textOf(m).includes("The user answered question q1")),
+      ),
+    );
+    assert.equal(
+      project.calls.some(
+        (c) =>
+          c.role === "router" && c.messages.some((m) => textOf(m).includes("a second thought")),
+      ),
+      false,
+    );
+  } finally {
+    release();
+    await project.close();
+  }
+});
+
+test("interrupting a Worker keeps the Engine notice queued for it", async () => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let gating = false;
+  const brain: Brain = async ({ role, last }) => {
+    if (role === "router") {
+      if (last?.role === "user" && textOf(last).includes("start work")) {
+        return call("ticket", {
+          action: "create",
+          title: "ask about it",
+          goal: "needs a user decision",
+          acceptance: ["has a decision"],
+        });
+      }
+      if (textOf(last).includes("report · waiting")) {
+        return call("ask_user", {
+          items: [{ text: "should we continue", options: ["yes", "no"] }],
+          ticketId: "t1",
+        });
+      }
+      return say("OK.");
+    }
+    if (toolName(last) === "report") return say("Waiting for your answer.");
+    if (last?.role === "user") {
+      if (textOf(last).includes("keep going")) {
+        gating = true;
+        await gate;
+        return say("Still going.");
+      }
+      if (textOf(last).includes("The user answered")) {
+        return call("report", { status: "ready", summary: "user decided", artifacts: [] });
+      }
+      return call("report", {
+        status: "waiting",
+        summary: "needs a user decision",
+        questions: [{ text: "should we continue", options: ["yes", "no"] }],
+      });
+    }
+    return say("…");
+  };
+  const project = await openTestProject(brain);
+  try {
+    await project.host.sendUserMessage("start work");
+    const question = await project.until(async () => (await project.host.board()).openQuestions[0]);
+    await project.host.messageWorker("t1", "keep going", "steer");
+    await project.until(
+      async () => gating && (await project.host.board()).tickets[0] !== undefined,
+    );
+
+    await project.host.answerQuestion(question.id, "yes");
+
+    const interrupting = project.host.interruptWorker("t1");
+    await sleep(50);
+    release();
+    await interrupting;
+
+    const view = await project.until(async () => {
+      const current = await project.host.ticketConversation("t1");
+      return current.failure?.reason === "aborted" ? current : false;
+    });
+    assert.equal(view.running, false);
+
+    await project.host.messageWorker("t1", "carry on", "followUp");
+    await project.until(async () =>
+      project.calls.some(
+        (c) =>
+          c.role === "worker" &&
+          c.messages.some((m) => textOf(m).includes("The user answered question q1")),
+      ),
+    );
+  } finally {
+    release();
+    await project.close();
+  }
+});
+
+test("a queued Worker message can be withdrawn or steered; the Router hears about the withdraw", async () => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let gating = false;
+  const brain: Brain = async ({ role, last }) => {
+    if (role === "router") {
+      if (last?.role === "user" && textOf(last).includes("start work")) {
+        return call("ticket", {
+          action: "create",
+          title: "busy job",
+          goal: "run",
+          acceptance: ["done"],
+        });
+      }
+      return say("OK.");
+    }
+    if (toolName(last) === "report") return say("Waiting.");
+    if (last?.role === "user" && !gating) {
+      gating = true;
+      await gate;
+      return say("Busy turn done.");
+    }
+    return call("report", { status: "ready", summary: "done", artifacts: [] });
+  };
+  const project = await openTestProject(brain);
+  try {
+    await project.host.sendUserMessage("start work");
+    await project.until(async () => gating);
+
+    await project.host.messageWorker("t1", "extra work", "followUp");
+    await project.host.messageWorker("t1", "steer me in", "followUp");
+    const queued = await inboxItems(project, "t1");
+    const withdraw = queued.find((item) => item.mode === "followUp" && item.entry === undefined);
+    const steer = queued.findLast((item) => item.mode === "followUp" && item.entry === undefined);
+    assert.ok(withdraw !== undefined && steer !== undefined && withdraw.id !== steer.id);
+
+    await project.host.withdrawQueued("t1", String(withdraw.id));
+    assert.equal(
+      (await inboxItems(project, "t1")).some((item) => item.id === withdraw.id),
+      false,
+    );
+
+    await project.until(async () =>
+      (await project.host.conversation()).lines.some((line) =>
+        line.text.includes("withdrew the message sent to t1"),
+      ),
+    );
+
+    // Once settled or placed, the queue's answer changes: the row reports it already delivered.
+    await assert.rejects(
+      () => project.host.withdrawQueued("t1", String(withdraw.id)),
+      /already reached/,
+    );
+    await assert.rejects(
+      () => project.host.steerQueued("t1", String(withdraw.id)),
+      /not in the queue/,
+    );
+    await assert.rejects(() => project.host.withdrawQueued("t1", "98765"), /not in the queue/);
+
+    await project.host.steerQueued("t1", String(steer.id));
+    const after = await inboxItems(project, "t1");
+    assert.equal(
+      after.some((item) => item.mode === "steer" && item.entry === undefined),
+      true,
+    );
+    assert.equal(
+      after.some((item) => item.mode === "followUp" && item.entry === undefined),
+      false,
+    );
+
+    release();
+    await project.until(async () =>
+      project.calls.some(
+        (c) => c.role === "worker" && c.messages.some((m) => textOf(m).includes("steer me in")),
+      ),
+    );
+  } finally {
+    release();
     await project.close();
   }
 });

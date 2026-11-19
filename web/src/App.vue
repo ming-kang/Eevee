@@ -28,12 +28,14 @@ import { useTheme } from "./theme.ts";
 import { useNotifications } from "./use-notifications.ts";
 
 const SIDE_KEY = "eevee.sideCollapsed";
+const RAIL_KEY = "eevee.railCollapsed";
 const PROJECT_KEY = "eevee.project";
 
 const isMac =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform ?? "");
 const paletteShortcut = isMac ? "⌘K" : "Ctrl K";
 const sideShortcut = isMac ? "⌘B" : "Ctrl B";
+const railShortcut = isMac ? "⌘⌥B" : "Ctrl Alt B";
 
 const { toggleTheme } = useTheme();
 
@@ -44,6 +46,7 @@ const networkError = ref<string>();
 const hash = ref("");
 const lastPid = ref(localStorage.getItem(PROJECT_KEY) ?? "");
 const sideCollapsed = ref(localStorage.getItem(SIDE_KEY) === "true");
+const railCollapsed = ref(localStorage.getItem(RAIL_KEY) === "true");
 const drawer = ref<"side" | "rail" | null>(null);
 const railTab = ref<RailTab>("tickets");
 const openJobId = ref<string | undefined>(undefined);
@@ -197,6 +200,7 @@ const paletteItems = computed(() =>
     boards: engine.boards.value,
     activeProjectId: controlPid.value,
     sideShortcut,
+    railShortcut,
   }),
 );
 
@@ -219,11 +223,23 @@ function toggleSide(): void {
   setSideCollapsed(!sideCollapsed.value);
 }
 
+function setRailCollapsed(collapsed: boolean): void {
+  if (collapsed === railCollapsed.value) return;
+  railCollapsed.value = collapsed;
+  localStorage.setItem(RAIL_KEY, String(collapsed));
+}
+
+function toggleRail(): void {
+  setRailCollapsed(!railCollapsed.value);
+}
+
 function openRail(tab?: RailTab, jobId?: string): void {
   if (tab) railTab.value = tab;
   if (jobId !== undefined) openJobId.value = jobId;
   if (window.innerWidth <= 1240) {
     drawer.value = "rail";
+  } else {
+    setRailCollapsed(false);
   }
 }
 
@@ -247,6 +263,8 @@ function onPaletteSelect(item: PaletteItem): void {
     toggleTheme();
   } else if (item.action === "toggle-side") {
     toggleSide();
+  } else if (item.action === "toggle-rail") {
+    toggleRail();
   }
 }
 
@@ -287,11 +305,12 @@ watch(
     v-else
     :with-rail="withRail"
     :side-collapsed="sideCollapsed"
+    :rail-collapsed="railCollapsed"
     :drawer="drawer"
     :modal-open="paletteOpen || newProjectOpen || memoryModalOpen"
     @close-drawer="drawer = null"
     @toggle-side="toggleSide"
-    @collapse-side="setSideCollapsed"
+    @toggle-rail="toggleRail"
   >
     <template #sidebar>
       <SideNav
@@ -328,6 +347,8 @@ watch(
         :board="currentBoardState?.board"
         :router-conversation="routerConversation"
         :ticket-id="route.name === 'worker' ? route.tid : undefined"
+        :rail-collapsed="railCollapsed"
+        :rail-shortcut="railShortcut"
         @open-side="drawer = 'side'"
         @open-rail="openRail"
         @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
@@ -417,10 +438,12 @@ watch(
         :has-detail="route.name === 'worker'"
         :active-ticket-id="route.name === 'worker' ? route.tid : undefined"
         :open-job-id="openJobId"
+        :rail-shortcut="railShortcut"
         @update:tab="railTab = $event"
         @update:open-job-id="openJobId = $event"
         @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
         @close-drawer="drawer = null"
+        @collapse-rail="setRailCollapsed(true)"
       />
     </template>
 

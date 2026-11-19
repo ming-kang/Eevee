@@ -18,7 +18,9 @@ import TicketRef from "./TicketRef.vue";
 const props = defineProps<{
   questions: readonly Question[];
   tickets?: readonly TicketView[];
-  answer: (id: QuestionId, text: string) => Promise<void>;
+  /** Jump to this question (e.g. clicked in a dispatch line); stays undefined in ordinary use. */
+  focusId?: QuestionId;
+  answer: (id: QuestionId, text: string, answers: readonly string[]) => Promise<void>;
 }>();
 
 defineEmits<{
@@ -50,6 +52,15 @@ watch(
     for (const q of list) ensureState(q);
   },
   { immediate: true },
+);
+
+watch(
+  () => props.focusId,
+  (id) => {
+    if (id === undefined) return;
+    const at = props.questions.findIndex((q) => q.id === id);
+    if (at !== -1) index.value = at;
+  },
 );
 
 const current = computed<Question | undefined>(() => props.questions[index.value]);
@@ -123,7 +134,7 @@ async function submit(): Promise<void> {
   const q = current.value;
   if (!q || !complete.value) return;
   const formatted = formatAnswer(q, currentDraft.value);
-  const ok = await run(() => props.answer(q.id, formatted));
+  const ok = await run(() => props.answer(q.id, formatted, currentDraft.value));
   if (ok) {
     delete drafts.value[q.id];
     delete others.value[q.id];

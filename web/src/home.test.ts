@@ -74,7 +74,7 @@ test("an empty set of projects or boards gives an empty home board", () => {
   assert.equal(unwatched.running.length, 0);
 });
 
-test("Needs you lists open questions newest first, then failed Routers", () => {
+test("Pending lists open questions newest first, then failed Routers", () => {
   const projects = [project("p1", "One"), project("p2", "Two")];
   const boards = {
     p1: {

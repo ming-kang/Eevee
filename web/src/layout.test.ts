@@ -16,23 +16,18 @@ import {
 const VP = 1600;
 
 test("a sidebar drag clamps to its own range and leaves the main its minimum", () => {
-  assert.deepEqual(fitSidebar(100, VP, 0), { width: SIDE.min, collapsed: true });
-  assert.deepEqual(fitSidebar(300, VP, 0), { width: 300, collapsed: false });
-  assert.deepEqual(fitSidebar(9999, VP, 0), { width: SIDE.max, collapsed: false });
+  assert.equal(fitSidebar(100, VP, 0), SIDE.min);
+  assert.equal(fitSidebar(300, VP, 0), 300);
+  assert.equal(fitSidebar(9999, VP, 0), SIDE.max);
   // A rail on the grid shrinks what the sidebar may take: 1600 - 24 - 336 - 420 = 820 > max.
-  assert.deepEqual(fitSidebar(9999, VP, 336), { width: SIDE.max, collapsed: false });
+  assert.equal(fitSidebar(9999, VP, 336), SIDE.max);
   const tight = 420 + 24 + SIDE.min + MAIN_MIN;
-  assert.deepEqual(fitSidebar(9999, tight, 420), { width: SIDE.min, collapsed: false });
+  assert.equal(fitSidebar(9999, tight, 420), SIDE.min);
 });
 
-test("the sidebar snaps collapsed below the threshold and reopens past it", () => {
-  assert.equal(fitSidebar(SIDE.collapseBelow - 1, VP, 0).collapsed, true);
-  assert.equal(fitSidebar(SIDE.collapseBelow, VP, 0).collapsed, false);
-  // Dragging the collapsed 52px column right crosses the threshold into a full column.
-  assert.deepEqual(fitSidebar(SIDE.collapseBelow + 1, VP, 0), {
-    width: SIDE.min,
-    collapsed: false,
-  });
+test("a drag never collapses: under the minimum it lands on the floor", () => {
+  assert.equal(fitSidebar(0, VP, 0), SIDE.min);
+  assert.equal(fitSidebar(SIDE.min - 1, VP, 0), SIDE.min);
 });
 
 test("a rail drag clamps to its own range and leaves the main its minimum", () => {
@@ -53,7 +48,7 @@ test("a rail drag clamps to its own range and leaves the main its minimum", () =
 test("a stored width no longer fitting is re-clamped", () => {
   // 256 fit 1280 when stored; at a viewport that leaves under 200 it comes back at the floor
   // once the rail is a drawer, and under the cap while the rail still renders.
-  assert.equal(fitSidebar(256, 800, 0).width, 256);
+  assert.equal(fitSidebar(256, 800, 0), 256);
   assert.equal(
     fitRail(560, 1280, SIDE.default),
     Math.min(560, 1280 - 24 - SIDE.default - MAIN_MIN),
@@ -91,13 +86,11 @@ test("the overlay fades out as a drawer is dragged away", () => {
 
 test("the interface scale grows the limits, the collapsed width and the main's minimum", () => {
   const s = 20 / 14;
-  // Limits and the snap threshold multiply by the scale; default means scale 1.
+  // Limits multiply by the scale; default means scale 1.
   assert.deepEqual(scaledColumn(SIDE, 1), { min: SIDE.min, max: SIDE.max, default: SIDE.default });
   assert.equal(collapsedSideW(1), SIDE.collapsedW);
-  assert.equal(fitSidebar(SIDE.collapseBelow * s - 1, VP, 0, s).collapsed, true);
-  assert.equal(fitSidebar(SIDE.collapseBelow * s, VP, 0, s).collapsed, false);
-  assert.equal(fitSidebar(100, VP, 0, s).width, Math.round(SIDE.min * s));
-  assert.equal(fitSidebar(9999, VP, 0, s).width, Math.round(SIDE.max * s));
+  assert.equal(fitSidebar(100, VP, 0, s), Math.round(SIDE.min * s));
+  assert.equal(fitSidebar(9999, VP, 0, s), Math.round(SIDE.max * s));
   // The main keeps its scaled minimum: rail + main + chrome eat the viewport first.
   const tight = SIDE.min * s + 24 + RAIL.min * s + MAIN_MIN * s;
   assert.equal(fitRail(9999, tight, SIDE.min * s, s), Math.round(RAIL.min * s));

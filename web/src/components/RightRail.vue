@@ -26,6 +26,7 @@ const props = defineProps<{
   hasDetail: boolean;
   activeTicketId?: string;
   openJobId?: string;
+  railShortcut: string;
 }>();
 
 const emit = defineEmits<{
@@ -33,6 +34,8 @@ const emit = defineEmits<{
   "update:openJobId": [jobId: string | undefined];
   "open-ticket": [ticketId: string];
   "close-drawer": [];
+  /** Fold the rail column away on wide screens (drawer mode closes through "close-drawer"). */
+  "collapse-rail": [];
 }>();
 
 const effectiveTab = computed(() => resolveRailTab(props.tab, props.hasDetail));
@@ -101,6 +104,15 @@ const tabs = computed(() => {
         <span v-if="item.dot" class="sr">{{ t("(questions waiting)") }}</span>
       </button>
     </div>
+    <button
+      type="button"
+      class="btn ghost sm icon rail-fold"
+      :title="t('Collapse the tickets panel ({key})', { key: railShortcut })"
+      :aria-label="t('Collapse the tickets panel')"
+      @click="emit('collapse-rail')"
+    >
+      <Icon name="panel" size="sm" />
+    </button>
     <button
       type="button"
       class="btn ghost sm icon rail-close"

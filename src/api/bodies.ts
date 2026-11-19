@@ -74,7 +74,10 @@ const schemas = {
     text: str(),
     mode: opt(oneOf(["steer", "followUp"] as const)),
   }),
-  "POST /api/projects/:project/questions/:question/answer": body({ answer: str() }),
+  "POST /api/projects/:project/questions/:question/answer": body({
+    answer: str(),
+    answers: opt(arr(str())),
+  }),
 };
 
 /**

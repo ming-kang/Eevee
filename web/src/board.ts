@@ -39,19 +39,22 @@ export function effectiveStage(
 
 export type TicketGroups = {
   /** Open tickets waiting on the user's answer. */
-  you: TicketView[];
-  /** Open tickets waiting on the Router: a report to review or a block to clear. */
-  router: TicketView[];
-  /** Every other open ticket. */
+  answer: TicketView[];
+  /** Open tickets whose report awaits review. */
+  review: TicketView[];
+  /** Open tickets stopped on a problem. */
+  blocked: TicketView[];
+  /** Every other open ticket: queued, working, jobs, waiting or idle. */
   active: TicketView[];
   closed: TicketView[];
   openCount: number;
 };
 
-/** Partition board tickets into `Needs you`, `Needs the Router`, `In progress`, and `Closed`, sorting within each group by stage order. */
+/** Partition board tickets by stage — answer, review, blocked, in progress — plus the closed set, sorting within each group by stage order. */
 export function groupTickets(tickets: readonly TicketView[]): TicketGroups {
-  const you: TicketView[] = [];
-  const router: TicketView[] = [];
+  const answer: TicketView[] = [];
+  const review: TicketView[] = [];
+  const blocked: TicketView[] = [];
   const active: TicketView[] = [];
   const closed: TicketView[] = [];
 
@@ -59,9 +62,11 @@ export function groupTickets(tickets: readonly TicketView[]): TicketGroups {
     if (view.ticket.status !== "open") {
       closed.push(view);
     } else if (view.stage === "answer") {
-      you.push(view);
-    } else if (view.stage === "review" || view.stage === "blocked") {
-      router.push(view);
+      answer.push(view);
+    } else if (view.stage === "review") {
+      review.push(view);
+    } else if (view.stage === "blocked") {
+      blocked.push(view);
     } else {
       active.push(view);
     }
@@ -69,17 +74,19 @@ export function groupTickets(tickets: readonly TicketView[]): TicketGroups {
 
   const byStage = (a: TicketView, b: TicketView): number =>
     rankOf(effectiveStage(a)) - rankOf(effectiveStage(b));
-  you.sort(byStage);
-  router.sort(byStage);
+  answer.sort(byStage);
+  review.sort(byStage);
+  blocked.sort(byStage);
   active.sort(byStage);
   closed.sort(byStage);
 
   return {
-    you,
-    router,
+    answer,
+    review,
+    blocked,
     active,
     closed,
-    openCount: you.length + router.length + active.length,
+    openCount: answer.length + review.length + blocked.length + active.length,
   };
 }
 

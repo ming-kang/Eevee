@@ -155,9 +155,9 @@ const modelInfo = computed(() => {
       </div>
     </dl>
 
-    <div class="rd-reports">
+    <div v-if="sortedReports.length > 0" class="rd-reports">
       <div class="section-h">{{ t("Reports") }}</div>
-      <div v-if="sortedReports.length > 0" class="rlist">
+      <div class="rlist">
         <ReportCard
           v-for="report in sortedReports"
           :key="report.seq"
@@ -166,7 +166,6 @@ const modelInfo = computed(() => {
           full
         />
       </div>
-      <p v-else class="hint">{{ t("No reports") }}</p>
     </div>
   </div>
 </template>

@@ -15,9 +15,13 @@ import {
   type EntryRecord,
   type Extension,
   Harness,
+  InboxDoc,
+  type InboxItem,
   LiveDoc,
   type Registry,
+  type SubmissionId,
   type Tx,
+  type UserInput,
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -29,6 +33,7 @@ import type {
   ProjectSummary,
   UsageView,
 } from "../api/contract.ts";
+import type { NoticeData } from "../contracts/details.ts";
 import { Board, JobDoc, QuestionDoc, TicketDoc } from "../contracts/docs.ts";
 import {
   type JobId,
@@ -36,6 +41,7 @@ import {
   type ModelChoice,
   ProblemError,
   pickModel,
+  type Question,
   type QuestionId,
   ROLE_NAMES,
   type RoleName,
@@ -55,6 +61,7 @@ import {
   deliver,
   type EngineEvent,
   flush,
+  NOTICE_KIND,
   openTicket,
   readTicket,
   answerQuestion as recordAnswer,
@@ -299,14 +306,29 @@ export class ProjectHost {
     await this.#dispatch({ type: "user-message", id: crypto.randomUUID(), text });
   }
 
-  async answerQuestion(id: QuestionId, answer: string): Promise<void> {
+  async answerQuestion(id: QuestionId, answer: string, answers?: string[]): Promise<void> {
     const seed = await this.#harness.snapshot(QuestionDoc, id, this.#context);
     if (seed === undefined) throw new ProblemError({ code: "no_question", questionId: id });
+    if (answers !== undefined && answers.length !== seed.items.length) {
+      throw new ProblemError({ code: "invalid", field: "answers" });
+    }
     const now = Date.now();
-    const answered = { ...seed, answer, answeredAt: now };
+    const answered = {
+      ...seed,
+      answer,
+      answeredAt: now,
+      ...(answers === undefined ? {} : { answers }),
+    };
     await this.#dispatch({ type: "question-answered", question: answered }, async (tx) => {
-      await recordAnswer(tx, id, answer, now);
+      await recordAnswer(tx, id, answer, now, answers);
     });
+  }
+
+  /** A question in any state — open, answered, or withdrawn — for the review card. */
+  async question(id: QuestionId): Promise<Question> {
+    const question = await this.#harness.snapshot(QuestionDoc, id, this.#context);
+    if (question === undefined) throw new ProblemError({ code: "no_question", questionId: id });
+    return question;
   }
 
   async messageWorker(id: TicketId, text: string, whenBusy: "steer" | "followUp"): Promise<void> {
@@ -320,11 +342,106 @@ export class ProjectHost {
     });
   }
 
+  async interruptRouter(): Promise<void> {
+    await this.#interrupt(this.#root);
+  }
+
   async interruptWorker(id: TicketId): Promise<void> {
     const worker = await this.#conversationOf(id);
     await this.#openTicket(id);
-    await worker.abort(this.#context);
+    await this.#interrupt(worker);
     await this.#dispatch({ type: "panel-interrupt", id: crypto.randomUUID(), ticketId: id });
+  }
+
+  /**
+   * Ends the conversation's turn and pulls its queued inputs. Engine notices among them — reports,
+   * answers, job results `tell` had queued — are written back as records so the next run reads them;
+   * the user's own queued lines stay withdrawn.
+   */
+  async #interrupt(conversation: Conversation): Promise<void> {
+    const inbox = await this.#harness.snapshot(InboxDoc, conversation.id, this.#context);
+    const kept = (inbox?.items ?? []).filter(
+      (item) => item.mode !== "write" && item.entry?.kind === NOTICE_KIND,
+    );
+    await conversation.abort(this.#context);
+    if (kept.length === 0) return;
+    await conversation.commit(async (tx) => {
+      for (const item of kept) {
+        if (item.mode === "write") continue;
+        const data = (item.entry?.data ?? {}) as NoticeData;
+        const requestId = `${data.requestId ?? item.id}:kept`;
+        await conversation.submit(tx, {
+          type: "write",
+          requestId,
+          entry: {
+            kind: NOTICE_KIND,
+            data: { ...data, requestId },
+            model: [{ role: "user", content: item.content, timestamp: Date.now() }],
+          },
+        });
+      }
+    }, this.#context);
+  }
+
+  /** Pulls one of the user's own queued inputs back; Engine notices and anything placed refuse. */
+  async withdrawQueued(ticketId: TicketId | undefined, submissionId: string): Promise<void> {
+    const conversation = await this.#conversationOf(ticketId);
+    const item = await this.#queuedItem(conversation, submissionId);
+    if (item !== undefined && (item.mode === "write" || item.entry !== undefined)) {
+      throw new ProblemError({ code: "no_submission", submissionId });
+    }
+    await this.#abortSubmission(conversation, submissionId);
+    if (ticketId !== undefined && item !== undefined) {
+      await this.#dispatch({
+        type: "panel-withdrawn",
+        id: submissionId,
+        ticketId,
+        text: inputText(item.content),
+      });
+    }
+  }
+
+  /** Turns a queued followUp into a steer at the next postTools boundary. */
+  async steerQueued(ticketId: TicketId, submissionId: string): Promise<void> {
+    await this.#openTicket(ticketId);
+    const conversation = await this.#conversationOf(ticketId);
+    const item = await this.#queuedItem(conversation, submissionId);
+    if (item === undefined || item.mode !== "followUp" || item.entry !== undefined) {
+      throw new ProblemError({ code: "no_submission", submissionId });
+    }
+    await this.#abortSubmission(conversation, submissionId);
+    await conversation.submit(
+      {
+        type: "input",
+        requestId: `steer:${submissionId}`,
+        content: item.content as UserInput,
+        whenBusy: "steer",
+      },
+      this.#context,
+    );
+  }
+
+  /** The inbox's record of a submission, while it is still queued. */
+  async #queuedItem(
+    conversation: Conversation,
+    submissionId: string,
+  ): Promise<InboxItem | undefined> {
+    const inbox = await this.#harness.snapshot(InboxDoc, conversation.id, this.#context);
+    return inbox?.items.find((item) => String(item.id) === submissionId);
+  }
+
+  async #abortSubmission(conversation: Conversation, submissionId: string): Promise<void> {
+    const result = await this.#harness.abortSubmission(
+      Number(submissionId) as SubmissionId,
+      this.#context,
+      conversation.id,
+    );
+    if (result === "already_placed" || result === "settled") {
+      throw new ProblemError({ code: "already_delivered" });
+    }
+    if (result === "not_found") {
+      throw new ProblemError({ code: "no_submission", submissionId });
+    }
   }
 
   /** Runs the Router's, or a ticket's, failed last turn again. */
@@ -587,6 +704,20 @@ export class ProjectHost {
     if (conversation === undefined) throw new ProblemError({ code: "no_worker", ticketId });
     return conversation;
   }
+}
+
+/** An inbox input's text, for a notice that quotes what the user had queued. */
+function inputText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) =>
+      typeof part === "object" && part !== null && "text" in part
+        ? String((part as { text: unknown }).text)
+        : "",
+    )
+    .join("")
+    .trim();
 }
 
 /** Installs `next`, replacing extensions by name, and uninstalls the shared ones no longer in it. */

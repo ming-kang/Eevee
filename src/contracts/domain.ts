@@ -136,6 +136,8 @@ export type Question = {
   ticketId?: TicketId;
   items: QuestionItem[];
   answer?: string;
+  /** Each item's answer, parallel to `items`; absent for answers recorded before it existed. */
+  answers?: string[];
   askedAt: number;
   answeredAt?: number;
   /** Set when the ticket closed before the user answered; the question can no longer be answered. */

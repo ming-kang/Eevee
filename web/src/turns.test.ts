@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { TranscriptDisplayItem } from "./transcript-map.ts";
-import { finalAssistantKeys, foldTurns } from "./turns.ts";
+import { closedItems, finalAssistantKeys, foldTurns } from "./turns.ts";
 
 const user = (key: string, at?: number): TranscriptDisplayItem => ({
   kind: "user",
@@ -16,6 +16,13 @@ const assistant = (key: string, at?: number, streaming = false): TranscriptDispl
   text: "done",
   ...(at === undefined ? {} : { at }),
   ...(streaming ? { streaming: true } : {}),
+});
+
+const thinking = (key: string, streaming = false): TranscriptDisplayItem => ({
+  kind: "thinking",
+  key,
+  text: "hmm",
+  ...(streaming ? { streaming: true as const } : {}),
 });
 
 const tools = (key: string, n = 1, live = false): TranscriptDisplayItem => ({
@@ -63,15 +70,47 @@ const dispatch = (key: string, creates = 1): TranscriptDisplayItem => ({
 
 const kinds = (items: readonly TranscriptDisplayItem[]) => items.map((i) => i.kind);
 
-test("a finished turn folds its work, keeps its reply", () => {
+const worked = (items: readonly TranscriptDisplayItem[]) => {
+  const item = items.find((i) => i.kind === "worked");
+  if (item?.kind !== "worked") throw new Error("no worked item");
+  return item;
+};
+
+test("a finished turn folds its whole body; the closed view keeps the reply", () => {
   const out = foldTurns([user("u1", 1000), tools("t1", 2), assistant("a1", 4000)], false);
-  assert.deepEqual(kinds(out), ["user", "worked", "assistant"]);
-  const worked = out[1];
-  assert.equal(worked?.kind, "worked");
-  if (worked?.kind !== "worked") return;
-  assert.equal(worked.ms, 3000);
-  assert.deepEqual(worked.counts, { tools: 2, commands: 0, files: 0, dispatched: 0 });
-  assert.deepEqual(kinds(worked.items), ["tools"]);
+  assert.deepEqual(kinds(out), ["user", "worked"]);
+  const group = worked(out);
+  assert.equal(group.ms, 3000);
+  assert.deepEqual(kinds(group.items), ["tools", "assistant"]);
+  assert.deepEqual(kinds(closedItems(group)), ["assistant"]);
+});
+
+test("process → reply → process → reply folds once, and both replies stay visible", () => {
+  const out = foldTurns(
+    [user("u1", 1000), tools("t1"), assistant("a1", 2000), tools("t2"), assistant("a2", 5000)],
+    false,
+  );
+  assert.deepEqual(kinds(out), ["user", "worked"]);
+  const group = worked(out);
+  assert.deepEqual(kinds(group.items), ["tools", "assistant", "tools", "assistant"]);
+  assert.deepEqual(
+    closedItems(group).map((i) => i.key),
+    ["a1", "a2"],
+  );
+  assert.equal(group.ms, 4000);
+});
+
+test("a turn with nothing but replies, or replies and dispatches, never folds", () => {
+  assert.deepEqual(kinds(foldTurns([user("u1"), assistant("a1"), assistant("a2")], false)), [
+    "user",
+    "assistant",
+    "assistant",
+  ]);
+  assert.deepEqual(kinds(foldTurns([user("u1"), assistant("a1"), dispatch("d1")], false)), [
+    "user",
+    "assistant",
+    "dispatch",
+  ]);
 });
 
 test("the last turn stays expanded while the conversation runs", () => {
@@ -85,9 +124,12 @@ test("a turn with a live line stays expanded", () => {
   assert.deepEqual(kinds(out), ["user", "tools", "assistant"]);
 });
 
-test("streaming replies and running edits keep the turn open", () => {
-  const out = foldTurns([user("u1"), edit("e1", "run"), assistant("a1", undefined, true)], false);
-  assert.deepEqual(kinds(out), ["user", "edit", "assistant"]);
+test("streaming replies, thinking and running edits keep the turn open", () => {
+  const out = foldTurns(
+    [user("u1"), edit("e1", "run"), thinking("th1", true), assistant("a1", undefined, true)],
+    false,
+  );
+  assert.deepEqual(kinds(out), ["user", "edit", "thinking", "assistant"]);
 });
 
 test("tool-only turns never fold: no reply to leave visible", () => {
@@ -105,16 +147,11 @@ test("a turn ending in failure or idle stays expanded", () => {
   }
 });
 
-test("a mid-turn message folds with the work; only the final reply stays", () => {
-  const out = foldTurns(
-    [user("u1", 1000), tools("t1"), assistant("a1", 2000), tools("t2"), assistant("a2", 5000)],
-    false,
-  );
-  assert.deepEqual(kinds(out), ["user", "worked", "assistant"]);
-  const worked = out[1];
-  if (worked?.kind !== "worked") throw new Error("no worked item");
-  assert.deepEqual(kinds(worked.items), ["tools", "assistant", "tools"]);
-  assert.equal(worked.ms, 4000);
+test("dispatch lines fold into the group and stay visible in the closed view", () => {
+  const out = foldTurns([user("u1"), tools("t1"), assistant("a1"), dispatch("d1")], false);
+  assert.deepEqual(kinds(out), ["user", "worked"]);
+  const group = worked(out);
+  assert.deepEqual(kinds(closedItems(group)), ["assistant", "dispatch"]);
 });
 
 test("a leading turn after an opening folds with no duration", () => {
@@ -122,10 +159,9 @@ test("a leading turn after an opening folds with no duration", () => {
     [{ kind: "opening", key: "o1", text: "ticket" }, tools("t1"), assistant("a1", 9000)],
     false,
   );
-  assert.deepEqual(kinds(out), ["opening", "worked", "assistant"]);
-  const worked = out[1];
-  if (worked?.kind !== "worked") throw new Error("no worked item");
-  assert.equal(worked.ms, undefined);
+  assert.deepEqual(kinds(out), ["opening", "worked"]);
+  const group = worked(out);
+  assert.equal(group.ms, undefined);
 });
 
 test("duration uses the boundary's time when it has one", () => {
@@ -133,12 +169,11 @@ test("duration uses the boundary's time when it has one", () => {
     [{ kind: "reset", key: "r1", at: 500, summary: "s" }, tools("t1"), assistant("a1", 1500)],
     false,
   );
-  const worked = out[1];
-  if (worked?.kind !== "worked") throw new Error("no worked item");
-  assert.equal(worked.ms, 1000);
+  const group = worked(out);
+  assert.equal(group.ms, 1000);
 });
 
-test("counts cover steps, commands, files and dispatched tickets", () => {
+test("activity covers steps, commands, edits and dispatches-in-tools, not replies or dispatch lines", () => {
   const out = foldTurns(
     [
       user("u1"),
@@ -147,19 +182,18 @@ test("counts cover steps, commands, files and dispatched tickets", () => {
       dispatch("d1", 4),
       edit("e1"),
       edit("e2"),
+      thinking("th1"),
       assistant("a1"),
     ],
     false,
   );
-  const worked = out[1];
-  if (worked?.kind !== "worked") throw new Error("no worked item");
-  assert.deepEqual(worked.counts, { tools: 3, commands: 1, files: 2, dispatched: 4 });
-  assert.deepEqual(kinds(out), ["user", "worked", "assistant"]);
-});
-
-test("a dispatch trailing the reply is part of the visible tail", () => {
-  const out = foldTurns([user("u1"), tools("t1"), assistant("a1"), dispatch("d1")], false);
-  assert.deepEqual(kinds(out), ["user", "worked", "assistant", "dispatch"]);
+  const group = worked(out);
+  assert.deepEqual(group.activity, [
+    { kind: "read", count: 3 },
+    { kind: "commands", count: 1 },
+    { kind: "edit", count: 2 },
+  ]);
+  assert.deepEqual(kinds(out), ["user", "worked"]);
 });
 
 test("several turns fold independently; inbound lines re-open a turn", () => {
@@ -174,20 +208,19 @@ test("several turns fold independently; inbound lines re-open a turn", () => {
     ],
     false,
   );
-  assert.deepEqual(kinds(out), ["user", "worked", "assistant", "qa", "worked", "assistant"]);
-  const second = out[4];
+  assert.deepEqual(kinds(out), ["user", "worked", "qa", "worked"]);
+  const second = out[3];
   if (second?.kind !== "worked") throw new Error("no worked item");
   assert.equal(second.ms, 700);
 });
 
 test("untimed turns fold without a duration", () => {
   const out = foldTurns([user("u1"), tools("t1"), assistant("a1")], false);
-  const worked = out[1];
-  if (worked?.kind !== "worked") throw new Error("no worked item");
-  assert.equal(worked.ms, undefined);
+  const group = worked(out);
+  assert.equal(group.ms, undefined);
 });
 
-test("finalAssistantKeys marks each turn's last assistant", () => {
+test("finalAssistantKeys marks each turn's last assistant, inside folded groups too", () => {
   const folded = foldTurns(
     [
       user("u1"),
@@ -198,18 +231,26 @@ test("finalAssistantKeys marks each turn's last assistant", () => {
       tools("t2"),
       assistant("a3"),
       dispatch("d1"),
+      user("u3"),
+      tools("t3"),
+      assistant("a4"),
+      tools("t4"),
+      assistant("a5"),
     ],
     false,
   );
-  assert.deepEqual(kinds(folded), [
-    "user",
-    "worked",
-    "assistant",
-    "assistant",
-    "user",
-    "worked",
-    "assistant",
-    "dispatch",
-  ]);
-  assert.deepEqual([...finalAssistantKeys(folded)].sort(), ["a2", "a3"]);
+  assert.deepEqual(kinds(folded), ["user", "worked", "user", "worked", "user", "worked"]);
+  assert.deepEqual([...finalAssistantKeys(folded)].sort(), ["a2", "a3", "a5"]);
+});
+
+test("finalAssistantKeys marks unfolded turns the same way", () => {
+  const items = [
+    user("u1"),
+    assistant("a1"),
+    assistant("a2"),
+    user("u2"),
+    tools("t1", 1, true),
+    assistant("a3"),
+  ];
+  assert.deepEqual([...finalAssistantKeys(items)].sort(), ["a2", "a3"]);
 });

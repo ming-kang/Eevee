@@ -284,7 +284,6 @@ function commitTurns(): void {
     <div class="row">
       <label class="r-main" :for="`turn-limit-${role.role}`">
         <span class="r-t">{{ t("Turn limit") }}</span>
-        <span class="r-d">{{ t("Most model turns one run may take; leave empty for the default") }}</span>
       </label>
       <input
         :id="`turn-limit-${role.role}`"

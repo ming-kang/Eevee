@@ -241,11 +241,39 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
         return { ok: true };
       },
     },
+    "POST /api/projects/:project/interrupt": {
+      handle: async ({ params }) => {
+        await project(params.project).interruptRouter();
+        return { ok: true };
+      },
+    },
+    "POST /api/projects/:project/queue/:submission/withdraw": {
+      handle: async ({ params }) => {
+        await project(params.project).withdrawQueued(undefined, params.submission);
+        return { ok: true };
+      },
+    },
+    "POST /api/projects/:project/tickets/:ticket/queue/:submission/withdraw": {
+      handle: async ({ params }) => {
+        await project(params.project).withdrawQueued(params.ticket as TicketId, params.submission);
+        return { ok: true };
+      },
+    },
+    "POST /api/projects/:project/tickets/:ticket/queue/:submission/steer": {
+      handle: async ({ params }) => {
+        await project(params.project).steerQueued(params.ticket as TicketId, params.submission);
+        return { ok: true };
+      },
+    },
+    "GET /api/projects/:project/questions/:question": {
+      handle: async ({ params }) => project(params.project).question(params.question as QuestionId),
+    },
     "POST /api/projects/:project/questions/:question/answer": {
       handle: async ({ params, body }) => {
         await project(params.project).answerQuestion(
           params.question as QuestionId,
           text(body.answer, "answer"),
+          body.answers,
         );
         return { ok: true };
       },

@@ -6,7 +6,7 @@ export type ColumnSpec = { min: number; max: number; default: number };
 
 /** Base-pixel column limits: the numbers at the default interface size. Every public function
  *  takes a `scale` (text size / 14) — geometry grows with the interface, stored widths stay px. */
-export const SIDE = { min: 200, max: 420, default: 256, collapseBelow: 160, collapsedW: 52 };
+export const SIDE = { min: 200, max: 420, default: 256, collapsedW: 52 };
 export const RAIL = { min: 280, max: 560, default: 336 };
 export const MAIN_MIN = 420;
 
@@ -50,20 +50,11 @@ function fitColumn(
 }
 
 /**
- * Where a sidebar drag lands: under `collapseBelow` it snaps to the icon column; at or past it the
- * width clamps into range — which is also how a drag out of the collapsed column reopens it.
- * `width` is the width to store; while `collapsed` the caller keeps its stored width instead.
+ * Where a sidebar drag lands: the width clamps into range. Collapsing to the icon column only
+ * happens through the sidebar's toggle, never through a drag.
  */
-export function fitSidebar(
-  proposed: number,
-  viewport: number,
-  railW: number,
-  scale = 1,
-): { width: number; collapsed: boolean } {
-  return {
-    width: fitColumn(proposed, scaledColumn(SIDE, scale), viewport, railW, scale),
-    collapsed: proposed < SIDE.collapseBelow * scale,
-  };
+export function fitSidebar(proposed: number, viewport: number, railW: number, scale = 1): number {
+  return fitColumn(proposed, scaledColumn(SIDE, scale), viewport, railW, scale);
 }
 
 /** The rail width for a proposed width; `sideW` is the sidebar's rendered width. */

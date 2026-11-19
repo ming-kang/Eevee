@@ -20,9 +20,11 @@ defineEmits<{
 const showClosed = ref(false);
 
 const openGroups = computed(() => [
-  { key: "you", label: t("Needs you"), user: true, items: props.groups.you },
-  { key: "router", label: t("Needs the Router"), user: false, items: props.groups.router },
-  { key: "active", label: t("In progress"), user: false, items: props.groups.active },
+  { key: "answer", label: t("Needs answer"), cls: "user", stage: false, items: props.groups.answer },
+  { key: "review", label: t("Needs review"), cls: "", stage: false, items: props.groups.review },
+  { key: "blocked", label: t("Blocked"), cls: "bad", stage: false, items: props.groups.blocked },
+  // Mixed stages: the per-row stage word stays so the reader can tell them apart.
+  { key: "active", label: t("In progress"), cls: "", stage: true, items: props.groups.active },
 ]);
 
 function latestReport(view: TicketView): TicketView["reports"][number] | undefined {
@@ -69,7 +71,7 @@ function contextLine(view: TicketView): string | undefined {
   <template v-else-if="board">
     <template v-for="group in openGroups" :key="group.key">
       <template v-if="group.items.length > 0">
-        <div class="group-h" :class="{ user: group.user }">
+        <div class="group-h" :class="group.cls">
           <span>{{ group.label }}</span>
           <span class="n">{{ group.items.length }}</span>
         </div>
@@ -85,9 +87,9 @@ function contextLine(view: TicketView): string | undefined {
           <StageGlyph :stage="effectiveStage(view)" />
           <span class="ellipsis">{{ view.ticket.title }}</span>
           <span class="t-id">{{ view.ticket.id }}</span>
-          <span class="t-line">
-            <span class="t-stage" :class="`s-${view.stage}`">{{ STAGE_LABEL[view.stage] }}</span>
-            <template v-if="contextLine(view)"> · {{ contextLine(view) }}</template>
+          <span v-if="group.stage || contextLine(view)" class="t-line">
+            <span v-if="group.stage" class="t-stage" :class="`s-${view.stage}`">{{ STAGE_LABEL[view.stage] }}</span>
+            <template v-if="contextLine(view)">{{ group.stage ? " · " : "" }}{{ contextLine(view) }}</template>
           </span>
         </button>
       </template>

@@ -5,13 +5,13 @@
   margin-right: auto;
 }
 
-.rtabs > button .n {
+.rtabs>button .n {
   font-size: var(--ev-caption);
   color: var(--ev-label-3);
   font-variant-numeric: tabular-nums;
 }
 
-.rtabs > button .dot {
+.rtabs>button .dot {
   width: calc(5px * var(--ev-scale));
   height: calc(5px * var(--ev-scale));
 }
@@ -36,6 +36,10 @@
 
 .group-h.user {
   color: var(--ev-user-ink);
+}
+
+.group-h.bad {
+  color: var(--ev-bad-ink);
 }
 
 button.group-h {

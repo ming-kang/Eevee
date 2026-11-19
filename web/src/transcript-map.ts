@@ -15,13 +15,13 @@ import {
   type BashDetails,
   isDeliberateEnd,
   type NoticeData,
+  type QuestionId,
   type Report,
   type ReportStatus,
   type TicketDetails,
   type TicketId,
-  type TicketStage,
-  type TicketStatus,
 } from "../../src/contracts/index.ts";
+import { type ActivityCount, formatToolLabel } from "./activity.ts";
 import type { GapItem } from "./conversation.ts";
 import { t } from "./i18n.ts";
 import { failureText, jobStatusText, reportSummary } from "./labels.ts";
@@ -55,21 +55,13 @@ export type DispatchAction = {
   id: string;
   kind: DispatchActionKind;
   ticketId?: string;
-  questionId?: string;
+  questionId?: QuestionId;
   title: string;
   detail?: string;
   status: "ok" | "err" | "run";
 };
 
 export type EventKind = "report" | "answer" | "intervene" | "deliver" | "job" | "notice";
-
-/** What a folded turn reports: tool steps, commands, files edited and tickets dispatched. */
-export type WorkedCounts = {
-  tools: number;
-  commands: number;
-  files: number;
-  dispatched: number;
-};
 
 export type TranscriptDisplayItem =
   | { kind: "more"; key: string }
@@ -85,6 +77,14 @@ export type TranscriptDisplayItem =
       pending?: true;
     }
   | { kind: "assistant"; key: string; text: string; at?: number; streaming?: boolean }
+  | {
+      /** A model's reasoning before it spoke or acted; redacted blocks carry no readable text. */
+      kind: "thinking";
+      key: string;
+      text: string;
+      redacted?: true;
+      streaming?: true;
+    }
   | { kind: "tools"; key: string; live: boolean; steps: ToolStepItem[] }
   | { kind: "dispatch"; key: string; live: boolean; actions: DispatchAction[] }
   | {
@@ -92,7 +92,7 @@ export type TranscriptDisplayItem =
       key: string;
       eventKind: EventKind;
       ticketId?: string;
-      questionId?: string;
+      questionId?: QuestionId;
       jobId?: string;
       status?: ReportStatus;
       text: string;
@@ -127,7 +127,17 @@ export type TranscriptDisplayItem =
       key: string;
       report: Report;
     }
-  | { kind: "qa"; key: string; questionId?: string; question: string; answer: string; at?: number }
+  | {
+      kind: "qa";
+      key: string;
+      questionId?: QuestionId;
+      /** Display label for a single question, or the generic answer label. */
+      question: string;
+      /** Every asked item's text, when the notice carries it or the transcript still shows the ask. */
+      items?: string[];
+      answer: string;
+      at?: number;
+    }
   | { kind: "failure"; key: string; reason: string; text: string }
   | { kind: "idle"; key: string; text: string }
   | {
@@ -136,7 +146,7 @@ export type TranscriptDisplayItem =
       key: string;
       items: TranscriptDisplayItem[];
       ms?: number;
-      counts: WorkedCounts;
+      activity: ActivityCount[];
     };
 
 type EventItem = Extract<TranscriptDisplayItem, { kind: "event" }>;
@@ -155,9 +165,6 @@ type MapTranscriptOptions = {
   live?: LiveState;
   ticketId?: TicketId;
   reports?: readonly Report[];
-  ticketStatus?: TicketStatus;
-  ticketStage?: TicketStage;
-  inbox?: InboxState;
 };
 
 export function mapTranscript(
@@ -175,6 +182,28 @@ export function mapTranscript(
     for (const msg of (item.entry.model ?? []) as readonly ToolResultMessage[]) {
       if (msg.role === "toolResult" && msg.toolCallId) {
         resultsByCallId.set(msg.toolCallId, msg);
+      }
+    }
+  }
+
+  const questionItems = new Map<string, readonly string[]>();
+  if (options.mode === "router") {
+    for (const item of items) {
+      if (item.kind !== "entry" || !AssistantEntry.is(item.entry)) continue;
+      for (const msg of (item.entry.model ?? []) as readonly AssistantMessage[]) {
+        const content = Array.isArray(msg.content) ? msg.content : [];
+        for (const part of content) {
+          if (part.type !== "toolCall" || part.name !== "ask_user") continue;
+          const questionId = detailsOf<AskDetails>(resultsByCallId.get(part.id)).questionId;
+          if (questionId === undefined) continue;
+          const args = (part.arguments ?? {}) as { items?: { text?: unknown }[] };
+          questionItems.set(
+            questionId,
+            (Array.isArray(args.items) ? args.items : []).map((i) =>
+              typeof i?.text === "string" ? i.text : "",
+            ),
+          );
+        }
       }
     }
   }
@@ -248,7 +277,7 @@ export function mapTranscript(
     }
 
     if (entry.kind === NOTICE_KIND) {
-      const mapped = mapNotice(entry, options.mode);
+      const mapped = mapNotice(entry, options.mode, questionItems);
       if (mapped) out.push(mapped);
       continue;
     }
@@ -266,6 +295,18 @@ export function mapTranscript(
                 key: `e:${entry.id}:${mIdx}:${bIdx}`,
                 text: trimmed,
                 ...(message.timestamp ? { at: message.timestamp } : {}),
+              });
+            }
+            continue;
+          }
+          if (part.type === "thinking") {
+            const text = part.thinking.trim();
+            if (part.redacted === true || text !== "") {
+              out.push({
+                kind: "thinking",
+                key: `e:${entry.id}:${mIdx}:${bIdx}`,
+                text: part.redacted === true ? "" : text,
+                ...(part.redacted === true ? { redacted: true as const } : {}),
               });
             }
             continue;
@@ -354,8 +395,24 @@ export function mapTranscript(
     }
     const partial = live.generation?.message;
     const partialText = partial ? extractAssistantText(partial) : "";
+    let streamingThoughts = 0;
+    if (partial && Array.isArray(partial.content)) {
+      for (const [bIdx, part] of partial.content.entries()) {
+        if (part.type !== "thinking") continue;
+        const text = part.thinking.trim();
+        if (part.redacted !== true && text === "") continue;
+        streamingThoughts += 1;
+        out.push({
+          kind: "thinking",
+          key: `live:gen:t${bIdx}`,
+          text: part.redacted === true ? "" : text,
+          streaming: true,
+          ...(part.redacted === true ? { redacted: true as const } : {}),
+        });
+      }
+    }
     const hasRunningTools = (live.tools ?? []).some((t) => t.status !== "done");
-    if (partialText !== "" || !hasRunningTools) {
+    if (partialText !== "" || (!hasRunningTools && streamingThoughts === 0)) {
       out.push({
         kind: "assistant",
         key: "live:gen",
@@ -384,32 +441,14 @@ export function mapTranscript(
     }
   }
 
-  if (
-    options.mode === "worker" &&
-    live?.run === undefined &&
-    options.ticketStatus === "open" &&
-    options.ticketStage &&
-    out.length > 0 &&
-    out.at(-1)?.kind !== "idle" &&
-    out.at(-1)?.kind !== "failure"
-  ) {
-    const idleText = WORKER_IDLE_TEXT[options.ticketStage];
-    if (idleText) {
-      out.push({
-        kind: "idle",
-        key: `stage-idle:${options.ticketStage}`,
-        text: idleText,
-      });
-    }
-  }
-
-  out.push(...mapInbox(options.inbox));
   return out;
 }
 
-/** What you sent that no boundary has placed yet; entries written by the system are not yours to see here. */
-function mapInbox(inbox: InboxState | undefined): TranscriptDisplayItem[] {
-  const out: TranscriptDisplayItem[] = [];
+export type QueuedMessage = { id: string; text: string; mode: "steer" | "followUp" };
+
+/** The user's own queued inputs, for the dock above the composer; Engine notices stay hidden. */
+export function queuedMessages(inbox: InboxState | undefined): QueuedMessage[] {
+  const out: QueuedMessage[] = [];
   for (const item of inbox?.items ?? []) {
     if (item.mode === "write" || item.entry !== undefined) continue;
     const content = item.content;
@@ -419,24 +458,10 @@ function mapInbox(inbox: InboxState | undefined): TranscriptDisplayItem[] {
         : content.map((part) => (part.type === "text" ? part.text : "")).join("")
     ).trim();
     if (text === "") continue;
-    out.push({
-      kind: "user",
-      key: `q:${item.id}`,
-      text,
-      pending: true,
-    });
+    out.push({ id: String(item.id), text, mode: item.mode });
   }
   return out;
 }
-
-const WORKER_IDLE_TEXT: Partial<Record<TicketStage, string>> = {
-  queued: t("Queued · waiting for a free Worker slot"),
-  jobs: t("Turn ended · waiting on background jobs"),
-  answer: t("Turn ended · waiting for your answer"),
-  review: t("Turn ended · waiting for the Router to review"),
-  blocked: t("Turn ended · waiting for the Router"),
-  waiting: t("Turn ended · waiting for what it needs"),
-};
 
 function mapReset(
   entry: EntryRecord,
@@ -487,6 +512,7 @@ function mapReset(
 function mapNotice(
   entry: EntryRecord,
   mode: "router" | "worker",
+  questionItems: ReadonlyMap<string, readonly string[]>,
 ): TranscriptDisplayItem | undefined {
   const { text, at } = extractTextAndTime(entry);
   const notice = (entry.data as NoticeData | undefined)?.notice;
@@ -551,20 +577,14 @@ function mapNotice(
           { questionId: question, ticketId: notice.forwardedTo, detail: notice.answer },
         );
       }
-      if (mode === "router") {
-        return {
-          kind: "qa",
-          key,
-          questionId: question,
-          question: t("Answer to {question}", { question }),
-          answer: notice.answer,
-          ...time,
-        };
-      }
+      const items = notice.question ?? questionItems.get(question);
       return {
-        kind: "user",
+        kind: "qa",
         key,
-        text: t("[Answer to {question}] {answer}", { question, answer: notice.answer }),
+        questionId: question,
+        question: items?.[0] ?? t("Answer to {question}", { question }),
+        ...(items === undefined ? {} : { items: [...items] }),
+        answer: notice.answer,
         ...time,
       };
     }
@@ -597,6 +617,12 @@ function mapNotice(
         {
           ticketId: notice.ticketId,
         },
+      );
+    case "panel-withdrawn":
+      return event(
+        "intervene",
+        t("You withdrew a message to {ticket} before it was read", { ticket: notice.ticketId }),
+        { ticketId: notice.ticketId, detail: notice.text },
       );
     case "handoff-nudge":
       return event("notice", t("The context is long; the Router was asked to hand off"));
@@ -756,36 +782,6 @@ function mapToolStep(
     ...(result?.durationMs === undefined ? {} : { ms: result.durationMs }),
     ...(output ? { output } : {}),
   };
-}
-
-function formatToolLabel(name: string, args: Record<string, unknown>): string {
-  if (name === "read") {
-    const path = typeof args.path === "string" ? args.path : "";
-    const query = typeof args.query === "string" ? `?query=${args.query}` : "";
-    const offset = typeof args.offset === "number" ? `:${args.offset}` : "";
-    return `${path}${offset}${query}` || "read";
-  }
-  if (name === "bash") return typeof args.command === "string" ? args.command : "bash";
-  if (name === "edit" || name === "write") return typeof args.path === "string" ? args.path : name;
-  if (name === "memory") {
-    const action = typeof args.action === "string" ? args.action : "";
-    const scope = typeof args.scope === "string" ? args.scope : "";
-    const target =
-      typeof args.file === "string"
-        ? `/${args.file}`
-        : typeof args.change === "number"
-          ? ` #${args.change}`
-          : "";
-    return `${action} ${scope}${target}`.trim() || "memory";
-  }
-  if (name === "handoff") {
-    const summary = typeof args.summary === "string" ? args.summary : "";
-    return summary.length > 60 ? `${summary.slice(0, 60)}…` : summary || "handoff";
-  }
-  const firstStr = Object.values(args).find((v): v is string => typeof v === "string");
-  if (firstStr) return firstStr.length > 80 ? `${firstStr.slice(0, 80)}…` : firstStr;
-  const json = JSON.stringify(args);
-  return json === "{}" ? name : json.slice(0, 80);
 }
 
 function extractTextAndTime(entry: EntryRecord): { text: string; at?: number } {

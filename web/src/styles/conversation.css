@@ -16,6 +16,8 @@
   min-height: 0;
   overflow-y: auto;
   overflow-anchor: none;
+  /* The chat column itself is a container: the outline rail hides when it runs out of room. */
+  container: chat / inline-size;
   /* Content dissolves under the header and into the composer instead of being cut by a line. */
   mask-image: linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
 }
@@ -58,12 +60,12 @@
 }
 
 /* While output is still arriving below, the button says so; pointing at it shows where it goes. */
-.to-latest.live > .ico,
-.to-latest.live:is(:hover, :focus-visible) > .glyph {
+.to-latest.live>.ico,
+.to-latest.live:is(:hover, :focus-visible)>.glyph {
   display: none;
 }
 
-.to-latest.live:is(:hover, :focus-visible) > .ico {
+.to-latest.live:is(:hover, :focus-visible)>.ico {
   display: block;
 }
 
@@ -175,12 +177,12 @@
   margin: 0;
 }
 
-.msg-ai > * + *,
-.msg-ai blockquote > * + * {
+.msg-ai>*+*,
+.msg-ai blockquote>*+* {
   margin-top: calc(10px * var(--ev-scale));
 }
 
-.msg-ai > * + :is(h1, h2, h3, h4, h5, h6) {
+.msg-ai>*+ :is(h1, h2, h3, h4, h5, h6) {
   margin-top: calc(20px * var(--ev-scale));
 }
 
@@ -204,8 +206,8 @@
   padding-left: calc(22px * var(--ev-scale));
 }
 
-.msg-ai li + li,
-.msg-ai li > * + * {
+.msg-ai li+li,
+.msg-ai li>*+* {
   margin-top: calc(4px * var(--ev-scale));
 }
 
@@ -270,7 +272,7 @@
   color: var(--ev-label-2);
 }
 
-.msg-ai > hr {
+.msg-ai>hr {
   margin-block: calc(18px * var(--ev-scale));
   border: 0;
   border-top: 1px solid var(--ev-separator);
@@ -389,7 +391,7 @@
   color: var(--ev-label-2);
 }
 
-.proc > summary,
+.proc>summary,
 .note {
   display: flex;
   align-items: center;
@@ -403,23 +405,23 @@
   corner-shape: squircle;
 }
 
-.proc > summary {
+.proc>summary {
   list-style: none;
   cursor: pointer;
   user-select: none;
   transition: color var(--ev-fast) var(--ev-ease);
 }
 
-.proc > summary::-webkit-details-marker {
+.proc>summary::-webkit-details-marker {
   display: none;
 }
 
-.proc > summary:hover,
-.proc[open] > summary {
+.proc>summary:hover,
+.proc[open]>summary {
   color: var(--ev-label);
 }
 
-.proc > summary:focus-visible {
+.proc>summary:focus-visible {
   box-shadow: var(--ev-ring-in);
 }
 
@@ -428,7 +430,7 @@
   transition: transform var(--ev-fast) var(--ev-ease);
 }
 
-.proc[open] > summary .chev {
+.proc[open]>summary .chev {
   transform: rotate(90deg);
 }
 
@@ -442,7 +444,7 @@
   font-size: var(--ev-footnote);
 }
 
-.proc > :not(summary) {
+.proc> :not(summary) {
   animation: ev-fade var(--ev-regular) var(--ev-ease);
 }
 
@@ -471,8 +473,8 @@
   height: var(--ev-icon-xs);
 }
 
-.note > .ico,
-.note > .glyph {
+.note>.ico,
+.note>.glyph {
   color: var(--ev-label-3);
 }
 
@@ -487,7 +489,7 @@
 }
 
 /* Consecutive gray lines read as one block. */
-:is(.proc, .note) + :is(.proc, .note) {
+:is(.proc, .note)+ :is(.proc, .note) {
   margin-top: calc(-6px * var(--ev-scale));
 }
 
@@ -548,9 +550,9 @@
   background: var(--ev-code);
 }
 
-.proc > .step-out,
-.proc > .tsheet,
-.proc > .diff {
+.proc>.step-out,
+.proc>.tsheet,
+.proc>.diff {
   margin-left: calc(13px * var(--ev-scale));
 }
 
@@ -567,7 +569,7 @@
   box-shadow: var(--ev-shadow-card);
 }
 
-.failure > .ico {
+.failure>.ico {
   color: var(--ev-bad);
 }
 
@@ -687,7 +689,7 @@
   font: var(--ev-footnote) / 1.65 var(--ev-font-mono);
 }
 
-.proc > .diff {
+.proc>.diff {
   margin-top: calc(2px * var(--ev-scale));
   margin-bottom: calc(6px * var(--ev-scale));
   max-height: calc(320px * var(--ev-scale));
@@ -708,19 +710,19 @@
   grid-template-columns: calc(40px * var(--ev-scale)) calc(18px * var(--ev-scale)) minmax(0, 1fr);
 }
 
-.diff .ln > span:not(:last-child) {
+.diff .ln>span:not(:last-child) {
   padding-right: calc(8px * var(--ev-scale));
   text-align: right;
   color: var(--ev-label-3);
   user-select: none;
 }
 
-.diff .ln > .mk {
+.diff .ln>.mk {
   padding: 0;
   text-align: center;
 }
 
-.diff .ln > span:last-child {
+.diff .ln>span:last-child {
   padding-right: calc(14px * var(--ev-scale));
 }
 
@@ -746,7 +748,7 @@
   background: color-mix(in oklab, var(--ev-label) 3%, transparent);
 }
 
-.file-diff + .file-diff {
+.file-diff+.file-diff {
   margin-top: calc(12px * var(--ev-scale));
 }
 
@@ -854,7 +856,7 @@
   opacity: 0.45;
 }
 
-.run-trigger > .ico {
+.run-trigger>.ico {
   flex: none;
   color: var(--ev-label-3);
 }
@@ -883,11 +885,11 @@
   position: relative;
 }
 
-.run-menu > .run-item > .pop-row {
+.run-menu>.run-item>.pop-row {
   height: calc(32px * var(--ev-scale));
 }
 
-.run-menu > .run-item > .pop-row > .ico {
+.run-menu>.run-item>.pop-row>.ico {
   color: var(--ev-label-3);
 }
 
@@ -1187,7 +1189,7 @@
   font: var(--ev-footnote) / 1 var(--ev-font-mono);
 }
 
-.header > .back-btn {
+.header>.back-btn {
   margin-left: calc(-10px * var(--ev-scale));
 }
 
@@ -1301,7 +1303,182 @@
   }
 }
 
-:is(.proc, .note, .worked) + :is(.proc, .note, .worked) {
+:is(.proc, .note, .worked)+ :is(.proc, .note, .worked) {
+  margin-top: calc(-6px * var(--ev-scale));
+}
+
+/* ——— What a folded worker turn changed: "Edited 3 files +42 −7" ——— */
+.worked-files {
+  margin: calc(1px * var(--ev-scale)) 0 0 calc(6px * var(--ev-scale));
+}
+
+.worked-files-h {
+  display: flex;
+  align-items: center;
+  gap: calc(7px * var(--ev-scale));
+  min-height: calc(22px * var(--ev-scale));
+  max-width: 100%;
+  padding: calc(2px * var(--ev-scale)) calc(6px * var(--ev-scale));
+  margin-left: calc(-6px * var(--ev-scale));
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+  transition: color var(--ev-fast) var(--ev-ease);
+}
+
+.worked-files-h:hover,
+.worked-files-h:focus-visible {
+  color: var(--ev-label);
+}
+
+.worked-files-h .plus,
+.worked-files-h .minus {
+  margin-left: calc(4px * var(--ev-scale));
+  font-family: var(--ev-font-mono);
+}
+
+.worked-files-h .chev {
+  color: var(--ev-label-3);
+  transition: transform var(--ev-fast) var(--ev-ease);
+}
+
+.worked-files-h .chev.open {
+  transform: rotate(90deg);
+}
+
+.worked-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1px * var(--ev-scale));
+  margin: calc(2px * var(--ev-scale)) 0 calc(4px * var(--ev-scale)) calc(10px * var(--ev-scale));
+  animation: ev-fade var(--ev-regular) var(--ev-ease);
+}
+
+.worked-file {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ev-scale));
+  min-height: calc(22px * var(--ev-scale));
+  max-width: 100%;
+  padding: calc(2px * var(--ev-scale)) calc(6px * var(--ev-scale));
+  border-radius: var(--ev-r-mini);
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-2);
+  text-align: left;
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    color var(--ev-fast) var(--ev-ease);
+}
+
+.worked-file:hover,
+.worked-file:focus-visible {
+  color: var(--ev-label);
+  background: var(--ev-hover);
+}
+
+/* A jumped-to edit lights up briefly so the eye lands on it. */
+.proc.flash {
+  animation: ev-flash 1.2s var(--ev-ease);
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+}
+
+@keyframes ev-flash {
+  0% {
+    background: color-mix(in oklab, var(--ev-label) 14%, transparent);
+  }
+
+  100% {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .proc.flash {
+    animation: none;
+  }
+}
+
+/* ——— The working clock at the tail of a running turn ——— */
+.turn-working {
+  display: flex;
+  align-items: center;
+  gap: calc(7px * var(--ev-scale));
+  min-height: calc(26px * var(--ev-scale));
+  width: fit-content;
+  padding: calc(3px * var(--ev-scale)) calc(6px * var(--ev-scale));
+  margin-left: calc(-6px * var(--ev-scale));
+  font-size: var(--ev-control);
+  color: var(--ev-label-2);
+}
+
+.turn-working .glyph {
+  width: var(--ev-icon-xs);
+  height: var(--ev-icon-xs);
+}
+
+/* ——— A model's thought: a quiet line that opens into the reasoning ——— */
+.thinking-line {
+  font-size: var(--ev-control);
+  line-height: 1.385;
+  color: var(--ev-label-2);
+}
+
+.thinking-head {
+  display: flex;
+  align-items: center;
+  gap: calc(7px * var(--ev-scale));
+  min-height: calc(26px * var(--ev-scale));
+  width: fit-content;
+  max-width: 100%;
+  padding: calc(3px * var(--ev-scale)) calc(6px * var(--ev-scale));
+  margin-left: calc(-6px * var(--ev-scale));
+  border-radius: var(--ev-r-sm);
+  corner-shape: squircle;
+  color: inherit;
+  text-align: left;
+  transition: color var(--ev-fast) var(--ev-ease);
+}
+
+.thinking-head:hover:not(:disabled),
+.thinking-line.open .thinking-head {
+  color: var(--ev-label);
+}
+
+.thinking-head:focus-visible {
+  box-shadow: var(--ev-ring-in);
+}
+
+.thinking-head .chev {
+  color: var(--ev-label-3);
+  transition: transform var(--ev-fast) var(--ev-ease);
+}
+
+.thinking-line.open .chev {
+  transform: rotate(90deg);
+}
+
+.thinking-label {
+  flex: none;
+}
+
+.thinking-preview {
+  min-width: 0;
+  color: var(--ev-label-3);
+  font-size: var(--ev-footnote);
+}
+
+.thinking-body {
+  margin: calc(2px * var(--ev-scale)) 0 calc(6px * var(--ev-scale)) calc(13px * var(--ev-scale));
+  padding-left: calc(12px * var(--ev-scale));
+  box-shadow: inset 1px 0 0 var(--ev-separator);
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-2);
+  animation: ev-fade var(--ev-regular) var(--ev-ease);
+}
+
+:is(.proc, .note, .worked, .thinking-line)+ :is(.proc, .note, .worked, .thinking-line) {
   margin-top: calc(-6px * var(--ev-scale));
 }
 
@@ -1369,7 +1546,9 @@ button.step-row:focus-visible {
 /* ——— Conversation outline: a slim tick rail at the chat's right edge ——— */
 .outline-dock {
   position: sticky;
-  top: 50%;
+  /* Status marks hanging under the rail toggle ride the same gutter; the page sets
+     --ev-rail-marks to their count so the rail sits clear of them. */
+  top: calc(50% + var(--ev-rail-marks, 0) * calc(38px * var(--ev-scale)));
   z-index: 6;
   height: 0;
   display: flex;
@@ -1424,8 +1603,8 @@ button.step-row:focus-visible {
   background: var(--ev-label);
 }
 
-/* The rail needs a gutter beside the 720px column; hide it when they would touch. */
-@container main (max-width: 57.1429em) {
+/* The rail rides in the chat column's gutter; below about 720px of chat there is none. */
+@container chat (max-width: 45em) {
   .outline-dock {
     display: none;
   }
@@ -1443,9 +1622,33 @@ button.step-row:focus-visible {
   animation: ev-fade var(--ev-regular) var(--ev-ease);
 }
 
-.outline-list .o-text {
+/* Two lines of text make an outline row taller than a plain pop row. */
+.outline-list .pop-row {
+  height: auto;
+  min-height: calc(34px * var(--ev-scale));
+  padding: calc(5px * var(--ev-scale)) calc(10px * var(--ev-scale));
+}
+
+.outline-list .o-col {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.outline-list .o-text {
+  min-width: 0;
+}
+
+/* The turn's answer under its question, dim and held to two lines. */
+.outline-list .o-reply {
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* ——— Quote a selection into the composer ——— */
@@ -1493,4 +1696,141 @@ button.step-row:focus-visible {
   min-width: 0;
   font-size: var(--ev-body);
   color: var(--ev-label);
+}
+
+/* ——— Queued lines waiting above the composer ——— */
+.qdock {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--ev-scale));
+}
+
+.qrow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ev-scale));
+  min-height: calc(34px * var(--ev-scale));
+  padding: calc(4px * var(--ev-scale)) calc(6px * var(--ev-scale)) calc(4px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  border-radius: var(--ev-r-md);
+  corner-shape: squircle;
+  font-size: var(--ev-control);
+  color: var(--ev-label);
+  background: var(--ev-card);
+  box-shadow: var(--ev-shadow-card);
+  animation: ev-rise var(--ev-regular) var(--ev-ease);
+}
+
+.qrow:focus-visible {
+  box-shadow: var(--ev-shadow-card), var(--ev-ring-in);
+  outline: none;
+}
+
+.qmode {
+  flex: none;
+  padding: calc(2px * var(--ev-scale)) calc(6px * var(--ev-scale));
+  border-radius: var(--ev-r-mini);
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+  color: var(--ev-label-2);
+  background: color-mix(in oklab, var(--ev-label) 7%, transparent);
+}
+
+.qtext {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: var(--ev-control);
+  line-height: 1.45;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ev-prose);
+}
+
+.qtext.open {
+  display: block;
+  overflow: visible;
+}
+
+.qstrip-asker {
+  flex: none;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.qstrip-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ev-scale));
+  font-size: var(--ev-control);
+  font-weight: 500;
+  text-align: left;
+  color: var(--ev-user-ink);
+}
+
+.qstrip-sep {
+  color: var(--ev-user-ink);
+  opacity: 0.6;
+}
+
+.qmore {
+  flex: none;
+  font-size: var(--ev-footnote);
+  color: var(--ev-user-ink);
+  opacity: 0.7;
+}
+
+.opt.sm {
+  min-height: calc(26px * var(--ev-scale));
+  padding: calc(2px * var(--ev-scale)) calc(8px * var(--ev-scale));
+  margin: 0;
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+}
+
+.rec-dot {
+  flex: none;
+  width: calc(6px * var(--ev-scale));
+  height: calc(6px * var(--ev-scale));
+  border-radius: 50%;
+  background: var(--ev-user);
+}
+
+.qstatus {
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-2);
+}
+
+.qcustom {
+  padding: calc(4px * var(--ev-scale)) calc(10px * var(--ev-scale));
+  font-size: var(--ev-body);
+  line-height: 1.43;
+  color: var(--ev-prose);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.opt:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* A question answer the reader can reopen. */
+.msg-user.qa.clickable {
+  cursor: pointer;
+}
+
+.msg-user.qa.clickable:focus-visible {
+  outline: none;
+  box-shadow: var(--ev-ring-in);
+}
+
+.qa-item+.qa-item {
+  margin-top: calc(8px * var(--ev-scale));
 }

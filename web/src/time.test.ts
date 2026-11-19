@@ -5,6 +5,7 @@ import {
   formatDurationMs,
   formatElapsedSeconds,
   formatRelativeTime,
+  formatWorkingClock,
 } from "./time.ts";
 
 test("relative time supports long and short forms", () => {
@@ -30,4 +31,11 @@ test("clock time, milliseconds and seconds formatting", () => {
   assert.equal(formatDurationMs(2340), "2.3s");
   assert.equal(formatElapsedSeconds(125), "2:05");
   assert.equal(formatElapsedSeconds(3661), "1:01:01");
+});
+
+test("the working clock reads m:ss, h:mm:ss past an hour, never below 0:01", () => {
+  assert.equal(formatWorkingClock(0), "0:01");
+  assert.equal(formatWorkingClock(0.4), "0:01");
+  assert.equal(formatWorkingClock(83), "1:23");
+  assert.equal(formatWorkingClock(3725), "1:02:05");
 });

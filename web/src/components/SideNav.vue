@@ -155,7 +155,6 @@ onUnmounted(() => {
       class="nav-row"
       :class="{ on: route.name === 'home' }"
       :href="formatRoute({ name: 'home' })"
-      :title="t('Home')"
       @click="$emit('navigate')"
     >
       <Icon name="home" size="sm" />
@@ -165,7 +164,6 @@ onUnmounted(() => {
     <button
       type="button"
       class="nav-row"
-      :title="t('New project')"
       @click="
         hideHoverImmediate();
         $emit('new-project');

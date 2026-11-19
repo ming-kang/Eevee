@@ -39,6 +39,7 @@ export type EngineEvent =
       whenBusy: Delivery["whenBusy"];
     }
   | { type: "panel-interrupt"; id: string; ticketId: TicketId }
+  | { type: "panel-withdrawn"; id: string; ticketId: TicketId; text: string }
   | { type: "handoff-nudge"; epoch: number }
   | {
       type: "router-message";
@@ -106,6 +107,9 @@ export function route(event: EngineEvent): Delivery[] {
       const answer: Notice = {
         type: "answer",
         questionId: question.id,
+        ...(question.items.length === 0
+          ? {}
+          : { question: question.items.map((item) => item.text) }),
         answer: question.answer ?? "",
       };
       const id = `answer:${question.id}`;
@@ -138,6 +142,15 @@ export function route(event: EngineEvent): Delivery[] {
           ROUTER,
           { type: "panel-interrupt", ticketId: event.ticketId },
           `panel-interrupt:${event.id}`,
+        ),
+      ];
+
+    case "panel-withdrawn":
+      return [
+        record(
+          ROUTER,
+          { type: "panel-withdrawn", ticketId: event.ticketId, text: event.text },
+          `panel-withdrawn:${event.id}`,
         ),
       ];
 
@@ -216,7 +229,11 @@ function speak(notice: WordedNotice): string {
     case "cancelled":
       return `${notice.ticketId} “${notice.title}” was cancelled (${notice.reason}); the tickets waiting on it (${notice.waiting.join(", ")}) will need to be arranged again.`;
     case "answer": {
-      const answer = `The user answered question ${notice.questionId}:\n${notice.answer}`;
+      const text = notice.question?.[0];
+      const answer =
+        text !== undefined && notice.question?.length === 1
+          ? `The user answered question ${notice.questionId} (“${text}”):\n${notice.answer}`
+          : `The user answered question ${notice.questionId}:\n${notice.answer}`;
       if (notice.forwardedTo === undefined) return answer;
       return `The user answered ${notice.questionId}; the answer went straight to ${notice.forwardedTo}.\n${answer}`;
     }
@@ -228,6 +245,8 @@ function speak(notice: WordedNotice): string {
       return `The user sent a message straight to ${notice.ticketId}:\n${notice.text}`;
     case "panel-interrupt":
       return `The user interrupted the current turn of ${notice.ticketId} from the panel.`;
+    case "panel-withdrawn":
+      return `The user withdrew the message sent to ${notice.ticketId} before it was read:\n${notice.text}`;
     case "handoff-nudge":
       return "Your context has grown very long. First record the decisions with long-term value in memory, then write a handoff summary with handoff and continue from a fresh context.";
     case "reminder": {

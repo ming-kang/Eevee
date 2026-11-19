@@ -71,7 +71,10 @@ function pick(key: string): void {
         role="listitem"
         @click="pick(entry.key)"
       >
-        <span class="o-text ellipsis">{{ entry.text || t("Message") }}</span>
+        <span class="o-col">
+          <span class="o-text ellipsis">{{ entry.text || t("Message") }}</span>
+          <span v-if="entry.reply" class="o-reply">{{ entry.reply }}</span>
+        </span>
         <span v-if="entry.at !== undefined" class="meta">{{ formatClockTime(entry.at) }}</span>
       </button>
     </div>

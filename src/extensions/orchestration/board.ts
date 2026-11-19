@@ -87,6 +87,7 @@ export async function answerQuestion(
   id: QuestionId,
   answer: string,
   at: number,
+  answers?: string[],
 ): Promise<Question> {
   const stored = await tx.doc(QuestionDoc, id, null);
   if (stored.answer !== undefined) {
@@ -95,7 +96,12 @@ export async function answerQuestion(
   if (stored.withdrawnAt !== undefined) {
     throw new ProblemError({ code: "no_question", questionId: id });
   }
-  const answered: Question = { ...stored, answer, answeredAt: at };
+  const answered: Question = {
+    ...stored,
+    answer,
+    answeredAt: at,
+    ...(answers === undefined ? {} : { answers }),
+  };
   Object.assign(stored, answered);
   const board = await tx.doc(Board);
   board.openQuestions = board.openQuestions.filter((open) => open !== id);

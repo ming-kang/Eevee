@@ -100,7 +100,7 @@ export type PaletteItem =
       meta?: string;
       search: string;
       kind: "action";
-      action: "new-project" | "toggle-theme" | "toggle-side";
+      action: "new-project" | "toggle-theme" | "toggle-side" | "toggle-rail";
       icon: "plus" | "moon" | "panel";
     };
 
@@ -109,6 +109,7 @@ export function buildPaletteItems(input: {
   boards: Record<string, { board?: BoardView } | undefined>;
   activeProjectId?: string;
   sideShortcut?: string;
+  railShortcut?: string;
 }): PaletteItem[] {
   const items: PaletteItem[] = [];
   const pid = input.activeProjectId;
@@ -234,6 +235,16 @@ export function buildPaletteItems(input: {
       search: `${t("Toggle sidebar")} sidebar`,
       kind: "action",
       action: "toggle-side",
+      icon: "panel",
+    },
+    {
+      id: "act:toggle-rail",
+      group: t("Actions"),
+      label: t("Toggle tickets panel"),
+      ...(input.railShortcut ? { meta: input.railShortcut } : {}),
+      search: `${t("Toggle tickets panel")} tickets panel rail`,
+      kind: "action",
+      action: "toggle-rail",
       icon: "panel",
     },
   );

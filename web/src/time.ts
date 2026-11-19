@@ -43,6 +43,11 @@ export function formatDurationMs(ms: number): string {
   return `${m}m${s}s`;
 }
 
+/** The running-turn clock: same shape as elapsed time, but never below a second. */
+export function formatWorkingClock(totalSeconds: number): string {
+  return formatElapsedSeconds(Math.max(1, Math.floor(totalSeconds)));
+}
+
 export function formatElapsedSeconds(totalSeconds: number): string {
   const sec = Math.max(0, Math.floor(totalSeconds));
   const h = Math.floor(sec / 3600);

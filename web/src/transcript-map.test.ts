@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   AssistantEntry,
   type EntryId,
@@ -22,7 +23,7 @@ import type {
 } from "../../src/contracts/index.ts";
 import { toSubmission } from "../../src/extensions/orchestration/deliver.ts";
 import { type Delivery, route } from "../../src/extensions/orchestration/delivery.ts";
-import { mapTranscript } from "./transcript-map.ts";
+import { mapTranscript, queuedMessages } from "./transcript-map.ts";
 
 const entry = (
   id: number,
@@ -399,8 +400,6 @@ test("worker mode maps the opening, file diffs, bash (running and backgrounded) 
   const mapped = mapTranscript(items, {
     mode: "worker",
     ticketId: "t2",
-    ticketStatus: "open",
-    ticketStage: "review",
     reports: [
       {
         ticketId: "t2",
@@ -418,7 +417,7 @@ test("worker mode maps the opening, file diffs, bash (running and backgrounded) 
 
   assert.deepEqual(
     mapped.map((m) => m.kind),
-    ["opening", "user", "edit", "bash", "report", "idle"],
+    ["opening", "user", "edit", "bash", "report"],
   );
   if (mapped[2]?.kind === "edit") {
     assert.equal(mapped[2].path, "sim/config.yaml");
@@ -436,8 +435,82 @@ test("worker mode maps the opening, file diffs, bash (running and backgrounded) 
     assert.equal(mapped[4].report.status, "ready");
     assert.equal(mapped[4].report.handled, false);
   }
-  if (mapped[5]?.kind === "idle") {
-    assert.match(mapped[5].text, /Router to review/);
+});
+
+test("thinking blocks map to thought lines, redacted ones flagged, live ones streaming", () => {
+  const assistant = (
+    id: number,
+    content: AssistantMessage["content"],
+    timestamp: number,
+  ): TranscriptItem =>
+    entry(id, AssistantEntry.kind, [
+      {
+        role: "assistant",
+        content,
+        api: "faux",
+        provider: "faux",
+        model: "m1",
+        usage: {} as never,
+        stopReason: "stop",
+        timestamp,
+      },
+    ]);
+
+  const mapped = mapTranscript(
+    [
+      assistant(
+        1,
+        [
+          { type: "thinking", thinking: "  let me compare the two meshes  " },
+          { type: "text", text: "the finer mesh wins" },
+        ],
+        100,
+      ),
+      assistant(2, [{ type: "thinking", thinking: "", redacted: true }], 200),
+      assistant(3, [{ type: "thinking", thinking: "   " }], 300),
+    ],
+    { mode: "router" },
+  );
+  assert.deepEqual(
+    mapped.map((m) => m.kind),
+    ["thinking", "assistant", "thinking"],
+  );
+  if (mapped[0]?.kind === "thinking") {
+    assert.equal(mapped[0].text, "let me compare the two meshes");
+    assert.equal(mapped[0].redacted, undefined);
+  }
+  if (mapped[2]?.kind === "thinking") {
+    assert.equal(mapped[2].redacted, true);
+    assert.equal(mapped[2].text, "");
+  }
+
+  const live: LiveState = {
+    run: { taskId: 5 as never, inputs: [], turns: 1 },
+    generation: {
+      attempt: 1,
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "still weighing the mesh" },
+          { type: "text", text: "partial" },
+        ],
+        api: "faux",
+        provider: "faux",
+        model: "m1",
+        usage: {} as never,
+        stopReason: "stop",
+        timestamp: 400,
+      },
+    },
+  };
+  const during = mapTranscript([], { mode: "router", live });
+  assert.deepEqual(
+    during.map((m) => m.kind),
+    ["thinking", "assistant"],
+  );
+  if (during[0]?.kind === "thinking") {
+    assert.equal(during[0].streaming, true);
+    assert.equal(during[0].text, "still weighing the mesh");
   }
 });
 
@@ -577,8 +650,7 @@ test("notices from the backend route() each map to one line, long content foldin
   );
 });
 
-test("undelivered messages sit at the end of the conversation marked pending; system entries do not show", () => {
-  const live: LiveState = { run: { taskId: 5 as never, inputs: [], turns: 1 } };
+test("queued messages come out of the inbox for the dock; Engine entries stay hidden", () => {
   const inbox: InboxState = {
     items: [
       { id: 7 as never, mode: "steer", content: "add the convergence analysis to chapter 3" },
@@ -587,19 +659,97 @@ test("undelivered messages sit at the end of the conversation marked pending; sy
         mode: "followUp",
         content: [{ type: "text", text: "recheck the equation numbers" }],
       },
-      { id: 9 as never, mode: "write", entry: { kind: "eevee.notice" } },
+      {
+        id: 9 as never,
+        mode: "followUp",
+        content: "a report, not yours",
+        entry: { kind: "eevee.notice" },
+      },
+      { id: 10 as never, mode: "write", entry: { kind: "eevee.notice" } },
+      { id: 11 as never, mode: "steer", content: "   " },
     ],
   };
-  const out = mapTranscript([], { mode: "worker", live, inbox });
-  const pending = out.filter((item) => item.kind === "user");
-  assert.deepEqual(
-    pending.map((item) => (item.kind === "user" ? [item.key, item.text, item.pending] : [])),
-    [
-      ["q:7", "add the convergence analysis to chapter 3", true],
-      ["q:8", "recheck the equation numbers", true],
-    ],
-  );
-  assert.equal(out.at(-1)?.kind, "user");
+  assert.deepEqual(queuedMessages(inbox), [
+    { id: "7", text: "add the convergence analysis to chapter 3", mode: "steer" },
+    { id: "8", text: "recheck the equation numbers", mode: "followUp" },
+  ]);
+});
+
+test("an answered question maps to a qa bubble in both modes, keeping the item texts", () => {
+  const items: TranscriptItem[] = [
+    noticeEntry(1, "(model text)", {
+      type: "answer",
+      questionId: "q1",
+      question: ["which one"],
+      answer: "alpha",
+    }),
+  ];
+  for (const mode of ["router", "worker"] as const) {
+    const [item] = mapTranscript(items, { mode });
+    assert.equal(item?.kind, "qa");
+    if (item?.kind === "qa") {
+      assert.equal(item.questionId, "q1");
+      assert.equal(item.question, "which one");
+      assert.deepEqual(item.items, ["which one"]);
+      assert.equal(item.answer, "alpha");
+    }
+  }
+});
+
+test("an old answer notice finds its question text in the transcript's ask_user call", () => {
+  const items: TranscriptItem[] = [
+    entry(1, AssistantEntry.kind, [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "c1",
+            name: "ask_user",
+            arguments: { items: [{ text: "which one" }] },
+          },
+        ],
+        api: "faux",
+        provider: "faux",
+        model: "m1",
+        usage: {} as never,
+        stopReason: "stop",
+        timestamp: 100,
+      },
+    ]),
+    entry(2, ToolResultEntry.kind, [
+      {
+        role: "toolResult",
+        toolCallId: "c1",
+        toolName: "ask_user",
+        content: [{ type: "text", text: "Asked q1" }],
+        details: { questionId: "q1" },
+        isError: false,
+        timestamp: 200,
+      },
+    ]),
+    noticeEntry(3, "(model text)", { type: "answer", questionId: "q1", answer: "alpha" }),
+  ];
+  const qa = mapTranscript(items, { mode: "router" }).find((item) => item.kind === "qa");
+  assert.equal(qa?.kind, "qa");
+  if (qa?.kind === "qa") {
+    assert.equal(qa.question, "which one");
+    assert.deepEqual(qa.items, ["which one"]);
+  }
+});
+
+test("an answer notice with no text anywhere falls back to the generic label", () => {
+  const items: TranscriptItem[] = [
+    noticeEntry(1, "(model text)", { type: "answer", questionId: "q3", answer: "yes" }),
+  ];
+  for (const mode of ["router", "worker"] as const) {
+    const [item] = mapTranscript(items, { mode });
+    assert.equal(item?.kind, "qa");
+    if (item?.kind === "qa") {
+      assert.equal(item.question, "Answer to q3");
+      assert.equal(item.items, undefined);
+    }
+  }
 });
 
 test("a report the Engine wrote for the model is worded by origin, not by its model-facing summary", () => {

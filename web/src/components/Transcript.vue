@@ -1,12 +1,15 @@
 <script setup lang="ts">
+import type { QuestionId } from "@shared/contracts/index.ts";
 import type { TicketView } from "@shared/api/contract.ts";
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useComposerInsert } from "../composer-bridge.ts";
 import type { GapItem } from "../conversation.ts";
 import { type FollowEnd, followEnd, isSashDragging, onSashDragEnd } from "../dom.ts";
+import { folds } from "../folds.ts";
 import { t } from "../i18n.ts";
 import { activeEntry, outlineEntries } from "../outline.ts";
 import { quoteMarkdown } from "../quote.ts";
+import { formatWorkingClock } from "../time.ts";
 import { type TranscriptDisplayItem } from "../transcript-map.ts";
 import { finalAssistantKeys, foldTurns } from "../turns.ts";
 import ConversationOutline from "./ConversationOutline.vue";
@@ -22,6 +25,8 @@ const props = withDefaults(
     runningJobIds?: ReadonlySet<string>;
     /** The conversation is mid-run: the newest turn never folds. */
     running?: boolean;
+    /** The conversation's fold-memory scope ("r:<pid>" or "w:<pid>:<ticket>"), "" means forget. */
+    foldScope?: string;
     loadingEarlier?: boolean;
     fillingGaps?: boolean;
     retry?: () => Promise<void>;
@@ -32,6 +37,7 @@ const props = withDefaults(
     tickets: () => [],
     runningJobIds: () => new Set<string>(),
     running: false,
+    foldScope: "",
     loadingEarlier: false,
     fillingGaps: false,
     retry: undefined,
@@ -44,21 +50,13 @@ defineEmits<{
   "open-ticket": [ticketId: string];
   "open-detail": [];
   "open-job": [jobId: string];
+  "open-question": [questionId: QuestionId];
 }>();
 
 const scroller = ref<HTMLElement>();
 
 /** Finished turns folded to their "Worked for …" lines; work still underway stays open. */
 const displayItems = computed(() => foldTurns(props.items, props.running));
-
-/** Which worked groups the reader opened; keyed so a re-fold mid-stream never closes them. */
-const workedOpen = reactive(new Set<string>());
-
-function toggleWorked(key: string): void {
-  if (workedOpen.has(key)) workedOpen.delete(key);
-  else workedOpen.add(key);
-  void nextTick(measureOutline);
-}
 
 /** The last assistant message of each turn: it earns the copy/time action row. */
 const turnFinal = computed(() => finalAssistantKeys(displayItems.value));
@@ -99,9 +97,51 @@ let follow: FollowEnd | undefined;
 const live = computed(() => {
   const last = props.items.at(-1);
   if (!last) return false;
-  if (last.kind === "assistant") return last.streaming === true;
+  if (last.kind === "assistant" || last.kind === "thinking") return last.streaming === true;
   if (last.kind === "tools" || last.kind === "dispatch") return last.live === true;
   return last.kind === "bash" && last.status === "run";
+});
+
+// ——— The running clock: how long the current turn has been at it ———
+
+const nowMs = ref(Date.now());
+let firstSeenRunning = 0;
+let clockTimer: number | undefined;
+
+watch(
+  () => props.running,
+  (on) => {
+    if (clockTimer !== undefined) {
+      window.clearInterval(clockTimer);
+      clockTimer = undefined;
+    }
+    if (on) {
+      if (firstSeenRunning === 0) firstSeenRunning = Date.now();
+      nowMs.value = Date.now();
+      clockTimer = window.setInterval(() => {
+        nowMs.value = Date.now();
+      }, 1000);
+    } else {
+      firstSeenRunning = 0;
+    }
+  },
+  { immediate: true },
+);
+
+/** The turn's start: its inbound line's time, else the moment the run was first seen. */
+const workingClock = computed(() => {
+  if (!props.running) return "";
+  let start = firstSeenRunning;
+  for (const item of [...props.items].reverse()) {
+    if (
+      (item.kind === "user" || item.kind === "qa" || item.kind === "event") &&
+      item.at !== undefined
+    ) {
+      start = item.at;
+      break;
+    }
+  }
+  return formatWorkingClock((nowMs.value - start) / 1000);
 });
 
 /** Back to the newest line, gliding unless the reader asked for less motion. */
@@ -268,6 +308,7 @@ onUnmounted(() => {
   resizeObs?.disconnect();
   offSashEnd?.();
   if (outlineRaf !== 0) cancelAnimationFrame(outlineRaf);
+  if (clockTimer !== undefined) window.clearInterval(clockTimer);
 });
 
 watch(tailKey, async () => {
@@ -280,6 +321,15 @@ watch(displayItems, async () => {
   await nextTick();
   measureOutline();
 });
+
+// A fold opening or closing shifts every tick below it.
+watch(
+  () => folds.revision,
+  async () => {
+    await nextTick();
+    measureOutline();
+  },
+);
 </script>
 
 <template>
@@ -297,18 +347,15 @@ watch(displayItems, async () => {
         <WorkedGroup
           v-if="item.kind === 'worked'"
           :item="item"
-          :open="workedOpen.has(item.key)"
+          :fold-scope="foldScope"
+          :final-keys="turnFinal"
+          :latest-keys="latestKeys"
           :tickets="tickets"
           :running-job-ids="runningJobIds"
-          :loading-earlier="loadingEarlier"
-          :filling-gaps="fillingGaps"
-          :retry="retry"
-          :load-earlier="loadEarlier"
-          :fill-gap="fillGap"
-          @toggle="toggleWorked(item.key)"
           @open-ticket="$emit('open-ticket', $event)"
           @open-detail="$emit('open-detail')"
           @open-job="$emit('open-job', $event)"
+          @open-question="$emit('open-question', $event)"
         />
         <TranscriptItem
           v-else
@@ -322,11 +369,17 @@ watch(displayItems, async () => {
           :fill-gap="fillGap"
           :turn-final="item.kind === 'assistant' && turnFinal.has(item.key)"
           :latest="latestKeys.has(item.key)"
+          :fold-scope="foldScope"
           @open-ticket="$emit('open-ticket', $event)"
           @open-detail="$emit('open-detail')"
           @open-job="$emit('open-job', $event)"
+          @open-question="$emit('open-question', $event)"
         />
       </template>
+      <div v-if="running" class="turn-working">
+        <StageGlyph stage="working" />
+        <span>{{ t("Working") }} · {{ workingClock }}</span>
+      </div>
       <slot name="tail" />
     </div>
     <button

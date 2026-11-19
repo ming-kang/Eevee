@@ -20,6 +20,7 @@ import Sash from "./Sash.vue";
 const props = defineProps<{
   withRail: boolean;
   sideCollapsed: boolean;
+  railCollapsed: boolean;
   drawer: "side" | "rail" | null;
   modalOpen?: boolean;
 }>();
@@ -27,8 +28,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   "close-drawer": [];
   "toggle-side": [];
-  /** The sash asks for an explicit collapsed state (Ctrl/⌘B toggles through "toggle-side"). */
-  "collapse-side": [collapsed: boolean];
+  "toggle-rail": [];
 }>();
 
 /** Widths at which the rail and the sidebar turn into drawers; they match the container queries in `style.css`. */
@@ -61,9 +61,9 @@ const railW = ref(readWidth(localStorage.getItem(RAIL_W_KEY), RAIL, scale.value)
 
 /** The sidebar's rendered width: the icon column while collapsed. */
 const sideColW = computed(() => (props.sideCollapsed ? collapsedW.value : sideW.value));
-/** The rail's width on the grid: 0 while it is a drawer, so it holds no room. */
+/** The rail's width on the grid: 0 while it is collapsed or a drawer, so it holds no room. */
 const railColW = computed(() =>
-  props.withRail && vpWidth.value > RAIL_DRAWER_PX ? railW.value : 0,
+  props.withRail && !props.railCollapsed && vpWidth.value > RAIL_DRAWER_PX ? railW.value : 0,
 );
 const frameStyle = computed(() => ({
   "--ev-sidebar-w": `${sideW.value}px`,
@@ -78,7 +78,7 @@ const persist = (key: string, value: number) => localStorage.setItem(key, String
 // drag runs, the columns and the sash's edge marker take imperative writes — `gridTemplateColumns`
 // on `.frame` and the positioning custom property on the sash element itself, both leaf-level —
 // and the refs + localStorage commit once at the drag's end.
-let dragSide: { width: number; collapsed: boolean } | undefined;
+let dragSide: number | undefined;
 let dragRail: number | undefined;
 
 function sashNode(which: "side" | "rail"): HTMLElement | undefined {
@@ -91,15 +91,11 @@ function sashNode(which: "side" | "rail"): HTMLElement | undefined {
 function applyDrag(): void {
   const el = frame.value;
   if (!el) return;
-  const side =
-    dragSide === undefined
-      ? sideColW.value
-      : dragSide.collapsed
-        ? collapsedW.value
-        : dragSide.width;
+  const side = dragSide ?? sideColW.value;
   const tracks = [`${side}px`, "minmax(0, 1fr)"];
   if (railColW.value > 0 || dragRail !== undefined) {
-    tracks.push(`${dragRail ?? railW.value}px`);
+    // The rail track carries its margin-left gap: collapsing shrinks it to 0 without a stub.
+    tracks.push(`calc(${dragRail ?? railW.value}px + var(--ev-gap))`);
   }
   el.style.gridTemplateColumns = tracks.join(" ");
   if (dragSide !== undefined) {
@@ -116,17 +112,17 @@ function applyDrag(): void {
 function commitDrag(): void {
   const el = frame.value;
   if (el) {
-    if (dragSide !== undefined && !dragSide.collapsed) {
-      el.style.setProperty("--ev-sidebar-w", `${dragSide.width}px`);
+    if (dragSide !== undefined) {
+      el.style.setProperty("--ev-sidebar-w", `${dragSide}px`);
     }
     if (dragRail !== undefined) el.style.setProperty("--ev-rail-w", `${dragRail}px`);
     el.style.removeProperty("grid-template-columns");
     sashNode("side")?.style.removeProperty("--ev-side-col");
     sashNode("rail")?.style.removeProperty("--ev-rail-w");
   }
-  if (dragSide !== undefined && !dragSide.collapsed) {
-    sideW.value = dragSide.width;
-    persist(SIDE_W_KEY, dragSide.width);
+  if (dragSide !== undefined) {
+    sideW.value = dragSide;
+    persist(SIDE_W_KEY, dragSide);
   }
   if (dragRail !== undefined) {
     railW.value = dragRail;
@@ -138,7 +134,6 @@ function commitDrag(): void {
 
 function onSideResize(proposed: number): void {
   dragSide = fitSidebar(proposed, vpWidth.value, railColW.value, scale.value);
-  if (dragSide.collapsed !== props.sideCollapsed) emit("collapse-side", dragSide.collapsed);
   applyDrag();
 }
 
@@ -153,33 +148,18 @@ function onRailStep(proposed: number): void {
 }
 
 function onSideStep(proposed: number): void {
-  // Out of the icon column any widening step opens at least to the minimum, so one ArrowRight
-  // does not sit in the snap-to-collapse zone.
-  if (props.sideCollapsed) {
-    if (proposed > collapsedW.value) {
-      emit("collapse-side", false);
-      sideW.value = Math.max(proposed, sideSpec.value.min);
-      persist(SIDE_W_KEY, sideW.value);
-    }
-    return;
-  }
   // Keyboard steps commit at once; only pointer drags defer to `commitDrag`.
-  const fit = fitSidebar(proposed, vpWidth.value, railColW.value, scale.value);
-  if (fit.collapsed !== props.sideCollapsed) emit("collapse-side", fit.collapsed);
-  if (!fit.collapsed) {
-    sideW.value = fit.width;
-    persist(SIDE_W_KEY, fit.width);
-  }
+  sideW.value = fitSidebar(proposed, vpWidth.value, railColW.value, scale.value);
+  persist(SIDE_W_KEY, sideW.value);
 }
 
 function onSideReset(): void {
-  emit("collapse-side", false);
   sideW.value = fitSidebar(
     sideSpec.value.default,
     vpWidth.value,
     railColW.value,
     scale.value,
-  ).width;
+  );
   persist(SIDE_W_KEY, sideW.value);
 }
 
@@ -194,9 +174,9 @@ function reclamp(): void {
   if (w <= 0) return;
   if (w > SIDE_DRAWER_PX && !props.sideCollapsed) {
     const fit = fitSidebar(sideW.value, w, railColW.value, scale.value);
-    if (fit.width !== sideW.value) {
-      sideW.value = fit.width;
-      persist(SIDE_W_KEY, fit.width);
+    if (fit !== sideW.value) {
+      sideW.value = fit;
+      persist(SIDE_W_KEY, fit);
     }
   }
   if (w > RAIL_DRAWER_PX && props.withRail) {
@@ -313,6 +293,15 @@ useFocusReturn(
 );
 
 function onKeydown(event: KeyboardEvent): void {
+  if (
+    (event.metaKey || event.ctrlKey) &&
+    event.altKey &&
+    event.key.toLowerCase() === "b"
+  ) {
+    event.preventDefault();
+    emit("toggle-rail");
+    return;
+  }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
     event.preventDefault();
     emit("toggle-side");
@@ -361,6 +350,7 @@ onUnmounted(() => {
       :class="{
         'with-rail': withRail,
         'side-collapsed': sideCollapsed,
+        'rail-collapsed': railCollapsed,
       }"
       :style="frameStyle"
     >
@@ -386,7 +376,7 @@ onUnmounted(() => {
         class="rail"
         :class="{ open: drawer === 'rail' }"
         :aria-label="t('Tickets and jobs')"
-        :inert="drawer === 'side'"
+        :inert="drawer === 'side' || (railCollapsed && vpWidth > RAIL_DRAWER_PX)"
         @pointerdown="drawerDown('rail', $event)"
         @pointermove="drawerMove"
         @pointerup="drawerUp"
@@ -395,6 +385,7 @@ onUnmounted(() => {
         <slot name="rail" />
       </aside>
       <Sash
+        v-if="!sideCollapsed"
         side="left"
         :label="t('Resize sidebar')"
         :min="sideSpec.min"
@@ -406,7 +397,7 @@ onUnmounted(() => {
         @reset="onSideReset"
       />
       <Sash
-        v-if="withRail"
+        v-if="withRail && !railCollapsed"
         side="right"
         :label="t('Resize the tickets panel')"
         :min="railSpec.min"

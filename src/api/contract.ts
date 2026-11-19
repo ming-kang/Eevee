@@ -294,6 +294,11 @@ export type ApiRoutes = {
     response: Ok;
   };
   "POST /api/projects/:project/tickets/:ticket/interrupt": { response: Ok };
+  "POST /api/projects/:project/interrupt": { response: Ok };
+  "POST /api/projects/:project/queue/:submission/withdraw": { response: Ok };
+  "POST /api/projects/:project/tickets/:ticket/queue/:submission/withdraw": { response: Ok };
+  "POST /api/projects/:project/tickets/:ticket/queue/:submission/steer": { response: Ok };
+  "GET /api/projects/:project/questions/:question": { response: Question };
   "POST /api/projects/:project/questions/:question/answer": {
     body: Static<BodySchema<"POST /api/projects/:project/questions/:question/answer">>;
     response: Ok;

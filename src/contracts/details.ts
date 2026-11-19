@@ -14,12 +14,21 @@ export type Notice =
   | { type: "delivered"; ticketId: TicketId; to: TicketId[] }
   | { type: "cancelled"; ticketId: TicketId; title: string; reason: string; waiting: TicketId[] }
   /** The user's answer; `forwardedTo` on the Router's copy of an answer that went to a ticket. */
-  | { type: "answer"; questionId: QuestionId; answer: string; forwardedTo?: TicketId }
+  | {
+      type: "answer";
+      questionId: QuestionId;
+      /** The item texts, so a reader can show what was asked without a lookup. */
+      question?: string[];
+      answer: string;
+      forwardedTo?: TicketId;
+    }
   | { type: "job-finished"; jobId: JobId; outcome: JobOutcome; tail: string }
   | { type: "jobs-interrupted"; jobIds: JobId[] }
   /** The Router's copy of what the user sent a ticket directly. */
   | { type: "panel-message"; ticketId: TicketId; text: string }
   | { type: "panel-interrupt"; ticketId: TicketId }
+  /** The user pulled a queued message to a ticket back before the Worker read it. */
+  | { type: "panel-withdrawn"; ticketId: TicketId; text: string }
   | { type: "handoff-nudge" }
   /** The ticket's opening, or a Router message to it: the notice's text is the content itself. */
   | { type: "opening"; ticketId: TicketId }
