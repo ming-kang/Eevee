@@ -64,6 +64,11 @@ export class GitStore {
   }
 
   async commit(paths: readonly string[] | "all", message: CommitMessage): Promise<string> {
+    await this.writeCommit(paths, message);
+    return (await this.#git("rev-parse", "HEAD")).trim();
+  }
+
+  async writeCommit(paths: readonly string[] | "all", message: CommitMessage): Promise<void> {
     if (paths === "all") await this.#git("add", "--all");
     else {
       const unstaged = (await this.#status()).filter(
@@ -82,7 +87,10 @@ export class GitStore {
         .join("\n"),
       ...(paths === "all" ? [] : ["--only", "--", ...paths]),
     );
-    return (await this.#git("rev-parse", "HEAD")).trim();
+  }
+
+  async resetIndex(paths: readonly string[]): Promise<void> {
+    if (paths.length > 0) await this.#git("reset", "-q", "HEAD", "--", ...paths);
   }
 
   async log(): Promise<GitChange[]> {
