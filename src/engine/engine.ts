@@ -1,25 +1,25 @@
 import type { Context } from "@earendil-works/chord/context";
+import { ConfigError, processEnv, resolveConfigValue } from "../config/load.ts";
+import type { ProviderConfig } from "../config/models.ts";
+import type { RoleSettings, SettingsStore } from "../config/settings.ts";
+import { type ModelChoice, ProblemError, ROLE_NAMES, type RoleName } from "../domain/index.ts";
 import type {
   CapabilitiesView,
   ModelsView,
   ProbeModelsInput,
   ProjectSummary,
-} from "../api/contract.ts";
-import { type ModelChoice, ProblemError, ROLE_NAMES, type RoleName } from "../contracts/index.ts";
-import type { ProviderConfig } from "../contracts/models-config.ts";
-import { mcpExtensionName } from "../extensions/mcp/index.ts";
-import { MemoryRepo } from "../extensions/memory/index.ts";
-import { type BuiltinModelRef, matchBuiltinModels } from "../models/builtin-catalog.ts";
-import { buildModelsView } from "../models/catalog.ts";
-import type { ModelRuntime } from "../models/index.ts";
-import { type ProbeResult, probeModels } from "../models/probe.ts";
-import { roleExtensions } from "../roles/index.ts";
-import { ConfigError, processEnv, resolveConfigValue } from "../shared/config.ts";
+} from "../protocol/contract.ts";
 import { readText } from "../shared/fs.ts";
 import type { EeveePaths } from "../shared/paths.ts";
-import type { RoleSettings, SettingsStore } from "../shared/settings.ts";
+import { mcpExtensionName } from "./extensions/mcp/index.ts";
+import { MemoryRepo } from "./extensions/memory/index.ts";
+import { type BuiltinModelRef, matchBuiltinModels } from "./models/builtin-catalog.ts";
+import { buildModelsView } from "./models/catalog.ts";
+import type { ModelRuntime } from "./models/index.ts";
+import { type ProbeResult, probeModels } from "./models/probe.ts";
 import { createProjectMeta, listProjects } from "./project.ts";
 import { ProjectHost } from "./project-host.ts";
+import { roleExtensions } from "./roles/index.ts";
 import { SharedExtensions, type SharedExtensionsOptions } from "./shared-extensions.ts";
 
 export type EngineOptions = {

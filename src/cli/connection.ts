@@ -1,5 +1,5 @@
-import { type Client, createClient } from "../api/client.ts";
-import { isAlive, type RuntimeRecord, readRuntimeRecord } from "../engine/instance.ts";
+import { isAlive, type RuntimeRecord, readRuntimeRecord } from "../daemon/instance.ts";
+import { type Client, createClient } from "../protocol/client.ts";
 import { readText } from "../shared/fs.ts";
 import type { EeveePaths } from "../shared/paths.ts";
 

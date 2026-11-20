@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
-import type { BoardView, ProjectSummary } from "@shared/api/contract.ts";
+import type { Client } from "@shared/protocol/client.ts";
+import type { BoardView, ProjectSummary } from "@shared/protocol/contract.ts";
 import { computed } from "vue";
 import {
   collectRunningJobs,

@@ -1,11 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { num, obj, opt, str } from "@earendil-works/pi-schema";
-import type { ProjectSummary } from "../api/contract.ts";
-import { parseConfig } from "../shared/config.ts";
+import { parseConfig } from "../config/load.ts";
+import { ModelDefaultsSchema } from "../config/settings.ts";
+import type { ProjectSummary } from "../protocol/contract.ts";
 import { readJson, writeJsonAtomic } from "../shared/fs.ts";
 import type { EeveePaths } from "../shared/paths.ts";
-import { ModelDefaultsSchema } from "../shared/settings.ts";
 
 export type ProjectMeta = ProjectSummary;
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { BoardView, ProjectSummary, TicketView } from "../../../src/api/contract.ts";
-import type { Question, TicketId, TicketStage } from "../../../src/contracts/index.ts";
+import type { Question, TicketId, TicketStage } from "../../../src/domain/index.ts";
+import type { BoardView, ProjectSummary, TicketView } from "../../../src/protocol/contract.ts";
 import { buildHomeBoard, DONE_LIMIT, DONE_WINDOW_MS } from "./home.ts";
 
 const NOW = 1_000_000_000;

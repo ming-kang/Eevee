@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { BuiltinModelView } from "@shared/api/contract.ts";
+import type { BuiltinModelView } from "@shared/protocol/contract.ts";
 import { fromRows, isEnvReference, parseTokenCount, toRows } from "./fields.ts";
 import {
   addProbed,

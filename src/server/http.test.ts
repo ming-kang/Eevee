@@ -5,8 +5,8 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { TOKEN_HEADER } from "../api/contract.ts";
-import { ProblemError } from "../contracts/index.ts";
+import { ProblemError } from "../domain/index.ts";
+import { TOKEN_HEADER } from "../protocol/contract.ts";
 import { Auth } from "./auth.ts";
 import { createHttpServer, type RouteTable } from "./http.ts";
 

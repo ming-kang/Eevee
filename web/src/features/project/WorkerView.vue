@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
-import type { TicketView } from "@shared/api/contract.ts";
-import type { Question, QuestionId, TicketId } from "@shared/contracts/index.ts";
+import type { Client } from "@shared/protocol/client.ts";
+import type { TicketView } from "@shared/protocol/contract.ts";
+import type { Question, QuestionId, TicketId } from "@shared/domain/index.ts";
 import { computed, ref, type ShallowRef, watch } from "vue";
 import { effectiveStage, type RailTab } from "../../lib/board.ts";
 import { provideComposerInsert } from "../../composables/composer-bridge.ts";

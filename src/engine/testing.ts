@@ -13,9 +13,9 @@ import {
   type Message,
 } from "@earendil-works/pi-ai";
 import type { Extension, JsonObject } from "@earendil-works/pi-durable";
-import { MemoryRepo } from "../extensions/memory/index.ts";
+import { DEFAULT_SETTINGS, type Settings } from "../config/settings.ts";
 import { eeveePaths } from "../shared/paths.ts";
-import { DEFAULT_SETTINGS, type Settings } from "../shared/settings.ts";
+import { MemoryRepo } from "./extensions/memory/index.ts";
 import { createProjectMeta } from "./project.ts";
 import { ProjectHost } from "./project-host.ts";
 

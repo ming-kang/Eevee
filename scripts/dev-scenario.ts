@@ -15,18 +15,18 @@ import {
   type Message,
 } from "@earendil-works/pi-ai";
 import type { JsonObject } from "@earendil-works/pi-durable";
+import { DEFAULT_SETTINGS, type Settings, SettingsStore } from "../src/config/settings.ts";
+import { writeRuntimeRecord } from "../src/daemon/instance.ts";
 import { Engine } from "../src/engine/engine.ts";
-import { writeRuntimeRecord } from "../src/engine/instance.ts";
-import { fakeMcpServer, weatherTool } from "../src/extensions/mcp/testing.ts";
-import { MemoryRepo } from "../src/extensions/memory/index.ts";
-import { createModelRuntime } from "../src/models/index.ts";
+import { fakeMcpServer, weatherTool } from "../src/engine/extensions/mcp/testing.ts";
+import { MemoryRepo } from "../src/engine/extensions/memory/index.ts";
+import { createModelRuntime } from "../src/engine/models/index.ts";
 import { Auth } from "../src/server/auth.ts";
 import { createHttpServer } from "../src/server/http.ts";
 import { createRoutes } from "../src/server/routes.ts";
 import { attachStream } from "../src/server/stream.ts";
 import { uiDir, version } from "../src/shared/package.ts";
 import { eeveePaths } from "../src/shared/paths.ts";
-import { DEFAULT_SETTINGS, type Settings, SettingsStore } from "../src/shared/settings.ts";
 
 const say = (text: string) => fauxAssistantMessage(fauxText(text));
 

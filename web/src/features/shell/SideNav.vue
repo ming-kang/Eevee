@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { ProjectSummary } from "@shared/api/contract.ts";
+import type { ProjectSummary } from "@shared/protocol/contract.ts";
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
-import type { RunSummary } from "@shared/contracts/index.ts";
+import type { RunSummary } from "@shared/domain/index.ts";
 import type { BoardState } from "../../composables/engine-data.ts";
 import { countPendingQuestions } from "../../lib/board.ts";
 import { t } from "../../lib/i18n.ts";

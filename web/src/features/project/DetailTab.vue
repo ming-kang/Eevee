@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { TicketView } from "@shared/api/contract.ts";
-import { formatModel, type ModelDefaults, pickModel } from "@shared/contracts/index.ts";
+import type { TicketView } from "@shared/protocol/contract.ts";
+import { formatModel, type ModelDefaults, pickModel } from "@shared/domain/index.ts";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { effectiveStage } from "../../lib/board.ts";
 import { t } from "../../lib/i18n.ts";

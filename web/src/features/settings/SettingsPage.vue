@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
+import type { Client } from "@shared/protocol/client.ts";
 import type {
   CapabilitiesView,
   EngineStatus,
   McpServerView,
   ModelSpecView,
-} from "@shared/api/contract.ts";
+} from "@shared/protocol/contract.ts";
 import {
   type ModelChoice,
   type ModelDefaults,
   pickModel,
   type RoleName,
   type ThinkingLevel,
-} from "@shared/contracts/index.ts";
+} from "@shared/domain/index.ts";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { configIssueText, configProblemText, errorText } from "../../lib/errors.ts";
 import { ROLE_LABEL } from "../../lib/labels.ts";

@@ -7,8 +7,10 @@ import {
   LiveDoc,
   type ToolExecutionApi,
 } from "@earendil-works/pi-durable";
-import { Board, TicketDoc } from "../contracts/docs.ts";
-import type { Ticket, TicketId } from "../contracts/index.ts";
+import type { Settings } from "../config/settings.ts";
+import type { Ticket, TicketId } from "../domain/index.ts";
+import { SerialPass } from "../shared/serial-pass.ts";
+import { Board, TicketDoc } from "./docs.ts";
 import {
   contextUsage,
   conversationOf,
@@ -21,9 +23,7 @@ import {
   route,
   routerIdle,
   WorkerQueue,
-} from "../extensions/orchestration/index.ts";
-import { SerialPass } from "../shared/serial-pass.ts";
-import type { Settings } from "../shared/settings.ts";
+} from "./extensions/orchestration/index.ts";
 
 const UPKEEP_MS = 5_000;
 

@@ -8,9 +8,9 @@ import {
   ToolResultEntry,
   UserEntry,
 } from "@earendil-works/pi-durable";
-import { Board, JobBoard, JobDoc, QuestionDoc, ReportLog, TicketDoc } from "../contracts/docs.ts";
-import { jobId, questionId, type TicketId } from "../contracts/index.ts";
-import { conversationOf, NOTICE_KIND } from "../extensions/orchestration/index.ts";
+import { jobId, questionId, type TicketId } from "../domain/index.ts";
+import { Board, JobBoard, JobDoc, QuestionDoc, ReportLog, TicketDoc } from "./docs.ts";
+import { conversationOf, NOTICE_KIND } from "./extensions/orchestration/index.ts";
 
 const ACTIVITY_ENTRY_KINDS = new Set([
   UserEntry.kind,

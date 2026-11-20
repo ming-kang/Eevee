@@ -25,16 +25,8 @@ import {
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import type {
-  BoardView,
-  ConversationView,
-  JobLogView,
-  MemoryFileView,
-  ProjectSummary,
-  UsageView,
-} from "../api/contract.ts";
-import type { NoticeData } from "../contracts/details.ts";
-import { Board, JobDoc, QuestionDoc, TicketDoc } from "../contracts/docs.ts";
+import { enabledExtensions, type Settings } from "../config/settings.ts";
+import type { NoticeData } from "../domain/details.ts";
 import {
   type JobId,
   type MemoryScope,
@@ -47,13 +39,26 @@ import {
   type RoleName,
   type Ticket,
   type TicketId,
-} from "../contracts/index.ts";
+} from "../domain/index.ts";
+import type {
+  BoardView,
+  ConversationView,
+  JobLogView,
+  MemoryFileView,
+  ProjectSummary,
+  UsageView,
+} from "../protocol/contract.ts";
+import { readText } from "../shared/fs.ts";
+import { type EeveePaths, resolveInside } from "../shared/paths.ts";
+import { initialActiveAt, isActivityCommit } from "./activity.ts";
+import { BoardFeed, type BoardListener, isBoardCommit } from "./board-feed.ts";
+import { Board, JobDoc, QuestionDoc, TicketDoc } from "./docs.ts";
 import {
   createMemory,
   type DreamingPort,
   dreamIfDue,
   MemoryRepo,
-} from "../extensions/memory/index.ts";
+} from "./extensions/memory/index.ts";
 import {
   conversationOf,
   createOrchestration,
@@ -68,18 +73,13 @@ import {
   route,
   routerIdle,
   WorkerQueue,
-} from "../extensions/orchestration/index.ts";
-import { createResources } from "../extensions/resources/index.ts";
-import { createWorkspace } from "../extensions/workspace/index.ts";
-import { renderCatalog } from "../models/catalog.ts";
-import { createRoles, type Roles } from "../roles/index.ts";
-import { readText } from "../shared/fs.ts";
-import { type EeveePaths, resolveInside } from "../shared/paths.ts";
-import { enabledExtensions, type Settings } from "../shared/settings.ts";
-import { initialActiveAt, isActivityCommit } from "./activity.ts";
-import { BoardFeed, type BoardListener, isBoardCommit } from "./board-feed.ts";
+} from "./extensions/orchestration/index.ts";
+import { createResources } from "./extensions/resources/index.ts";
+import { createWorkspace } from "./extensions/workspace/index.ts";
 import { JOB_LOG_DEFAULT_LINES, JobHost, readLogTail } from "./jobs.ts";
+import { renderCatalog } from "./models/catalog.ts";
 import { type ProjectMeta, ProjectStore } from "./project.ts";
+import { createRoles, type Roles } from "./roles/index.ts";
 import { contextFraction, deliveryHost, Scheduler } from "./scheduler.ts";
 import { recentRounds, transcriptSource } from "./transcript.ts";
 import { boardView, conversationView, usageView } from "./views.ts";

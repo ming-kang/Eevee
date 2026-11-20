@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MemoryChangeDetail } from "@shared/contracts/index.ts";
+import type { MemoryChangeDetail } from "@shared/domain/index.ts";
 import { t } from "../../lib/i18n.ts";
 import Icon from "../../ui/Icon.vue";
 import { PANEL, badge } from "../../ui/surface.ts";

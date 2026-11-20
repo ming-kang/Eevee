@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { TicketView } from "@shared/api/contract.ts";
-import type { ReportStatus } from "@shared/contracts/index.ts";
+import type { TicketView } from "@shared/protocol/contract.ts";
+import type { ReportStatus } from "@shared/domain/index.ts";
 import { computed } from "vue";
 import type { VisualStage } from "../../lib/board.ts";
 import { t } from "../../lib/i18n.ts";

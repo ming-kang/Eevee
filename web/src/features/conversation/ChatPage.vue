@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
-import type { BoardView, ProjectSummary } from "@shared/api/contract.ts";
-import type { QuestionId } from "@shared/contracts/index.ts";
+import type { Client } from "@shared/protocol/client.ts";
+import type { BoardView, ProjectSummary } from "@shared/protocol/contract.ts";
+import type { QuestionId } from "@shared/domain/index.ts";
 import { computed, ref, watch } from "vue";
 import { provideComposerInsert } from "../../composables/composer-bridge.ts";
 import type { ConversationWatch } from "../../composables/engine-data.ts";

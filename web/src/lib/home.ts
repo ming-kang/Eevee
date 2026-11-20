@@ -1,5 +1,5 @@
-import type { BoardView, ProjectSummary, TicketView } from "../../../src/api/contract.ts";
-import type { Question } from "../../../src/contracts/index.ts";
+import type { Question } from "../../../src/domain/index.ts";
+import type { BoardView, ProjectSummary, TicketView } from "../../../src/protocol/contract.ts";
 import { effectiveStage } from "./board.ts";
 import { failureText } from "./labels.ts";
 

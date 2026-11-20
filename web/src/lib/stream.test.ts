@@ -5,7 +5,7 @@ import {
   STREAM_PROTOCOL,
   type StreamEvent,
   TOKEN_PROTOCOL_PREFIX,
-} from "../../../src/api/stream.ts";
+} from "../../../src/protocol/stream.ts";
 import { createStreamClient, type SocketLike, streamUrl, type WatchEvent } from "./stream.ts";
 
 class FakeSocket implements SocketLike {

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
+import type { Client } from "@shared/protocol/client.ts";
 import type {
   BuiltinModelView,
   ModelsView,
   ProbedModelView,
   ProviderConfigView,
-} from "@shared/api/contract.ts";
+} from "@shared/protocol/contract.ts";
 import { computed, nextTick, reactive, ref, watch } from "vue";
 import { errorText } from "../../lib/errors.ts";
 import { formatTokens, fromRows, isEnvReference } from "../../lib/fields.ts";

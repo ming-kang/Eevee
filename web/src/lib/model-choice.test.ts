@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ModelSpecView } from "@shared/api/contract.ts";
+import type { ModelSpecView } from "@shared/protocol/contract.ts";
 import { clampLevel, groupModels, levelLabel, levelsOf, switchModel } from "./model-choice.ts";
 
 const spec = (provider: string, modelId: string, levels: ModelSpecView["thinkingLevels"]) =>
