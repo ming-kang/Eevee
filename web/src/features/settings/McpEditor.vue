@@ -2,9 +2,9 @@
 import type { Client } from "@shared/api/client.ts";
 import type { CapabilitiesView } from "@shared/api/contract.ts";
 import { computed, nextTick, reactive, ref, watch } from "vue";
-import { configIssueText, errorText } from "../errors.ts";
-import { t } from "../i18n.ts";
-import { EXPOSURE_LABEL } from "../labels.ts";
+import { configIssueText, errorText } from "../../lib/errors.ts";
+import { t } from "../../lib/i18n.ts";
+import { EXPOSURE_LABEL } from "../../lib/labels.ts";
 import {
   fromMcpDraft,
   isServerName,
@@ -13,14 +13,23 @@ import {
   type McpDraftError,
   parsePastedServer,
   toMcpDraft,
-} from "../mcp-draft.ts";
-import { formatRoute, NEW_ITEM } from "../router.ts";
-import { vSeg } from "../dom.ts";
-import { useSubmit } from "../submit.ts";
-import { showToast } from "../toasts.ts";
-import Icon from "./Icon.vue";
-import KeyValueRows from "./KeyValueRows.vue";
-import Skeleton from "./Skeleton.vue";
+} from "../../lib/mcp-draft.ts";
+import { formatRoute, NEW_ITEM } from "../../lib/router.ts";
+import { useSubmit } from "../../composables/submit.ts";
+import { showToast } from "../../composables/toasts.ts";
+import Icon from "../../ui/Icon.vue";
+import KeyValueRows from "../../ui/KeyValueRows.vue";
+import Skeleton from "../../ui/Skeleton.vue";
+import Button from "../../ui/Button.vue";
+import Input from "../../ui/Input.vue";
+import Switch from "../../ui/Switch.vue";
+import { fieldClass } from "../../ui/field.ts";
+import type { SegmentedOption } from "../../ui/Segmented.vue";
+import Segmented from "../../ui/Segmented.vue";
+import SectionHeader from "../../ui/SectionHeader.vue";
+import { ROW_DESC, row, rowMain, rowTitle, rows } from "../../ui/rows.ts";
+import { FIELD_CTRL, FIELD_INLINE, FIELD_NOTE, FORM, FORM_FOOT, FORM_LABEL, SECTION_T, TOGGLE, formRow } from "../../ui/form.ts";
+import { EMPTY } from "../../ui/surface.ts";
 
 const props = defineProps<{
   client: Client;
@@ -165,205 +174,166 @@ async function remove(): Promise<void> {
   showToast(t("Deleted {name}", { name: props.name }));
   location.hash = LIST;
 }
+
+const TRANSPORT_OPTIONS: SegmentedOption<"stdio" | "http">[] = [
+  { value: "stdio", label: t("Local command") },
+  { value: "http", label: "HTTP" },
+];
 </script>
 
 <template>
-  <header class="set-head">
-    <a class="btn ghost sm icon" :href="LIST" :aria-label="t('Back to MCP servers')">
-      <Icon name="chevL" size="sm" />
-    </a>
-    <h2 class="ellipsis" :class="{ mono: !isNew }">{{ isNew ? t("Add MCP server") : name }}</h2>
+  <SectionHeader :title="isNew ? t('Add MCP server') : name" :mono="!isNew">
+    <template #leading>
+      <Button variant="ghost" size="sm" icon :href="LIST" :aria-label="t('Back to MCP servers')">
+        <Icon name="chevL" size="sm" />
+      </Button>
+    </template>
     <template v-if="!isNew && original">
       <template v-if="confirmRemove">
-        <button type="button" class="btn sm danger" :disabled="removing.busy.value" @click="remove">
+        <Button variant="danger" size="sm" :disabled="removing.busy.value" @click="remove">
           {{ t("Confirm delete") }}
-        </button>
-        <button type="button" class="btn ghost sm" @click="confirmRemove = false">{{ t("Cancel") }}</button>
+        </Button>
+        <Button variant="ghost" size="sm" @click="confirmRemove = false">{{ t("Cancel") }}</Button>
       </template>
-      <button
-        v-else
-        type="button"
-        class="btn ghost sm danger"
-        :title="roles > 0 ? t('Also turns it off for the roles that enable it') : undefined"
-        @click="confirmRemove = true"
-      >
+      <Button v-else variant="ghost-danger" size="sm" :title="roles > 0 ? t('Also turns it off for the roles that enable it') : undefined" @click="confirmRemove = true">
         <Icon name="x" size="xs" />
         <span>{{ t("Delete") }}</span>
-      </button>
+      </Button>
     </template>
-    <button v-if="isNew && !pasting" type="button" class="btn ghost sm" @click="pasting = true">
+    <Button v-if="isNew && !pasting" variant="ghost" size="sm" @click="pasting = true">
       <Icon name="copy" size="xs" />
       <span>{{ t("Paste JSON") }}</span>
-    </button>
-  </header>
+    </Button>
+  </SectionHeader>
 
   <p v-if="loadError" class="error hint">{{ loadError }}</p>
   <p v-else-if="removing.error.value" class="error hint">{{ removing.error.value }}</p>
   <Skeleton v-if="entries === undefined && !loadError" />
-  <div v-else-if="missing" class="empty">
+  <div v-else-if="missing" :class="EMPTY">
     <h3>{{ t("No server named {name}", { name }) }}</h3>
-    <a class="btn sm" :href="LIST">{{ t("Back to MCP servers") }}</a>
+    <Button size="sm" :href="LIST">{{ t("Back to MCP servers") }}</Button>
   </div>
-  <form v-else-if="entries" class="pv-form" @submit.prevent="save">
-    <div v-if="pasting" class="paste">
-      <textarea
-        v-model="pasted"
-        class="input mono"
-        rows="6"
-        spellcheck="false"
-        :aria-label="t('Paste JSON')"
-        placeholder='{ "mcpServers": { "github": { "command": "github-mcp-server", "args": ["stdio"] } } }'
-      />
-      <div class="f-inline">
+  <form v-else-if="entries" :class="FORM" @submit.prevent="save">
+    <div v-if="pasting" class="flex flex-col gap-2">
+      <textarea v-model="pasted" :class="fieldClass({ mono: true, multiline: true })" rows="6" spellcheck="false" :aria-label="t('Paste JSON')" placeholder='{ "mcpServers": { "github": { "command": "github-mcp-server", "args": ["stdio"] } } }' />
+      <div :class="FIELD_INLINE">
         <span class="spacer" />
-        <button type="button" class="btn ghost sm" @click="pasting = false">{{ t("Cancel") }}</button>
-        <button type="button" class="btn sm" :disabled="pasted.trim() === ''" @click="applyPaste">{{ t("Fill in") }}</button>
+        <Button variant="ghost" size="sm" @click="pasting = false">{{ t("Cancel") }}</Button>
+        <Button size="sm" :disabled="pasted.trim() === ''" @click="applyPaste">{{ t("Fill in") }}</Button>
       </div>
     </div>
 
-    <div v-if="status || problems.length > 0" class="rows">
-      <div v-if="status" class="row">
-        <div class="r-main">
-          <span class="r-t">
+    <div v-if="status || problems.length > 0" :class="rows()">
+      <div v-if="status" :class="row()">
+        <div :class="rowMain()">
+          <span :class="rowTitle()">
             <span class="dot" :class="STATE_LABEL[status.state]?.dot" />
             <span>{{ STATE_LABEL[status.state]?.label }}</span>
           </span>
-          <span class="r-d">
+          <span :class="ROW_DESC">
             {{ t("{n} tool|{n} tools", { n: status.tools }) }}
             <template v-if="roles > 0"> · {{ t("Enabled for {n} role|Enabled for {n} roles", { n: roles }) }}</template>
           </span>
           <span v-if="status.error" class="err">{{ configIssueText(status.error) }}</span>
         </div>
       </div>
-      <div v-for="(problem, index) in problems" :key="index" class="row">
-        <div class="r-main">
-          <span class="r-t"><span class="dot bad" /><span>{{ t("Misconfigured, not connected") }}</span></span>
+      <div v-for="(problem, index) in problems" :key="index" :class="row()">
+        <div :class="rowMain()">
+          <span :class="rowTitle()"><span class="dot bad" /><span>{{ t("Misconfigured, not connected") }}</span></span>
           <span class="err">{{ configIssueText(problem) }}</span>
         </div>
       </div>
     </div>
 
-    <div class="section-t"><h3>{{ t("Connection") }}</h3></div>
-    <div class="rows">
-      <div v-if="isNew" class="f-row">
+    <div :class="SECTION_T"><h3>{{ t("Connection") }}</h3></div>
+    <div :class="rows()">
+      <div :class="formRow()" v-if="isNew">
         <label for="mcp-name">{{ t("Name") }}</label>
-        <div class="f-ctrl">
-          <input id="mcp-name" v-model="newName" class="input mono" spellcheck="false" autocomplete="off" placeholder="github" />
+        <div :class="FIELD_CTRL">
+          <Input id="mcp-name" v-model="newName" mono spellcheck="false" autocomplete="off" placeholder="github" />
         </div>
       </div>
-      <div class="f-row">
-        <span class="f-label">{{ t("Transport") }}</span>
-        <div v-seg class="seg sm" role="group" :aria-label="t('Transport')">
-          <button type="button" :class="{ on: draft.transport === 'stdio' }" :aria-pressed="draft.transport === 'stdio'" @click="draft.transport = 'stdio'">
-            {{ t("Local command") }}
-          </button>
-          <button type="button" :class="{ on: draft.transport === 'http' }" :aria-pressed="draft.transport === 'http'" @click="draft.transport = 'http'">
-            HTTP
-          </button>
-        </div>
+      <div :class="formRow()">
+        <span :class="FORM_LABEL">{{ t("Transport") }}</span>
+        <Segmented v-model="draft.transport" :options="TRANSPORT_OPTIONS" :label="t('Transport')" />
       </div>
       <template v-if="draft.transport === 'stdio'">
-        <div class="f-row">
+        <div :class="formRow()">
           <label for="mcp-command">{{ t("Command") }}</label>
-          <div class="f-ctrl">
-            <input id="mcp-command" v-model="draft.command" class="input mono" spellcheck="false" autocomplete="off" placeholder="npx" />
+          <div :class="FIELD_CTRL">
+            <Input id="mcp-command" v-model="draft.command" mono spellcheck="false" autocomplete="off" placeholder="npx" />
           </div>
         </div>
-        <div class="f-row top">
+        <div :class="formRow({ top: true })">
           <label for="mcp-args">{{ t("Arguments") }}</label>
-          <div class="f-ctrl">
-            <textarea
-              id="mcp-args"
-              v-model="draft.args"
-              class="input mono"
-              rows="3"
-              spellcheck="false"
-              :placeholder="'-y\n@modelcontextprotocol/server-filesystem\n/home/me/papers'"
-            />
-            <span class="f-note">{{ t("One argument per line") }}</span>
+          <div :class="FIELD_CTRL">
+            <textarea id="mcp-args" v-model="draft.args" :class="fieldClass({ mono: true, multiline: true })" rows="3" spellcheck="false" :placeholder="'-y\n@modelcontextprotocol/server-filesystem\n/home/me/papers'" />
+            <span :class="FIELD_NOTE">{{ t("One argument per line") }}</span>
           </div>
         </div>
-        <div class="f-row">
+        <div :class="formRow()">
           <label for="mcp-cwd">{{ t("Working directory") }}</label>
-          <div class="f-ctrl">
-            <input id="mcp-cwd" v-model="draft.cwd" class="input mono" spellcheck="false" autocomplete="off" />
+          <div :class="FIELD_CTRL">
+            <Input id="mcp-cwd" v-model="draft.cwd" mono spellcheck="false" autocomplete="off" />
           </div>
         </div>
-        <div class="f-row top">
-          <span class="f-label">{{ t("Environment variables") }}</span>
+        <div :class="formRow({ top: true })">
+          <span :class="FORM_LABEL">{{ t("Environment variables") }}</span>
           <KeyValueRows :rows="draft.env" :label="t('Environment variables')" key-placeholder="GITHUB_TOKEN" value-placeholder="${GITHUB_TOKEN}" />
         </div>
       </template>
       <template v-else>
-        <div class="f-row">
+        <div :class="formRow()">
           <label for="mcp-url">URL</label>
-          <div class="f-ctrl">
-            <input id="mcp-url" v-model="draft.url" class="input mono" spellcheck="false" autocomplete="off" placeholder="https://example.com/mcp" />
+          <div :class="FIELD_CTRL">
+            <Input id="mcp-url" v-model="draft.url" mono spellcheck="false" autocomplete="off" placeholder="https://example.com/mcp" />
           </div>
         </div>
-        <div class="f-row top">
-          <span class="f-label">{{ t("Headers") }}</span>
+        <div :class="formRow({ top: true })">
+          <span :class="FORM_LABEL">{{ t("Headers") }}</span>
           <KeyValueRows :rows="draft.headers" :label="t('Headers')" key-placeholder="Authorization" value-placeholder="Bearer ${TOKEN}" />
         </div>
       </template>
     </div>
 
-    <div class="section-t"><h3>{{ t("Tools") }}</h3></div>
-    <div class="rows">
-      <div class="f-row">
-        <span class="f-label">{{ t("Enabled") }}</span>
-        <label class="toggle">
-          <button
-            type="button"
-            class="switch"
-            :class="{ on: draft.enabled }"
-            :aria-pressed="draft.enabled"
-            :aria-label="t('Enabled')"
-            @click="draft.enabled = !draft.enabled"
-          />
+    <div :class="SECTION_T"><h3>{{ t("Tools") }}</h3></div>
+    <div :class="rows()">
+      <div :class="formRow()">
+        <span :class="FORM_LABEL">{{ t("Enabled") }}</span>
+        <label :class="TOGGLE">
+          <Switch :model-value="draft.enabled" :aria-label="t('Enabled')" @update:model-value="draft.enabled = !draft.enabled" />
         </label>
       </div>
-      <div class="f-row top">
-        <span class="f-label">{{ t("Exposure") }}</span>
-        <div class="f-ctrl">
-          <div v-seg class="seg sm" role="group" :aria-label="t('Exposure')">
-            <button
-              v-for="exposure in MCP_EXPOSURES"
-              :key="exposure"
-              type="button"
-              :class="{ on: draft.exposure === exposure }"
-              :aria-pressed="draft.exposure === exposure"
-              @click="draft.exposure = exposure"
-            >
-              {{ EXPOSURE_LABEL[exposure].label }}
-            </button>
-          </div>
-          <span class="f-note">{{ EXPOSURE_LABEL[draft.exposure].detail }}</span>
+      <div :class="formRow({ top: true })">
+        <span :class="FORM_LABEL">{{ t("Exposure") }}</span>
+        <div :class="FIELD_CTRL">
+          <Segmented v-model="draft.exposure" :options="MCP_EXPOSURES.map((value) => ({ value, label: EXPOSURE_LABEL[value].label }))" :label="t('Exposure')" />
+          <span :class="FIELD_NOTE">{{ EXPOSURE_LABEL[draft.exposure].detail }}</span>
         </div>
       </div>
-      <div class="f-row">
+      <div :class="formRow()">
         <label for="mcp-desc">{{ t("Description") }}</label>
-        <div class="f-ctrl">
-          <input id="mcp-desc" v-model="draft.description" class="input" autocomplete="off" :placeholder="t('What it offers, in a sentence')" />
+        <div :class="FIELD_CTRL">
+          <Input id="mcp-desc" v-model="draft.description" autocomplete="off" :placeholder="t('What it offers, in a sentence')" />
         </div>
       </div>
-      <div class="f-row">
+      <div :class="formRow()">
         <label for="mcp-timeout">{{ t("Timeout (seconds)") }}</label>
-        <div class="f-ctrl">
-          <input id="mcp-timeout" v-model="draft.timeout" class="input mono short" inputmode="decimal" autocomplete="off" />
+        <div :class="FIELD_CTRL">
+          <Input id="mcp-timeout" v-model="draft.timeout" mono inline class="w-24" inputmode="decimal" autocomplete="off" />
         </div>
       </div>
     </div>
 
-    <footer class="f-foot">
+    <footer :class="FORM_FOOT">
       <span v-if="formError || saving.error.value" class="error" role="alert">{{ formError ?? saving.error.value }}</span>
       <span class="spacer" />
-      <button type="button" class="btn ghost sm" :disabled="!dirty && !isNew" @click="discard">
+      <Button variant="ghost" size="sm" :disabled="!dirty && !isNew" @click="discard">
         {{ isNew ? t("Cancel") : t("Discard changes") }}
-      </button>
-      <button type="submit" class="btn sm primary" :disabled="(!dirty && !isNew) || saving.busy.value">
+      </Button>
+      <Button type="submit" variant="primary" size="sm" :disabled="(!dirty && !isNew) || saving.busy.value">
         {{ isNew ? t("Add") : t("Save") }}
-      </button>
+      </Button>
     </footer>
   </form>
 </template>

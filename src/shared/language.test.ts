@@ -10,7 +10,7 @@ const root = new URL("../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)
  * The one file where Chinese belongs: the panel's translation table. English is the source language
  * and its own key, so every other Chinese string in the source is a leftover.
  */
-const TRANSLATIONS = "web/src/locales/zh-CN.ts";
+const TRANSLATIONS = "web/src/lib/locales/zh-CN.ts";
 
 function sources(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

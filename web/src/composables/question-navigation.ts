@@ -1,5 +1,5 @@
 import { ref, watch } from "vue";
-import type { Question, QuestionId } from "../../src/contracts/index.ts";
+import type { Question, QuestionId } from "../../../src/contracts/index.ts";
 
 /** Keep the question panel aligned with its route, including asynchronous answer/board updates. */
 export function useQuestionNavigation(

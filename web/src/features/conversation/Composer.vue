@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import type { TicketView } from "@shared/api/contract.ts";
 import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from "vue";
-import { effectiveStage } from "../board.ts";
-import { type InsertAt, useComposerInsert } from "../composer-bridge.ts";
-import { readDraft, saveDraft } from "../composer-draft.ts";
-import { t } from "../i18n.ts";
-import { doublePressed } from "../keyboard.ts";
-import { mentionQuery, rankTickets } from "../mentions.ts";
-import { useSubmit } from "../submit.ts";
-import Icon from "./Icon.vue";
-import StageGlyph from "./StageGlyph.vue";
+import { effectiveStage } from "../../lib/board.ts";
+import { type InsertAt, useComposerInsert } from "../../composables/composer-bridge.ts";
+import { readDraft, saveDraft } from "../../lib/composer-draft.ts";
+import { t } from "../../lib/i18n.ts";
+import { doublePressed } from "../../lib/keyboard.ts";
+import { mentionQuery, rankTickets } from "../../lib/mentions.ts";
+import { useSubmit } from "../../composables/submit.ts";
+import Icon from "../../ui/Icon.vue";
+import StageGlyph from "../project/StageGlyph.vue";
+import { menuPanel, menuRow } from "../../ui/menu.ts";
+import { SEND } from "./composer.ts";
+import { displayId } from "../../lib/ids.ts";
+import { ERROR_TEXT } from "../../ui/surface.ts";
 
 const props = withDefaults(
   defineProps<{
@@ -206,9 +210,10 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <form class="composer" @submit.prevent="submit" @click.self="textarea?.focus()">
+  <form class="composer relative flex cursor-text flex-col gap-1.5 rounded-xl pt-3 pr-2.5 pb-2.5 pl-4" @submit.prevent="submit" @click.self="textarea?.focus()">
     <textarea
       ref="textarea"
+      class="block max-h-55 min-h-14 w-full resize-none border-0 bg-transparent py-0 pr-1.5 pl-0 text-base leading-[1.572] text-fg focus:shadow-none focus-visible:shadow-none disabled:opacity-60"
       v-model="text"
       rows="1"
       :placeholder="placeholder"
@@ -225,40 +230,40 @@ function onKeydown(event: KeyboardEvent): void {
       @select="syncCaret"
       @blur="syncCaret"
     />
-    <div v-if="mentionOpen" :id="listId" class="pop up mention-pop" role="listbox">
+    <div v-if="mentionOpen" :id="listId" class="bottom-[calc(100%_+_calc(6px*var(--ev-scale)))] left-0 w-[min(calc(360px*var(--ev-scale)),100%)]" :class="menuPanel()" role="listbox">
       <button
-        v-for="(view, i) in matches"
-        :id="`${listId}-${i}`"
-        :key="view.ticket.id"
-        type="button"
-        class="pop-row"
-        :class="{ sel: i === sel }"
-        role="option"
-        :aria-selected="i === sel"
-        @mousedown.prevent
-        @mouseenter="selIdx = i"
-        @click="insertMention(view)"
-      >
+    v-for="(view, i) in matches"
+    :id="`${listId}-${i}`"
+    :key="view.ticket.id"
+    type="button"
+    
+    :class="[menuRow('md'), { sel: i === sel }]"
+    role="option"
+    :aria-selected="i === sel"
+    @mousedown.prevent
+    @mouseenter="selIdx = i"
+    @click="insertMention(view)"
+>
         <StageGlyph :stage="effectiveStage(view)" />
-        <span class="mention-id">{{ view.ticket.id }}</span>
-        <span class="mention-title ellipsis">{{ view.ticket.title }}</span>
+        <span class="flex-none font-mono text-xs leading-none text-fg-muted">{{ displayId(view.ticket.id) }}</span>
+        <span class="ellipsis min-w-0 flex-1 text-base text-fg">{{ view.ticket.title }}</span>
       </button>
     </div>
-    <div class="c-actions">
+    <div class="flex min-h-(--ev-h-sm) cursor-default items-center gap-1.5">
       <slot name="actions" />
       <span class="spacer" />
-      <span :id="`${listId}-hint`" class="composer-hint">{{ t("Shift+Enter for a new line") }}</span>
+      <span :id="`${listId}-hint`" class="text-(length:--ev-caption) whitespace-nowrap text-fg-subtle max-[600px]:hidden [@media(hover:none)]:hidden">{{ t("Shift+Enter for a new line") }}</span>
       <slot name="end" />
       <button
-        class="send"
-        type="submit"
-        :disabled="busy || disabled || text.trim() === ''"
-        :title="t('Send (Enter)')"
-        :aria-label="t('Send')"
-      >
+    :class="SEND"
+    type="submit"
+    :disabled="busy || disabled || text.trim() === ''"
+    :title="t('Send (Enter)')"
+    :aria-label="t('Send')"
+>
         <Icon name="arrowUp" size="sm" />
       </button>
     </div>
   </form>
-  <p v-if="error" class="composer-error" role="alert">{{ error }}</p>
+  <p v-if="error" :class="ERROR_TEXT" role="alert">{{ error }}</p>
 </template>

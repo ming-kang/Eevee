@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
-import { t } from "../i18n.ts";
-import { formatDurationMs, formatElapsedSeconds } from "../time.ts";
-import Icon from "./Icon.vue";
-import StageGlyph from "./StageGlyph.vue";
+import { t } from "../../lib/i18n.ts";
+import { formatDurationMs, formatElapsedSeconds } from "../../lib/time.ts";
+import Icon from "../../ui/Icon.vue";
+import StageGlyph from "../project/StageGlyph.vue";
 import ToolSheet from "./ToolSheet.vue";
+import { displayId } from "../../lib/ids.ts";
 
 const props = defineProps<{
   command: string;
@@ -81,7 +82,7 @@ const isJobActive = computed(
     @click="$emit('open-job', jobId)"
   >
     <StageGlyph stage="jobs" />
-    <span class="mono">{{ jobId }}</span>
+    <span class="mono">{{ displayId(jobId) }}</span>
     <span class="dim">{{ isJobActive ? t("Running in background") : t("Finished") }}</span>
   </button>
 </template>

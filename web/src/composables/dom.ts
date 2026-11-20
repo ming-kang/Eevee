@@ -1,5 +1,5 @@
 import type { Directive } from "vue";
-import { isAtEnd, type Modality, modalityOfKey, pillGeometry } from "./dom-rules.ts";
+import { isAtEnd, type Modality, modalityOfKey, pillGeometry } from "../lib/dom-rules.ts";
 
 const CHOSEN =
   ":scope > button.on, :scope > [aria-selected='true'], :scope > [aria-pressed='true']";

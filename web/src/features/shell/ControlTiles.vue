@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { t } from "../i18n.ts";
-import { formatRoute, type Route } from "../router.ts";
-import { useTheme } from "../theme.ts";
-import Icon from "./Icon.vue";
+import { t } from "../../lib/i18n.ts";
+import { formatRoute, type Route } from "../../lib/router.ts";
+import { useTheme } from "../../composables/theme.ts";
+import Icon from "../../ui/Icon.vue";
 
 const props = defineProps<{
   controlPid?: string;
@@ -32,10 +32,10 @@ const backHref = computed(() =>
 </script>
 
 <template>
-  <div class="side-foot">
+  <div class="flex flex-none items-center gap-1.5 border-t border-separator px-2.5 py-2">
     <a
       v-if="inUtilityPage"
-      class="foot-back"
+      class="inline-flex h-(--ev-h-sm) items-center gap-1.25 rounded-sm px-2.25 text-xs font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg"
       :href="backHref"
       :title="t('Back to workspace')"
       @click="$emit('navigate')"
@@ -45,11 +45,11 @@ const backHref = computed(() =>
     </a>
     <span v-else class="spacer" />
 
-    <div class="foot-actions">
+    <div class="inline-flex items-center gap-0.5">
       <component
         :is="controlPid ? 'a' : 'span'"
-        class="foot-tile"
-        :class="{ on: routeName === 'memory', dim: !controlPid }"
+        class="inline-grid size-(--ev-h-sm) place-items-center rounded-sm transition-[background-color,color,box-shadow] pointer-coarse:size-9"
+        :class="[routeName === 'memory' ? 'bg-selected text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg', { 'pointer-events-none opacity-40': !controlPid }]"
         :href="controlPid ? formatRoute({ name: 'memory', pid: controlPid }) : undefined"
         :title="controlTitle ? `${t('Memory')} · ${controlTitle}` : t('Memory')"
         :aria-label="t('Memory')"
@@ -59,8 +59,8 @@ const backHref = computed(() =>
       </component>
       <component
         :is="controlPid ? 'a' : 'span'"
-        class="foot-tile"
-        :class="{ on: routeName === 'usage', dim: !controlPid }"
+        class="inline-grid size-(--ev-h-sm) place-items-center rounded-sm transition-[background-color,color,box-shadow] pointer-coarse:size-9"
+        :class="[routeName === 'usage' ? 'bg-selected text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg', { 'pointer-events-none opacity-40': !controlPid }]"
         :href="controlPid ? formatRoute({ name: 'usage', pid: controlPid }) : undefined"
         :title="controlTitle ? `${t('Usage')} · ${controlTitle}` : t('Usage')"
         :aria-label="t('Usage')"
@@ -70,7 +70,7 @@ const backHref = computed(() =>
       </component>
       <button
         type="button"
-        class="foot-tile"
+        class="inline-grid size-(--ev-h-sm) place-items-center rounded-sm transition-[background-color,color,box-shadow] pointer-coarse:size-9 text-fg-muted hover:bg-hover hover:text-fg"
         :title="t('Toggle light / dark')"
         :aria-label="t('Toggle light / dark')"
         @click="toggleTheme()"
@@ -78,8 +78,8 @@ const backHref = computed(() =>
         <Icon :name="resolved === 'dark' ? 'sun' : 'moon'" size="sm" />
       </button>
       <a
-        class="foot-tile"
-        :class="{ on: routeName === 'settings' }"
+        class="inline-grid size-(--ev-h-sm) place-items-center rounded-sm transition-[background-color,color,box-shadow] pointer-coarse:size-9"
+        :class="routeName === 'settings' ? 'bg-selected text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg'"
         :href="formatRoute({ name: 'settings', section: 'general' })"
         :title="t('Settings')"
         :aria-label="t('Settings')"

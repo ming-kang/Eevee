@@ -1,4 +1,4 @@
-import { fill, type Params } from "../../src/contracts/index.ts";
+import { fill, type Params } from "../../../src/contracts/index.ts";
 import { zhCN } from "./locales/zh-CN.ts";
 
 /**

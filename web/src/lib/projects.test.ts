@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { BoardView, ProjectSummary, TicketView } from "../../src/api/contract.ts";
-import type { TicketId, TicketStage } from "../../src/contracts/index.ts";
+import type { BoardView, ProjectSummary, TicketView } from "../../../src/api/contract.ts";
+import type { TicketId, TicketStage } from "../../../src/contracts/index.ts";
 import {
   buildPaletteItems,
   deriveProjectState,
@@ -126,7 +126,6 @@ test("buildPaletteItems and filterPaletteItems build and filter pages, tickets, 
     boards,
     activeProjectId: "p1",
     sideShortcut: "Ctrl B",
-    activePalette: "ocean",
   });
 
   assert.equal(
@@ -135,10 +134,6 @@ test("buildPaletteItems and filterPaletteItems build and filter pages, tickets, 
   );
   assert.equal(
     items.some((i) => i.group === "Projects" && i.meta === "1 open"),
-    true,
-  );
-  assert.equal(
-    items.some((i) => i.kind === "palette" && i.palette === "ocean" && i.meta === "Active"),
     true,
   );
   assert.deepEqual(

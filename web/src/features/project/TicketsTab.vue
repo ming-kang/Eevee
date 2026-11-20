@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import type { BoardView, TicketView } from "@shared/api/contract.ts";
 import { computed, ref } from "vue";
-import { effectiveStage, type TicketGroups, ticketQuestionSummary } from "../board.ts";
-import { t } from "../i18n.ts";
-import { reportSummary, STAGE_LABEL } from "../labels.ts";
-import Icon from "./Icon.vue";
+import { effectiveStage, type TicketGroups, ticketQuestionSummary } from "../../lib/board.ts";
+import { t } from "../../lib/i18n.ts";
+import { reportSummary, STAGE_LABEL } from "../../lib/labels.ts";
+import Icon from "../../ui/Icon.vue";
 import StageGlyph from "./StageGlyph.vue";
+import { displayId } from "../../lib/ids.ts";
+import { ID_TEXT, stageText } from "./stage.ts";
 
 const props = defineProps<{
   board: BoardView | undefined;
@@ -20,11 +22,11 @@ defineEmits<{
 const showClosed = ref(false);
 
 const openGroups = computed(() => [
-  { key: "answer", label: t("Needs answer"), cls: "user", stage: false, items: props.groups.answer },
-  { key: "review", label: t("Needs review"), cls: "", stage: false, items: props.groups.review },
-  { key: "blocked", label: t("Blocked"), cls: "bad", stage: false, items: props.groups.blocked },
+  { key: "answer", label: t("Needs answer"), cls: "text-warning-fg", stage: false, items: props.groups.answer },
+  { key: "review", label: t("Needs review"), cls: "text-fg-subtle", stage: false, items: props.groups.review },
+  { key: "blocked", label: t("Blocked"), cls: "text-danger", stage: false, items: props.groups.blocked },
   // Mixed stages: the per-row stage word stays so the reader can tell them apart.
-  { key: "active", label: t("In progress"), cls: "", stage: true, items: props.groups.active },
+  { key: "active", label: t("In progress"), cls: "text-fg-subtle", stage: true, items: props.groups.active },
 ]);
 
 function latestReport(view: TicketView): TicketView["reports"][number] | undefined {
@@ -66,29 +68,29 @@ function contextLine(view: TicketView): string | undefined {
 
 <template>
   <template v-if="board && board.tickets.length === 0">
-    <p class="rail-empty">{{ t("No tickets") }}</p>
+    <p class="px-3 py-10 text-center text-sm text-fg-subtle">{{ t("No tickets") }}</p>
   </template>
   <template v-else-if="board">
     <template v-for="group in openGroups" :key="group.key">
       <template v-if="group.items.length > 0">
-        <div class="group-h" :class="group.cls">
+        <div class="flex h-7.5 w-full items-center gap-1 px-2.5 pt-2 text-left text-xs font-medium first:h-6 first:pt-0.5" :class="group.cls">
           <span>{{ group.label }}</span>
-          <span class="n">{{ group.items.length }}</span>
+          <span class="ml-auto text-fg-subtle tabular-nums">{{ group.items.length }}</span>
         </div>
         <button
           v-for="view in group.items"
           :key="view.ticket.id"
           type="button"
-          class="strip"
-          :class="{ on: activeTicketId === view.ticket.id }"
+          class="grid min-h-8 w-full grid-cols-[var(--ev-icon-sm)_minmax(0,1fr)_auto] items-start gap-x-2.25 gap-y-1 rounded-sm px-2.5 py-2.25 text-left text-base tracking-(--ev-tracking) transition-colors pointer-coarse:min-h-10 focus-visible:shadow-(--ring-inset) [&>.glyph]:mt-0.75 [&>.t-id]:mt-0.75"
+          :class="activeTicketId === view.ticket.id ? 'bg-selected [--ev-glyph-cut:var(--selected)]' : 'hover:bg-hover'"
           :title="rowTooltip(view)"
           @click="$emit('open-ticket', view.ticket.id)"
         >
           <StageGlyph :stage="effectiveStage(view)" />
-          <span class="ticket-title">{{ view.ticket.title }}</span>
-          <span class="t-id">{{ view.ticket.id }}</span>
-          <span v-if="group.stage || contextLine(view)" class="t-line">
-            <span v-if="group.stage" class="t-stage" :class="`s-${view.stage}`">{{ STAGE_LABEL[view.stage] }}</span>
+          <span class="line-clamp-2 leading-[1.45] wrap-anywhere">{{ view.ticket.title }}</span>
+          <span :class="ID_TEXT">{{ displayId(view.ticket.id) }}</span>
+          <span v-if="group.stage || contextLine(view)" class="col-span-2 col-start-2 truncate text-xs text-fg-subtle">
+            <span v-if="group.stage" :class="stageText(view.stage)">{{ STAGE_LABEL[view.stage] }}</span>
             <template v-if="contextLine(view)">{{ group.stage ? " · " : "" }}{{ contextLine(view) }}</template>
           </span>
         </button>
@@ -98,8 +100,8 @@ function contextLine(view: TicketView): string | undefined {
     <template v-if="groups.closed.length > 0">
       <button
         type="button"
-        class="group-h"
-        :class="{ closed: !showClosed }"
+        class="flex h-7.5 w-full items-center gap-1 px-2.5 pt-2 text-left text-xs font-medium first:h-6 first:pt-0.5 rounded-sm text-fg-subtle transition-colors hover:text-fg pointer-coarse:min-h-10 [&_.chev]:transition-transform"
+        :class="{ '[&_.chev]:-rotate-90': !showClosed }"
         :aria-expanded="showClosed"
         @click="showClosed = !showClosed"
       >
@@ -111,14 +113,14 @@ function contextLine(view: TicketView): string | undefined {
           v-for="view in groups.closed"
           :key="view.ticket.id"
           type="button"
-          class="strip closed"
-          :class="{ on: activeTicketId === view.ticket.id }"
+          class="grid min-h-8 w-full grid-cols-[var(--ev-icon-sm)_minmax(0,1fr)_auto] items-start gap-x-2.25 gap-y-1 rounded-sm px-2.5 py-2.25 text-left text-base tracking-(--ev-tracking) transition-colors pointer-coarse:min-h-10 focus-visible:shadow-(--ring-inset) [&>.glyph]:mt-0.75 [&>.t-id]:mt-0.75 text-fg-muted"
+          :class="activeTicketId === view.ticket.id ? 'bg-selected [--ev-glyph-cut:var(--selected)]' : 'hover:bg-hover'"
           :title="rowTooltip(view)"
           @click="$emit('open-ticket', view.ticket.id)"
         >
           <StageGlyph :stage="effectiveStage(view)" />
           <span class="ellipsis">{{ view.ticket.title }}</span>
-          <span class="t-id">{{ view.ticket.id }}</span>
+          <span :class="ID_TEXT">{{ displayId(view.ticket.id) }}</span>
         </button>
       </template>
     </template>

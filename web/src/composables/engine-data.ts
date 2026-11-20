@@ -9,12 +9,12 @@ import {
   shallowRef,
   watch,
 } from "vue";
-import type { BoardView, EngineStatus, ProjectSummary } from "../../src/api/contract.ts";
-import type { ConversationTopic } from "../../src/api/stream.ts";
-import { createConversationWatcher, type GapItem } from "./conversation.ts";
-import { errorText, problemText } from "./errors.ts";
-import type { SessionInfo } from "./session.ts";
-import { createStreamClient, type StreamClient, type StreamState } from "./stream.ts";
+import type { BoardView, EngineStatus, ProjectSummary } from "../../../src/api/contract.ts";
+import type { ConversationTopic } from "../../../src/api/stream.ts";
+import { createConversationWatcher, type GapItem } from "../lib/conversation.ts";
+import { errorText, problemText } from "../lib/errors.ts";
+import type { SessionInfo } from "../lib/session.ts";
+import { createStreamClient, type StreamClient, type StreamState } from "../lib/stream.ts";
 
 export type BoardState = {
   board?: BoardView;

@@ -11,13 +11,13 @@ import {
   RiTimeLine,
 } from "@remixicon/vue";
 import { computed, type Component } from "vue";
-import type { VisualStage } from "../board.ts";
+import type { VisualStage } from "../../lib/board.ts";
 
 export type { VisualStage };
 
 const props = defineProps<{ stage: VisualStage }>();
 
-/** Uniform 16px circular linear family: active states carry semantic ink, settled states stay muted. */
+/** Uniform 16px outlined circles: active states carry semantic ink, settled states stay muted. */
 const STAGE_ICONS: Record<VisualStage, Component> = {
   answer: RiQuestionLine,
   review: RiCheckboxCircleLine,

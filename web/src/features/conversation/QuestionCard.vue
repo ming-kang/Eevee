@@ -2,19 +2,22 @@
 import type { TicketView } from "@shared/api/contract.ts";
 import type { Question, QuestionId } from "@shared/contracts/index.ts";
 import { computed, nextTick, ref, watch } from "vue";
-import { onRovingKeydown } from "../focus.ts";
-import { t } from "../i18n.ts";
+import { onRovingKeydown } from "../../composables/focus.ts";
+import { t } from "../../lib/i18n.ts";
 import {
   formatAnswer,
   initialDraft,
   initialOtherFlags,
   isComplete,
   type QuestionItemView,
-} from "../questions.ts";
-import { useSubmit } from "../submit.ts";
-import Icon from "./Icon.vue";
-import StageGlyph from "./StageGlyph.vue";
-import TicketRef from "./TicketRef.vue";
+} from "../../lib/questions.ts";
+import { useSubmit } from "../../composables/submit.ts";
+import Icon from "../../ui/Icon.vue";
+import StageGlyph from "../project/StageGlyph.vue";
+import TicketRef from "../project/TicketRef.vue";
+import Button from "../../ui/Button.vue";
+import { OPT_INPUT, OPT_MORE, PAGER, QCARD, Q_BODY, Q_FOOT, Q_HEAD, Q_ITEM, Q_ITEM_T, Q_OPTS, RADIO, REC, WHY, qOption } from "./question.ts";
+import { ERROR_TEXT } from "../../ui/surface.ts";
 
 const props = defineProps<{
   questions: readonly Question[];
@@ -157,8 +160,8 @@ function onInputKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <form v-if="current" class="qcard" @submit.prevent="submit">
-    <div class="qcard-h">
+  <form v-if="current" :class="QCARD" @submit.prevent="submit">
+    <div :class="Q_HEAD">
       <StageGlyph stage="answer" />
       <span>
         <template v-if="current.ticketId">
@@ -172,7 +175,7 @@ function onInputKeydown(event: KeyboardEvent): void {
         <template v-else>{{ t("The Router asks you") }}</template>
       </span>
       <span class="spacer" />
-      <span v-if="questions.length > 1" class="pager">
+      <span v-if="questions.length > 1" :class="PAGER">
         <button type="button" :title="t('Previous')" :aria-label="t('Previous question')" @click="prev">
           <Icon name="chevL" size="xs" />
         </button>
@@ -182,16 +185,16 @@ function onInputKeydown(event: KeyboardEvent): void {
         </button>
       </span>
     </div>
-    <div class="qbody">
-      <div v-for="(item, i) in currentItems" :key="i" class="qitem">
-        <div :id="`q-${current.id}-${i}`" class="qitem-t">
+    <div :class="Q_BODY">
+      <div v-for="(item, i) in currentItems" :key="i" :class="Q_ITEM">
+        <div :id="`q-${current.id}-${i}`" :class="Q_ITEM_T">
           <span v-if="currentItems.length > 1" class="n">{{ i + 1 }}.</span>
           <span>{{ item.text }}</span>
         </div>
-        <div class="opts">
+        <div :class="Q_OPTS">
           <div
             v-if="item.options.length > 0"
-            class="opts-group"
+            :class="Q_OPTS"
             role="radiogroup"
             :aria-labelledby="`q-${current.id}-${i}`"
             @keydown="
@@ -202,22 +205,21 @@ function onInputKeydown(event: KeyboardEvent): void {
               v-for="(option, oi) in item.options"
               :key="option"
               type="button"
-              class="opt"
               role="radio"
               :aria-checked="!currentOther[i] && currentDraft[i] === option"
               :tabindex="rovingIndex(i, item.options) === oi ? 0 : -1"
-              :class="{ on: !currentOther[i] && currentDraft[i] === option }"
+              :class="qOption(!currentOther[i] && currentDraft[i] === option)"
               @click="selectOption(i, option)"
             >
-              <span class="radio" />
+              <span :class="RADIO" />
               <span>{{ option }}</span>
-              <span v-if="option === item.recommended" class="rec">{{ t("Recommended") }}</span>
+              <span v-if="option === item.recommended" :class="REC">{{ t("Recommended") }}</span>
             </button>
           </div>
           <input
             v-if="currentOther[i]"
             :value="currentDraft[i] ?? ''"
-            class="opt-input"
+            :class="OPT_INPUT"
             :data-q-other="current.id"
             :data-i="i"
             :placeholder="t('Write your answer')"
@@ -228,7 +230,7 @@ function onInputKeydown(event: KeyboardEvent): void {
           <button
             v-else
             type="button"
-            class="opt-more"
+            :class="OPT_MORE"
             @click="openOther(i)"
           >
             {{ t("Other…") }}
@@ -236,24 +238,19 @@ function onInputKeydown(event: KeyboardEvent): void {
         </div>
         <div
           v-if="item.why && !currentOther[i] && currentDraft[i] === item.recommended"
-          class="why"
+          :class="WHY"
         >
           {{ item.why }}
         </div>
       </div>
     </div>
-    <div class="qfoot">
-      <span v-if="error" class="composer-error" role="alert">{{ error }}</span>
+    <div :class="Q_FOOT">
+      <span v-if="error" :class="ERROR_TEXT" role="alert">{{ error }}</span>
       <span class="spacer" />
-      <button
-        type="button"
-        class="btn ghost sm"
-        :title="current.ticketId ? t('Set aside and message the Worker') : t('Set aside and message the Router')"
-        @click="$emit('later')"
-      >
+      <Button variant="ghost" size="sm" :title="current.ticketId ? t('Set aside and message the Worker') : t('Set aside and message the Router')" @click="$emit('later')">
         {{ t("Later") }}
-      </button>
-      <button type="submit" class="btn primary sm" :disabled="busy || !complete">{{ t("Submit") }}</button>
+      </Button>
+      <Button type="submit" variant="primary" size="sm" :disabled="busy || !complete">{{ t("Submit") }}</Button>
     </div>
   </form>
 </template>

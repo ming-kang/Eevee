@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { TicketView } from "@shared/api/contract.ts";
 import { computed } from "vue";
-import { t } from "../i18n.ts";
-import { splitTicketRefs } from "../mentions.ts";
+import { t } from "../../lib/i18n.ts";
+import { splitTicketRefs } from "../../lib/mentions.ts";
 import MessageActions from "./MessageActions.vue";
-import TicketRef from "./TicketRef.vue";
+import TicketRef from "../project/TicketRef.vue";
+import { MSG_META, msgUser, uWrap } from "./message.ts";
 
 const props = withDefaults(
   defineProps<{
@@ -27,9 +28,9 @@ const parts = computed(() => splitTicketRefs(props.text, ids.value));
 </script>
 
 <template>
-  <div class="u-wrap" :class="{ pending }">
-    <div v-if="pending" class="msg-meta">{{ t("Sending") }}</div>
-    <div class="msg-user">
+  <div :class="uWrap(pending)">
+    <div v-if="pending" :class="MSG_META">{{ t("Sending") }}</div>
+    <div :class="msgUser(pending)">
       <template v-for="(part, i) in parts" :key="i">
         <TicketRef
           v-if="part.kind === 'ticket'"

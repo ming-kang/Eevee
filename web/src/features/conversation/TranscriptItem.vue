@@ -2,23 +2,24 @@
 import type { TicketView } from "@shared/api/contract.ts";
 import type { QuestionId } from "@shared/contracts/index.ts";
 import { computed } from "vue";
-import type { GapItem } from "../conversation.ts";
-import { t } from "../i18n.ts";
-import { splitFormattedAnswer } from "../questions.ts";
-import type { TranscriptDisplayItem } from "../transcript-map.ts";
+import type { GapItem } from "../../lib/conversation.ts";
+import { t } from "../../lib/i18n.ts";
+import { splitFormattedAnswer } from "../../lib/questions.ts";
+import type { TranscriptDisplayItem } from "../../lib/transcript-map.ts";
 import AssistantMessage from "./AssistantMessage.vue";
 import BashLine from "./BashLine.vue";
 import DispatchLine from "./DispatchLine.vue";
 import EditLine from "./EditLine.vue";
 import EventNote from "./EventNote.vue";
 import FailureLine from "./FailureLine.vue";
-import Icon from "./Icon.vue";
+import Icon from "../../ui/Icon.vue";
 import MessageActions from "./MessageActions.vue";
 import ProcessLine from "./ProcessLine.vue";
-import ReportCard from "./ReportCard.vue";
+import ReportCard from "../project/ReportCard.vue";
 import ResetMark from "./ResetMark.vue";
 import ThinkingLine from "./ThinkingLine.vue";
 import UserMessage from "./UserMessage.vue";
+import { msgUser, uWrap, VIA } from "./message.ts";
 
 /**
  * One line of the conversation, whichever shape it takes. Also used by WorkedGroup so a folded
@@ -86,7 +87,7 @@ function onQaClick(): void {
   <button
     v-if="item.kind === 'more'"
     type="button"
-    class="more-line"
+    class="self-center rounded-sm px-2 py-1 text-xs text-fg-subtle transition-colors enabled:hover:bg-hover enabled:hover:text-fg"
     :disabled="loadingEarlier"
     @click="loadEarlier?.()"
   >
@@ -95,7 +96,7 @@ function onQaClick(): void {
   <button
     v-else-if="item.kind === 'gap'"
     type="button"
-    class="more-line"
+    class="self-center rounded-sm px-2 py-1 text-xs text-fg-subtle transition-colors enabled:hover:bg-hover enabled:hover:text-fg"
     :disabled="fillingGaps"
     @click="fillGap?.(item.gap)"
   >
@@ -121,10 +122,9 @@ function onQaClick(): void {
     :data-outline-key="item.key"
     @open-ticket="$emit('open-ticket', $event)"
   />
-  <div v-else-if="item.kind === 'qa'" class="u-wrap" :data-outline-key="item.key">
+  <div v-else-if="item.kind === 'qa'" :class="uWrap()" :data-outline-key="item.key">
     <div
-      class="msg-user qa"
-      :class="{ clickable: item.questionId !== undefined }"
+      :class="[msgUser(), { 'cursor-pointer focus-visible:shadow-(--ev-ring-in) focus-visible:outline-none': item.questionId !== undefined }]"
       :role="item.questionId !== undefined ? 'button' : undefined"
       :tabindex="item.questionId !== undefined ? 0 : undefined"
       :title="item.questionId !== undefined ? t('Review this question') : undefined"
@@ -133,17 +133,17 @@ function onQaClick(): void {
       @keydown.space.prevent="openQuestionReview"
     >
       <template v-if="item.items !== undefined && qaParts !== undefined">
-        <div v-for="(part, i) in qaParts" :key="i" class="qa-item">
-          <div class="via">{{ item.items[i] }}</div>
+        <div v-for="(part, i) in qaParts" :key="i" class="not-first:mt-2">
+          <div :class="VIA">{{ item.items[i] }}</div>
           {{ part }}
         </div>
       </template>
       <template v-else-if="item.items !== undefined && item.items.length > 1">
-        <div v-for="(text, i) in item.items" :key="i" class="via">{{ text }}</div>
+        <div v-for="(text, i) in item.items" :key="i" :class="VIA">{{ text }}</div>
         {{ item.answer }}
       </template>
       <template v-else>
-        <div class="via">{{ item.question }}</div>
+        <div :class="VIA">{{ item.question }}</div>
         {{ item.answer }}
       </template>
     </div>
@@ -207,7 +207,7 @@ function onQaClick(): void {
     :tickets="tickets"
     @open-ticket="$emit('open-ticket', $event)"
   />
-  <div v-else-if="item.kind === 'idle'" class="idle-mark">
+  <div v-else-if="item.kind === 'idle'" class="self-center px-2 py-1 text-xs text-fg-subtle">
     <span>{{ item.text }}</span>
   </div>
   <FailureLine v-else-if="item.kind === 'failure'" :text="item.text" :retry="retry" />

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { focusFirst, useFocusReturn } from "../focus.ts";
-import { t } from "../i18n.ts";
+import { focusFirst, useFocusReturn } from "../../composables/focus.ts";
+import { t } from "../../lib/i18n.ts";
 import {
   dismissDrawer,
   drawerFade,
@@ -11,12 +11,13 @@ import {
   readWidth,
   SIDE,
   scaledColumn,
-} from "../layout.ts";
-import { useTypography } from "../theme.ts";
-import { TEXT_SIZE } from "../typography.ts";
-import Icon from "./Icon.vue";
+} from "../../lib/layout.ts";
+import { useTypography } from "../../composables/theme.ts";
+import { TEXT_SIZE } from "../../lib/typography.ts";
+import Icon from "../../ui/Icon.vue";
 import RailToggle, { type RailMark } from "./RailToggle.vue";
-import Sash from "./Sash.vue";
+import Sash from "../../ui/Sash.vue";
+import Button from "../../ui/Button.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -59,7 +60,7 @@ const frame = ref<HTMLElement>();
 const sidebar = ref<HTMLElement>();
 const rail = ref<HTMLElement>();
 const drawerBg = ref<HTMLElement>();
-const sideTriggerBtn = ref<HTMLButtonElement>();
+const sideTriggerBtn = ref<{ focus(): void }>();
 const railTrigger = ref<InstanceType<typeof RailToggle>>();
 
 const vpWidth = ref(typeof window !== "undefined" ? window.innerWidth : 1280);
@@ -407,21 +408,13 @@ onUnmounted(() => {
       :class="{ hidden: drawer === 'rail' && isSideDrawerMode }"
       :inert="drawer === 'rail' && isSideDrawerMode"
     >
-      <button
-        ref="sideTriggerBtn"
-        type="button"
-        class="btn ghost sm icon side-trigger-btn"
-        :aria-expanded="sideVisiblyOpen"
-        :title="
+      <Button ref="sideTriggerBtn" variant="ghost" size="sm" icon class="side-trigger-btn" :aria-expanded="sideVisiblyOpen" :title="
           sideVisiblyOpen
             ? t('Collapse sidebar ({key})', { key: sideShortcut })
             : t('Expand sidebar ({key})', { key: sideShortcut })
-        "
-        :aria-label="sideVisiblyOpen ? t('Collapse sidebar') : t('Expand sidebar')"
-        @click="onSideTriggerClick"
-      >
+        " :aria-label="sideVisiblyOpen ? t('Collapse sidebar') : t('Expand sidebar')" @click="onSideTriggerClick">
         <Icon :name="sideVisiblyOpen ? 'sidebarClose' : 'sidebar'" size="sm" />
-      </button>
+      </Button>
     </div>
 
     <div

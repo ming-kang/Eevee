@@ -7,9 +7,9 @@ import type {
   ProviderConfigView,
 } from "@shared/api/contract.ts";
 import { computed, nextTick, reactive, ref, watch } from "vue";
-import { errorText } from "../errors.ts";
-import { formatTokens, fromRows, isEnvReference } from "../fields.ts";
-import { t } from "../i18n.ts";
+import { errorText } from "../../lib/errors.ts";
+import { formatTokens, fromRows, isEnvReference } from "../../lib/fields.ts";
+import { t } from "../../lib/i18n.ts";
 import {
   API_ENDPOINT,
   API_TYPES,
@@ -27,13 +27,21 @@ import {
   referenceChanges,
   requestTarget,
   toDraft,
-} from "../provider-draft.ts";
-import { formatRoute, NEW_ITEM } from "../router.ts";
-import { useSubmit } from "../submit.ts";
-import { showToast } from "../toasts.ts";
-import Icon from "./Icon.vue";
-import KeyValueRows from "./KeyValueRows.vue";
-import Skeleton from "./Skeleton.vue";
+} from "../../lib/provider-draft.ts";
+import { formatRoute, NEW_ITEM } from "../../lib/router.ts";
+import { useSubmit } from "../../composables/submit.ts";
+import { showToast } from "../../composables/toasts.ts";
+import Icon from "../../ui/Icon.vue";
+import KeyValueRows from "../../ui/KeyValueRows.vue";
+import Skeleton from "../../ui/Skeleton.vue";
+import Button from "../../ui/Button.vue";
+import Input from "../../ui/Input.vue";
+import Switch from "../../ui/Switch.vue";
+import { fieldClass } from "../../ui/field.ts";
+import SectionHeader from "../../ui/SectionHeader.vue";
+import { badge, EMPTY } from "../../ui/surface.ts";
+import { ROW_DESC, ROW_PICK, row, rowMain, rowTitle, rows } from "../../ui/rows.ts";
+import { DISCLOSURE, FIELD, FIELD_CTRL, FIELD_INLINE, FIELD_NOTE, FORM, FORM_FOOT, FORM_LABEL, SECTION_T, TOGGLE, formRow } from "../../ui/form.ts";
 
 const props = defineProps<{
   client: Client;
@@ -473,55 +481,49 @@ function probedMeta(model: ProbedModelView): string {
 </script>
 
 <template>
-  <header class="set-head">
-    <a class="btn ghost sm icon" :href="LIST" :aria-label="t('Back to providers')">
-      <Icon name="chevL" size="sm" />
-    </a>
-    <h2 class="ellipsis">{{ title }}</h2>
+  <SectionHeader :title="title">
+    <template #leading>
+      <Button variant="ghost" size="sm" icon :href="LIST" :aria-label="t('Back to providers')">
+        <Icon name="chevL" size="sm" />
+      </Button>
+    </template>
     <template v-if="!isNew && !missing && configs !== undefined">
-      <span class="chip">{{ builtIn ? t("Built-in") : t("Custom") }}</span>
+      <span :class="badge()">{{ builtIn ? t("Built-in") : t("Custom") }}</span>
     </template>
     <template v-if="!isNew && !missing && configs !== undefined && (original || !builtIn)">
       <template v-if="confirmRemove">
-        <button type="button" class="btn sm danger" :disabled="removing.busy.value" @click="remove">
+        <Button variant="danger" size="sm" :disabled="removing.busy.value" @click="remove">
           {{ builtIn ? t("Confirm restore") : t("Confirm delete") }}
-        </button>
-        <button type="button" class="btn ghost sm" @click="confirmRemove = false">{{ t("Cancel") }}</button>
+        </Button>
+        <Button variant="ghost" size="sm" @click="confirmRemove = false">{{ t("Cancel") }}</Button>
       </template>
-      <button v-else type="button" class="btn ghost sm danger" @click="confirmRemove = true">
+      <Button v-else variant="ghost-danger" size="sm" @click="confirmRemove = true">
         <Icon :name="builtIn ? 'undo' : 'x'" size="xs" />
         <span>{{ builtIn ? t("Restore built-in settings") : t("Delete") }}</span>
-      </button>
+      </Button>
     </template>
-  </header>
+  </SectionHeader>
 
   <p v-if="loadError" class="error hint">{{ loadError }}</p>
   <p v-else-if="removing.error.value" class="error hint">{{ removing.error.value }}</p>
   <Skeleton v-if="configs === undefined && !loadError" />
-  <div v-else-if="missing" class="empty">
+  <div v-else-if="missing" :class="EMPTY">
     <h3>{{ t("No provider named {provider}", { provider: id }) }}</h3>
-    <a class="btn sm" :href="LIST">{{ t("Back to providers") }}</a>
+    <Button size="sm" :href="LIST">{{ t("Back to providers") }}</Button>
   </div>
-  <form v-else-if="configs" class="pv-form" @submit.prevent="save">
-    <div class="section-t"><h3>{{ t("Connection") }}</h3></div>
-    <div class="rows">
-      <div v-if="isNew" class="f-row">
+  <form v-else-if="configs" :class="FORM" @submit.prevent="save">
+    <div :class="SECTION_T"><h3>{{ t("Connection") }}</h3></div>
+    <div :class="rows()">
+      <div :class="formRow()" v-if="isNew">
         <label for="pv-id">ID</label>
-        <div class="f-ctrl">
-          <input
-            id="pv-id"
-            v-model="newId"
-            class="input mono"
-            spellcheck="false"
-            autocomplete="off"
-            placeholder="my-gateway"
-          />
+        <div :class="FIELD_CTRL">
+          <Input id="pv-id" v-model="newId" mono spellcheck="false" autocomplete="off" placeholder="my-gateway" />
         </div>
       </div>
-      <div v-if="!builtIn" class="f-row">
+      <div :class="formRow()" v-if="!builtIn">
         <label for="pv-api">{{ t("API type") }}</label>
-        <div class="f-ctrl">
-          <select id="pv-api" v-model="draft.api" class="input mono">
+        <div :class="FIELD_CTRL">
+          <select id="pv-api" v-model="draft.api" class="pr-7" :class="fieldClass({ mono: true })">
             <option value="" disabled>{{ t("Select an API type") }}</option>
             <option v-for="api in apiChoices" :key="api" :value="api">
               {{ API_ENDPOINT[api] ? `${api} · ${API_ENDPOINT[api]}` : api }}
@@ -529,106 +531,79 @@ function probedMeta(model: ProbedModelView): string {
           </select>
         </div>
       </div>
-      <div class="f-row">
+      <div :class="formRow()">
         <label for="pv-base">Base URL</label>
-        <div class="f-ctrl">
-          <input
-            id="pv-base"
-            v-model="draft.baseUrl"
-            class="input mono"
-            spellcheck="false"
-            autocomplete="off"
-            :placeholder="builtIn ? (provider?.defaultBaseUrl ?? '') : baseUrlPlaceholder(draft.api || undefined)"
-          />
-          <span v-if="target" class="f-note mono" :class="{ warn: target.doubled }">
+        <div :class="FIELD_CTRL">
+          <Input id="pv-base" v-model="draft.baseUrl" mono spellcheck="false" autocomplete="off" :placeholder="builtIn ? (provider?.defaultBaseUrl ?? '') : baseUrlPlaceholder(draft.api || undefined)" />
+          <span v-if="target" class="mono" :class="[FIELD_NOTE, { warn: target.doubled }]">
             {{
               target.doubled
                 ? t("Requests go to {url}; /v1 is doubled, remove it from the base URL", { url: target.url })
                 : t("Requests go to {url}", { url: target.url })
             }}
           </span>
-          <span v-else-if="!builtIn && baseUrlShape(draft.api || undefined) === 'origin'" class="f-note">
+          <span :class="FIELD_NOTE" v-else-if="!builtIn && baseUrlShape(draft.api || undefined) === 'origin'">
             {{ t("Just the origin; the client adds /v1") }}
           </span>
-          <span v-else-if="!builtIn && baseUrlShape(draft.api || undefined)" class="f-note">
+          <span :class="FIELD_NOTE" v-else-if="!builtIn && baseUrlShape(draft.api || undefined)">
             {{ t("Include the version path, such as /v1") }}
           </span>
         </div>
       </div>
-      <div class="f-row">
+      <div :class="formRow()">
         <label for="pv-key">API Key</label>
-        <div class="f-ctrl">
-          <div class="f-inline">
-            <input
-              id="pv-key"
-              v-model="keyInput"
-              class="input mono"
-              type="password"
-              spellcheck="false"
-              autocomplete="off"
-              :placeholder="keySaved ? t('Saved; type a new key to replace it') : t('Paste an API key')"
-            />
-            <button
-              v-if="keySaved && !isNew"
-              type="button"
-              class="btn ghost sm"
-              :disabled="removingKey.busy.value"
-              @click="removeKey"
-            >
+        <div :class="FIELD_CTRL">
+          <div :class="FIELD_INLINE">
+            <Input id="pv-key" v-model="keyInput" mono type="password" spellcheck="false" autocomplete="off" :placeholder="keySaved ? t('Saved; type a new key to replace it') : t('Paste an API key')" />
+            <Button v-if="keySaved && !isNew" variant="ghost" size="sm" :disabled="removingKey.busy.value" @click="removeKey">
               {{ t("Remove") }}
-            </button>
+            </Button>
           </div>
-          <span v-if="provider?.authType === 'oauth'" class="f-note">{{ t("Signed in with OAuth") }}</span>
-          <span v-else-if="provider?.configured && !keySaved && provider.source" class="f-note">
+          <span :class="FIELD_NOTE" v-if="provider?.authType === 'oauth'">{{ t("Signed in with OAuth") }}</span>
+          <span :class="FIELD_NOTE" v-else-if="provider?.configured && !keySaved && provider.source">
             {{ t("Credentials come from {source}", { source: provider.source }) }}
           </span>
-          <span v-if="removingKey.error.value" class="f-note warn">{{ removingKey.error.value }}</span>
+          <span :class="FIELD_NOTE" v-if="removingKey.error.value" class="warn">{{ removingKey.error.value }}</span>
         </div>
       </div>
     </div>
 
-    <div class="section-t">
+    <div :class="SECTION_T">
       <h3>{{ builtIn ? t("Added models") : t("Models") }}</h3>
       <span class="count">{{ draft.models.length }}</span>
       <span class="spacer" />
-      <button v-if="!builtIn" type="button" class="btn sm" :disabled="!canProbe || probing.busy.value" @click="probe">
+      <Button v-if="!builtIn" size="sm" :disabled="!canProbe || probing.busy.value" @click="probe">
         <Icon name="refresh" size="xs" :spin="probing.busy.value" />
         <span>{{ t("Fetch from endpoint") }}</span>
-      </button>
-      <button type="button" class="btn sm" @click="addModel">
+      </Button>
+      <Button size="sm" @click="addModel">
         <Icon name="plus" size="xs" />
         <span>{{ t("Add model") }}</span>
-      </button>
+      </Button>
     </div>
     <p v-if="probing.error.value" class="error hint">{{ probing.error.value }}</p>
 
-    <div v-if="probed" class="rows probe">
-      <div class="row probe-head">
-        <input
-          v-if="probed.models.length > 8"
-          v-model="probeFilter"
-          class="input pref"
-          :placeholder="t('Filter')"
-          :aria-label="t('Filter the endpoint\'s models')"
-        />
-        <span v-else class="r-d spacer">{{ t("The endpoint lists {n} model|The endpoint lists {n} models", { n: probed.models.length }) }}</span>
+    <div v-if="probed" class="animate-[ev-rise_var(--ev-regular)_var(--ev-ease)]" :class="rows()">
+      <div class="min-h-13 gap-2 px-4 py-2.5" :class="row({ size: 'none' })">
+        <Input v-if="probed.models.length > 8" v-model="probeFilter" size="sm" class="w-55" :placeholder="t('Filter')" :aria-label="t('Filter the endpoint\'s models')" />
+        <span v-else class="spacer" :class="ROW_DESC">{{ t("The endpoint lists {n} model|The endpoint lists {n} models", { n: probed.models.length }) }}</span>
         <span class="spacer" />
-        <button type="button" class="btn ghost sm" :disabled="probeList.length === 0" @click="pickAll">
+        <Button variant="ghost" size="sm" :disabled="probeList.length === 0" @click="pickAll">
           {{ t("Select all") }}
-        </button>
-        <button type="button" class="btn sm primary" :disabled="picked.size === 0" @click="importPicked">
+        </Button>
+        <Button variant="primary" size="sm" :disabled="picked.size === 0" @click="importPicked">
           {{ t("Add {n} model|Add {n} models", { n: picked.size }) }}
-        </button>
-        <button type="button" class="btn ghost sm icon" :aria-label="t('Close')" @click="probed = undefined">
+        </Button>
+        <Button variant="ghost" size="sm" icon :aria-label="t('Close')" @click="probed = undefined">
           <Icon name="x" size="xs" />
-        </button>
+        </Button>
       </div>
-      <div class="probe-list">
+      <div class="max-h-80 overflow-y-auto">
         <label
           v-for="model in probeList"
           :key="model.id"
-          class="row pick"
-          :class="{ off: have.has(model.id) }"
+          
+          :class="[ROW_PICK, { off: have.has(model.id) }]"
         >
           <input
             type="checkbox"
@@ -636,96 +611,83 @@ function probedMeta(model: ProbedModelView): string {
             :disabled="have.has(model.id)"
             @change="togglePick(model.id)"
           />
-          <span class="r-main">
-            <span class="r-t mono">{{ model.id }}</span>
-            <span v-if="probedMeta(model)" class="r-d">{{ probedMeta(model) }}</span>
+          <span :class="rowMain()">
+            <span class="mono" :class="rowTitle()">{{ model.id }}</span>
+            <span v-if="probedMeta(model)" :class="ROW_DESC">{{ probedMeta(model) }}</span>
           </span>
-          <span v-if="have.has(model.id)" class="r-d">{{ t("Added") }}</span>
+          <span v-if="have.has(model.id)" :class="ROW_DESC">{{ t("Added") }}</span>
         </label>
-        <div v-if="probeList.length === 0" class="row"><span class="muted">{{ t("No models match") }}</span></div>
+        <div v-if="probeList.length === 0" :class="row()"><span class="muted">{{ t("No models match") }}</span></div>
       </div>
-      <div v-if="probed.truncated" class="row"><span class="r-d">{{ t("The endpoint has more models than it listed") }}</span></div>
+      <div v-if="probed.truncated" :class="row()"><span :class="ROW_DESC">{{ t("The endpoint has more models than it listed") }}</span></div>
     </div>
 
-    <div v-if="draft.models.length > 0" class="rows">
+    <div v-if="draft.models.length > 0" :class="rows()">
       <div v-for="(model, index) in draft.models" :key="model.key" class="m-item">
-        <div class="row m-head">
+        <div class="min-h-11 gap-3 py-1 pr-2 pl-2.5" :class="row({ size: 'none' })">
           <button
             type="button"
-            class="m-toggle"
+            class="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-sm px-1.5 text-left text-sm hover:bg-hover focus-visible:shadow-(--ring) focus-visible:outline-none"
             :aria-expanded="expanded.has(model.key)"
             @click="toggleModel(model)"
           >
             <Icon :name="expanded.has(model.key) ? 'chevD' : 'chevR'" size="xs" />
             <span class="mono ellipsis">{{ model.id || t("New model") }}</span>
-            <span class="r-d ellipsis">{{ modelSummary(model) }}</span>
+            <span class="ellipsis min-w-0 flex-1" :class="ROW_DESC">{{ modelSummary(model) }}</span>
           </button>
-          <button
-            type="button"
-            class="btn ghost sm icon"
-            :aria-label="t('Remove model {model}', { model: model.id || t('New model') })"
-            @click="removeModel(index)"
-          >
+          <Button variant="ghost" size="sm" icon :aria-label="t('Remove model {model}', { model: model.id || t('New model') })" @click="removeModel(index)">
             <Icon name="x" size="xs" />
-          </button>
+          </Button>
         </div>
-        <div v-if="expanded.has(model.key)" class="m-fields">
-          <div v-if="refKey !== model.key" class="m-ref-bar">
-            <button type="button" class="btn sm" :disabled="model.id.trim() === ''" @click="openReference(model)">
+        <div v-if="expanded.has(model.key)" class="grid animate-[ev-fade_var(--ev-regular)_var(--ev-ease)] grid-cols-2 gap-x-4 gap-y-3 pt-1 pr-4 pb-4 pl-9 @max-[44.2857em]/vp:grid-cols-1 @max-[44.2857em]/vp:pl-4">
+          <div v-if="refKey !== model.key" class="col-span-full flex min-w-0 items-center gap-2.5">
+            <Button size="sm" :disabled="model.id.trim() === ''" @click="openReference(model)">
               <Icon name="copy" size="xs" />
               <span>{{ t("Use built-in data") }}</span>
-            </button>
-            <span class="f-note">{{ t("Copy the name, context, prices and more from a built-in model") }}</span>
+            </Button>
+            <span :class="FIELD_NOTE">{{ t("Copy the name, context, prices and more from a built-in model") }}</span>
           </div>
-          <div v-else class="rows m-ref">
+          <div v-else class="m-ref col-span-full flex flex-col overflow-hidden rounded-md border border-border bg-sidebar [--ev-glyph-cut:var(--bg-sidebar)] animate-[ev-rise_var(--ev-regular)_var(--ev-ease)] [&>*+*]:border-t [&>*+*]:border-separator">
             <template v-if="refPicked === undefined">
-              <div class="row m-ref-head">
-                <input
-                  v-model="refQuery"
-                  class="input mono"
-                  spellcheck="false"
-                  autocomplete="off"
-                  :placeholder="t('Search built-in models')"
-                  :aria-label="t('Search built-in models')"
-                  @input="onRefQuery"
-                />
-                <button type="button" class="btn ghost sm icon" :aria-label="t('Close')" @click="closeReference">
+              <div class="min-h-13 gap-2 py-1.5 pr-2 pl-3" :class="row({ size: 'none' })">
+                <Input v-model="refQuery" mono class="min-w-0 flex-1" spellcheck="false" autocomplete="off" :placeholder="t('Search built-in models')" :aria-label="t('Search built-in models')" @input="onRefQuery" />
+                <Button variant="ghost" size="sm" icon :aria-label="t('Close')" @click="closeReference">
                   <Icon name="x" size="xs" />
-                </button>
+                </Button>
               </div>
-              <div v-if="lookingUp.error.value" class="row"><span class="error">{{ lookingUp.error.value }}</span></div>
+              <div v-if="lookingUp.error.value" :class="row()"><span class="error">{{ lookingUp.error.value }}</span></div>
               <button
                 v-for="reference in refMatches ?? []"
                 :key="`${reference.provider}/${reference.id}`"
                 type="button"
-                class="row pick"
+                :class="ROW_PICK"
                 @click="pickReference(reference)"
               >
-                <span class="r-main">
-                  <span class="r-t mono ellipsis">{{ reference.provider }} / {{ reference.id }}</span>
-                  <span class="r-d">{{ candidateMeta(reference, model) }}</span>
+                <span :class="rowMain()">
+                  <span class="mono ellipsis" :class="rowTitle()">{{ reference.provider }} / {{ reference.id }}</span>
+                  <span :class="ROW_DESC">{{ candidateMeta(reference, model) }}</span>
                 </span>
                 <Icon name="chevR" size="xs" class="go" />
               </button>
-              <div v-if="refMatches?.length === 0" class="row">
+              <div v-if="refMatches?.length === 0" :class="row()">
                 <span class="muted">{{ t("No similar built-in model; keep filling it in by hand") }}</span>
               </div>
             </template>
             <template v-else>
-              <div class="row m-ref-head">
-                <button type="button" class="btn ghost sm icon" :aria-label="t('Back to candidates')" @click="refPicked = undefined">
+              <div class="min-h-13 gap-2 py-1.5 pr-2 pl-3" :class="row({ size: 'none' })">
+                <Button variant="ghost" size="sm" icon :aria-label="t('Back to candidates')" @click="refPicked = undefined">
                   <Icon name="chevL" size="xs" />
-                </button>
-                <span class="r-main">
-                  <span class="r-t mono ellipsis">{{ refPicked.provider }} / {{ refPicked.id }}</span>
-                  <span class="r-d">{{ t("Pick the fields to copy; the model's ID and API won't change") }}</span>
+                </Button>
+                <span :class="rowMain()">
+                  <span class="mono ellipsis" :class="rowTitle()">{{ refPicked.provider }} / {{ refPicked.id }}</span>
+                  <span :class="ROW_DESC">{{ t("Pick the fields to copy; the model's ID and API won't change") }}</span>
                 </span>
               </div>
               <label
                 v-for="change in refChanges"
                 :key="change.field"
-                class="row pick"
-                :class="{ off: change.same }"
+                
+                :class="[ROW_PICK, { off: change.same }]"
               >
                 <input
                   type="checkbox"
@@ -733,129 +695,103 @@ function probedMeta(model: ProbedModelView): string {
                   :disabled="change.same"
                   @change="toggleReferenceField(change.field)"
                 />
-                <span class="r-main">
-                  <span class="r-t">{{ FIELD_LABEL[change.field]() }}</span>
-                  <span v-if="change.same" class="r-d">{{ referenceText(refPicked, change.field) }} · {{ t("already the same") }}</span>
-                  <span v-else class="r-d">
-                    {{ currentText(model, change.field) }} → <span class="m-ref-new">{{ referenceText(refPicked, change.field) }}</span>
+                <span :class="rowMain()">
+                  <span :class="rowTitle()">{{ FIELD_LABEL[change.field]() }}</span>
+                  <span v-if="change.same" :class="ROW_DESC">{{ referenceText(refPicked, change.field) }} · {{ t("already the same") }}</span>
+                  <span v-else :class="ROW_DESC">
+                    {{ currentText(model, change.field) }} → <span class="font-medium text-fg">{{ referenceText(refPicked, change.field) }}</span>
                   </span>
-                  <span v-if="change.field === 'cost' && refPicked.costTiers" class="r-d">
+                  <span v-if="change.field === 'cost' && refPicked.costTiers" :class="ROW_DESC">
                     {{ t("It also prices by input length; those tiers aren't copied") }}
                   </span>
                 </span>
               </label>
-              <div class="row m-ref-foot">
+              <div class="min-h-13 gap-2 px-3 py-2" :class="row({ size: 'none' })">
                 <span class="spacer" />
-                <button type="button" class="btn ghost sm" @click="closeReference">{{ t("Cancel") }}</button>
-                <button type="button" class="btn sm primary" :disabled="refToApply.length === 0" @click="applyPicked">
+                <Button variant="ghost" size="sm" @click="closeReference">{{ t("Cancel") }}</Button>
+                <Button variant="primary" size="sm" :disabled="refToApply.length === 0" @click="applyPicked">
                   {{ t("Copy {n} field|Copy {n} fields", { n: refToApply.length }) }}
-                </button>
+                </Button>
               </div>
             </template>
           </div>
-          <div class="field">
+          <div :class="FIELD">
             <label :for="`pv-model-${model.key}`">ID</label>
-            <input :id="`pv-model-${model.key}`" v-model="model.id" class="input mono" spellcheck="false" autocomplete="off" />
+            <Input :id="`pv-model-${model.key}`" v-model="model.id" mono spellcheck="false" autocomplete="off" />
           </div>
-          <div class="field">
+          <div :class="FIELD">
             <label :for="`pv-mname-${model.key}`">{{ t("Name") }}</label>
-            <input :id="`pv-mname-${model.key}`" v-model="model.name" class="input" autocomplete="off" :placeholder="model.id" />
+            <Input :id="`pv-mname-${model.key}`" v-model="model.name" autocomplete="off" :placeholder="model.id" />
           </div>
-          <div class="field">
+          <div :class="FIELD">
             <label :for="`pv-ctx-${model.key}`">{{ t("Context window") }}</label>
-            <input :id="`pv-ctx-${model.key}`" v-model="model.contextWindow" class="input mono" placeholder="128k" />
+            <Input :id="`pv-ctx-${model.key}`" v-model="model.contextWindow" mono placeholder="128k" />
           </div>
-          <div class="field">
+          <div :class="FIELD">
             <label :for="`pv-max-${model.key}`">{{ t("Max output") }}</label>
-            <input :id="`pv-max-${model.key}`" v-model="model.maxTokens" class="input mono" placeholder="16k" />
+            <Input :id="`pv-max-${model.key}`" v-model="model.maxTokens" mono placeholder="16k" />
           </div>
-          <div class="field toggles">
-            <label class="toggle">
-              <button
-                type="button"
-                class="switch"
-                :class="{ on: model.reasoning }"
-                :aria-pressed="model.reasoning"
-                @click="model.reasoning = !model.reasoning"
-              />
+          <div class="col-span-full flex flex-row gap-6 [&>label]:text-xs [&>label]:font-medium [&>label]:text-fg-muted">
+            <label :class="TOGGLE">
+              <Switch :model-value="model.reasoning" @update:model-value="model.reasoning = !model.reasoning" />
               <span>{{ t("Reasoning") }}</span>
             </label>
-            <label class="toggle">
-              <button
-                type="button"
-                class="switch"
-                :class="{ on: model.image }"
-                :aria-pressed="model.image"
-                @click="model.image = !model.image"
-              />
+            <label :class="TOGGLE">
+              <Switch :model-value="model.image" @update:model-value="model.image = !model.image" />
               <span>{{ t("Image input") }}</span>
             </label>
           </div>
-          <fieldset class="field prices">
+          <fieldset class="col-span-full m-0 grid min-w-0 grid-cols-4 gap-1.5 border-0 p-0 @max-[44.2857em]/vp:grid-cols-2 [&>legend]:mb-1.5 [&>legend]:p-0 [&>legend]:text-xs [&>legend]:font-medium [&>legend]:text-fg-muted">
             <legend>{{ t("Price (USD per million tokens)") }}</legend>
-            <input v-model="model.cost.input" class="input mono" inputmode="decimal" :placeholder="t('Input')" :aria-label="t('Input price')" />
-            <input v-model="model.cost.output" class="input mono" inputmode="decimal" :placeholder="t('Output')" :aria-label="t('Output price')" />
-            <input v-model="model.cost.cacheRead" class="input mono" inputmode="decimal" :placeholder="t('Cache read')" :aria-label="t('Cache read price')" />
-            <input v-model="model.cost.cacheWrite" class="input mono" inputmode="decimal" :placeholder="t('Cache write')" :aria-label="t('Cache write price')" />
+            <Input v-model="model.cost.input" mono inputmode="decimal" :placeholder="t('Input')" :aria-label="t('Input price')" />
+            <Input v-model="model.cost.output" mono inputmode="decimal" :placeholder="t('Output')" :aria-label="t('Output price')" />
+            <Input v-model="model.cost.cacheRead" mono inputmode="decimal" :placeholder="t('Cache read')" :aria-label="t('Cache read price')" />
+            <Input v-model="model.cost.cacheWrite" mono inputmode="decimal" :placeholder="t('Cache write')" :aria-label="t('Cache write price')" />
           </fieldset>
         </div>
       </div>
     </div>
 
-    <details class="f-adv">
+    <details :class="DISCLOSURE">
       <summary>{{ t("Advanced") }}</summary>
-      <div class="rows">
-        <div class="f-row">
+      <div class="mt-2" :class="rows()">
+        <div :class="formRow()">
           <label for="pv-name">{{ t("Display name") }}</label>
-          <div class="f-ctrl">
-            <input id="pv-name" v-model="draft.name" class="input" autocomplete="off" :placeholder="providerId" />
-            <span class="f-note">{{ t("Only for display; the ID shows when it is empty") }}</span>
+          <div :class="FIELD_CTRL">
+            <Input id="pv-name" v-model="draft.name" autocomplete="off" :placeholder="providerId" />
+            <span :class="FIELD_NOTE">{{ t("Only for display; the ID shows when it is empty") }}</span>
           </div>
         </div>
-        <div class="f-row top">
-          <span class="f-label">{{ t("Headers") }}</span>
+        <div :class="formRow({ top: true })">
+          <span :class="FORM_LABEL">{{ t("Headers") }}</span>
           <KeyValueRows :rows="draft.headers" :label="t('Headers')" key-placeholder="X-Header" value-placeholder="$ENV_NAME" />
         </div>
-        <div class="f-row">
-          <span class="f-label">authHeader</span>
-          <label class="toggle">
-            <button
-              type="button"
-              class="switch"
-              :class="{ on: draft.authHeader }"
-              :aria-pressed="draft.authHeader"
-              @click="draft.authHeader = !draft.authHeader"
-            />
+        <div :class="formRow()">
+          <span :class="FORM_LABEL">authHeader</span>
+          <label :class="TOGGLE">
+            <Switch :model-value="draft.authHeader" @update:model-value="draft.authHeader = !draft.authHeader" />
             <span>{{ t("Also send the key as a Bearer token") }}</span>
           </label>
         </div>
-        <div class="f-row">
+        <div :class="formRow()">
           <label for="pv-apikey">apiKey</label>
-          <div class="f-ctrl">
-            <input
-              id="pv-apikey"
-              v-model="draft.apiKey"
-              class="input mono"
-              :type="draft.apiKey === '' || isEnvReference(draft.apiKey) ? 'text' : 'password'"
-              spellcheck="false"
-              autocomplete="off"
-              placeholder="$ENV_NAME"
-            />
-            <span class="f-note">{{ t("Written to models.json and may reference environment variables; a key set above takes precedence") }}</span>
+          <div :class="FIELD_CTRL">
+            <Input id="pv-apikey" v-model="draft.apiKey" mono :type="draft.apiKey === '' || isEnvReference(draft.apiKey) ? 'text' : 'password'" spellcheck="false" autocomplete="off" placeholder="$ENV_NAME" />
+            <span :class="FIELD_NOTE">{{ t("Written to models.json and may reference environment variables; a key set above takes precedence") }}</span>
           </div>
         </div>
       </div>
     </details>
 
-    <footer class="f-foot">
+    <footer :class="FORM_FOOT">
       <span v-if="formError || saving.error.value" class="error" role="alert">{{ formError ?? saving.error.value }}</span>
       <span class="spacer" />
-      <button type="button" class="btn ghost sm" :disabled="!dirty && !isNew" @click="discard">
+      <Button variant="ghost" size="sm" :disabled="!dirty && !isNew" @click="discard">
         {{ isNew ? t("Cancel") : t("Discard changes") }}
-      </button>
-      <button type="submit" class="btn sm primary" :disabled="(!dirty && !isNew) || saving.busy.value">
+      </Button>
+      <Button type="submit" variant="primary" size="sm" :disabled="(!dirty && !isNew) || saving.busy.value">
         {{ isNew ? t("Add") : t("Save") }}
-      </button>
+      </Button>
     </footer>
   </form>
 </template>

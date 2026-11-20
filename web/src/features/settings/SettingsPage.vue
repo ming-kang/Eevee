@@ -14,29 +14,35 @@ import {
   type ThinkingLevel,
 } from "@shared/contracts/index.ts";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { configIssueText, configProblemText, errorText } from "../errors.ts";
-import { ROLE_LABEL } from "../labels.ts";
-import { LOCALE_NAME, LOCALES, locale, setLocale, t } from "../i18n.ts";
-import type { IconName } from "../icons.ts";
-import { levelsOf, switchModel, levelLabel } from "../model-choice.ts";
-import { useModelsView } from "../models-view.ts";
-import { formatRoute, NEW_ITEM, type SettingsSection } from "../router.ts";
-import { vSeg } from "../dom.ts";
-import { PALETTE_LABELS } from "../projects.ts";
-import type { StreamState } from "../stream.ts";
-import { useSubmit } from "../submit.ts";
-import { THEME_PALETTES, type ThemePreference, useTheme, useTypography } from "../theme.ts";
-import { showToast } from "../toasts.ts";
-import { readTextSize, TEXT_SIZE } from "../typography.ts";
-import { notifyEnabled, notifySupported, setNotifyEnabled } from "../use-notifications.ts";
-import Icon from "./Icon.vue";
+import { configIssueText, configProblemText, errorText } from "../../lib/errors.ts";
+import { ROLE_LABEL } from "../../lib/labels.ts";
+import { LOCALE_NAME, LOCALES, locale, setLocale, t } from "../../lib/i18n.ts";
+import type { IconName } from "../../composables/icons.ts";
+import { levelsOf, switchModel, levelLabel } from "../../lib/model-choice.ts";
+import { useModelsView } from "../../composables/models-view.ts";
+import { formatRoute, NEW_ITEM, type SettingsSection } from "../../lib/router.ts";
+import type { StreamState } from "../../lib/stream.ts";
+import { useSubmit } from "../../composables/submit.ts";
+import { type ThemePreference, useTheme, useTypography } from "../../composables/theme.ts";
+import { showToast } from "../../composables/toasts.ts";
+import { readTextSize, TEXT_SIZE } from "../../lib/typography.ts";
+import { notifyEnabled, notifySupported, setNotifyEnabled } from "../../composables/use-notifications.ts";
+import Icon from "../../ui/Icon.vue";
 import LevelMenu from "./LevelMenu.vue";
-import MarkdownText from "./MarkdownText.vue";
+import MarkdownText from "../markdown/MarkdownText.vue";
 import McpEditor from "./McpEditor.vue";
 import ModelMenu from "./ModelMenu.vue";
 import ProviderEditor from "./ProviderEditor.vue";
 import RoleSettings from "./RoleSettings.vue";
-import Skeleton from "./Skeleton.vue";
+import Skeleton from "../../ui/Skeleton.vue";
+import Button from "../../ui/Button.vue";
+import Input from "../../ui/Input.vue";
+import Switch from "../../ui/Switch.vue";
+import Segmented from "../../ui/Segmented.vue";
+import SectionHeader from "../../ui/SectionHeader.vue";
+import { badge, banner, CODELINE, PANEL, TABLE } from "../../ui/surface.ts";
+import { ROW_DESC, ROW_LINK, row, rowMain, rowTitle, rows } from "../../ui/rows.ts";
+import { SECTION_T } from "../../ui/form.ts";
 
 const props = defineProps<{
   client: Client;
@@ -48,7 +54,7 @@ const props = defineProps<{
   refreshStatus: () => Promise<void>;
 }>();
 
-const { preference: themePref, palette: activePalette, resolved: resolvedTheme, setTheme, setPalette } = useTheme();
+const { preference: themePref, setTheme } = useTheme();
 const { size: textSize, font, setTextSize, setFont } = useTypography();
 
 // ——— Desktop notifications: the switch persists `eevee.notify`; the browser keeps the permission ———
@@ -155,6 +161,10 @@ async function loadCapabilities(quiet = false): Promise<void> {
   }
 }
 
+/** mcp.json's entries, which the server list switches on and off. */
+const mcpEntries = ref<Record<string, Record<string, unknown>>>();
+const togglingServer = useSubmit();
+
 watch(
   () => props.section,
   (sec) => {
@@ -165,10 +175,6 @@ watch(
   },
   { immediate: true },
 );
-
-/** mcp.json's entries, which the server list switches on and off. */
-const mcpEntries = ref<Record<string, Record<string, unknown>>>();
-const togglingServer = useSubmit();
 
 async function loadMcpEntries(): Promise<void> {
   try {
@@ -388,6 +394,11 @@ const streamBadge = computed(() => {
   if (props.streamState === "reconnecting") return { dot: "run", label: t("Reconnecting the live stream::status") };
   return { dot: "bad", label: t("Live stream disconnected") };
 });
+
+const MODEL_PICK =
+  "inline-flex h-(--ev-h-md) items-center gap-2 rounded-md border border-(--ev-input-border) bg-(--ev-well) px-2.5 text-left shadow-(--ev-shadow-well) transition-[border-color,box-shadow] duration-(--ev-fast) focus-visible:shadow-[var(--ev-shadow-well),var(--ring)] disabled:opacity-45 [&>.ico]:text-fg-subtle";
+const STATUS_TEXT = "inline-flex items-center gap-1.75 text-xs whitespace-nowrap text-fg-muted";
+const VALUE_TEXT = "text-right font-mono text-xs leading-[1.4] wrap-anywhere text-fg-muted";
 </script>
 
 <template>
@@ -395,13 +406,13 @@ const streamBadge = computed(() => {
     <header class="header">
       <h1>{{ t("Settings") }}</h1>
     </header>
-    <div class="settings">
-      <nav class="set-nav" :aria-label="t('Settings sections')">
+    <div class="grid min-h-0 flex-1 grid-cols-[clamp(calc(220px*var(--ev-scale)),22%,calc(300px*var(--ev-scale)))_minmax(0,1fr)] @max-[64.2857em]/vp:grid-cols-1 @max-[64.2857em]/vp:grid-rows-[auto_minmax(0,1fr)]">
+      <nav class="flex flex-col gap-0.5 border-r border-separator px-2.5 py-3 @max-[64.2857em]/vp:flex-row @max-[64.2857em]/vp:overflow-x-auto @max-[64.2857em]/vp:border-r-0 @max-[64.2857em]/vp:border-b @max-[64.2857em]/vp:px-3 @max-[64.2857em]/vp:py-2" :aria-label="t('Settings sections')">
         <a
           v-for="item in SECTIONS"
           :key="item.key"
-          class="nav-item"
-          :class="{ on: section === item.key }"
+          class="flex h-8 items-center gap-2.25 rounded-sm px-2.5 text-base tracking-(--ev-tracking) text-fg transition-colors focus-visible:shadow-(--ring-inset) @max-[64.2857em]/vp:flex-none [&_.ico]:text-fg-muted"
+          :class="section === item.key ? 'bg-selected' : 'hover:bg-hover'"
           :aria-current="section === item.key ? 'page' : undefined"
           :href="`#/settings/${item.key}`"
         >
@@ -418,114 +429,33 @@ const streamBadge = computed(() => {
         </a>
       </nav>
 
-      <div class="set-body">
-        <div class="set-inner">
+      <div class="min-h-0 overflow-y-auto">
+        <div class="mx-auto flex max-w-[calc(780px*var(--ev-scale))] flex-col gap-3.5 px-(--ev-gutter) pt-4.5 pb-14 @max-[64.2857em]/vp:px-4 @max-[64.2857em]/vp:pt-1 @max-[64.2857em]/vp:pb-12">
           <template v-if="section === 'general'">
-            <header class="set-head"><h2>{{ t("General") }}</h2></header>
-            <div class="rows">
-              <div class="row">
-                <div class="r-main"><span class="r-t">{{ t("Language") }}</span></div>
-                <div v-seg class="seg sm" role="group" :aria-label="t('Language')">
-                  <button
-                    v-for="option in LOCALES"
-                    :key="option"
-                    type="button"
-                    :lang="option"
-                    :class="{ on: locale === option }"
-                    :aria-pressed="locale === option"
-                    @click="setLocale(option)"
-                  >
-                    {{ LOCALE_NAME[option] }}
-                  </button>
-                </div>
+            <SectionHeader :title="t('General')" />
+            <div :class="rows()">
+              <div :class="row()">
+                <div :class="rowMain()"><span :class="rowTitle()">{{ t("Language") }}</span></div>
+                <Segmented :model-value="locale" :options="LOCALES.map((value) => ({ value, label: LOCALE_NAME[value], lang: value }))" :label="t('Language')" @update:model-value="setLocale" />
               </div>
-              <div class="row">
-                <div class="r-main"><span class="r-t">{{ t("Theme") }}</span></div>
-                <div v-seg class="seg sm" role="group" :aria-label="t('Theme')">
-                  <button
-                    v-for="option in THEME_OPTIONS"
-                    :key="option.key"
-                    type="button"
-                    :class="{ on: themePref === option.key }"
-                    :aria-pressed="themePref === option.key"
-                    @click="setTheme(option.key)"
-                  >
-                    {{ option.label }}
-                  </button>
-                </div>
+              <div :class="row()">
+                <div :class="rowMain()"><span :class="rowTitle()">{{ t("Theme") }}</span></div>
+                <Segmented :model-value="themePref" :options="THEME_OPTIONS.map((option) => ({ value: option.key, label: option.label }))" :label="t('Theme')" @update:model-value="setTheme" />
               </div>
-              <div class="row row-palettes">
-                <div class="r-main">
-                  <span class="r-t">{{ t("Color palette") }}</span>
-                  <span class="r-d">{{ t("Applies to both light and dark modes") }}</span>
-                </div>
-                <div class="pal-grid" role="group" :aria-label="t('Color palette')">
-                  <button
-                    v-for="sw in THEME_PALETTES"
-                    :key="sw.id"
-                    type="button"
-                    class="pal-card"
-                    :class="{ on: activePalette === sw.id }"
-                    :aria-pressed="activePalette === sw.id"
-                    @click="setPalette(sw.id)"
-                  >
-                    <span
-                      class="pal-chip"
-                      aria-hidden="true"
-                      :style="{
-                        '--sw-side': (resolvedTheme === 'dark' ? sw.dark : sw.light).sidebar,
-                        '--sw-canvas': (resolvedTheme === 'dark' ? sw.dark : sw.light).canvas,
-                        '--sw-primary': (resolvedTheme === 'dark' ? sw.dark : sw.light).primary,
-                      }"
-                    >
-                      <i class="pal-chip-side" />
-                      <i class="pal-chip-canvas"><b class="pal-chip-dot" /></i>
-                    </span>
-                    <span class="pal-name">{{ PALETTE_LABELS[sw.id]() }}</span>
-                  </button>
-                </div>
+              <div :class="row()">
+                <label :class="rowMain()" for="set-font"><span :class="rowTitle()">{{ t("Font") }}</span></label>
+                <Input id="set-font" size="sm" inline class="w-55" :model-value="font" placeholder="Inter" spellcheck="false" autocomplete="off" @input="setFont(($event.target as HTMLInputElement).value)" />
               </div>
-              <div class="row">
-                <label class="r-main" for="set-font"><span class="r-t">{{ t("Font") }}</span></label>
-                <input
-                  id="set-font"
-                  class="input pref"
-                  :value="font"
-                  placeholder="Inter"
-                  spellcheck="false"
-                  autocomplete="off"
-                  @input="setFont(($event.target as HTMLInputElement).value)"
-                />
+              <div :class="row()">
+                <label :class="rowMain()" for="set-size"><span :class="rowTitle()">{{ t("Font size") }}</span></label>
+                <Input id="set-size" size="sm" inline class="w-17 text-center num" type="number" inputmode="numeric" :min="TEXT_SIZE.min" :max="TEXT_SIZE.max" step="1" :model-value="textSize" @input="onSizeInput" @blur="onSizeBlur" />
               </div>
-              <div class="row">
-                <label class="r-main" for="set-size"><span class="r-t">{{ t("Font size") }}</span></label>
-                <input
-                  id="set-size"
-                  class="input pref size num"
-                  type="number"
-                  inputmode="numeric"
-                  :min="TEXT_SIZE.min"
-                  :max="TEXT_SIZE.max"
-                  step="1"
-                  :value="textSize"
-                  @input="onSizeInput"
-                  @blur="onSizeBlur"
-                />
-              </div>
-              <div class="row">
-                <div class="r-main">
-                  <span class="r-t">{{ t("Desktop notifications") }}</span>
-                  <span class="r-d">{{ notifyHint }}</span>
+              <div :class="row()">
+                <div :class="rowMain()">
+                  <span :class="rowTitle()">{{ t("Desktop notifications") }}</span>
+                  <span :class="ROW_DESC">{{ notifyHint }}</span>
                 </div>
-                <button
-                  type="button"
-                  class="switch"
-                  :class="{ on: notifyOn }"
-                  :disabled="notifyPermission === 'unsupported' || notifyPermission === 'denied'"
-                  :aria-pressed="notifyOn"
-                  :aria-label="t('Desktop notifications')"
-                  @click="toggleNotify"
-                />
+                <Switch :model-value="notifyOn" :disabled="notifyPermission === 'unsupported' || notifyPermission === 'denied'" :aria-label="t('Desktop notifications')" @update:model-value="toggleNotify" />
               </div>
             </div>
           </template>
@@ -537,11 +467,11 @@ const streamBadge = computed(() => {
           </template>
 
           <template v-else-if="section === 'models'">
-            <header class="set-head"><h2>{{ t("Models") }}</h2></header>
+            <SectionHeader :title="t('Models')" />
             <p v-if="modelsError" class="error hint">{{ modelsError }}</p>
             <Skeleton v-else-if="loadingModels && modelsView === undefined" />
             <template v-else-if="modelsView">
-              <div v-if="modelsView.problems.length > 0" class="banner bad">
+              <div v-if="modelsView.problems.length > 0" :class="banner('danger')">
                 <Icon name="alert" size="sm" />
                 <div>
                   <strong>{{ t("models.json has problems; those providers use built-in settings") }}</strong>
@@ -551,14 +481,14 @@ const streamBadge = computed(() => {
                 </div>
               </div>
               <p v-if="savingModel.error.value" class="error hint">{{ savingModel.error.value }}</p>
-              <div class="rows">
-                <div v-for="roleRow in MODEL_ROLES" :key="roleRow.key" class="row model-row-ctrl">
-                  <div class="r-main">
-                    <span class="r-t">
+              <div :class="rows()">
+                <div v-for="roleRow in MODEL_ROLES" :key="roleRow.key" class="relative [&>.pop]:top-[calc(100%_-_calc(6px*var(--ev-scale)))] [&>.pop]:right-3" :class="row()">
+                  <div :class="rowMain()">
+                    <span :class="rowTitle()">
                       {{ roleRow.label }}
                       <span
                         v-if="roleRow.key === 'router' && routerDiffers"
-                        class="chip mono"
+                        :class="badge({ mono: true })"
                         :title="t('The model the Router runs on right now')"
                       >
                         {{
@@ -569,10 +499,10 @@ const streamBadge = computed(() => {
                       </span>
                     </span>
                   </div>
-                  <div v-if="rowLevels(roleRow.key).length > 1" class="level-slot">
+                  <div v-if="rowLevels(roleRow.key).length > 1" class="relative [&>.pop]:top-[calc(100%_+_calc(4px*var(--ev-scale)))] [&>.pop]:left-0">
                     <button
                       type="button"
-                      class="model-pick level"
+                      :class="[MODEL_PICK, 'w-26 text-sm leading-none font-medium text-fg']"
                       :aria-expanded="pop?.role === roleRow.key && pop.menu === 'level'"
                       :disabled="savingModel.busy.value"
                       :aria-label="t('{role} thinking level', { role: roleRow.label })"
@@ -592,8 +522,11 @@ const streamBadge = computed(() => {
                   </div>
                   <button
                     type="button"
-                    class="model-pick"
-                    :class="{ inherit: modelLabel(roleRow.key).inherited }"
+                    :class="[
+                      MODEL_PICK,
+                      'w-[min(calc(260px*var(--ev-scale)),46%)]',
+                      modelLabel(roleRow.key).inherited ? 'text-sm font-normal text-fg-subtle' : 'font-mono text-xs leading-none font-medium text-fg',
+                    ]"
                     :disabled="availableModels.length === 0 || savingModel.busy.value"
                     :aria-expanded="pop?.role === roleRow.key && pop.menu === 'model'"
                     @click="togglePop(roleRow.key, 'model')"
@@ -611,38 +544,33 @@ const streamBadge = computed(() => {
                 </div>
               </div>
 
-              <div class="section-t">
+              <div :class="SECTION_T">
                 <h3>{{ t("Providers") }}</h3>
                 <span class="count">{{ configuredProviders.length }}/{{ modelsView.providers.length }}</span>
                 <span class="spacer" />
-                <button
-                  v-if="configuredProviders.length > 0 && unconfiguredProviders.length > 0"
-                  type="button"
-                  class="btn sm ghost"
-                  @click="showAllProviders = !showAllProviders"
-                >
+                <Button v-if="configuredProviders.length > 0 && unconfiguredProviders.length > 0" variant="ghost" size="sm" @click="showAllProviders = !showAllProviders">
                   {{ showAllProviders ? t("Configured only") : t("Show all") }}
-                </button>
-                <a class="btn sm" :href="NEW_PROVIDER">
+                </Button>
+                <Button size="sm" :href="NEW_PROVIDER">
                   <Icon name="plus" size="xs" />
                   <span>{{ t("Add") }}</span>
-                </a>
+                </Button>
               </div>
-              <div class="rows">
-                <a v-for="prov in visibleProviders" :key="prov.id" class="row link" :href="providerHref(prov.id)">
+              <div :class="rows()">
+                <a v-for="prov in visibleProviders" :key="prov.id" :class="row({ link: true })" :href="providerHref(prov.id)">
                   <span class="dot" :class="{ ok: prov.configured }" />
-                  <div class="r-main">
-                    <span class="r-t">
+                  <div :class="rowMain()">
+                    <span :class="rowTitle()">
                       <span>{{ prov.name }}</span>
-                      <span v-if="prov.custom" class="chip">{{ prov.builtIn ? t("Modified") : t("Custom") }}</span>
+                      <span v-if="prov.custom" :class="badge()">{{ prov.builtIn ? t("Modified") : t("Custom") }}</span>
                     </span>
-                    <span class="r-d">
+                    <span :class="ROW_DESC">
                       <span v-if="prov.name !== prov.id" class="mono">{{ prov.id }} · </span>
                       {{ t("{n} model|{n} models", { n: prov.modelCount }) }}
                       <template v-if="prov.configured && prov.source"> · {{ prov.source }}</template>
                     </span>
                   </div>
-                  <span v-if="prov.configured" class="chip">
+                  <span v-if="prov.configured" :class="badge()">
                     <Icon name="key" size="xs" />
                     <span>{{ prov.authType === "oauth" ? "OAuth" : "API Key" }}</span>
                   </span>
@@ -651,9 +579,9 @@ const streamBadge = computed(() => {
               </div>
 
               <template v-if="availableModels.length > 0">
-                <div class="section-t"><h3>{{ t("Available models") }}</h3></div>
-                <div class="panel">
-                  <table class="table">
+                <div :class="SECTION_T"><h3>{{ t("Available models") }}</h3></div>
+                <div :class="PANEL">
+                  <table :class="TABLE">
                     <thead>
                       <tr>
                         <th>{{ t("Model") }}</th>
@@ -675,9 +603,9 @@ const streamBadge = computed(() => {
               </template>
 
               <template v-if="modelsView.profiles">
-                <div class="section-t"><h3 title="~/.eevee/models.md">{{ t("Field notes") }}</h3></div>
-                <div class="panel">
-                  <div class="panel-b msg-ai">
+                <div :class="SECTION_T"><h3 title="~/.eevee/models.md">{{ t("Field notes") }}</h3></div>
+                <div :class="PANEL">
+                  <div class="panel-b msg-ai px-4 py-3.5">
                     <MarkdownText :source="modelsView.profiles" />
                   </div>
                 </div>
@@ -686,7 +614,7 @@ const streamBadge = computed(() => {
           </template>
 
           <template v-else-if="section === 'roles'">
-            <header class="set-head"><h2>{{ t("Roles") }}</h2></header>
+            <SectionHeader :title="t('Roles')" />
             <p v-if="capError || savingRole.error.value" class="error hint">
               {{ capError ?? savingRole.error.value }}
             </p>
@@ -713,19 +641,18 @@ const streamBadge = computed(() => {
           </template>
 
           <template v-else-if="section === 'mcp'">
-            <header class="set-head">
-              <h2>{{ t("MCP & extensions") }}</h2>
-              <button type="button" class="btn sm" :disabled="reloadingMcp.busy.value" @click="reloadMcp">
+            <SectionHeader :title="t('MCP & extensions')">
+              <Button size="sm" :disabled="reloadingMcp.busy.value" @click="reloadMcp">
                 <Icon name="refresh" size="xs" :spin="reloadingMcp.busy.value" />
                 <span>{{ t("Reload") }}</span>
-              </button>
-            </header>
+              </Button>
+            </SectionHeader>
             <p v-if="capError || reloadingMcp.error.value" class="error hint">
               {{ capError ?? reloadingMcp.error.value }}
             </p>
             <Skeleton v-else-if="loadingCap && !capabilities" />
             <template v-else-if="capabilities">
-              <div v-if="capabilities.problems.length > 0" class="banner bad">
+              <div v-if="capabilities.problems.length > 0" :class="banner('danger')">
                 <Icon name="alert" size="sm" />
                 <div>
                   <strong>{{ t("{n} problem|{n} problems", { n: capabilities.problems.length }) }}</strong>
@@ -739,26 +666,26 @@ const streamBadge = computed(() => {
                   </ul>
                 </div>
               </div>
-              <div class="section-t">
+              <div :class="SECTION_T">
                 <h3 title="~/.eevee/mcp.json">{{ t("MCP servers") }}</h3>
                 <span class="spacer" />
-                <a class="btn sm" :href="NEW_SERVER">
+                <Button size="sm" :href="NEW_SERVER">
                   <Icon name="plus" size="xs" />
                   <span>{{ t("Add") }}</span>
-                </a>
+                </Button>
               </div>
               <p v-if="togglingServer.error.value" class="error hint">{{ togglingServer.error.value }}</p>
-              <div class="rows">
-                <div v-if="capabilities.mcp.length === 0" class="row">
+              <div :class="rows()">
+                <div v-if="capabilities.mcp.length === 0" :class="row()">
                   <span class="muted">{{ t("No MCP servers") }}</span>
                 </div>
-                <div v-for="server in capabilities.mcp" :key="server.name" class="row has-link">
-                  <a class="r-main row-link" :href="serverHref(server.name)">
-                    <span class="r-t">
+                <div v-for="server in capabilities.mcp" :key="server.name" :class="row({ overlay: true })">
+                  <a :class="[rowMain(), ROW_LINK]" :href="serverHref(server.name)">
+                    <span :class="rowTitle()">
                       <span class="mono">mcp.{{ server.name }}</span>
-                      <span class="chip mono" :title="t('How its tools are offered')">{{ server.exposure }}</span>
+                      <span :class="badge({ mono: true })" :title="t('How its tools are offered')">{{ server.exposure }}</span>
                     </span>
-                    <span class="r-d">
+                    <span :class="ROW_DESC">
                       {{ t("{n} tool|{n} tools", { n: server.tools }) }}
                       <template v-if="rolesUsingExtension(`mcp.${server.name}`).length > 0">
                         · {{ rolesUsingExtension(`mcp.${server.name}`).join(t(", ")) }}
@@ -766,53 +693,45 @@ const streamBadge = computed(() => {
                     </span>
                     <span v-if="server.error" class="err">{{ configIssueText(server.error) }}</span>
                   </a>
-                  <span class="status-text">
+                  <span :class="STATUS_TEXT">
                     <span class="dot" :class="MCP_STATE_LABEL[server.state].dot" />
                     <span>{{ MCP_STATE_LABEL[server.state].label }}</span>
                   </span>
-                  <button
-                    type="button"
-                    class="switch"
-                    :class="{ on: server.state !== 'disabled' }"
-                    :disabled="togglingServer.busy.value || mcpEntries?.[server.name] === undefined"
-                    :aria-pressed="server.state !== 'disabled'"
-                    :aria-label="t('Enable {name}', { name: server.name })"
-                    @click="toggleServer(server.name)"
-                  />
+                  <Switch :model-value="server.state !== 'disabled'" :disabled="togglingServer.busy.value || mcpEntries?.[server.name] === undefined" :aria-label="t('Enable {name}', { name: server.name })" @update:model-value="toggleServer(server.name)" />
                 </div>
               </div>
             </template>
           </template>
 
           <template v-else-if="section === 'engine'">
-            <header class="set-head"><h2>Engine</h2></header>
-            <div class="rows">
-              <div class="row">
-                <div class="r-main"><span class="r-t">{{ t("Status") }}</span></div>
-                <span class="status-text">
+            <SectionHeader title="Engine" />
+            <div :class="rows()">
+              <div :class="row()">
+                <div :class="rowMain()"><span :class="rowTitle()">{{ t("Status") }}</span></div>
+                <span :class="STATUS_TEXT">
                   <span class="dot" :class="streamBadge.dot" />
                   <span>{{ streamBadge.label }}</span>
                 </span>
               </div>
-              <div class="row">
-                <div class="r-main"><span class="r-t">{{ t("Version") }}</span></div>
-                <span class="value">{{ status?.version ?? "—" }}</span>
+              <div :class="row()">
+                <div :class="rowMain()"><span :class="rowTitle()">{{ t("Version") }}</span></div>
+                <span :class="VALUE_TEXT">{{ status?.version ?? "—" }}</span>
               </div>
-              <div class="row">
-                <div class="r-main"><span class="r-t">{{ t("Address") }}</span></div>
-                <span class="value">{{ status ? `http://127.0.0.1:${status.port}/` : "—" }}</span>
+              <div :class="row()">
+                <div :class="rowMain()"><span :class="rowTitle()">{{ t("Address") }}</span></div>
+                <span :class="VALUE_TEXT">{{ status ? `http://127.0.0.1:${status.port}/` : "—" }}</span>
               </div>
-              <div class="row">
-                <div class="r-main"><span class="r-t">bootId</span></div>
-                <span class="value">{{ status?.bootId ?? "—" }}</span>
+              <div :class="row()">
+                <div :class="rowMain()"><span :class="rowTitle()">bootId</span></div>
+                <span :class="VALUE_TEXT">{{ status?.bootId ?? "—" }}</span>
               </div>
             </div>
-            <div class="section-t"><h3>{{ t("Restart") }}</h3></div>
-            <div class="codeline">
+            <div :class="SECTION_T"><h3>{{ t("Restart") }}</h3></div>
+            <div :class="CODELINE">
               <code>{{ RESTART }}</code>
-              <button type="button" class="btn ghost sm icon" :aria-label="t('Copy the restart command')" @click="copyText(RESTART)">
+              <Button variant="ghost" size="sm" icon :aria-label="t('Copy the restart command')" @click="copyText(RESTART)">
                 <Icon name="copy" size="xs" />
-              </button>
+              </Button>
             </div>
             <p class="hint">{{ t("Stops any running background jobs") }}</p>
           </template>

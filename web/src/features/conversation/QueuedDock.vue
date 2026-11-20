@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { t } from "../i18n.ts";
-import type { QueuedMessage } from "../transcript-map.ts";
-import Icon from "./Icon.vue";
+import { t } from "../../lib/i18n.ts";
+import type { QueuedMessage } from "../../lib/transcript-map.ts";
+import Icon from "../../ui/Icon.vue";
+import Button from "../../ui/Button.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -62,56 +63,36 @@ function rowKey(event: KeyboardEvent, message: QueuedMessage): void {
 </script>
 
 <template>
-  <div v-if="messages.length > 0" class="qdock">
+  <div v-if="messages.length > 0" class="flex flex-col border-b border-separator first:[&>:first-child]:rounded-t-xl [&>*+*]:border-t [&>*+*]:border-separator">
     <div
       v-for="message in messages"
       :key="message.id"
-      class="qrow"
+      class="flex min-h-9 animate-[ev-fade_var(--ev-regular)_var(--ev-ease)] items-center gap-2 bg-[color-mix(in_oklab,var(--fg)_2.5%,transparent)] py-1 pr-2 pl-4 text-sm text-fg focus-visible:shadow-(--ring-inset) focus-visible:outline-none"
       tabindex="0"
       :aria-label="t('Queued message')"
       @keydown="rowKey($event, message)"
     >
-      <span class="qmode" :class="message.mode">{{
+      <span class="flex-none rounded-xs bg-[color-mix(in_oklab,var(--fg)_7%,transparent)] px-1.5 py-0.5 text-xs font-medium text-fg-muted">{{
         message.mode === "steer" ? t("Steer") : t("Queue")
       }}</span>
       <button
         type="button"
-        class="qtext"
-        :class="{ open: expanded.has(message.id) }"
+        class="min-w-0 flex-1 text-left text-sm leading-[1.45] whitespace-pre-wrap wrap-anywhere text-fg"
+        :class="expanded.has(message.id) ? 'block' : 'line-clamp-2'"
         @click="toggleExpanded(message.id)"
       >
         {{ message.text }}
       </button>
       <span class="spacer" />
-      <button
-        v-if="canSteer && message.mode === 'followUp'"
-        type="button"
-        class="btn ghost sm"
-        :disabled="rowBusy(message.id)"
-        :title="t('Send it now, steering this turn')"
-        @click="emit('steer', message)"
-      >
+      <Button v-if="canSteer && message.mode === 'followUp'" variant="ghost" size="sm" :disabled="rowBusy(message.id)" :title="t('Send it now, steering this turn')" @click="emit('steer', message)">
         {{ t("Steer now") }}
-      </button>
-      <button
-        type="button"
-        class="btn ghost sm"
-        :disabled="rowBusy(message.id)"
-        :title="t('Withdraw and put the text back in the composer (E)')"
-        @click="emit('edit', message)"
-      >
+      </Button>
+      <Button variant="ghost" size="sm" :disabled="rowBusy(message.id)" :title="t('Withdraw and put the text back in the composer (E)')" @click="emit('edit', message)">
         {{ t("Edit") }}
-      </button>
-      <button
-        type="button"
-        class="btn ghost sm icon"
-        :disabled="rowBusy(message.id)"
-        :title="t('Withdraw (Delete)')"
-        :aria-label="t('Withdraw')"
-        @click="emit('withdraw', message)"
-      >
+      </Button>
+      <Button variant="ghost" size="sm" icon :disabled="rowBusy(message.id)" :title="t('Withdraw (Delete)')" :aria-label="t('Withdraw')" @click="emit('withdraw', message)">
         <Icon name="x" size="sm" />
-      </button>
+      </Button>
     </div>
   </div>
 </template>

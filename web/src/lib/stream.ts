@@ -1,5 +1,5 @@
 import type { ConversationWindow, EntryQuery, EntryRecord } from "@earendil-works/pi-durable";
-import type { ProblemBody } from "../../src/api/contract.ts";
+import type { ProblemBody } from "../../../src/api/contract.ts";
 import {
   type BoardTopic,
   type ConversationTopic,
@@ -8,8 +8,8 @@ import {
   type StreamEvent,
   type StreamRequest,
   TOKEN_PROTOCOL_PREFIX,
-} from "../../src/api/stream.ts";
-import type { Problem } from "../../src/contracts/index.ts";
+} from "../../../src/api/stream.ts";
+import type { Problem } from "../../../src/contracts/index.ts";
 import { t } from "./i18n.ts";
 
 export type StreamState = "connecting" | "connected" | "reconnecting" | "closed";

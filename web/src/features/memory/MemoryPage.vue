@@ -8,16 +8,19 @@ import type {
   MemorySource,
 } from "@shared/contracts/index.ts";
 import { computed, onUnmounted, ref, watch } from "vue";
-import { errorText } from "../errors.ts";
-import { focusFirst, onRovingKeydown, trapTab, useFocusReturn } from "../focus.ts";
-import { t } from "../i18n.ts";
-import { vSeg } from "../dom.ts";
-import { useSubmit } from "../submit.ts";
-import { formatRelativeTime } from "../time.ts";
-import { showToast } from "../toasts.ts";
+import { errorText } from "../../lib/errors.ts";
+import { t } from "../../lib/i18n.ts";
+import { useSubmit } from "../../composables/submit.ts";
+import { formatRelativeTime } from "../../lib/time.ts";
+import { showToast } from "../../composables/toasts.ts";
 import FileDiffs from "./FileDiffs.vue";
-import Icon from "./Icon.vue";
-import Skeleton from "./Skeleton.vue";
+import Icon from "../../ui/Icon.vue";
+import Skeleton from "../../ui/Skeleton.vue";
+import Button from "../../ui/Button.vue";
+import Segmented from "../../ui/Segmented.vue";
+import Dialog from "../../ui/Dialog.vue";
+import { badge, CODELINE, ERROR_TEXT, PANEL } from "../../ui/surface.ts";
+import { diff } from "../../ui/diff.ts";
 
 const props = defineProps<{
   client: Client;
@@ -47,20 +50,6 @@ const diffError = ref<string>();
 const filesError = ref<string>();
 const fileError = ref<string>();
 const confirmChange = ref<MemoryChange>();
-const confirmEl = ref<HTMLElement>();
-useFocusReturn(
-  () => confirmChange.value !== undefined,
-  () => focusFirst(confirmEl.value),
-);
-
-function onConfirmKeydown(event: KeyboardEvent): void {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    confirmChange.value = undefined;
-    return;
-  }
-  trapTab(event, confirmEl.value);
-}
 const undoing = useSubmit();
 
 let requestSeq = 0;
@@ -301,6 +290,30 @@ async function performUndo(): Promise<void> {
     else files.value = [];
   }
 }
+
+function commitClass(on: boolean): string {
+  return [
+    "grid w-full grid-cols-[calc(22px*var(--ev-scale))_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0.5 rounded-sm px-2.5 py-2 text-left transition-colors focus-visible:shadow-(--ev-ring-in)",
+    on ? "bg-selected" : "hover:bg-hover",
+  ].join(" ");
+}
+
+function whoClass(source?: string): string {
+  const tone =
+    source === "user"
+      ? "bg-[color-mix(in_oklab,var(--fg)_12%,transparent)] text-fg"
+      : source === "pending"
+        ? "text-fg-muted shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--fg)_22%,transparent)]"
+        : "bg-[color-mix(in_oklab,var(--fg)_7%,transparent)] text-fg-muted";
+  return `row-span-2 grid size-5.5 place-items-center rounded-full ${tone}`;
+}
+
+const COMMIT_META =
+  "flex min-w-0 items-center gap-1.25 overflow-hidden text-xs whitespace-nowrap text-fg-subtle [&_.mono]:text-(length:--ev-caption)";
+const MEASURE = "mx-auto w-full max-w-[calc(760px*var(--ev-scale))]";
+const DETAIL_INNER =
+  "flex animate-[ev-fade_var(--ev-regular)_var(--ev-ease)] flex-col gap-4 px-(--ev-gutter) pt-4.5 pb-12 @max-[54.2857em]/vp:px-4 @max-[54.2857em]/vp:pt-1 @max-[54.2857em]/vp:pb-10 [&>.hint]:mx-auto [&>.hint]:w-full [&>.hint]:max-w-[calc(760px*var(--ev-scale))]";
+const DETAIL_HEAD = `flex items-start gap-3 ${MEASURE} [&_h2]:text-(length:--ev-headline) [&_h2]:font-semibold [&_h2]:tracking-[-0.015em] [&_h2]:wrap-anywhere [&_h2.mono]:text-base`;
 </script>
 
 <template>
@@ -310,74 +323,29 @@ async function performUndo(): Promise<void> {
       <span class="crumb-sep hide-sm" aria-hidden="true">/</span>
       <span class="sub ellipsis hide-sm">{{ project.title }}</span>
     </header>
-    <div class="split" :class="{ 'has-detail': mobileDetail }">
-      <div class="split-list">
-        <div class="list-head">
-          <div v-seg class="seg sm stretch" role="group" :aria-label="t('Memory scope')">
-            <button
-              type="button"
-              :class="{ on: scope === 'project' }"
-              :aria-pressed="scope === 'project'"
-              @click="scope = 'project'"
-            >
-              {{ t("This project") }}
-            </button>
-            <button
-              type="button"
-              :class="{ on: scope === 'global' }"
-              :aria-pressed="scope === 'global'"
-              @click="scope = 'global'"
-            >
-              {{ t("Global") }}
-            </button>
-          </div>
-          <div
-            v-seg
-            class="seg sm stretch"
-            role="tablist"
-            :aria-label="t('Memory view')"
-            @keydown="onRovingKeydown($event, MEMORY_TABS, tab, (key) => (tab = key))"
-          >
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="tab === 'history'"
-              :tabindex="tab === 'history' ? 0 : -1"
-              :class="{ on: tab === 'history' }"
-              @click="tab = 'history'"
-            >
-              {{ t("History") }}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="tab === 'files'"
-              :tabindex="tab === 'files' ? 0 : -1"
-              :class="{ on: tab === 'files' }"
-              @click="tab = 'files'"
-            >
-              {{ t("Files") }}
-            </button>
-          </div>
+    <div class="grid min-h-0 flex-1 grid-cols-[clamp(calc(250px*var(--ev-scale)),26%,calc(360px*var(--ev-scale)))_minmax(0,1fr)] @max-[54.2857em]/vp:grid-cols-1">
+      <div class="flex min-h-0 flex-col overflow-y-auto border-r border-separator px-2.5 pt-2 pb-4 @max-[54.2857em]/vp:border-r-0" :class="{ '@max-[54.2857em]/vp:hidden': mobileDetail }">
+        <div class="sticky top-0 z-1 flex flex-col gap-1.5 bg-(--ev-page) pt-1 pb-2.5">
+          <Segmented v-model="scope" stretch :options="[{ value: 'project', label: t('This project') }, { value: 'global', label: t('Global') }]" :label="t('Memory scope')" />
+          <Segmented v-model="tab" mode="tabs" stretch :options="MEMORY_TABS.map((value) => ({ value, label: value === 'history' ? t('History') : t('Files') }))" :label="t('Memory view')" />
         </div>
 
         <template v-if="tab === 'history'">
           <p v-if="listError" class="error hint">{{ listError }}</p>
           <Skeleton v-else-if="loadingList && changes.length === 0" />
-          <div v-else class="list">
+          <div v-else class="flex flex-col gap-px">
             <button
               v-for="change in changes"
               :key="change.id"
               type="button"
-              class="commit"
-              :class="{ on: selected === change.id }"
+              :class="commitClass(selected === change.id)"
               @click="selectItem(change.id)"
             >
-              <span class="who" :class="sourceOf(change.source).badgeClass">
+              <span :class="whoClass(sourceOf(change.source).badgeClass)">
                 <Icon :name="sourceOf(change.source).icon" size="xs" />
               </span>
-              <span class="subj ellipsis">{{ change.summary }}</span>
-              <span class="meta">
+              <span class="ellipsis text-base tracking-(--ev-tracking)">{{ change.summary }}</span>
+              <span :class="COMMIT_META">
                 <span>{{ sourceLabel(change.source) }}</span>
                 <span>·</span>
                 <span :title="formatCommitAt(change.at).title">{{ formatCommitAt(change.at).relative }}</span>
@@ -391,37 +359,36 @@ async function performUndo(): Promise<void> {
         <template v-else>
           <p v-if="filesError" class="error hint">{{ filesError }}</p>
           <Skeleton v-else-if="loadingFiles && files.length === 0" />
-          <div v-else class="list">
+          <div v-else class="flex flex-col gap-px">
             <button
               v-for="file in files"
               :key="file.path"
               type="button"
-              class="commit"
-              :class="{ on: selectedFile === file.path }"
+              :class="commitClass(selectedFile === file.path)"
               @click="selectFile(file.path)"
             >
-              <span class="who">
+              <span :class="whoClass()">
                 <Icon :name="file.path === 'MEMORY.md' ? 'book' : 'file'" size="xs" />
               </span>
-              <span class="subj ellipsis mono">{{ file.path }}</span>
-              <span class="meta">{{ formatBytes(file.size) }}</span>
+              <span class="ellipsis mono text-xs">{{ file.path }}</span>
+              <span :class="COMMIT_META">{{ formatBytes(file.size) }}</span>
             </button>
             <p v-if="files.length === 0" class="hint">{{ t("No files") }}</p>
           </div>
         </template>
       </div>
 
-      <div class="split-detail">
-        <button v-if="mobileDetail" type="button" class="btn ghost sm split-back" @click="mobileDetail = false">
+      <div class="min-h-0 min-w-0 overflow-y-auto" :class="{ '@max-[54.2857em]/vp:hidden': !mobileDetail }">
+        <Button v-if="mobileDetail" variant="ghost" size="sm" class="mb-2 ml-3 @min-[54.2857em]/vp:hidden" @click="mobileDetail = false">
           <Icon name="chevL" size="xs" />
           <span>{{ t("Back") }}</span>
-        </button>
+        </Button>
         <template v-if="tab === 'files'">
-          <div v-if="selectedFile" :key="`f:${selectedFile}`" class="detail-inner">
-            <div class="detail-head">
+          <div v-if="selectedFile" :key="`f:${selectedFile}`" :class="DETAIL_INNER">
+            <div :class="DETAIL_HEAD">
               <div class="spacer">
                 <h2 class="mono">{{ selectedFile }}</h2>
-                <div class="detail-meta">
+                <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-fg-subtle">
                   <span v-if="selectedFileContent !== undefined">{{ t("{n} line|{n} lines", { n: selectedFileLines.length }) }}</span>
                   <span v-if="activeFileEntry">{{ formatBytes(activeFileEntry.size) }}</span>
                 </div>
@@ -429,8 +396,8 @@ async function performUndo(): Promise<void> {
             </div>
             <p v-if="fileError" class="error hint">{{ fileError }}</p>
             <Skeleton v-else-if="loadingFile && selectedFileContent === undefined" :lines="6" />
-            <div v-else-if="selectedFileContent !== undefined" class="card file-diff">
-              <div class="diff single">
+            <div v-else-if="selectedFileContent !== undefined" class="file-diff" :class="PANEL">
+              <div :class="diff({ single: true })">
                 <div v-for="(line, idx) in selectedFileLines" :key="idx" class="ln">
                   <span>{{ idx + 1 }}</span>
                   <span class="mk" />
@@ -441,12 +408,12 @@ async function performUndo(): Promise<void> {
           </div>
         </template>
         <template v-else>
-          <div v-if="selectedChange" :key="selectedChange.id" class="detail-inner">
-            <div class="detail-head">
+          <div v-if="selectedChange" :key="selectedChange.id" :class="DETAIL_INNER">
+            <div :class="DETAIL_HEAD">
               <div class="spacer">
                 <h2>{{ selectedChange.summary }}</h2>
-                <div class="detail-meta">
-                  <span class="chip mono">
+                <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-fg-subtle">
+                  <span :class="badge({ mono: true })">
                     <Icon name="commit" size="xs" />
                     <span>#{{ selectedChange.id }}</span>
                   </span>
@@ -456,18 +423,13 @@ async function performUndo(): Promise<void> {
                   </span>
                 </div>
               </div>
-              <button
-                v-if="canUndo(selectedChange)"
-                type="button"
-                class="btn sm danger"
-                @click="
+              <Button v-if="canUndo(selectedChange)" variant="danger" size="sm" @click="
                   undoing.error.value = undefined;
                   confirmChange = selectedChange;
-                "
-              >
+                ">
                 <Icon name="undo" size="xs" />
                 <span>{{ t("Undo") }}</span>
-              </button>
+              </Button>
             </div>
             <p v-if="diffError" class="error hint">{{ diffError }}</p>
             <Skeleton v-else-if="loadingDiff" :lines="6" />
@@ -481,46 +443,26 @@ async function performUndo(): Promise<void> {
       </div>
     </div>
 
-    <div
-      v-if="confirmChange"
-      class="overlay"
-      @click.self="confirmChange = undefined"
-      @keydown="onConfirmKeydown"
-    >
-      <div
-        ref="confirmEl"
-        class="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="undo-title"
-      >
-        <div class="modal-h">
-          <h2 id="undo-title">{{ t("Undo this change?") }}</h2>
-          <span class="spacer" />
-          <button type="button" class="btn ghost sm icon" :aria-label="t('Close')" @click="confirmChange = undefined">
-            <Icon name="x" size="sm" />
-          </button>
+    <Dialog :open="confirmChange !== undefined" :title="t('Undo this change?')" @close="confirmChange = undefined">
+      <template v-if="confirmChange">
+        <p class="muted">
+          {{ t("This adds a change that reverses change") }} <span class="mono">#{{ confirmChange.id }}</span>{{ t(", leaving the earlier history untouched.") }}
+        </p>
+        <div :class="CODELINE">
+          <code>{{ confirmChange.summary }}</code>
         </div>
-        <div class="modal-b">
-          <p class="muted">
-            {{ t("This adds a change that reverses change") }} <span class="mono">#{{ confirmChange.id }}</span>{{ t(", leaving the earlier history untouched.") }}
-          </p>
-          <div class="codeline">
-            <code>{{ confirmChange.summary }}</code>
-          </div>
-          <p v-if="undoing.error.value" class="composer-error" role="alert">
-            {{ undoing.error.value }}
-          </p>
-        </div>
-        <div class="modal-f">
-          <button type="button" class="btn" :disabled="undoing.busy.value" @click="confirmChange = undefined">
-            {{ t("Cancel") }}
-          </button>
-          <button type="button" class="btn primary" :disabled="undoing.busy.value" @click="performUndo">
-            {{ undoing.busy.value ? t("Undoing…") : t("Undo") }}
-          </button>
-        </div>
-      </div>
-    </div>
+        <p v-if="undoing.error.value" :class="ERROR_TEXT" role="alert">
+          {{ undoing.error.value }}
+        </p>
+      </template>
+      <template #footer>
+        <Button :disabled="undoing.busy.value" @click="confirmChange = undefined">
+          {{ t("Cancel") }}
+        </Button>
+        <Button variant="primary" :disabled="undoing.busy.value" @click="performUndo">
+          {{ undoing.busy.value ? t("Undoing…") : t("Undo") }}
+        </Button>
+      </template>
+    </Dialog>
   </section>
 </template>

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import type { VisualStage } from "../board.ts";
-import { t } from "../i18n.ts";
-import Icon from "./Icon.vue";
-import StageGlyph from "./StageGlyph.vue";
+import type { VisualStage } from "../../lib/board.ts";
+import { t } from "../../lib/i18n.ts";
+import Icon from "../../ui/Icon.vue";
+import StageGlyph from "../project/StageGlyph.vue";
+import Button from "../../ui/Button.vue";
 
 export type RailMark = { stage: VisualStage; count: number };
 
@@ -23,7 +24,7 @@ defineEmits<{
   "open-tickets": [];
 }>();
 
-const btn = ref<HTMLButtonElement>();
+const btn = ref<{ focus(): void }>();
 
 defineExpose({
   focus: () => btn.value?.focus(),
@@ -45,24 +46,16 @@ defineExpose({
         <StageGlyph :stage="mark.stage" /><span class="rt-n">{{ mark.count }}</span>
       </button>
     </div>
-    <button
-      ref="btn"
-      type="button"
-      class="btn ghost sm icon rail-trigger-btn"
-      :aria-expanded="open"
-      :title="
+    <Button ref="btn" variant="ghost" size="sm" icon class="rail-trigger-btn" :aria-expanded="open" :title="
         open
           ? t('Collapse the tickets panel ({key})', { key: shortcut })
           : t('Show the tickets panel ({key})', { key: shortcut })
-      "
-      :aria-label="
+      " :aria-label="
         open
           ? t('Collapse the tickets panel')
           : t('Show the tickets panel ({key})', { key: shortcut })
-      "
-      @click="$emit('toggle')"
-    >
+      " @click="$emit('toggle')">
       <Icon :name="open ? 'panelClose' : 'panel'" size="sm" />
-    </button>
+    </Button>
   </div>
 </template>

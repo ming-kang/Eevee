@@ -1,4 +1,4 @@
-import type { QuestionId } from "../../src/contracts/index.ts";
+import type { QuestionId } from "../../../src/contracts/index.ts";
 
 const SETTINGS_SECTIONS = ["general", "models", "roles", "mcp", "engine"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];

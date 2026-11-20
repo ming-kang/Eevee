@@ -1,32 +1,33 @@
 <script setup lang="ts">
 import type { ProjectSummary } from "@shared/api/contract.ts";
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
-import { countPendingQuestions, groupTickets, type RailTab } from "./board.ts";
-import AppShell from "./components/AppShell.vue";
-import BrandLogo from "./components/BrandLogo.vue";
-import CommandPalette from "./components/CommandPalette.vue";
-import ConnectPage from "./components/ConnectPage.vue";
-import HomePage from "./components/HomePage.vue";
-import Icon from "./components/Icon.vue";
-import MemoryPage from "./components/MemoryPage.vue";
-import NewProjectDialog from "./components/NewProjectDialog.vue";
-import ProjectHoverCard from "./components/ProjectHoverCard.vue";
-import ProjectView from "./components/ProjectView.vue";
-import type { RailMark } from "./components/RailToggle.vue";
-import RightRail from "./components/RightRail.vue";
-import SettingsPage from "./components/SettingsPage.vue";
-import SideNav from "./components/SideNav.vue";
-import Toasts from "./components/Toasts.vue";
-import UsagePage from "./components/UsagePage.vue";
-import { useConversationWatch, useEngineData } from "./engine-data.ts";
+import { countPendingQuestions, groupTickets, type RailTab } from "./lib/board.ts";
+import AppShell from "./features/shell/AppShell.vue";
+import BrandLogo from "./ui/BrandLogo.vue";
+import CommandPalette from "./features/shell/CommandPalette.vue";
+import ConnectPage from "./features/shell/ConnectPage.vue";
+import HomePage from "./features/home/HomePage.vue";
+import Icon from "./ui/Icon.vue";
+import MemoryPage from "./features/memory/MemoryPage.vue";
+import NewProjectDialog from "./features/shell/NewProjectDialog.vue";
+import ProjectHoverCard from "./features/shell/ProjectHoverCard.vue";
+import ProjectView from "./features/project/ProjectView.vue";
+import type { RailMark } from "./features/shell/RailToggle.vue";
+import RightRail from "./features/project/RightRail.vue";
+import SettingsPage from "./features/settings/SettingsPage.vue";
+import SideNav from "./features/shell/SideNav.vue";
+import Toasts from "./ui/Toasts.vue";
+import UsagePage from "./features/usage/UsagePage.vue";
+import { useConversationWatch, useEngineData } from "./composables/engine-data.ts";
 import { summarizeRun } from "@shared/contracts/index.ts";
-import { errorText } from "./errors.ts";
-import { t } from "./i18n.ts";
-import { buildPaletteItems, deriveProjectState, type PaletteItem } from "./projects.ts";
-import { formatRoute, type Route, resolveRoute } from "./router.ts";
-import { type SessionInfo, Unauthorized, openSession } from "./session.ts";
-import { useTheme } from "./theme.ts";
-import { useNotifications } from "./use-notifications.ts";
+import { errorText } from "./lib/errors.ts";
+import { t } from "./lib/i18n.ts";
+import { buildPaletteItems, deriveProjectState, type PaletteItem } from "./lib/projects.ts";
+import { formatRoute, type Route, resolveRoute } from "./lib/router.ts";
+import { type SessionInfo, Unauthorized, openSession } from "./lib/session.ts";
+import { useTheme } from "./composables/theme.ts";
+import { useNotifications } from "./composables/use-notifications.ts";
+import Button from "./ui/Button.vue";
 
 const SIDE_KEY = "eevee.sideCollapsed";
 const RAIL_KEY = "eevee.railCollapsed";
@@ -38,7 +39,7 @@ const paletteShortcut = isMac ? "⌘K" : "Ctrl K";
 const sideShortcut = isMac ? "⌘B" : "Ctrl B";
 const railShortcut = isMac ? "⌘⌥B" : "Ctrl Alt B";
 
-const { palette, setPalette, toggleTheme } = useTheme();
+const { toggleTheme } = useTheme();
 
 const session = shallowRef<SessionInfo>();
 const connecting = ref(true);
@@ -214,7 +215,6 @@ const paletteItems = computed(() =>
     activeProjectId: controlPid.value,
     sideShortcut,
     railShortcut,
-    activePalette: palette.value,
   }),
 );
 
@@ -271,8 +271,6 @@ async function onProjectCreated(project: ProjectSummary): Promise<void> {
 function onPaletteSelect(item: PaletteItem): void {
   if (item.kind === "route") {
     navigate(item.route);
-  } else if (item.kind === "palette") {
-    setPalette(item.palette);
   } else if (item.action === "new-project") {
     openNewProject();
   } else if (item.action === "toggle-theme") {
@@ -309,7 +307,7 @@ watch(
 </script>
 
 <template>
-  <div v-if="connecting" class="viewport boot" aria-busy="true" :aria-label="t('Connecting to the Engine')">
+  <div v-if="connecting" class="viewport grid h-full place-items-center [&_svg]:size-7 [&_svg]:animate-[ev-breathe_1.6s_var(--ev-ease)_infinite]" aria-busy="true" :aria-label="t('Connecting to the Engine')">
     <BrandLogo />
     <Toasts />
   </div>
@@ -387,15 +385,10 @@ watch(
       <header class="header" />
       <div class="empty">
         <h3>{{ projects.length === 0 ? t("No projects yet") : t("Project not found") }}</h3>
-        <button
-          v-if="projects.length === 0"
-          type="button"
-          class="btn primary"
-          @click="openNewProject"
-        >
+        <Button v-if="projects.length === 0" variant="primary" @click="openNewProject">
           <Icon name="plus" size="sm" />
           <span>{{ t("New project") }}</span>
-        </button>
+        </Button>
       </div>
     </template>
 

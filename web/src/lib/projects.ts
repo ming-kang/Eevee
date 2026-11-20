@@ -1,10 +1,10 @@
-import type { BoardView, ProjectSummary, TicketView } from "../../src/api/contract.ts";
-import type { RunSummary } from "../../src/contracts/index.ts";
+import type { BoardView, ProjectSummary, TicketView } from "../../../src/api/contract.ts";
+import type { RunSummary } from "../../../src/contracts/index.ts";
 import { countPendingQuestions, effectiveStage, groupTickets, type VisualStage } from "./board.ts";
 import { t } from "./i18n.ts";
+import { displayId } from "./ids.ts";
 import { failureText, STAGE_LABEL } from "./labels.ts";
 import type { Route } from "./router.ts";
-import { PALETTE_IDS, type ThemePalette } from "./typography.ts";
 
 export type ProjectRowState = {
   kind: "user" | "bad" | "run" | "rest";
@@ -118,15 +118,6 @@ export function filterSidebarProjects(
   return out;
 }
 
-export const PALETTE_LABELS: Record<ThemePalette, () => string> = {
-  default: () => t("Default"),
-  grove: () => t("Grove"),
-  ocean: () => t("Ocean"),
-  ember: () => t("Ember"),
-  iris: () => t("Iris"),
-  rose: () => t("Rose"),
-};
-
 type PaletteIcon =
   | "home"
   | "folder"
@@ -161,16 +152,6 @@ export type PaletteItem =
       kind: "action";
       action: "new-project" | "toggle-theme" | "toggle-side" | "toggle-rail";
       icon: "plus" | "moon" | "panel";
-    }
-  | {
-      id: string;
-      group: string;
-      label: string;
-      meta?: string;
-      search: string;
-      kind: "palette";
-      palette: ThemePalette;
-      icon: "palette";
     };
 
 export function buildPaletteItems(input: {
@@ -179,7 +160,6 @@ export function buildPaletteItems(input: {
   activeProjectId?: string;
   sideShortcut?: string;
   railShortcut?: string;
-  activePalette?: ThemePalette;
 }): PaletteItem[] {
   const items: PaletteItem[] = [];
   const pid = input.activeProjectId;
@@ -246,7 +226,7 @@ export function buildPaletteItems(input: {
     const activeBoard = input.boards[pid]?.board;
     for (const view of activeBoard?.tickets ?? []) {
       const stage = effectiveStage(view);
-      const meta = `${view.ticket.id} · ${STAGE_LABEL[stage]}`;
+      const meta = `${displayId(view.ticket.id)} · ${STAGE_LABEL[stage]}`;
       items.push({
         id: `ticket:${pid}:${view.ticket.id}`,
         group: t("Tickets"),
@@ -318,20 +298,6 @@ export function buildPaletteItems(input: {
       icon: "panel",
     },
   );
-
-  for (const pal of PALETTE_IDS) {
-    const name = PALETTE_LABELS[pal]();
-    items.push({
-      id: `pal:${pal}`,
-      group: t("Color palette"),
-      label: t("Color palette · {name}", { name }),
-      ...(input.activePalette === pal ? { meta: t("Active") } : {}),
-      search: `${t("Color palette")} ${name} palette color theme ${pal}`,
-      kind: "palette",
-      palette: pal,
-      icon: "palette",
-    });
-  }
 
   return items;
 }

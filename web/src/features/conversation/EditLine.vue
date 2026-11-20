@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { t } from "../i18n.ts";
-import type { DiffLine } from "../transcript-map.ts";
-import Icon from "./Icon.vue";
+import { t } from "../../lib/i18n.ts";
+import type { DiffLine } from "../../lib/transcript-map.ts";
+import Icon from "../../ui/Icon.vue";
+import { STEP_OUT } from "./steps.ts";
+import { DIFFSTAT, diff as diffBox } from "../../ui/diff.ts";
+
+const diffClass = diffBox({ single: true, framed: true });
 
 defineProps<{
   action: "edit" | "write";
@@ -31,13 +35,13 @@ defineProps<{
         {{ " " }}<span class="mono">{{ path }}</span>
       </span>
       <span v-if="status === 'err'" class="minus">· {{ t("Failed") }}</span>
-      <span v-else-if="status === 'ok' && (added > 0 || removed > 0)" class="diffstat">
+      <span v-else-if="status === 'ok' && (added > 0 || removed > 0)" :class="DIFFSTAT">
         <span v-if="added > 0" class="plus">+{{ added }}</span>
         <span v-if="removed > 0" class="minus">−{{ removed }}</span>
       </span>
     </summary>
-    <div v-if="error" class="step-out">{{ error }}</div>
-    <div v-else-if="diff.length > 0" class="diff single">
+    <div v-if="error" :class="STEP_OUT">{{ error }}</div>
+    <div v-else-if="diff.length > 0" :class="diffClass">
       <template v-for="(line, index) in diff" :key="index">
         <div v-if="line.k === 'hunk'" class="hunk">{{ line.s }}</div>
         <div v-else class="ln" :class="line.k">

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { t } from "../i18n.ts";
-import type { Block } from "../markdown.ts";
+import { t } from "../../lib/i18n.ts";
+import type { Block } from "../../composables/markdown.ts";
 import HighlightedCode from "./HighlightedCode.vue";
-import Icon from "./Icon.vue";
+import Icon from "../../ui/Icon.vue";
 import MarkdownInlines from "./MarkdownInlines.vue";
+import Button from "../../ui/Button.vue";
 
 withDefaults(defineProps<{ blocks: readonly Block[]; streaming?: boolean }>(), {
   streaming: false,
@@ -45,14 +46,9 @@ async function copy(index: number, code: string): Promise<void> {
     </component>
     <div v-else-if="block.type === 'code'" class="code">
       <HighlightedCode :code="block.code" :lang="block.language" :streaming="streaming" />
-      <button
-        type="button"
-        class="btn ghost sm icon copy"
-        :aria-label="t('Copy')"
-        @click="copy(index, block.code)"
-      >
+      <Button variant="ghost" size="sm" icon class="copy" :aria-label="t('Copy')" @click="copy(index, block.code)">
         <Icon :name="copied === index ? 'check' : 'copy'" size="xs" />
-      </button>
+      </Button>
     </div>
     <blockquote v-else-if="block.type === 'quote'"><MarkdownBlocks :blocks="block.children" /></blockquote>
     <div v-else-if="block.type === 'table'" class="table-scroll">

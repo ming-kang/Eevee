@@ -3,15 +3,16 @@ import type { Client } from "@shared/api/client.ts";
 import type { ModelSpecView, ProjectSummary } from "@shared/api/contract.ts";
 import { type ModelChoice, pickModel, type ThinkingLevel } from "@shared/contracts/index.ts";
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
-import { errorText } from "../errors.ts";
-import { t } from "../i18n.ts";
-import { listStep } from "../keyboard.ts";
-import { levelLabel, levelsOf, sameModel, switchModel } from "../model-choice.ts";
-import { useModelsView } from "../models-view.ts";
-import { showToast } from "../toasts.ts";
-import Icon from "./Icon.vue";
+import { errorText } from "../../lib/errors.ts";
+import { t } from "../../lib/i18n.ts";
+import { listStep } from "../../lib/keyboard.ts";
+import { levelLabel, levelsOf, sameModel, switchModel } from "../../lib/model-choice.ts";
+import { useModelsView } from "../../composables/models-view.ts";
+import { showToast } from "../../composables/toasts.ts";
+import Icon from "../../ui/Icon.vue";
 import LevelMenu from "./LevelMenu.vue";
 import ModelMenu from "./ModelMenu.vue";
+import { menuPanel, menuRow } from "../../ui/menu.ts";
 
 /**
  * The project Router's run configuration at the start of the composer's row: one button showing
@@ -134,44 +135,44 @@ function chooseLevel(next: ThinkingLevel): void {
 </script>
 
 <template>
-  <div ref="root" class="run-config">
+  <div ref="root" class="relative -ml-1 min-w-0">
     <button
-      type="button"
-      class="run-trigger"
-      aria-haspopup="menu"
-      :aria-expanded="open"
-      :aria-label="t('Run configuration')"
-      :disabled="view === undefined"
-      @click="toggle"
-    >
+   type="button"
+   class="inline-flex h-(--ev-h-sm) max-w-full min-w-0 items-center gap-1.5 rounded-sm px-2 text-sm font-normal whitespace-nowrap text-fg-muted transition-colors enabled:hover:bg-hover enabled:hover:text-fg disabled:opacity-45 aria-expanded:bg-hover aria-expanded:text-fg [&>.ico]:flex-none [&>.ico]:text-fg-subtle"
+   aria-haspopup="menu"
+   :aria-expanded="open"
+   :aria-label="t('Run configuration')"
+   :disabled="view === undefined"
+   @click="toggle"
+>
       <Icon name="cpu" size="sm" />
-      <span class="face-text">{{ nameOf(effective) ?? t("Choose a model") }}</span>
+      <span class="min-w-0 truncate">{{ nameOf(effective) ?? t("Choose a model") }}</span>
       <template v-if="thinks">
-        <span class="face-dot" aria-hidden="true">·</span>
-        <span class="face-fixed">{{ levelLabel(level) }}</span>
+        <span class="flex-none text-fg-subtle" aria-hidden="true">·</span>
+        <span class="flex-none">{{ levelLabel(level) }}</span>
       </template>
       <Icon name="chevD" size="xs" />
     </button>
 
-    <div v-if="open" class="pop run-menu up" role="menu" :aria-label="t('Run configuration')" @keydown="onMenuKeydown">
-      <div class="run-item" @mouseenter="sub = 'model'">
+    <div v-if="open" class="bottom-[calc(100%_+_calc(6px*var(--ev-scale)))] left-0 min-w-60" :class="menuPanel()" role="menu" :aria-label="t('Run configuration')" @keydown="onMenuKeydown">
+      <div class="relative" @mouseenter="sub = 'model'">
         <button
-          type="button"
-          class="pop-row"
-          :class="{ sel: sub === 'model' }"
-          role="menuitem"
-          data-row="model"
-          aria-haspopup="listbox"
-          :aria-expanded="sub === 'model'"
-          @click="sub = 'model'"
-        >
+     type="button"
+     
+     :class="[menuRow('sm'), { sel: sub === 'model' }]"
+     role="menuitem"
+     data-row="model"
+     aria-haspopup="listbox"
+     :aria-expanded="sub === 'model'"
+     @click="sub = 'model'"
+>
           <span>{{ t("Model") }}</span>
-          <span class="run-value">{{ nameOf(effective) ?? t("Not set") }}</span>
+          <span class="ml-auto max-w-40 min-w-0 truncate pl-4 text-fg-muted">{{ nameOf(effective) ?? t("Not set") }}</span>
           <Icon name="chevR" size="xs" />
         </button>
         <ModelMenu
           v-if="sub === 'model'"
-          class="side"
+          class="side -bottom-1 left-[calc(100%_+_calc(8px*var(--ev-scale)))]"
           :models="available"
           :selected="own"
           :fallback="nameOf(fallback)"
@@ -179,25 +180,25 @@ function chooseLevel(next: ThinkingLevel): void {
           @close="closeSub"
         />
       </div>
-      <div v-if="thinks" class="run-item" @mouseenter="sub = 'level'">
+      <div v-if="thinks" class="relative" @mouseenter="sub = 'level'">
         <button
-          type="button"
-          class="pop-row"
-          :class="{ sel: sub === 'level' }"
-          role="menuitem"
-          data-row="level"
-          aria-haspopup="listbox"
-          :aria-expanded="sub === 'level'"
-          :disabled="busy"
-          @click="sub = 'level'"
-        >
+     type="button"
+     
+     :class="[menuRow('sm'), { sel: sub === 'level' }]"
+     role="menuitem"
+     data-row="level"
+     aria-haspopup="listbox"
+     :aria-expanded="sub === 'level'"
+     :disabled="busy"
+     @click="sub = 'level'"
+>
           <span>{{ t("Thinking") }}</span>
-          <span class="run-value">{{ levelLabel(level) }}</span>
+          <span class="ml-auto max-w-40 min-w-0 truncate pl-4 text-fg-muted">{{ levelLabel(level) }}</span>
           <Icon name="chevR" size="xs" />
         </button>
         <LevelMenu
           v-if="sub === 'level'"
-          class="side"
+          class="side -bottom-1 left-[calc(100%_+_calc(8px*var(--ev-scale)))]"
           :levels="levels"
           :selected="level"
           @pick="chooseLevel"

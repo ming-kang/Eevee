@@ -3,24 +3,27 @@ import type { Client } from "@shared/api/client.ts";
 import type { BoardView, ProjectSummary } from "@shared/api/contract.ts";
 import type { QuestionId } from "@shared/contracts/index.ts";
 import { computed, ref, watch } from "vue";
-import { provideComposerInsert } from "../composer-bridge.ts";
-import type { ConversationWatch } from "../engine-data.ts";
-import { errorText } from "../errors.ts";
-import { t } from "../i18n.ts";
-import { useQuestionNavigation } from "../question-navigation.ts";
-import { useSubmit } from "../submit.ts";
-import { showToast } from "../toasts.ts";
-import { mapTranscript, type QueuedMessage, queuedMessages } from "../transcript-map.ts";
-import BrandLogo from "./BrandLogo.vue";
+import { provideComposerInsert } from "../../composables/composer-bridge.ts";
+import type { ConversationWatch } from "../../composables/engine-data.ts";
+import { errorText } from "../../lib/errors.ts";
+import { t } from "../../lib/i18n.ts";
+import { useQuestionNavigation } from "../../composables/question-navigation.ts";
+import { useSubmit } from "../../composables/submit.ts";
+import { showToast } from "../../composables/toasts.ts";
+import { mapTranscript, type QueuedMessage, queuedMessages } from "../../lib/transcript-map.ts";
+import BrandLogo from "../../ui/BrandLogo.vue";
 import Composer from "./Composer.vue";
-import Icon from "./Icon.vue";
+import Icon from "../../ui/Icon.vue";
 import QuestionCard from "./QuestionCard.vue";
 import QuestionReview from "./QuestionReview.vue";
 import QuestionStrip from "./QuestionStrip.vue";
 import QueuedDock from "./QueuedDock.vue";
-import RouterModel from "./RouterModel.vue";
-import Skeleton from "./Skeleton.vue";
+import RouterModel from "../settings/RouterModel.vue";
+import Skeleton from "../../ui/Skeleton.vue";
 import Transcript from "./Transcript.vue";
+import { STOP } from "./composer.ts";
+import { COMPOSER_STACK, DOCK, DOCK_INNER } from "./dock.ts";
+import { ERROR_TEXT } from "../../ui/surface.ts";
 
 const props = defineProps<{
   client: Client;
@@ -168,10 +171,10 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
       <span class="spacer" />
     </header>
 
-    <div v-if="empty" class="landing-hero">
-      <BrandLogo class="landing-logo" />
-      <h2 :title="project.workspace">{{ project.title }}</h2>
-      <p class="landing-ws mono ellipsis">{{ project.workspace }}</p>
+    <div v-if="empty" class="mt-auto flex animate-[ev-rise_var(--ev-slow)_var(--ev-ease)] flex-col items-center gap-1.5 px-(--ev-gutter) pb-5.5 text-center">
+      <BrandLogo class="mb-1 size-8" />
+      <h2 class="text-(length:--ev-display) leading-[1.3] font-semibold tracking-[-0.02em]" :title="project.workspace">{{ project.title }}</h2>
+      <p class="mono ellipsis max-w-[min(100%,calc(480px*var(--ev-scale)))] text-xs text-fg-subtle">{{ project.workspace }}</p>
     </div>
     <div v-else-if="displayItems.length === 0" class="chat">
       <div class="chat-inner">
@@ -193,9 +196,9 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
       @open-question="openQuestion"
     />
 
-    <div class="dock">
-      <div class="dock-inner">
-        <p v-if="conversation.error.value || interrupting.error.value" class="composer-error" role="alert">
+    <div class="dock" :class="DOCK">
+      <div :class="DOCK_INNER">
+        <p v-if="conversation.error.value || interrupting.error.value" :class="ERROR_TEXT" role="alert">
           {{ conversation.error.value ?? interrupting.error.value }}
         </p>
         <QuestionReview
@@ -219,8 +222,7 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
         />
         <div
           v-else
-          class="composer-stack"
-          :class="{ 'has-seam': questions.length > 0 || queued.length > 0 }"
+          :class="[COMPOSER_STACK, { 'has-seam': questions.length > 0 || queued.length > 0 }]"
         >
           <QuestionStrip
             v-if="questions.length > 0"
@@ -250,7 +252,7 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
             <template v-if="conversation.running.value" #end>
               <button
                 type="button"
-                class="stop"
+                :class="STOP"
                 :disabled="interrupting.busy.value"
                 :title="t('Interrupt this turn')"
                 :aria-label="t('Interrupt this turn')"

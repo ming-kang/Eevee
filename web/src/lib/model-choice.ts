@@ -3,7 +3,7 @@ import {
   type ModelChoice,
   THINKING_LEVELS,
   type ThinkingLevel,
-} from "../../src/contracts/index.ts";
+} from "../../../src/contracts/index.ts";
 
 /** A level as the menus write it: `High`, `X-High`. */
 export const levelLabel = (level: ThinkingLevel): string =>

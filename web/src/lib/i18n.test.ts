@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import test from "node:test";
-import { fill } from "../../src/contracts/text.ts";
+import { fill } from "../../../src/contracts/text.ts";
 import { pickForm, pickLocale, t } from "./i18n.ts";
 import { zhCN } from "./locales/zh-CN.ts";
 
@@ -34,7 +34,7 @@ test("compact timestamps keep standard units in Chinese", () => {
     assert.equal(fill(zhCN[`{n}${unit}`] ?? "", { n: 8 }), `8${unit}`);
   }
 });
-const root = new URL(".", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+const root = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const CJK = /[　-〿一-鿿＀-￯]/;
 
 /** Files outside web/src whose `t()` calls are interface text too. */

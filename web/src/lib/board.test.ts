@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { TicketView } from "../../src/api/contract.ts";
-import type { Job, Question, Ticket, TicketId, TicketStage } from "../../src/contracts/index.ts";
+import type { TicketView } from "../../../src/api/contract.ts";
+import type { Job, Question, Ticket, TicketId, TicketStage } from "../../../src/contracts/index.ts";
 import {
   collectRunningJobs,
   countPendingQuestions,

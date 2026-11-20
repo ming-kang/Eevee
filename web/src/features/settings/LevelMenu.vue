@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { ThinkingLevel } from "@shared/contracts/index.ts";
 import { onMounted, ref } from "vue";
-import { t } from "../i18n.ts";
-import { listStep } from "../keyboard.ts";
-import { levelLabel } from "../model-choice.ts";
-import Icon from "./Icon.vue";
+import { t } from "../../lib/i18n.ts";
+import { listStep } from "../../lib/keyboard.ts";
+import { levelLabel } from "../../lib/model-choice.ts";
+import Icon from "../../ui/Icon.vue";
+import { menuPanel, menuRow } from "../../ui/menu.ts";
 
 /** The thinking levels a model takes, least to most; arrows and Enter to choose. */
 const props = defineProps<{
@@ -43,27 +44,27 @@ function onKeydown(event: KeyboardEvent): void {
 
 <template>
   <div
-    ref="list"
-    class="pop level-pop"
-    role="listbox"
-    :aria-label="t('Thinking level')"
-    tabindex="-1"
-    :aria-activedescendant="`level-row-${active}`"
-    @keydown="onKeydown"
-  >
+  ref="list"
+  class="w-max min-w-35" :class="menuPanel()"
+  role="listbox"
+  :aria-label="t('Thinking level')"
+  tabindex="-1"
+  :aria-activedescendant="`level-row-${active}`"
+  @keydown="onKeydown"
+>
     <button
-      v-for="(level, index) in levels"
-      :id="`level-row-${index}`"
-      :key="level"
-      type="button"
-      class="pop-row"
-      :class="{ sel: index === active }"
-      role="option"
-      :aria-selected="level === selected"
-      tabindex="-1"
-      @mouseenter="active = index"
-      @click="emit('pick', level)"
-    >
+   v-for="(level, index) in levels"
+   :id="`level-row-${index}`"
+   :key="level"
+   type="button"
+   
+   :class="[menuRow('sm'), { sel: index === active }]"
+   role="option"
+   :aria-selected="level === selected"
+   tabindex="-1"
+   @mouseenter="active = index"
+   @click="emit('pick', level)"
+>
       <span class="spacer">{{ levelLabel(level) }}</span>
       <Icon v-if="level === selected" name="check" size="sm" />
     </button>

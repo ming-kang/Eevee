@@ -20,10 +20,11 @@ import {
   type ReportStatus,
   type TicketDetails,
   type TicketId,
-} from "../../src/contracts/index.ts";
+} from "../../../src/contracts/index.ts";
 import { type ActivityCount, formatToolLabel } from "./activity.ts";
 import type { GapItem } from "./conversation.ts";
 import { t } from "./i18n.ts";
+import { displayId } from "./ids.ts";
 import { failureText, jobStatusText, reportSummary } from "./labels.ts";
 
 export type DiffLine = {
@@ -520,7 +521,7 @@ function mapNotice(
   const time = at === undefined ? {} : { at };
   const event = (eventKind: EventKind, line: string, fields: EventFields = {}) =>
     ({ kind: "event", key, eventKind, text: line, ...fields, ...time }) as const;
-  const list = (ids: readonly string[]) => ids.join(t(", "));
+  const list = (ids: readonly string[]) => ids.map(displayId).join(t(", "));
 
   switch (notice?.type) {
     case undefined:

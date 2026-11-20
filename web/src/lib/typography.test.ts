@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fontStack, parsePalette, readTextSize, resolveTheme, TEXT_SIZE } from "./typography.ts";
+import { fontStack, readTextSize, resolveTheme, TEXT_SIZE } from "./typography.ts";
 
 test("readTextSize accepts whole numbers from 12 to 20 and nothing else", () => {
   assert.deepEqual(TEXT_SIZE, { min: 12, max: 20, default: 14 });
@@ -23,15 +23,6 @@ test("fontStack quotes each font name ahead of the built-in ones; empty uses the
   assert.equal(fontStack("Georgia, Serif"), '"Georgia", serif, var(--ev-font-base)');
   // A quote or backslash in a name cannot end the string early.
   assert.equal(fontStack('A"B\\C'), '"A\\"B\\\\C", var(--ev-font-base)');
-});
-
-test("parsePalette accepts curated palette ids and falls back to default", () => {
-  for (const id of ["default", "grove", "ocean", "ember", "iris", "rose"] as const) {
-    assert.equal(parsePalette(id), id);
-  }
-  for (const invalid of [null, "", "unknown", "DARK", "grove "]) {
-    assert.equal(parsePalette(invalid), "default");
-  }
 });
 
 test("resolveTheme honors explicit preference and falls back to system for system", () => {

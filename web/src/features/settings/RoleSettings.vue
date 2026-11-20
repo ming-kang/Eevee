@@ -2,14 +2,18 @@
 import type { CapabilitiesView } from "@shared/api/contract.ts";
 import type { RoleName } from "@shared/contracts/index.ts";
 import { computed, ref, watch } from "vue";
-import { vSeg } from "../dom.ts";
-import { onRovingKeydown } from "../focus.ts";
-import type { IconName } from "../icons.ts";
-import { t } from "../i18n.ts";
-import { EXPOSURE_LABEL, ROLE_LABEL } from "../labels.ts";
-import { formatRoute } from "../router.ts";
-import { showToast } from "../toasts.ts";
-import Icon from "./Icon.vue";
+import type { IconName } from "../../composables/icons.ts";
+import { t } from "../../lib/i18n.ts";
+import { EXPOSURE_LABEL, ROLE_LABEL } from "../../lib/labels.ts";
+import { formatRoute } from "../../lib/router.ts";
+import { showToast } from "../../composables/toasts.ts";
+import Icon from "../../ui/Icon.vue";
+import Button from "../../ui/Button.vue";
+import Input from "../../ui/Input.vue";
+import Switch from "../../ui/Switch.vue";
+import Segmented from "../../ui/Segmented.vue";
+import { PANEL, badge } from "../../ui/surface.ts";
+import { ROW_DESC, row as rowClass, rowMain, rowTitle } from "../../ui/rows.ts";
 
 const props = defineProps<{
   capabilities: CapabilitiesView;
@@ -194,107 +198,66 @@ function commitTurns(): void {
 </script>
 
 <template>
-  <div
-    v-seg
-    class="seg role-seg"
-    role="tablist"
-    :aria-label="t('Roles')"
-    @keydown="
-      onRovingKeydown(
-        $event,
-        roles.map((r) => r.role),
-        selected,
-        (key) => (selected = key),
-      )
-    "
-  >
-    <button
-      v-for="item in roles"
-      :id="`role-tab-${item.role}`"
-      :key="item.role"
-      type="button"
-      role="tab"
-      aria-controls="role-panel"
-      :aria-selected="selected === item.role"
-      :tabindex="selected === item.role ? 0 : -1"
-      :class="{ on: selected === item.role }"
-      @click="selected = item.role"
-    >
-      <span>{{ ROLE_LABEL[item.role] }}</span>
-      <span v-if="item.enabled.length > 0" class="n">{{ item.enabled.length }}</span>
-    </button>
-  </div>
+  <Segmented v-model="selected" mode="tabs" size="md" class="self-start [&_.n]:text-(length:--ev-caption) [&_.n]:text-fg-subtle [&_.n]:tabular-nums" id-prefix="role-tab" controls="role-panel" :options="roles.map((item) => ({ value: item.role, label: ROLE_LABEL[item.role] }))" :label="t('Roles')">
+    <template #default="{ option, index }">
+      <span>{{ option.label }}</span>
+      <span v-if="(roles[index]?.enabled.length ?? 0) > 0" class="n">{{ roles[index]?.enabled.length }}</span>
+    </template>
+  </Segmented>
 
-  <div v-if="role" id="role-panel" class="panel" role="tabpanel" :aria-labelledby="`role-tab-${role.role}`">
-    <div class="row">
-      <div class="r-main">
-        <span class="r-d">{{ ROLE_DESC[role.role] }}</span>
+  <div v-if="role" id="role-panel" class="[&>*+*]:border-t [&>*+*]:border-separator" :class="PANEL" role="tabpanel" :aria-labelledby="`role-tab-${role.role}`">
+    <div :class="rowClass()">
+      <div :class="rowMain()">
+        <span :class="ROW_DESC">{{ ROLE_DESC[role.role] }}</span>
       </div>
     </div>
 
-    <div class="row">
-      <div class="r-main">
-        <span class="r-t">{{ t("Built in") }}</span>
-        <span class="r-chips">
-          <span v-for="name in role.builtIn" :key="name" class="chip" :title="name">
+    <div :class="rowClass()">
+      <div :class="rowMain()">
+        <span :class="rowTitle()">{{ t("Built in") }}</span>
+        <span class="flex flex-wrap gap-1">
+          <span v-for="name in role.builtIn" :key="name" :class="badge()" :title="name">
             {{ builtInLabel(name) }}
           </span>
         </span>
-        <span class="r-d">{{ t("Always on") }}</span>
+        <span :class="ROW_DESC">{{ t("Always on") }}</span>
       </div>
     </div>
 
     <template v-for="section in extSections" :key="section.key">
-      <div class="row sect">
-        <div class="r-main">
-          <span class="r-t">{{ section.title }}</span>
-          <span v-if="section.hint" class="r-d">{{ section.hint }}</span>
+      <div :class="rowClass({ size: 'sect' })">
+        <div :class="rowMain()">
+          <span :class="rowTitle({ muted: true })">{{ section.title }}</span>
+          <span v-if="section.hint" :class="ROW_DESC">{{ section.hint }}</span>
         </div>
       </div>
-      <div v-for="row in section.rows" :key="row.name" class="row">
+      <div v-for="row in section.rows" :key="row.name" :class="rowClass()">
         <Icon :name="row.icon" size="sm" class="dim" />
-        <div class="r-main">
-          <span class="r-t">
+        <div :class="rowMain()">
+          <span :class="rowTitle()">
             <span class="mono">{{ row.label }}</span>
             <span v-if="row.dot" class="dot bad" />
           </span>
-          <span v-if="row.detail" class="r-d">{{ row.detail }}</span>
-          <span v-if="row.error" class="r-d err">{{ row.error }}</span>
+          <span v-if="row.detail" :class="ROW_DESC">{{ row.detail }}</span>
+          <span v-if="row.error" class="err" :class="ROW_DESC">{{ row.error }}</span>
         </div>
-        <button
-          type="button"
-          class="switch"
-          :class="{ on: enabled(row.name) }"
-          :disabled="busy"
-          :aria-pressed="enabled(row.name)"
-          :aria-label="
+        <Switch :model-value="enabled(row.name)" :disabled="busy" :aria-label="
             t('{role} uses {extension}', { role: ROLE_LABEL[role.role], extension: row.name })
-          "
-          @click="emit('toggle', role.role, row.name)"
-        />
+          " @update:model-value="emit('toggle', role.role, row.name)" />
       </div>
-      <div v-if="section.rows.length === 0 && section.empty" class="row">
-        <div class="r-main">
-          <span class="r-d">{{ section.empty }}</span>
+      <div v-if="section.rows.length === 0 && section.empty" :class="rowClass()">
+        <div :class="rowMain()">
+          <span :class="ROW_DESC">{{ section.empty }}</span>
         </div>
-        <a class="btn sm" :href="MCP_HREF">{{ t("Add one in MCP & extensions") }}</a>
+        <Button size="sm" :href="MCP_HREF">{{ t("Add one in MCP & extensions") }}</Button>
       </div>
     </template>
 
-    <div class="row">
-      <label class="r-main" :for="`turn-limit-${role.role}`">
-        <span class="r-t">{{ t("Turn limit") }}</span>
+    <div :class="rowClass()">
+      <label :class="rowMain()" :for="`turn-limit-${role.role}`">
+        <span :class="rowTitle()">{{ t("Turn limit") }}</span>
       </label>
-      <input
-        :id="`turn-limit-${role.role}`"
-        v-model="turnDrafts[role.role]"
-        class="input mono turns"
-        inputmode="numeric"
-        :placeholder="t('Default')"
-        :aria-label="t('{role} turn limit', { role: ROLE_LABEL[role.role] })"
-        :disabled="busy"
-        @change="commitTurns"
-      />
+      <Input :id="`turn-limit-${role.role}`" v-model="turnDrafts[role.role]" mono inline class="w-19 text-center" inputmode="numeric" :placeholder="t('Default')" :aria-label="t('{role} turn limit', { role: ROLE_LABEL[role.role] })" :disabled="busy" @change="commitTurns" />
     </div>
   </div>
 </template>

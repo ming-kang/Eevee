@@ -3,16 +3,19 @@ import type { Client } from "@shared/api/client.ts";
 import type { JobLogView } from "@shared/api/contract.ts";
 import type { JobId } from "@shared/contracts/index.ts";
 import { computed, onUnmounted, ref, watch } from "vue";
-import type { RunningJobItem } from "../board.ts";
-import { vTail } from "../dom.ts";
-import { errorText } from "../errors.ts";
-import { t } from "../i18n.ts";
-import { jobStatusText } from "../labels.ts";
-import { useSubmit } from "../submit.ts";
-import { formatElapsedSeconds } from "../time.ts";
-import { showToast } from "../toasts.ts";
-import Skeleton from "./Skeleton.vue";
+import type { RunningJobItem } from "../../lib/board.ts";
+import { vTail } from "../../composables/dom.ts";
+import { errorText } from "../../lib/errors.ts";
+import { t } from "../../lib/i18n.ts";
+import { jobStatusText } from "../../lib/labels.ts";
+import { useSubmit } from "../../composables/submit.ts";
+import { formatElapsedSeconds } from "../../lib/time.ts";
+import { showToast } from "../../composables/toasts.ts";
+import Skeleton from "../../ui/Skeleton.vue";
 import StageGlyph from "./StageGlyph.vue";
+import Button from "../../ui/Button.vue";
+import { displayId } from "../../lib/ids.ts";
+import { ID_TEXT } from "./stage.ts";
 
 const props = defineProps<{
   client: Client;
@@ -151,126 +154,97 @@ async function killJob(jobId: JobId): Promise<void> {
 </script>
 
 <template>
-  <div v-if="openJobId && !openInRunning" class="jobs">
-    <div class="job open">
+  <div v-if="openJobId && !openInRunning" class="flex flex-col gap-1">
+    <div class="rounded-sm transition-[background-color,box-shadow] duration-(--ev-regular) ease-(--ev-ease) border border-border bg-surface shadow-(--ev-shadow-card)">
       <button
         type="button"
-        class="job-row"
+        class="job-row grid w-full grid-cols-[var(--ev-icon-sm)_minmax(0,1fr)] items-center gap-x-2.25 gap-y-px rounded-sm px-2.5 py-1.5 text-left transition-colors pointer-coarse:min-h-10 focus-visible:shadow-(--ring-inset)"
         :title="logView?.job.command ?? openJobId"
         :aria-expanded="true"
         @click="$emit('update:openJobId', undefined)"
       >
         <StageGlyph :stage="logView?.job.status === 'killed' || logView?.job.status === 'interrupted' ? 'blocked' : 'done'" />
-        <span class="job-cmd">{{ logView?.job.command ?? t("Job {id}", { id: openJobId ?? "" }) }}</span>
-        <span class="job-sub">
-          <span v-if="logView" class="t-id">{{ logView.job.ticketId }}</span>
-          <span>{{ logView ? jobStatusText(logView.job) : openJobId }}</span>
+        <span class="truncate font-mono text-xs leading-[1.5] font-medium">{{ logView?.job.command ?? t("Job {id}", { id: displayId(openJobId ?? "") }) }}</span>
+        <span class="col-start-2 flex min-w-0 items-center gap-1.5 text-xs text-fg-subtle">
+          <span v-if="logView" :class="ID_TEXT">{{ displayId(logView.job.ticketId) }}</span>
+          <span>{{ logView ? jobStatusText(logView.job) : displayId(openJobId) }}</span>
           <span class="spacer" />
-          <span class="num">{{ openJobId }}</span>
+          <span class="flex-none">{{ displayId(openJobId) }}</span>
         </span>
       </button>
 
-      <p v-if="logError" class="error job-note">{{ logError }}</p>
-      <div v-else-if="logLoading && !logView" class="job-note"><Skeleton /></div>
+      <p v-if="logError" class="error px-3 pb-1.5 text-xs">{{ logError }}</p>
+      <div v-else-if="logLoading && !logView" class="px-3 pb-1.5 text-xs text-fg-subtle"><Skeleton /></div>
       <template v-else-if="logView">
-        <pre v-tail class="job-log">{{ logView.content || t("(no output yet)") }}</pre>
-        <p v-if="logView.truncated" class="job-note">{{ t("Last 200 lines only") }}</p>
+        <pre v-tail class="mx-2.5 mb-2 max-h-60 overflow-auto rounded-sm border border-border bg-(--ev-code) px-3 py-2.5 font-mono text-xs leading-[1.6] break-words whitespace-pre-wrap text-fg animate-[ev-fade_var(--ev-regular)_var(--ev-ease)]">{{ logView.content || t("(no output yet)") }}</pre>
+        <p v-if="logView.truncated" class="px-3 pb-1.5 text-xs text-fg-subtle">{{ t("Last 200 lines only") }}</p>
       </template>
 
-      <div class="job-actions">
-        <button
-          v-if="logView"
-          type="button"
-          class="btn sm"
-          @click="$emit('open-ticket', logView.job.ticketId)"
-        >
+      <div class="flex items-center gap-1.5 px-2.5 pb-2.5">
+        <Button v-if="logView" size="sm" @click="$emit('open-ticket', logView.job.ticketId)">
           {{ t("Open {ticket}", { ticket: logView.job.ticketId }) }}
-        </button>
+        </Button>
         <span class="spacer" />
-        <button
-          type="button"
-          class="btn sm ghost"
-          @click="$emit('update:openJobId', undefined)"
-        >
+        <Button variant="ghost" size="sm" @click="$emit('update:openJobId', undefined)">
           {{ t("Hide") }}
-        </button>
+        </Button>
       </div>
     </div>
   </div>
 
-  <p v-if="jobs.length === 0 && (!openJobId || openInRunning)" class="rail-empty">{{ t("No background jobs") }}</p>
+  <p v-if="jobs.length === 0 && (!openJobId || openInRunning)" class="px-3 py-10 text-center text-sm text-fg-subtle">{{ t("No background jobs") }}</p>
 
   <template v-else-if="jobs.length > 0">
-    <div class="jobs">
+    <div class="flex flex-col gap-1">
       <div
         v-for="item in jobs"
         :key="item.job.id"
-        class="job"
-        :class="{ open: openJobId === item.job.id }"
+        class="rounded-sm transition-[background-color,box-shadow] duration-(--ev-regular) ease-(--ev-ease)"
+        :class="openJobId === item.job.id ? 'border border-border bg-surface shadow-(--ev-shadow-card)' : '[&>.job-row:hover]:bg-hover'"
       >
         <button
           type="button"
-          class="job-row"
+          class="job-row grid w-full grid-cols-[var(--ev-icon-sm)_minmax(0,1fr)] items-center gap-x-2.25 gap-y-px rounded-sm px-2.5 py-1.5 text-left transition-colors pointer-coarse:min-h-10 focus-visible:shadow-(--ring-inset)"
           :title="item.job.command"
           :aria-expanded="openJobId === item.job.id"
           @click="toggle(item.job.id)"
         >
           <StageGlyph stage="jobs" />
-          <span class="job-cmd">{{ item.job.command }}</span>
-          <span class="job-sub">
-            <span class="t-id">{{ item.ticket.id }}</span>
+          <span class="truncate font-mono text-xs leading-[1.5] font-medium">{{ item.job.command }}</span>
+          <span class="col-start-2 flex min-w-0 items-center gap-1.5 text-xs text-fg-subtle">
+            <span :class="ID_TEXT">{{ displayId(item.ticket.id) }}</span>
             <span class="ellipsis">{{ item.ticket.title }}</span>
             <span class="spacer" />
-            <span class="num">{{ item.job.id }} · {{ elapsed(item.job.startedAt) }}</span>
+            <span class="flex-none">{{ displayId(item.job.id) }} · {{ elapsed(item.job.startedAt) }}</span>
           </span>
         </button>
         <template v-if="openJobId === item.job.id">
-          <p v-if="logError" class="error job-note">{{ logError }}</p>
-          <div v-else-if="logLoading && !logView" class="job-note"><Skeleton /></div>
+          <p v-if="logError" class="error px-3 pb-1.5 text-xs">{{ logError }}</p>
+          <div v-else-if="logLoading && !logView" class="px-3 pb-1.5 text-xs text-fg-subtle"><Skeleton /></div>
           <template v-else-if="logView">
-            <pre v-tail class="job-log">{{ logView.content || t("(no output yet)") }}</pre>
-            <p v-if="logView.truncated" class="job-note">{{ t("Last 200 lines only") }}</p>
+            <pre v-tail class="mx-2.5 mb-2 max-h-60 overflow-auto rounded-sm border border-border bg-(--ev-code) px-3 py-2.5 font-mono text-xs leading-[1.6] break-words whitespace-pre-wrap text-fg animate-[ev-fade_var(--ev-regular)_var(--ev-ease)]">{{ logView.content || t("(no output yet)") }}</pre>
+            <p v-if="logView.truncated" class="px-3 pb-1.5 text-xs text-fg-subtle">{{ t("Last 200 lines only") }}</p>
           </template>
-          <p v-if="killing.error.value" class="error job-note">{{ killing.error.value }}</p>
-          <div class="job-actions">
-            <button
-              type="button"
-              class="btn sm"
-              @click="$emit('open-ticket', item.ticket.id)"
-            >
+          <p v-if="killing.error.value" class="error px-3 pb-1.5 text-xs">{{ killing.error.value }}</p>
+          <div class="flex items-center gap-1.5 px-2.5 pb-2.5">
+            <Button size="sm" @click="$emit('open-ticket', item.ticket.id)">
               {{ t("Open {ticket}", { ticket: item.ticket.id }) }}
-            </button>
+            </Button>
             <span class="spacer" />
             <template v-if="confirmKillId === item.job.id">
-              <button
-                type="button"
-                class="btn sm ghost"
-                :disabled="killing.busy.value"
-                @click="confirmKillId = undefined"
-              >
+              <Button variant="ghost" size="sm" :disabled="killing.busy.value" @click="confirmKillId = undefined">
                 {{ t("Cancel") }}
-              </button>
-              <button
-                type="button"
-                class="btn sm danger"
-                :disabled="killing.busy.value"
-                @click="killJob(item.job.id)"
-              >
+              </Button>
+              <Button variant="danger" size="sm" :disabled="killing.busy.value" @click="killJob(item.job.id)">
                 {{ killing.busy.value ? t("Stopping…") : t("Stop it") }}
-              </button>
+              </Button>
             </template>
-            <button
-              v-else
-              type="button"
-              class="btn sm danger"
-              :disabled="killing.busy.value"
-              @click="
+            <Button v-else variant="danger" size="sm" :disabled="killing.busy.value" @click="
                 killing.error.value = undefined;
                 confirmKillId = item.job.id;
-              "
-            >
+              ">
               {{ t("Stop") }}
-            </button>
+            </Button>
           </div>
         </template>
       </div>

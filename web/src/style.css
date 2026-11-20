@@ -2,11 +2,13 @@
  * See `styles/tokens.css` for the material rules (rungs, edges, motion). */
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
+/* Tailwind without its preflight while the legacy global sheets below still own the reset. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
 @import "./styles/tokens.css";
-@import "./styles/base.css";
-@import "./styles/controls.css";
-@import "./styles/shell.css";
-@import "./styles/conversation.css";
-@import "./styles/rail.css";
-@import "./styles/overlays.css";
-@import "./styles/pages.css";
+@import "./styles/theme.css";
+@import "./styles/base.css" layer(base);
+@import "./styles/controls.css" layer(components);
+@import "./styles/shell.css" layer(components);
+@import "./styles/conversation.css" layer(components);
