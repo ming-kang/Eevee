@@ -3,7 +3,6 @@ import type { Client } from "@shared/api/client.ts";
 import type { BoardView, ProjectSummary } from "@shared/api/contract.ts";
 import type { QuestionId } from "@shared/contracts/index.ts";
 import { computed, ref, watch } from "vue";
-import { countPendingQuestions, groupTickets, type RailTab } from "../board.ts";
 import { provideComposerInsert } from "../composer-bridge.ts";
 import type { ConversationWatch } from "../engine-data.ts";
 import { errorText } from "../errors.ts";
@@ -11,13 +10,13 @@ import { t } from "../i18n.ts";
 import { useSubmit } from "../submit.ts";
 import { showToast } from "../toasts.ts";
 import { mapTranscript, type QueuedMessage, queuedMessages } from "../transcript-map.ts";
+import BrandLogo from "./BrandLogo.vue";
 import Composer from "./Composer.vue";
 import Icon from "./Icon.vue";
 import QuestionCard from "./QuestionCard.vue";
 import QuestionReview from "./QuestionReview.vue";
 import QuestionStrip from "./QuestionStrip.vue";
 import QueuedDock from "./QueuedDock.vue";
-import RailToggle from "./RailToggle.vue";
 import RouterModel from "./RouterModel.vue";
 import Skeleton from "./Skeleton.vue";
 import Transcript from "./Transcript.vue";
@@ -27,13 +26,9 @@ const props = defineProps<{
   project: ProjectSummary;
   board: BoardView | undefined;
   conversation: ConversationWatch;
-  railCollapsed: boolean;
-  railShortcut: string;
 }>();
 
 defineEmits<{
-  "open-side": [];
-  "open-rail": [tab?: RailTab];
   "open-ticket": [ticketId: string];
   "project-changed": [];
 }>();
@@ -50,15 +45,6 @@ const displayItems = computed(() =>
 );
 
 const questions = computed(() => props.board?.openQuestions ?? []);
-const ticketGroups = computed(() => groupTickets(props.board?.tickets ?? []));
-const pendingQuestions = computed(() => countPendingQuestions(props.board));
-/** Status marks under the rail toggle; the outline dock shifts clear of their stack. */
-const railMarkCount = computed(
-  () =>
-    (pendingQuestions.value > 0 ? 1 : 0) +
-    (ticketGroups.value.review.length > 0 ? 1 : 0) +
-    (ticketGroups.value.blocked.length > 0 ? 1 : 0),
-);
 const queued = computed(() => queuedMessages(conversation.inbox.value));
 const queuedBusy = ref(new Set<string>());
 /** An answered or withdrawn question opened from the transcript. */
@@ -161,29 +147,18 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
 </script>
 
 <template>
-  <section
-    class="chat-page"
-    :class="{ landing: empty }"
-    :style="{ '--ev-rail-marks': railMarkCount }"
-  >
+  <section class="chat-page" :class="{ landing: empty }">
     <header class="header">
-      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('Menu')" @click="$emit('open-side')">
-        <Icon name="menu" size="sm" />
-      </button>
-      <h1 v-if="!empty" class="ellipsis" :title="project.workspace">{{ project.title }}</h1>
+      <div v-if="!empty" class="header-title">
+        <h1 class="ellipsis" :title="project.workspace">{{ project.title }}</h1>
+      </div>
       <span class="spacer" />
-      <RailToggle
-        :closed="railCollapsed"
-        :shortcut="railShortcut"
-        :questions="pendingQuestions"
-        :review="ticketGroups.review.length"
-        :blocked="ticketGroups.blocked.length"
-        @open="$emit('open-rail', 'tickets')"
-      />
     </header>
 
     <div v-if="empty" class="landing-hero">
+      <BrandLogo class="landing-logo" />
       <h2 :title="project.workspace">{{ project.title }}</h2>
+      <p class="landing-ws mono ellipsis">{{ project.workspace }}</p>
     </div>
     <div v-else-if="displayItems.length === 0" class="chat">
       <div class="chat-inner">
@@ -228,7 +203,11 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
           @later="later = true"
           @open-ticket="$emit('open-ticket', $event)"
         />
-        <template v-else>
+        <div
+          v-else
+          class="composer-stack"
+          :class="{ 'has-seam': questions.length > 0 || queued.length > 0 }"
+        >
           <QuestionStrip
             v-if="questions.length > 0"
             :question="questions[0]!"
@@ -267,7 +246,7 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
               </button>
             </template>
           </Composer>
-        </template>
+        </div>
       </div>
     </div>
   </section>

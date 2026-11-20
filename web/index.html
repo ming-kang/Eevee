@@ -1,24 +1,29 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Eevee</title>
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='1' y='1' width='22' height='22' rx='7' fill='%231c1c1c'/%3E%3Ccircle cx='12' cy='12' r='3.1' fill='%23fff'/%3E%3Ccircle cx='18.06' cy='8.5' r='1.7' fill='%23fff'/%3E%3C/svg%3E"
-    />
-    <script>
-      // Paint the first frame in the right palette; `theme.ts` takes over once the app runs.
-      try {
-        var pref = localStorage.getItem("eevee.theme");
-        var dark = pref === "dark" || (pref !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
-        document.documentElement.dataset.theme = dark ? "dark" : "light";
-      } catch (_) {}
-    </script>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eevee</title>
+  <link rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='20' height='20' rx='6' fill='%231b4ed8'/%3E%3Cpath d='M12 6.5L13.45 10.55L17.5 12L13.45 13.45L12 17.5L10.55 13.45L6.5 12L10.55 10.55L12 6.5Z' fill='%23fff'/%3E%3C/svg%3E" />
+  <script>
+    // Paint the first frame in the right palette; `theme.ts` takes over once the app runs.
+    try {
+      var pref = localStorage.getItem("eevee.theme");
+      var dark = pref === "dark" || (pref !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+      var pal = localStorage.getItem("eevee.palette");
+      if (pal === "grove" || pal === "ocean" || pal === "ember" || pal === "iris" || pal === "rose") {
+        document.documentElement.dataset.palette = pal;
+      }
+    } catch (_) { }
+  </script>
+</head>
+
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
 </html>

@@ -6,17 +6,12 @@ export type ColumnSpec = { min: number; max: number; default: number };
 
 /** Base-pixel column limits: the numbers at the default interface size. Every public function
  *  takes a `scale` (text size / 14) — geometry grows with the interface, stored widths stay px. */
-export const SIDE = { min: 200, max: 420, default: 256, collapsedW: 52 };
-export const RAIL = { min: 280, max: 560, default: 336 };
+export const SIDE: ColumnSpec = { min: 212, max: 420, default: 264 };
+export const RAIL: ColumnSpec = { min: 280, max: 560, default: 340 };
 export const MAIN_MIN = 420;
 
 /** ArrowLeft/ArrowRight on a focused sash moves the boundary by this much. */
 export const SASH_STEP = 16;
-
-// Fixed pixels the frame spends outside the columns: an inset on both ends plus one gap per
-// boundary (the values of --ev-inset and --ev-gap in tokens.css).
-const FRAME_INSETS = 12;
-const FRAME_GAP = 6;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -25,17 +20,11 @@ export function scaledColumn(spec: ColumnSpec, scale: number): ColumnSpec {
   return { min: spec.min * scale, max: spec.max * scale, default: spec.default * scale };
 }
 
-/** The collapsed sidebar's rendered width at an interface scale. */
-export function collapsedSideW(scale: number): number {
-  return SIDE.collapsedW * scale;
-}
-
 /**
  * The width a column gets for a proposed width: its own scaled limits, and what is left once the
- * other side column and the scaled main minimum are paid for. `otherW` is the *rendered* width of
- * the other column (the collapsed sidebar's icon column), or 0 when it is not on the grid. When
- * the viewport cannot even meet the scaled `spec.min`, the main keeps its share and the column
- * comes back under its minimum.
+ * other side column and the scaled main minimum are paid for. `otherW` is the rendered width of
+ * the other column, or 0 when collapsed/offcanvas or in drawer mode. When the viewport cannot
+ * even meet the scaled `spec.min`, the main keeps its share and the column comes back under min.
  */
 function fitColumn(
   proposed: number,
@@ -44,20 +33,19 @@ function fitColumn(
   otherW: number,
   scale: number,
 ): number {
-  const chrome = FRAME_INSETS + (otherW > 0 ? 2 : 1) * FRAME_GAP;
-  const cap = Math.min(spec.max, viewport - chrome - otherW - MAIN_MIN * scale);
+  const cap = Math.min(spec.max, viewport - otherW - MAIN_MIN * scale);
   return Math.round(Math.min(Math.max(proposed, spec.min), cap));
 }
 
 /**
- * Where a sidebar drag lands: the width clamps into range. Collapsing to the icon column only
- * happens through the sidebar's toggle, never through a drag.
+ * Where a sidebar drag lands: the width clamps into range. Collapsing offcanvas only happens
+ * through the sidebar toggle button or shortcut, never through a drag.
  */
 export function fitSidebar(proposed: number, viewport: number, railW: number, scale = 1): number {
   return fitColumn(proposed, scaledColumn(SIDE, scale), viewport, railW, scale);
 }
 
-/** The rail width for a proposed width; `sideW` is the sidebar's rendered width. */
+/** The rail width for a proposed width; `sideW` is the sidebar's rendered width (0 when collapsed). */
 export function fitRail(proposed: number, viewport: number, sideW: number, scale = 1): number {
   return fitColumn(proposed, scaledColumn(RAIL, scale), viewport, sideW, scale);
 }

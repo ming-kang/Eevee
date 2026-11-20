@@ -3,13 +3,13 @@ import type { Client } from "@shared/api/client.ts";
 import type { TicketView } from "@shared/api/contract.ts";
 import type { Question, QuestionId, TicketId } from "@shared/contracts/index.ts";
 import { computed, ref, type ShallowRef, watch } from "vue";
-import { effectiveStage, groupTickets, type RailTab } from "../board.ts";
+import { effectiveStage, type RailTab } from "../board.ts";
 import { provideComposerInsert } from "../composer-bridge.ts";
+import { vSeg } from "../dom.ts";
 import { useConversationWatch } from "../engine-data.ts";
 import { errorText } from "../errors.ts";
 import { t } from "../i18n.ts";
 import { STAGE_LABEL } from "../labels.ts";
-import { vSeg } from "../dom.ts";
 import type { StreamClient } from "../stream.ts";
 import { useSubmit } from "../submit.ts";
 import { showToast } from "../toasts.ts";
@@ -20,27 +20,24 @@ import QuestionCard from "./QuestionCard.vue";
 import QuestionReview from "./QuestionReview.vue";
 import QuestionStrip from "./QuestionStrip.vue";
 import QueuedDock from "./QueuedDock.vue";
-import RailToggle from "./RailToggle.vue";
-import StageGlyph from "./StageGlyph.vue";
 import Skeleton from "./Skeleton.vue";
+import StageGlyph from "./StageGlyph.vue";
 import Transcript from "./Transcript.vue";
 
 const props = defineProps<{
   client: Client;
   stream: ShallowRef<StreamClient | undefined>;
   project: string;
+  projectTitle?: string;
   view: TicketView | undefined;
   tickets?: readonly TicketView[];
   openQuestions?: readonly Question[];
   boardLoaded?: boolean;
   ticketId: string;
-  railCollapsed: boolean;
-  railShortcut: string;
 }>();
 
 defineEmits<{
   close: [];
-  "open-side": [];
   "open-rail": [tab?: RailTab, jobId?: string];
   "open-ticket": [ticketId: string];
 }>();
@@ -85,17 +82,6 @@ const ticketQuestions = computed(() =>
 );
 
 const stage = computed(() => (props.view ? effectiveStage(props.view) : undefined));
-const ticketGroups = computed(() => groupTickets(props.tickets ?? []));
-const pendingQuestions = computed(
-  () => (props.openQuestions ?? []).filter((q) => q.answer === undefined).length,
-);
-/** Status marks under the rail toggle; the outline dock shifts clear of their stack. */
-const railMarkCount = computed(
-  () =>
-    (pendingQuestions.value > 0 ? 1 : 0) +
-    (ticketGroups.value.review.length > 0 ? 1 : 0) +
-    (ticketGroups.value.blocked.length > 0 ? 1 : 0),
-);
 const mode = ref<"steer" | "followUp">("steer");
 const open = computed(() => props.view?.ticket.status === "open");
 const later = ref(false);
@@ -215,24 +201,26 @@ function queueSteer(message: QueuedMessage): Promise<void> {
 </script>
 
 <template>
-  <section class="worker" :style="{ '--ev-rail-marks': railMarkCount }">
+  <section class="worker">
     <header class="header">
-      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('Menu')" @click="$emit('open-side')">
-        <Icon name="menu" size="sm" />
-      </button>
-      <button
-        type="button"
-        class="btn ghost sm icon back-btn"
-        :title="t('Back to the Router')"
-        :aria-label="t('Back to the Router conversation')"
-        @click="$emit('close')"
-      >
-        <Icon name="chevL" size="sm" />
-      </button>
-      <span class="t-id-h">{{ ticketId }}</span>
-      <h1 class="ellipsis">
-        {{ view ? view.ticket.title : boardLoaded ? t("Ticket {id} not found", { id: ticketId }) : "" }}
-      </h1>
+      <nav class="crumb" :aria-label="t('Breadcrumb')">
+        <button
+          type="button"
+          class="crumb-parent"
+          :title="t('Back to the Router')"
+          :aria-label="t('Back to the Router conversation')"
+          @click="$emit('close')"
+        >
+          <Icon name="folder" size="xs" class="crumb-ico hide-sm" />
+          <span class="ellipsis hide-sm">{{ projectTitle ?? t("Router") }}</span>
+          <Icon name="chevL" size="xs" class="show-sm" />
+        </button>
+        <span class="crumb-sep hide-sm" aria-hidden="true">/</span>
+        <span class="t-id-h">{{ ticketId }}</span>
+        <h1 class="ellipsis">
+          {{ view ? view.ticket.title : boardLoaded ? t("Ticket {id} not found", { id: ticketId }) : "" }}
+        </h1>
+      </nav>
       <span
         v-if="view && stage"
         class="stage-h"
@@ -243,14 +231,6 @@ function queueSteer(message: QueuedMessage): Promise<void> {
         <span class="hide-sm">{{ STAGE_LABEL[stage] }}</span>
       </span>
       <span class="spacer" />
-      <RailToggle
-        :closed="railCollapsed"
-        :shortcut="railShortcut"
-        :questions="pendingQuestions"
-        :review="ticketGroups.review.length"
-        :blocked="ticketGroups.blocked.length"
-        @open="$emit('open-rail', 'detail')"
-      />
     </header>
 
     <div v-if="displayItems.length === 0 && loading" class="chat">
@@ -315,7 +295,11 @@ function queueSteer(message: QueuedMessage): Promise<void> {
             @later="later = true"
             @open-ticket="$emit('open-ticket', $event)"
           />
-          <template v-else>
+          <div
+            v-else
+            class="composer-stack"
+            :class="{ 'has-seam': ticketQuestions.length > 0 || queued.length > 0 }"
+          >
             <QuestionStrip
               v-if="ticketQuestions.length > 0"
               :question="ticketQuestions[0]!"
@@ -380,7 +364,7 @@ function queueSteer(message: QueuedMessage): Promise<void> {
                 </button>
               </template>
             </Composer>
-          </template>
+          </div>
         </template>
         <p v-else-if="view" class="dock-note">
           {{ view.ticket.status === "done" ? t("Done") : t("Cancelled")

@@ -9,11 +9,10 @@ import {
   type RailTab,
   resolveRailTab,
 } from "../board.ts";
-import { onRovingKeydown } from "../focus.ts";
 import { vSeg } from "../dom.ts";
+import { onRovingKeydown } from "../focus.ts";
 import { t } from "../i18n.ts";
 import DetailTab from "./DetailTab.vue";
-import Icon from "./Icon.vue";
 import JobsTab from "./JobsTab.vue";
 import TicketsTab from "./TicketsTab.vue";
 
@@ -26,16 +25,12 @@ const props = defineProps<{
   hasDetail: boolean;
   activeTicketId?: string;
   openJobId?: string;
-  railShortcut: string;
 }>();
 
 const emit = defineEmits<{
   "update:tab": [tab: RailTab];
   "update:openJobId": [jobId: string | undefined];
   "open-ticket": [ticketId: string];
-  "close-drawer": [];
-  /** Fold the rail column away on wide screens (drawer mode closes through "close-drawer"). */
-  "collapse-rail": [];
 }>();
 
 const effectiveTab = computed(() => resolveRailTab(props.tab, props.hasDetail));
@@ -99,28 +94,10 @@ const tabs = computed(() => {
         @click="emit('update:tab', item.key)"
       >
         <span>{{ item.label }}</span>
-        <span v-if="item.count > 0" class="n">{{ item.count }}</span>
-        <span v-if="item.dot" class="dot user" aria-hidden="true" />
+        <span v-if="item.count > 0" class="count" :class="{ user: item.dot }">{{ item.count }}</span>
         <span v-if="item.dot" class="sr">{{ t("(questions waiting)") }}</span>
       </button>
     </div>
-    <button
-      type="button"
-      class="btn ghost sm icon rail-fold"
-      :title="t('Collapse the tickets panel ({key})', { key: railShortcut })"
-      :aria-label="t('Collapse the tickets panel')"
-      @click="emit('collapse-rail')"
-    >
-      <Icon name="panel" size="sm" />
-    </button>
-    <button
-      type="button"
-      class="btn ghost sm icon rail-close"
-      :aria-label="t('Close the ticket rail')"
-      @click="emit('close-drawer')"
-    >
-      <Icon name="x" size="sm" />
-    </button>
   </div>
   <div
     id="rail-panel"

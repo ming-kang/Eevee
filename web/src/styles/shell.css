@@ -1,5 +1,9 @@
-/* The shell: sidebar | main | rail. Three cards float on the darker window ground, separated by
-   gaps that carry the draggable sashes. */
+/* Full-bleed workspace shell inspired by T3 Code:
+ * - Edge-to-edge layout divided by crisp 1px borders instead of floating islands.
+ * - Stationary top-left sidebar trigger: stays at the exact same coordinate whether the sidebar is
+ *   expanded or collapsed offcanvas, while the main titlebar smoothly glides out of its way.
+ * - Offcanvas sidebar collapse (0px track) on desktop, slide-over drawers on narrow viewports.
+ */
 
 .viewport {
   width: 100%;
@@ -7,35 +11,65 @@
   height: 100dvh;
   container: vp / inline-size;
   position: relative;
-  background: var(--ev-ground);
+  background: var(--ev-page);
   overflow: hidden;
 }
 
+/* Stationary top-left and top-right panel trigger anchors. */
+.side-trigger-anchor,
+.rail-trigger-anchor {
+  position: absolute;
+  top: env(safe-area-inset-top, 0px);
+  height: var(--ev-header-h);
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  transition: opacity var(--ev-fast) var(--ev-ease);
+}
+
+.side-trigger-anchor {
+  left: calc(var(--ev-ctrl-inset) + env(safe-area-inset-left, 0px));
+}
+
+.rail-trigger-anchor {
+  right: calc(var(--ev-ctrl-inset) + env(safe-area-inset-right, 0px));
+}
+
+.side-trigger-anchor.hidden,
+.rail-trigger-anchor.hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.side-trigger-btn,
+.rail-trigger-btn,
+.rail-trigger .rt-pill {
+  pointer-events: auto;
+}
+
+.side-trigger-btn,
+.rail-trigger-btn {
+  color: var(--ev-label-2);
+}
+
 .frame {
-  /* The sidebar's rendered column width; the collapsed class below swaps in the icon column. */
   --ev-side-col: var(--ev-sidebar-w);
-  /* The rail's track carries the boundary gap inside it, so a collapsed rail leaves no stub:
-     each column's gap is a margin-left on the card that follows it, not a grid column-gap. */
-  --ev-rail-col: calc(var(--ev-rail-w) + var(--ev-gap));
+  --ev-rail-col: var(--ev-rail-w);
   display: grid;
-  grid-template-columns: var(--ev-sidebar-w) minmax(0, 1fr);
+  grid-template-columns: var(--ev-side-col) minmax(0, 1fr);
   height: 100%;
-  padding: calc(var(--ev-inset) + env(safe-area-inset-top, 0px)) calc(var(--ev-inset) + env(safe-area-inset-right, 0px)) calc(var(--ev-inset) + env(safe-area-inset-bottom, 0px)) calc(var(--ev-inset) + env(safe-area-inset-left, 0px));
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   position: relative;
-  transition: grid-template-columns var(--ev-slow) var(--ev-ease);
+  transition: grid-template-columns var(--ev-regular) var(--ev-ease);
 }
 
 .frame.with-rail {
-  grid-template-columns: var(--ev-sidebar-w) minmax(0, 1fr) var(--ev-rail-col);
+  grid-template-columns: var(--ev-side-col) minmax(0, 1fr) var(--ev-rail-col);
 }
 
 .frame.side-collapsed {
-  --ev-side-col: var(--ev-side-collapsed);
-  grid-template-columns: var(--ev-side-collapsed) minmax(0, 1fr);
-}
-
-.frame.with-rail.side-collapsed {
-  grid-template-columns: var(--ev-side-collapsed) minmax(0, 1fr) var(--ev-rail-col);
+  --ev-side-col: 0px;
 }
 
 .frame.rail-collapsed {
@@ -46,34 +80,61 @@
 .rail {
   --ev-glyph-cut: var(--ev-region);
   --ev-shimmer-bg: var(--ev-region);
-  display: flex;
-  flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border-radius: var(--ev-r-lg);
-  corner-shape: squircle;
   background: var(--ev-region);
-  box-shadow: var(--ev-shadow-region);
-  /* A sash drag relayouts the card each frame; containment keeps its contents off the
-     grid's style/paint path. Overlays all live outside the cards, so nothing escapes. */
   contain: layout paint;
   overflow: hidden;
 }
 
-/* ——— Sidebar ——— */
+.sidebar {
+  border-right: 1px solid var(--ev-border);
+  transition: border-color var(--ev-regular) var(--ev-ease);
+}
+
+.rail {
+  border-left: 1px solid var(--ev-border);
+  transition: border-color var(--ev-regular) var(--ev-ease);
+}
+
+/* Inner fixed-width containers prevent text/rows from squishing while the grid column animates. */
+.sidebar-inner {
+  width: var(--ev-sidebar-w);
+  min-width: var(--ev-sidebar-w);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  transition:
+    transform var(--ev-regular) var(--ev-ease),
+    opacity var(--ev-fast) var(--ev-ease);
+}
+
+.rail-inner {
+  width: var(--ev-rail-w);
+  min-width: var(--ev-rail-w);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  transition:
+    transform var(--ev-regular) var(--ev-ease),
+    opacity var(--ev-fast) var(--ev-ease);
+}
+
+/* ——— Sidebar contents ——— */
 .side-top {
   flex: none;
   display: flex;
   align-items: center;
-  gap: calc(4px * var(--ev-scale));
+  gap: calc(6px * var(--ev-scale));
   height: var(--ev-header-h);
-  padding: 0 calc(8px * var(--ev-scale)) 0 calc(14px * var(--ev-scale));
+  padding: 0 var(--ev-ctrl-inset) 0 var(--ev-titlebar-left);
+  border-bottom: 1px solid var(--ev-separator);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: calc(9px * var(--ev-scale));
+  gap: calc(8px * var(--ev-scale));
   min-width: 0;
   border-radius: var(--ev-r-sm);
 }
@@ -87,54 +148,127 @@
 .brand-name {
   font-size: var(--ev-body);
   font-weight: 600;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.018em;
+  color: var(--ev-label);
 }
 
-.side-toggle {
-  color: var(--ev-label-3);
-}
-
-.side-actions {
+.side-tools {
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: calc(1px * var(--ev-scale));
-  padding: 0 calc(8px * var(--ev-scale)) calc(6px * var(--ev-scale));
+  gap: calc(6px * var(--ev-scale));
+  padding: calc(10px * var(--ev-scale)) calc(10px * var(--ev-scale)) calc(4px * var(--ev-scale));
 }
 
-/* A sidebar row: one line, a fill under the pointer, a deeper fill where you are. Text color
-   never changes on hover. */
-.nav-row,
-.p-row {
+/* Compact inline search bar with global palette shortcut badge. */
+.side-search {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ev-scale));
+  height: var(--ev-h-sm);
+  padding: 0 calc(5px * var(--ev-scale)) 0 calc(8px * var(--ev-scale));
+  border: 1px solid var(--ev-border);
+  border-radius: var(--ev-r-sm);
+  background: var(--ev-well);
+  transition:
+    border-color var(--ev-fast) var(--ev-ease),
+    box-shadow var(--ev-fast) var(--ev-ease);
+}
+
+.side-search:focus-within {
+  border-color: var(--ev-accent);
+  box-shadow: var(--ev-ring-field);
+}
+
+.side-search-icon {
+  color: var(--ev-label-3);
+  flex: none;
+}
+
+.side-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font-size: var(--ev-footnote);
+  color: var(--ev-label);
+}
+
+.side-search-input:focus,
+.side-search-input:focus-visible {
+  box-shadow: none;
+}
+
+.side-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.side-search-kbd {
+  flex: none;
+  height: calc(18px * var(--ev-scale));
+  padding: 0 calc(5px * var(--ev-scale));
+  border-radius: 4px;
+  font: 500 var(--ev-caption) / 1 var(--ev-font);
+  color: var(--ev-label-3);
+  background: var(--ev-tray);
+  transition:
+    color var(--ev-fast) var(--ev-ease),
+    background-color var(--ev-fast) var(--ev-ease);
+}
+
+.side-search-kbd:hover {
+  color: var(--ev-label);
+  background: var(--ev-hover);
+}
+
+.side-search-clear {
+  display: inline-grid;
+  place-items: center;
+  width: calc(20px * var(--ev-scale));
+  height: calc(20px * var(--ev-scale));
+  border-radius: 4px;
+  color: var(--ev-label-3);
+}
+
+.side-search-clear:hover {
+  color: var(--ev-label);
+  background: var(--ev-hover);
+}
+
+/* Navigation and project rows. */
+.nav-row {
   display: flex;
   align-items: center;
   gap: calc(9px * var(--ev-scale));
   width: 100%;
   height: var(--ev-h-md);
   flex: none;
-  padding: 0 calc(8px * var(--ev-scale)) 0 calc(10px * var(--ev-scale));
+  padding: 0 calc(8px * var(--ev-scale)) 0 calc(9px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
-  corner-shape: squircle;
   font-size: var(--ev-control);
+  font-weight: 500;
   letter-spacing: var(--ev-tracking);
   text-align: left;
   color: var(--ev-side-ink);
-  transition: background-color var(--ev-fast) var(--ev-ease);
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    box-shadow var(--ev-fast) var(--ev-ease);
 }
 
-.nav-row:hover,
-.p-row:hover {
-  background: var(--ev-hover);
+.nav-row:hover {
+  background: var(--ev-side-hover);
 }
 
-.nav-row.on,
-.p-row.on {
+.nav-row.on {
   color: var(--ev-label);
-  background: var(--ev-selected);
+  background: var(--ev-side-selected);
+  box-shadow: var(--ev-side-selected-shadow);
+  --ev-glyph-cut: var(--ev-side-selected);
 }
 
-.nav-row:focus-visible,
-.p-row:focus-visible {
+.nav-row:focus-visible {
   box-shadow: var(--ev-ring-in);
 }
 
@@ -142,7 +276,14 @@
 .p-lead {
   display: inline-flex;
   flex: none;
-  color: var(--ev-label-2);
+  color: var(--ev-label-3);
+  transition: color var(--ev-fast) var(--ev-ease);
+}
+
+.nav-row.on .ico,
+.p-item.on .p-lead,
+.p-item.cur .p-lead {
+  color: var(--ev-label);
 }
 
 .nav-row .label,
@@ -154,39 +295,110 @@
   white-space: nowrap;
 }
 
-.nav-row .kbd {
-  opacity: 0;
-  transition: opacity var(--ev-fast) var(--ev-ease);
-}
-
-.nav-row:hover .kbd,
-.nav-row:focus-visible .kbd {
-  opacity: 1;
-}
-
 .side-h {
   flex: none;
   display: flex;
   align-items: center;
-  height: calc(30px * var(--ev-scale));
-  padding: calc(8px * var(--ev-scale)) calc(18px * var(--ev-scale)) 0;
-  font-size: var(--ev-footnote);
-  font-weight: 500;
+  justify-content: space-between;
+  height: calc(28px * var(--ev-scale));
+  padding: calc(6px * var(--ev-scale)) calc(14px * var(--ev-scale)) 0;
+  font-size: var(--ev-caption);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
   color: var(--ev-label-3);
+}
+
+.side-h-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
 }
 
 .side-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: calc(2px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  padding: calc(4px * var(--ev-scale)) calc(10px * var(--ev-scale)) calc(12px * var(--ev-scale));
   display: flex;
   flex-direction: column;
-  gap: calc(1px * var(--ev-scale));
+  gap: calc(2px * var(--ev-scale));
 }
 
-.p-row.cur:not(.on) .p-title {
+/* Expandable project row + ticket sub-tree. */
+.p-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.p-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--ev-r-sm);
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    box-shadow var(--ev-fast) var(--ev-ease);
+}
+
+.p-item:hover {
+  background: var(--ev-side-hover);
+}
+
+.p-item.on {
+  background: var(--ev-side-selected);
+  box-shadow: var(--ev-side-selected-shadow);
+  --ev-glyph-cut: var(--ev-side-selected);
+}
+
+.p-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ev-scale));
+  height: var(--ev-h-md);
+  padding: 0 calc(8px * var(--ev-scale)) 0 calc(9px * var(--ev-scale));
+  border-radius: var(--ev-r-sm);
+  font-size: var(--ev-control);
+  letter-spacing: var(--ev-tracking);
+  color: var(--ev-side-ink);
+}
+
+.p-item.on .p-row {
+  color: var(--ev-label);
   font-weight: 500;
+}
+
+.p-item.cur:not(.on) .p-title {
+  font-weight: 500;
+  color: var(--ev-label);
+}
+
+.p-row:focus-visible {
+  box-shadow: var(--ev-ring-in);
+}
+
+.p-exp {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: calc(22px * var(--ev-scale));
+  height: calc(22px * var(--ev-scale));
+  margin-right: calc(4px * var(--ev-scale));
+  border-radius: var(--ev-r-mini);
+  color: var(--ev-label-3);
+  transition:
+    color var(--ev-fast) var(--ev-ease),
+    background-color var(--ev-fast) var(--ev-ease);
+}
+
+.p-exp:hover {
+  color: var(--ev-label);
+  background: var(--ev-hover);
+}
+
+.p-exp:focus-visible {
+  box-shadow: var(--ev-ring-in);
 }
 
 .p-end {
@@ -194,7 +406,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  min-width: calc(18px * var(--ev-scale));
+  min-width: calc(16px * var(--ev-scale));
 }
 
 .p-end .glyph {
@@ -203,9 +415,69 @@
 }
 
 .p-time {
-  font-size: var(--ev-footnote);
+  font-size: var(--ev-caption);
   color: var(--ev-label-3);
   font-variant-numeric: tabular-nums;
+}
+
+.p-tickets {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1px * var(--ev-scale));
+  margin: calc(2px * var(--ev-scale)) 0 calc(4px * var(--ev-scale)) calc(13px * var(--ev-scale));
+  padding-left: calc(8px * var(--ev-scale));
+  border-left: 1px solid var(--ev-separator);
+}
+
+.p-ticket {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ev-scale));
+  height: calc(28px * var(--ev-scale));
+  padding: 0 calc(8px * var(--ev-scale)) 0 calc(7px * var(--ev-scale));
+  border-radius: var(--ev-r-mini);
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-2);
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    color var(--ev-fast) var(--ev-ease),
+    box-shadow var(--ev-fast) var(--ev-ease);
+}
+
+.p-ticket .glyph {
+  width: var(--ev-icon-xs);
+  height: var(--ev-icon-xs);
+}
+
+.p-ticket:hover {
+  color: var(--ev-label);
+  background: var(--ev-side-hover);
+}
+
+.p-ticket.on {
+  color: var(--ev-label);
+  font-weight: 500;
+  background: var(--ev-side-selected);
+  box-shadow: var(--ev-side-selected-shadow);
+  --ev-glyph-cut: var(--ev-side-selected);
+}
+
+.p-ticket:focus-visible {
+  box-shadow: var(--ev-ring-in);
+}
+
+.pt-id {
+  flex: none;
+  font-size: var(--ev-caption);
+  color: var(--ev-label-3);
+}
+
+.pt-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .side-conn {
@@ -213,71 +485,96 @@
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ev-scale));
-  margin: 0 calc(8px * var(--ev-scale)) calc(6px * var(--ev-scale));
+  margin: 0 calc(10px * var(--ev-scale)) calc(6px * var(--ev-scale));
   padding: calc(7px * var(--ev-scale)) calc(10px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
   font-size: var(--ev-footnote);
-  color: var(--ev-label-2);
+  color: var(--ev-bad-ink);
   background: var(--ev-bad-film);
 }
 
+/* Sidebar utility footer. */
 .side-foot {
   flex: none;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ev-scale));
+  padding: calc(8px * var(--ev-scale)) calc(10px * var(--ev-scale));
+  border-top: 1px solid var(--ev-separator);
+}
+
+.foot-back {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(5px * var(--ev-scale));
+  height: var(--ev-h-sm);
+  padding: 0 calc(9px * var(--ev-scale));
+  border-radius: var(--ev-r-sm);
+  font-size: var(--ev-footnote);
+  font-weight: 500;
+  color: var(--ev-label-2);
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    color var(--ev-fast) var(--ev-ease);
+}
+
+.foot-back:hover {
+  color: var(--ev-label);
+  background: var(--ev-side-hover);
+}
+
+.foot-actions {
+  display: inline-flex;
+  align-items: center;
   gap: calc(2px * var(--ev-scale));
-  padding: calc(8px * var(--ev-scale));
 }
 
 .foot-tile {
   display: inline-grid;
   place-items: center;
-  width: auto;
-  height: var(--ev-h-md);
+  width: var(--ev-h-sm);
+  height: var(--ev-h-sm);
   border-radius: var(--ev-r-sm);
-  corner-shape: squircle;
   color: var(--ev-label-2);
-  transition: background-color var(--ev-fast) var(--ev-ease),
-    color var(--ev-fast) var(--ev-ease);
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    color var(--ev-fast) var(--ev-ease),
+    box-shadow var(--ev-fast) var(--ev-ease);
 }
 
 .foot-tile:hover {
   color: var(--ev-label);
-  background: var(--ev-hover);
+  background: var(--ev-side-hover);
 }
 
 .foot-tile.on {
   color: var(--ev-label);
-  background: var(--ev-selected);
+  background: var(--ev-side-selected);
+  box-shadow: var(--ev-side-selected-shadow);
 }
 
 .foot-tile.dim {
-  opacity: 0.45;
+  opacity: 0.4;
   pointer-events: none;
 }
 
 /* ——— Sashes ——— */
-/* The column boundary's hit area: wider than the gap, centered on it. The mark is a 2px accent
-   line that fades in after a rest under the pointer (like VS Code), and at once while a drag or
-   the keyboard's focus is on it. */
 .sash {
   position: absolute;
-  top: calc(var(--ev-inset) + env(safe-area-inset-top, 0px));
-  bottom: calc(var(--ev-inset) + env(safe-area-inset-bottom, 0px));
+  top: env(safe-area-inset-top, 0px);
+  bottom: env(safe-area-inset-bottom, 0px);
   width: calc(8px * var(--ev-scale));
-  z-index: 10;
+  z-index: 12;
   cursor: col-resize;
-  border-radius: 4px;
   touch-action: none;
 }
 
 .sash.s-left {
-  left: calc(var(--ev-inset) + env(safe-area-inset-left, 0px) + var(--ev-side-col) + var(--ev-gap) / 2 - calc(4px * var(--ev-scale)));
+  left: calc(env(safe-area-inset-left, 0px) + var(--ev-side-col) - calc(4px * var(--ev-scale)));
 }
 
 .sash.s-right {
-  right: calc(var(--ev-inset) + env(safe-area-inset-right, 0px) + var(--ev-rail-w) + var(--ev-gap) / 2 - calc(4px * var(--ev-scale)));
+  right: calc(env(safe-area-inset-right, 0px) + var(--ev-rail-w) - calc(4px * var(--ev-scale)));
 }
 
 .sash::before {
@@ -287,10 +584,9 @@
   bottom: 0;
   left: calc(3px * var(--ev-scale));
   width: calc(2px * var(--ev-scale));
-  border-radius: 1px;
-  background: var(--ev-accent);
+  background: var(--ev-primary);
   opacity: 0;
-  transition: opacity var(--ev-regular) var(--ev-ease) 250ms;
+  transition: opacity var(--ev-regular) var(--ev-ease) 150ms;
 }
 
 .sash:hover::before {
@@ -303,14 +599,6 @@
   transition-delay: 0s;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .sash::before {
-    transition-delay: 0s;
-  }
-}
-
-/* A live sash drag: the columns follow the pointer, so the grid's transition and text selection
-   stay out of the way. */
 :root.ev-sash-drag {
   cursor: col-resize;
 }
@@ -319,25 +607,21 @@
   user-select: none;
 }
 
-:root.ev-sash-drag .frame {
+:root.ev-sash-drag .frame,
+:root.ev-sash-drag .sidebar-inner,
+:root.ev-sash-drag .rail-inner {
   transition: none;
 }
 
-/* ——— Main ——— */
+/* ——— Main workspace & unified 52px header ——— */
 .main {
-  /* Named container so a page can react to the card's width (the Home grid stacks below 720). */
   container: main / inline-size;
-  margin-left: var(--ev-gap);
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   position: relative;
-  border-radius: var(--ev-r-lg);
-  corner-shape: squircle;
   background: var(--ev-page);
-  box-shadow: var(--ev-shadow-region);
-  /* Same containment as the side cards: a sash drag repaints only inside the card. */
   contain: layout paint;
   overflow: hidden;
 }
@@ -348,7 +632,28 @@
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ev-scale));
-  padding: 0 calc(8px * var(--ev-scale)) 0 calc(20px * var(--ev-scale));
+  padding: 0 calc(16px * var(--ev-scale)) 0 calc(20px * var(--ev-scale));
+  min-width: 0;
+  border-bottom: 1px solid var(--ev-separator);
+  background: var(--ev-page);
+  transition:
+    padding-left var(--ev-regular) var(--ev-ease),
+    padding-right var(--ev-regular) var(--ev-ease);
+}
+
+/* When a side panel collapses offcanvas, the main header glides clear of its stationary trigger. */
+.frame.side-collapsed .main .header {
+  padding-left: var(--ev-titlebar-left);
+}
+
+.frame.with-rail.rail-collapsed .main .header {
+  padding-right: calc(var(--ev-titlebar-right) + var(--ev-rail-pills, 0) * calc(46px * var(--ev-scale)));
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ev-scale));
   min-width: 0;
 }
 
@@ -361,221 +666,176 @@
 
 .header .sub {
   min-width: 0;
-  font-size: var(--ev-body);
+  font-size: var(--ev-control);
   color: var(--ev-label-3);
 }
 
-.menu-btn,
-.rail-close,
-.rail-fold {
-  display: none;
-}
-
-/* The rail's bring-it-back control sits in the page header, where the rail's own collapse button
-   lands in the rail head: both headers pad their right edge by the same 8px and share
-   --ev-header-h, so the icon does not move between states. Its waiting-status column hangs below
-   the button over the chat's gutter, out of flow so the header keeps its height. */
-.rail-toggle {
-  position: relative;
-  display: none;
-}
-
-.rail-toggle.closed {
+/* Worker breadcrumb header. */
+.crumb {
   display: flex;
-}
-
-.rt-marks {
-  position: absolute;
-  top: calc(100% + calc(4px * var(--ev-scale)));
-  left: 50%;
-  z-index: 7;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: calc(10px * var(--ev-scale));
+  gap: calc(7px * var(--ev-scale));
+  min-width: 0;
 }
 
-.rt-mark {
-  display: flex;
-  flex-direction: column;
+.crumb-parent {
+  display: inline-flex;
   align-items: center;
-  gap: calc(1px * var(--ev-scale));
-  font-size: var(--ev-caption);
-  color: var(--ev-label-3);
-  font-variant-numeric: tabular-nums;
+  gap: calc(6px * var(--ev-scale));
+  max-width: calc(200px * var(--ev-scale));
+  height: var(--ev-h-sm);
+  padding: 0 calc(7px * var(--ev-scale));
+  margin-left: calc(-7px * var(--ev-scale));
+  border-radius: var(--ev-r-sm);
+  font-size: var(--ev-control);
+  font-weight: 500;
+  color: var(--ev-label-2);
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    color var(--ev-fast) var(--ev-ease);
 }
 
-.rt-mark:hover {
+.crumb-parent:hover {
   color: var(--ev-label);
+  background: var(--ev-hover);
+}
+
+.crumb-ico {
+  color: var(--ev-label-3);
+}
+
+.crumb-sep {
+  flex: none;
+  color: var(--ev-label-3);
+  font-size: var(--ev-control);
+  user-select: none;
+}
+
+.show-sm {
+  display: none;
+}
+
+/* Stationary right-rail trigger + inline status pills. */
+.rail-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--ev-scale));
+}
+
+.rt-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ev-scale));
+  animation: ev-fade var(--ev-fast) var(--ev-ease);
+}
+
+.rt-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ev-scale));
+  height: calc(24px * var(--ev-scale));
+  padding: 0 calc(7px * var(--ev-scale));
+  border-radius: 999px;
+  font-size: var(--ev-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ev-label-2);
+  background: var(--ev-tray);
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    transform var(--ev-fast) var(--ev-ease);
+}
+
+.rt-pill:active {
+  transform: scale(0.96);
+}
+
+.rt-pill .glyph {
+  width: calc(13px * var(--ev-scale));
+  height: calc(13px * var(--ev-scale));
+}
+
+.rt-pill.s-answer {
+  color: var(--ev-user-ink);
+  background: var(--ev-user-film);
+}
+
+.rt-pill.s-blocked {
+  color: var(--ev-bad-ink);
+  background: var(--ev-bad-film);
+}
+
+.rt-pill.s-review {
+  color: var(--ev-ok-ink);
+  background: var(--ev-ok-film);
+}
+
+.rt-pill:hover {
+  filter: brightness(0.96);
 }
 
 /* ——— Rail ——— */
-.rail {
-  margin-left: var(--ev-gap);
-}
-
 .rail-head {
   flex: none;
   display: flex;
   align-items: center;
-  gap: calc(4px * var(--ev-scale));
+  gap: calc(6px * var(--ev-scale));
   height: var(--ev-header-h);
-  padding: 0 calc(8px * var(--ev-scale));
+  padding: 0 var(--ev-titlebar-right) 0 calc(12px * var(--ev-scale));
+  border-bottom: 1px solid var(--ev-separator);
 }
 
 .rail-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: calc(2px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(24px * var(--ev-scale));
+  padding: calc(8px * var(--ev-scale)) calc(10px * var(--ev-scale)) calc(24px * var(--ev-scale));
 }
 
 .drawer-bg {
   display: none;
 }
 
-/* ——— Collapsed sidebar: an icon column ——— */
+/* ——— Desktop offcanvas collapse (> 760px) ——— */
 @container vp (min-width: 761px) {
-  .sidebar.collapsed {
-    align-items: center;
-  }
-
-  .sidebar.collapsed .side-top {
-    justify-content: center;
-    padding: 0;
-    width: 100%;
-  }
-
-  .sidebar.collapsed .brand-name,
-  .sidebar.collapsed .side-top .spacer,
-  .sidebar.collapsed .side-toggle,
-  .sidebar.collapsed .nav-row .label,
-  .sidebar.collapsed .nav-row .kbd,
-  .sidebar.collapsed .side-conn .label,
-  .sidebar.collapsed .side-h,
-  .sidebar.collapsed .p-title,
-  .sidebar.collapsed .p-end.s-rest {
-    display: none;
-  }
-
-  .sidebar.collapsed .side-top:hover .brand,
-  .sidebar.collapsed .side-top:focus-within .brand {
-    display: none;
-  }
-
-  .sidebar.collapsed .side-top:hover .side-toggle,
-  .sidebar.collapsed .side-top:focus-within .side-toggle {
-    display: inline-flex;
-  }
-
-  .sidebar.collapsed .side-actions {
-    padding: 0 0 calc(6px * var(--ev-scale));
-    align-items: center;
-  }
-
-  .sidebar.collapsed .nav-row {
-    position: relative;
-    width: calc(34px * var(--ev-scale));
-    height: calc(34px * var(--ev-scale));
-    padding: 0;
-    justify-content: center;
-  }
-
-  /* The Home row's question badge rides the icon's corner, like a project row's count. */
-  .sidebar.collapsed .nav-row .count {
-    position: absolute;
-    top: calc(-2px * var(--ev-scale));
-    right: calc(-4px * var(--ev-scale));
-    min-width: calc(16px * var(--ev-scale));
-    height: calc(16px * var(--ev-scale));
-    font-size: calc(10px * var(--ev-scale));
-    padding: 0 calc(4px * var(--ev-scale));
-    box-shadow: 0 0 0 2px var(--ev-region);
-  }
-
-  .sidebar.collapsed .side-scroll {
-    width: 100%;
-    align-items: center;
-    padding: calc(6px * var(--ev-scale)) 0;
-    gap: calc(4px * var(--ev-scale));
-  }
-
-  .sidebar.collapsed .p-row {
-    position: relative;
-    width: calc(34px * var(--ev-scale));
-    height: calc(34px * var(--ev-scale));
-    padding: 0;
-    justify-content: center;
-  }
-
-  .sidebar.collapsed .p-dot {
-    width: calc(14px * var(--ev-scale));
-    height: calc(14px * var(--ev-scale));
-  }
-
-  .sidebar.collapsed .p-end {
-    position: absolute;
-    top: calc(-2px * var(--ev-scale));
-    right: calc(-4px * var(--ev-scale));
-    min-width: 0;
-  }
-
-  /* Running and blocked ride the dot's bottom-right corner; the question count keeps the top. */
-  .sidebar.collapsed .p-end.s-run,
-  .sidebar.collapsed .p-end.s-bad {
-    top: auto;
-    right: calc(-3px * var(--ev-scale));
-    bottom: calc(-3px * var(--ev-scale));
-    border-radius: 999px;
-    box-shadow: 0 0 0 2px var(--ev-region);
-  }
-
-  .sidebar.collapsed .p-end.s-bad .glyph {
-    width: calc(12px * var(--ev-scale));
-    height: calc(12px * var(--ev-scale));
-  }
-
-  .sidebar.collapsed .p-end .count {
-    min-width: calc(16px * var(--ev-scale));
-    height: calc(16px * var(--ev-scale));
-    font-size: calc(10px * var(--ev-scale));
-    padding: 0 calc(4px * var(--ev-scale));
-    box-shadow: 0 0 0 2px var(--ev-region);
-  }
-
-  .sidebar.collapsed .side-foot {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .sidebar.collapsed .foot-tile {
-    width: var(--ev-h-md);
-  }
-}
-
-/* ——— Wide: the rail collapses as a column instead of becoming a drawer ——— */
-@container vp (min-width: 1241px) {
-  .rail-fold {
-    display: inline-flex;
-  }
-
-  /* A zero-width card would still cast its shadow; keep it visible through the shrink, then
-     hide it when the track has closed. Expanding makes it visible at once. */
-  .frame.rail-collapsed .rail {
+  .frame.side-collapsed .sidebar {
+    border-right-color: transparent;
     visibility: hidden;
-    transition: visibility 0s linear var(--ev-slow);
+    transition:
+      border-color var(--ev-regular) var(--ev-ease),
+      visibility 0s linear var(--ev-regular);
+  }
+
+  .frame.side-collapsed .sidebar-inner {
+    transform: translateX(calc(-20px * var(--ev-scale)));
+    opacity: 0;
   }
 }
 
-/* ——— Narrow: the rail becomes a drawer ——— */
+/* ——— Wide (> 1240px): rail collapses offcanvas ——— */
+@container vp (min-width: 1241px) {
+  .frame.rail-collapsed .rail {
+    border-left-color: transparent;
+    visibility: hidden;
+    transition:
+      border-color var(--ev-regular) var(--ev-ease),
+      visibility 0s linear var(--ev-regular);
+  }
+
+  .frame.rail-collapsed .rail-inner {
+    transform: translateX(calc(20px * var(--ev-scale)));
+    opacity: 0;
+  }
+}
+
+/* ——— Narrow (<= 1240px): rail becomes a full-height slide-over drawer ——— */
 @container vp (max-width: 1240px) {
   .frame.with-rail {
-    grid-template-columns: var(--ev-sidebar-w) minmax(0, 1fr);
+    grid-template-columns: var(--ev-side-col) minmax(0, 1fr);
   }
 
-  .frame.with-rail.side-collapsed {
-    grid-template-columns: var(--ev-side-collapsed) minmax(0, 1fr);
+  .frame.with-rail .main .header {
+    padding-right: calc(var(--ev-titlebar-right) + var(--ev-rail-pills, 0) * calc(46px * var(--ev-scale)));
   }
 
   .sash.s-right {
@@ -584,21 +844,25 @@
 
   .rail {
     position: absolute;
-    top: calc(var(--ev-inset) + env(safe-area-inset-top, 0px));
-    right: calc(var(--ev-inset) + env(safe-area-inset-right, 0px));
-    bottom: calc(var(--ev-inset) + env(safe-area-inset-bottom, 0px));
-    width: min(var(--ev-rail-w),
-        calc(100% - 2 * var(--ev-inset) - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
-    z-index: 20;
+    top: env(safe-area-inset-top, 0px);
+    right: env(safe-area-inset-right, 0px);
+    bottom: env(safe-area-inset-bottom, 0px);
+    width: min(var(--ev-rail-w), calc(100% - calc(40px * var(--ev-scale))));
+    z-index: 22;
     --ev-glyph-cut: var(--ev-raised);
     --ev-shimmer-bg: var(--ev-raised);
     background: var(--ev-raised);
     box-shadow: var(--ev-shadow-modal);
-    transform: translateX(calc(100% + 2 * var(--ev-inset)));
-    /* Hidden once it has slid out, so a closed drawer leaves the tab order and the accessibility tree. */
+    transform: translateX(100%);
     visibility: hidden;
-    transition: transform var(--ev-slow) var(--ev-ease),
+    transition:
+      transform var(--ev-slow) var(--ev-ease),
       visibility 0s linear var(--ev-slow);
+  }
+
+  .rail-inner {
+    width: 100%;
+    min-width: 0;
   }
 
   .rail.open {
@@ -607,17 +871,8 @@
     transition: transform var(--ev-slow) var(--ev-ease);
   }
 
-  /* A touch drag steers the transform directly; the slide would lag a frame behind the finger. */
   .rail.dragging {
     transition: none;
-  }
-
-  .rail-close {
-    display: inline-flex;
-  }
-
-  .rail-toggle {
-    display: flex;
   }
 
   .drawer-bg {
@@ -628,7 +883,8 @@
     background: var(--ev-overlay);
     opacity: 0;
     visibility: hidden;
-    transition: opacity var(--ev-slow) var(--ev-ease),
+    transition:
+      opacity var(--ev-slow) var(--ev-ease),
       visibility 0s linear var(--ev-slow);
   }
 
@@ -643,7 +899,7 @@
   }
 }
 
-/* ——— Narrower: the sidebar becomes a drawer too ——— */
+/* ——— Mobile (<= 760px): sidebar becomes a full-height slide-over drawer ——— */
 @container vp (max-width: 760px) {
 
   .frame,
@@ -657,25 +913,26 @@
     display: none;
   }
 
-  .main {
-    margin-left: 0;
-  }
-
   .sidebar {
     position: absolute;
-    top: calc(var(--ev-inset) + env(safe-area-inset-top, 0px));
-    left: calc(var(--ev-inset) + env(safe-area-inset-left, 0px));
-    bottom: calc(var(--ev-inset) + env(safe-area-inset-bottom, 0px));
-    width: min(calc(280px * var(--ev-scale)),
-        calc(100% - 2 * var(--ev-inset) - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    top: env(safe-area-inset-top, 0px);
+    left: env(safe-area-inset-left, 0px);
+    bottom: env(safe-area-inset-bottom, 0px);
+    width: min(calc(284px * var(--ev-scale)), calc(100% - calc(40px * var(--ev-scale))));
     z-index: 25;
     --ev-glyph-cut: var(--ev-raised);
     background: var(--ev-raised);
     box-shadow: var(--ev-shadow-modal);
-    transform: translateX(calc(-100% - 2 * var(--ev-inset)));
+    transform: translateX(-100%);
     visibility: hidden;
-    transition: transform var(--ev-slow) var(--ev-ease),
+    transition:
+      transform var(--ev-slow) var(--ev-ease),
       visibility 0s linear var(--ev-slow);
+  }
+
+  .sidebar-inner {
+    width: 100%;
+    min-width: 0;
   }
 
   .sidebar.open {
@@ -688,23 +945,24 @@
     transition: none;
   }
 
-  .menu-btn {
-    display: inline-flex;
-  }
-
-  .side-toggle,
-  .nav-row .kbd {
-    display: none;
-  }
-
-  .header {
-    padding: 0 calc(8px * var(--ev-scale));
+  .main .header {
+    padding-left: var(--ev-titlebar-left);
+    padding-right: var(--ev-ctrl-inset);
     gap: calc(6px * var(--ev-scale));
   }
 
+  .frame.with-rail .main .header {
+    padding-right: calc(var(--ev-titlebar-right) + var(--ev-rail-pills, 0) * calc(46px * var(--ev-scale)));
+  }
+
+  .side-search-kbd,
   .header .hide-sm,
   .hide-sm {
     display: none;
+  }
+
+  .show-sm {
+    display: inline-flex;
   }
 }
 
@@ -712,12 +970,15 @@
   padding: calc(6px * var(--ev-scale)) calc(10px * var(--ev-scale));
 }
 
-/* ——— Touch: a finger needs a bigger row than a cursor does ——— */
 @media (pointer: coarse) {
 
   .nav-row,
   .p-row {
-    height: calc(40px * var(--ev-scale));
+    height: calc(38px * var(--ev-scale));
+  }
+
+  .p-ticket {
+    height: calc(34px * var(--ev-scale));
   }
 
   .strip,
@@ -727,7 +988,7 @@
   }
 
   .foot-tile {
-    width: calc(40px * var(--ev-scale));
-    height: calc(40px * var(--ev-scale));
+    width: calc(36px * var(--ev-scale));
+    height: calc(36px * var(--ev-scale));
   }
 }

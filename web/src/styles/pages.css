@@ -7,9 +7,9 @@
 }
 
 .page-inner {
-  max-width: calc(760px * var(--ev-scale));
+  max-width: calc(780px * var(--ev-scale));
   margin: 0 auto;
-  padding: calc(8px * var(--ev-scale)) var(--ev-gutter) calc(48px * var(--ev-scale));
+  padding: calc(18px * var(--ev-scale)) var(--ev-gutter) calc(48px * var(--ev-scale));
 }
 
 /* ——— Settings ——— */
@@ -17,15 +17,15 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: clamp(calc(240px * var(--ev-scale)), 24%, calc(380px * var(--ev-scale))) minmax(0, calc(1200px * var(--ev-scale)));
-  justify-content: center;
+  grid-template-columns: clamp(calc(220px * var(--ev-scale)), 22%, calc(300px * var(--ev-scale))) minmax(0, 1fr);
 }
 
 .set-nav {
   display: flex;
   flex-direction: column;
-  gap: calc(1px * var(--ev-scale));
-  padding: calc(4px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(16px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  gap: calc(2px * var(--ev-scale));
+  padding: calc(12px * var(--ev-scale)) calc(10px * var(--ev-scale));
+  border-right: 1px solid var(--ev-separator);
 }
 
 .nav-item {
@@ -64,12 +64,94 @@
 }
 
 .set-inner {
-  max-width: calc(760px * var(--ev-scale));
+  max-width: calc(780px * var(--ev-scale));
   margin-inline: auto;
-  padding: calc(4px * var(--ev-scale)) var(--ev-gutter) calc(56px * var(--ev-scale));
+  padding: calc(18px * var(--ev-scale)) var(--ev-gutter) calc(56px * var(--ev-scale));
   display: flex;
   flex-direction: column;
+  gap: calc(14px * var(--ev-scale));
+}
+
+/* Curated palette selector cards in General settings. */
+.row.row-palettes {
+  flex-direction: column;
+  align-items: stretch;
   gap: calc(12px * var(--ev-scale));
+}
+
+.pal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(108px * var(--ev-scale)), 1fr));
+  gap: calc(8px * var(--ev-scale));
+}
+
+.pal-card {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ev-scale));
+  height: calc(38px * var(--ev-scale));
+  padding: 0 calc(10px * var(--ev-scale));
+  border: 1px solid var(--ev-border);
+  border-radius: var(--ev-r-md);
+  background: var(--ev-well);
+  font-size: var(--ev-control);
+  font-weight: 500;
+  color: var(--ev-label-2);
+  transition:
+    border-color var(--ev-fast) var(--ev-ease),
+    background-color var(--ev-fast) var(--ev-ease),
+    color var(--ev-fast) var(--ev-ease),
+    box-shadow var(--ev-fast) var(--ev-ease);
+}
+
+.pal-card:hover {
+  color: var(--ev-label);
+  border-color: var(--ev-input-border);
+  background: var(--ev-hover);
+}
+
+.pal-card.on {
+  color: var(--ev-label);
+  border-color: var(--ev-primary);
+  background: color-mix(in oklab, var(--ev-primary) 7%, var(--ev-card));
+  box-shadow: 0 0 0 1px var(--ev-primary);
+}
+
+.pal-chip {
+  flex: none;
+  display: grid;
+  grid-template-columns: 34% 1fr;
+  width: calc(24px * var(--ev-scale));
+  height: calc(18px * var(--ev-scale));
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgb(128 128 128 / 0.28);
+}
+
+.pal-chip-side {
+  display: block;
+  background: var(--sw-side);
+}
+
+.pal-chip-canvas {
+  display: grid;
+  place-items: center;
+  background: var(--sw-canvas);
+}
+
+.pal-chip-dot {
+  display: block;
+  width: calc(7px * var(--ev-scale));
+  height: calc(7px * var(--ev-scale));
+  border-radius: 50%;
+  background: var(--sw-primary);
+}
+
+.pal-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .set-head {
@@ -117,14 +199,16 @@
   width: min(calc(260px * var(--ev-scale)), 46%);
   height: var(--ev-h-md);
   padding: 0 calc(10px * var(--ev-scale));
+  border: 1px solid var(--ev-input-border);
   border-radius: var(--ev-r-md);
-  corner-shape: squircle;
   font: 500 var(--ev-footnote) / 1 var(--ev-font-mono);
   text-align: left;
   color: var(--ev-label);
   background: var(--ev-well);
   box-shadow: var(--ev-shadow-well);
-  transition: box-shadow var(--ev-fast) var(--ev-ease);
+  transition:
+    border-color var(--ev-fast) var(--ev-ease),
+    box-shadow var(--ev-fast) var(--ev-ease);
 }
 
 .model-pick>.ico {
@@ -223,8 +307,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: clamp(calc(240px * var(--ev-scale)), 24%, calc(380px * var(--ev-scale))) minmax(0, calc(1200px * var(--ev-scale)));
-  justify-content: center;
+  grid-template-columns: clamp(calc(250px * var(--ev-scale)), 26%, calc(360px * var(--ev-scale))) minmax(0, 1fr);
 }
 
 .split-list {
@@ -232,7 +315,8 @@
   flex-direction: column;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 calc(8px * var(--ev-scale)) calc(16px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  padding: calc(8px * var(--ev-scale)) calc(10px * var(--ev-scale)) calc(16px * var(--ev-scale));
+  border-right: 1px solid var(--ev-separator);
 }
 
 .list-head {
@@ -335,7 +419,7 @@
 }
 
 .detail-inner {
-  padding: calc(4px * var(--ev-scale)) var(--ev-gutter) calc(48px * var(--ev-scale));
+  padding: calc(18px * var(--ev-scale)) var(--ev-gutter) calc(48px * var(--ev-scale));
   display: flex;
   flex-direction: column;
   gap: calc(16px * var(--ev-scale));
@@ -461,7 +545,7 @@
   display: block;
   height: 100%;
   border-radius: 2px;
-  background: var(--ev-label-3);
+  background: var(--ev-primary);
 }
 
 /* ——— Rows that open their item: the whole row is the link ——— */
@@ -868,7 +952,9 @@ textarea.input {
   .set-nav {
     flex-direction: row;
     overflow-x: auto;
-    padding: 0 calc(12px * var(--ev-scale)) calc(8px * var(--ev-scale));
+    padding: calc(8px * var(--ev-scale)) calc(12px * var(--ev-scale));
+    border-right: 0;
+    border-bottom: 1px solid var(--ev-separator);
   }
 
   .nav-item {
@@ -903,6 +989,10 @@ textarea.input {
 @container vp (max-width: 54.2857em) {
   .split {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .split-list {
+    border-right: 0;
   }
 
   .split.has-detail .split-list,
@@ -977,21 +1067,9 @@ textarea.input {
   color: var(--ev-label);
 }
 
-.home-h .wgrid {
-  margin-inline-start: calc(1px * var(--ev-scale));
-}
-
 /* A flex `.r-t` never ellipsizes its bare text; Home titles are one line of text, so block it. */
 .home .r-t {
   display: block;
-}
-
-/* The identity dot inline before a project name inside a row detail. */
-.h-dot {
-  width: calc(9px * var(--ev-scale));
-  height: calc(9px * var(--ev-scale));
-  margin-right: calc(5px * var(--ev-scale));
-  vertical-align: -1px;
 }
 
 /* A row's relative time on its right edge. */

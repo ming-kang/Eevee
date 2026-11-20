@@ -1,13 +1,9 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { projectHue } from "../projects.ts";
+import Icon from "./Icon.vue";
 
-const props = defineProps<{ id: string }>();
-
-/** The project's identity hue; `projectHue` keeps it stable and spreads neighbouring ids. */
-const hue = computed(() => projectHue(props.id));
+defineProps<{ id?: string }>();
 </script>
 
 <template>
-  <span class="p-dot" :style="{ '--hue': String(hue) }" aria-hidden="true" />
+  <Icon name="folder" size="xs" class="p-folder" />
 </template>

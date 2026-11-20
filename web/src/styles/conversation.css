@@ -35,23 +35,27 @@
 
 .to-latest {
   position: absolute;
-  bottom: calc(28px * var(--ev-scale));
+  bottom: calc(24px * var(--ev-scale));
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: calc(32px * var(--ev-scale));
   height: calc(32px * var(--ev-scale));
+  border: 1px solid var(--ev-border);
   border-radius: 999px;
   color: var(--ev-label-2);
-  background-color: var(--ev-raised);
-  background-image: var(--ev-sheen-raised);
+  background: var(--ev-glass-bg);
+  backdrop-filter: blur(var(--ev-glass-blur)) saturate(var(--ev-glass-sat));
   box-shadow: var(--ev-shadow-float);
   pointer-events: auto;
-  transition: color var(--ev-fast) var(--ev-ease);
+  transition:
+    color var(--ev-fast) var(--ev-ease),
+    transform var(--ev-fast) var(--ev-ease);
 }
 
 .to-latest:hover {
   color: var(--ev-label);
+  transform: translateY(-1px);
 }
 
 .to-latest:focus-visible {
@@ -93,9 +97,19 @@
 /* ——— Landing: an empty conversation centers its title over the composer ——— */
 .landing-hero {
   margin-top: auto;
-  padding: 0 var(--ev-gutter) calc(20px * var(--ev-scale));
+  padding: 0 var(--ev-gutter) calc(22px * var(--ev-scale));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(6px * var(--ev-scale));
   text-align: center;
   animation: ev-rise var(--ev-slow) var(--ev-ease);
+}
+
+.landing-logo {
+  width: calc(32px * var(--ev-scale));
+  height: calc(32px * var(--ev-scale));
+  margin-bottom: calc(4px * var(--ev-scale));
 }
 
 .landing-hero h2 {
@@ -103,6 +117,16 @@
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.3;
+}
+
+.landing-ws {
+  max-width: min(100%, calc(480px * var(--ev-scale)));
+  font-size: var(--ev-footnote);
+  color: var(--ev-label-3);
+}
+
+.chat-page.landing .header {
+  border-bottom-color: transparent;
 }
 
 .chat-page.landing .dock {
@@ -137,15 +161,15 @@
 
 .msg-user {
   max-width: min(80%, calc(560px * var(--ev-scale)));
-  padding: calc(10px * var(--ev-scale)) calc(16px * var(--ev-scale));
+  padding: calc(10px * var(--ev-scale)) calc(15px * var(--ev-scale));
+  border: 1px solid color-mix(in oklab, var(--ev-border) 65%, transparent);
   border-radius: var(--ev-r-lg);
-  corner-shape: squircle;
   font-size: var(--ev-body);
   line-height: 1.572;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--ev-prose);
-  background: color-mix(in oklab, var(--ev-label) 5%, transparent);
+  background: var(--ev-msg-user);
 }
 
 /* Sent, not yet delivered: the message waits at the end, a step quieter, until the run takes it. */
@@ -351,8 +375,8 @@
 .panel-b pre {
   margin: 0;
   padding: calc(12px * var(--ev-scale)) calc(14px * var(--ev-scale));
+  border: 1px solid var(--ev-border);
   border-radius: var(--ev-r-md);
-  corner-shape: squircle;
   overflow-x: auto;
   font-size: var(--ev-footnote);
   line-height: 1.65;
@@ -541,8 +565,8 @@
   padding: calc(10px * var(--ev-scale)) calc(12px * var(--ev-scale));
   max-height: calc(280px * var(--ev-scale));
   overflow: auto;
+  border: 1px solid var(--ev-border);
   border-radius: var(--ev-r-sm);
-  corner-shape: squircle;
   font: var(--ev-footnote) / 1.6 var(--ev-font-mono);
   color: var(--ev-label);
   white-space: pre-wrap;
@@ -562,10 +586,10 @@
   align-items: center;
   gap: calc(10px * var(--ev-scale));
   padding: calc(8px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  border: 1px solid color-mix(in oklab, var(--ev-bad) 28%, var(--ev-border));
   border-radius: var(--ev-r-md);
-  corner-shape: squircle;
   font-size: var(--ev-control);
-  background: color-mix(in oklab, var(--ev-card) 92%, var(--ev-bad));
+  background: color-mix(in oklab, var(--ev-card) 93%, var(--ev-bad));
   box-shadow: var(--ev-shadow-card);
 }
 
@@ -640,8 +664,8 @@
 /* ——— Report ——— */
 .report {
   padding: calc(12px * var(--ev-scale)) calc(14px * var(--ev-scale));
+  border: 1px solid var(--ev-border);
   border-radius: var(--ev-r-md);
-  corner-shape: squircle;
   font-size: var(--ev-control);
   background: var(--ev-card);
   box-shadow: var(--ev-shadow-card);
@@ -694,8 +718,8 @@
   margin-bottom: calc(6px * var(--ev-scale));
   max-height: calc(320px * var(--ev-scale));
   overflow: auto;
+  border: 1px solid var(--ev-border);
   border-radius: var(--ev-r-sm);
-  corner-shape: squircle;
   background: var(--ev-code);
 }
 
@@ -752,7 +776,7 @@
   margin-top: calc(12px * var(--ev-scale));
 }
 
-/* ——— Dock & composer ——— */
+/* ——— Dock & unified glass composer stack ——— */
 .dock {
   flex: none;
   padding: 0 var(--ev-gutter) calc(16px * var(--ev-scale));
@@ -773,21 +797,34 @@
   color: var(--ev-label-3);
 }
 
+.composer-stack {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ev-border);
+  border-radius: var(--ev-r-xl);
+  background: var(--ev-glass-bg);
+  backdrop-filter: blur(var(--ev-glass-blur)) saturate(var(--ev-glass-sat));
+  box-shadow: var(--ev-shadow-composer);
+  transition:
+    border-color var(--ev-fast) var(--ev-ease),
+    box-shadow var(--ev-regular) var(--ev-ease);
+}
+
+.composer-stack:focus-within {
+  border-color: color-mix(in oklab, var(--ev-accent) 42%, var(--ev-border));
+  box-shadow:
+    var(--ev-shadow-composer),
+    0 0 0 3px color-mix(in oklab, var(--ev-accent) 12%, transparent);
+}
+
 .composer {
   display: flex;
   flex-direction: column;
   gap: calc(6px * var(--ev-scale));
   padding: calc(12px * var(--ev-scale)) calc(10px * var(--ev-scale)) calc(10px * var(--ev-scale)) calc(16px * var(--ev-scale));
-  border-radius: var(--ev-r-lg);
-  corner-shape: squircle;
-  background: var(--ev-card);
-  box-shadow: var(--ev-shadow-card);
-  transition: box-shadow var(--ev-regular) var(--ev-ease);
+  border-radius: var(--ev-r-xl);
+  background: transparent;
   cursor: text;
-}
-
-.composer:focus-within {
-  box-shadow: var(--ev-shadow-float);
 }
 
 .composer textarea {
@@ -912,31 +949,38 @@
   height: var(--ev-h-sm);
   flex: none;
   border-radius: 50%;
-  transition: background-color var(--ev-fast) var(--ev-ease),
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
     color var(--ev-fast) var(--ev-ease),
     box-shadow var(--ev-fast) var(--ev-ease),
     transform var(--ev-fast) var(--ev-ease);
 }
 
 .send {
-  color: var(--ev-on-ink);
-  background-color: var(--ev-ink);
-  background-image: var(--ev-sheen-ink);
-  box-shadow: var(--ev-shadow-ink);
+  color: var(--ev-on-primary);
+  background-color: var(--ev-primary);
+  box-shadow: var(--ev-shadow-primary);
+}
+
+.send:hover:not(:disabled) {
+  background-color: var(--ev-primary-hover);
 }
 
 .send:disabled {
   color: var(--ev-label-3);
   background-color: var(--ev-tray);
-  background-image: none;
   box-shadow: none;
 }
 
 .stop {
+  border: 1px solid var(--ev-input-border);
   color: var(--ev-label);
   background-color: var(--ev-raised);
-  background-image: var(--ev-sheen-raised);
   box-shadow: var(--ev-shadow-raised);
+}
+
+.stop:hover:not(:disabled) {
+  background-color: var(--ev-hover);
 }
 
 .stop .ico {
@@ -944,8 +988,7 @@
 }
 
 :is(.send, .stop):active:not(:disabled) {
-  transform: translateY(1px);
-  background-image: none;
+  transform: scale(0.94);
 }
 
 :is(.send, .stop):focus-visible {
@@ -953,7 +996,7 @@
 }
 
 .composer-error {
-  padding: 0 calc(4px * var(--ev-scale));
+  padding: calc(2px * var(--ev-scale)) calc(14px * var(--ev-scale)) calc(8px * var(--ev-scale));
   font-size: var(--ev-footnote);
   color: var(--ev-bad-ink);
 }
@@ -962,10 +1005,10 @@
 .qcard {
   display: flex;
   flex-direction: column;
-  border-radius: var(--ev-r-lg);
-  corner-shape: squircle;
+  border: 1px solid color-mix(in oklab, var(--ev-user) 35%, var(--ev-border));
+  border-radius: var(--ev-r-xl);
   background: var(--ev-card);
-  box-shadow: var(--ev-shadow-float);
+  box-shadow: var(--ev-shadow-composer);
   animation: ev-rise var(--ev-regular) var(--ev-ease);
 }
 
@@ -1073,24 +1116,25 @@
   width: calc(16px * var(--ev-scale));
   height: calc(16px * var(--ev-scale));
   flex: none;
+  border: 1px solid var(--ev-input-border);
   border-radius: 50%;
   background: var(--ev-well);
-  box-shadow: var(--ev-shadow-well);
-  transition: background-color var(--ev-fast) var(--ev-ease);
+  transition:
+    background-color var(--ev-fast) var(--ev-ease),
+    border-color var(--ev-fast) var(--ev-ease);
 }
 
 .opt.on .radio {
-  background-color: var(--ev-accent);
-  background-image: var(--ev-sheen-ink);
-  box-shadow: var(--ev-shadow-ink);
+  border-color: transparent;
+  background-color: var(--ev-primary);
 }
 
 .opt.on .radio::after {
   content: "";
   position: absolute;
-  inset: calc(5px * var(--ev-scale));
+  inset: calc(4px * var(--ev-scale));
   border-radius: 50%;
-  background: var(--ev-page);
+  background: var(--ev-on-primary);
 }
 
 .rec {
@@ -1114,18 +1158,17 @@
   height: var(--ev-h-lg);
   margin-top: calc(4px * var(--ev-scale));
   padding: 0 calc(12px * var(--ev-scale));
-  border: 0;
+  border: 1px solid var(--ev-input-border);
   border-radius: var(--ev-r-md);
-  corner-shape: squircle;
   font-size: var(--ev-body);
   background: var(--ev-well);
-  box-shadow: var(--ev-shadow-well);
   animation: ev-fade var(--ev-regular) var(--ev-ease);
 }
 
 .opt-input:focus,
 .opt-input:focus-visible {
-  box-shadow: var(--ev-shadow-well), var(--ev-ring-field);
+  border-color: var(--ev-accent);
+  box-shadow: var(--ev-ring-field);
 }
 
 .why {
@@ -1143,26 +1186,26 @@
   padding: calc(12px * var(--ev-scale)) calc(12px * var(--ev-scale)) calc(12px * var(--ev-scale)) calc(20px * var(--ev-scale));
 }
 
+/* Attached question strip at the top of `.composer-stack`. */
 .qstrip {
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ev-scale));
-  height: calc(36px * var(--ev-scale));
-  padding: 0 calc(10px * var(--ev-scale)) 0 calc(14px * var(--ev-scale));
-  border-radius: var(--ev-r-md);
-  corner-shape: squircle;
+  min-height: calc(38px * var(--ev-scale));
+  padding: calc(4px * var(--ev-scale)) calc(10px * var(--ev-scale)) calc(4px * var(--ev-scale)) calc(16px * var(--ev-scale));
+  border-bottom: 1px solid var(--ev-separator);
+  border-radius: var(--ev-r-xl) var(--ev-r-xl) 0 0;
   font-size: var(--ev-control);
   font-weight: 500;
   text-align: left;
   color: var(--ev-user-ink);
-  background: color-mix(in oklab, var(--ev-card) 88%, var(--ev-user));
-  box-shadow: var(--ev-shadow-card);
-  animation: ev-rise var(--ev-regular) var(--ev-ease);
+  background: var(--ev-user-film);
+  animation: ev-fade var(--ev-regular) var(--ev-ease);
   transition: background-color var(--ev-fast) var(--ev-ease);
 }
 
 .qstrip:hover {
-  background: color-mix(in oklab, var(--ev-card) 82%, var(--ev-user));
+  background: color-mix(in oklab, var(--ev-user) 18%, transparent);
 }
 
 .qstrip .ico {
@@ -1504,8 +1547,8 @@ button.step-row:focus-visible {
   gap: calc(8px * var(--ev-scale));
   margin: calc(4px * var(--ev-scale)) 0 calc(8px * var(--ev-scale));
   padding: calc(10px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  border: 1px solid var(--ev-border);
   border-radius: var(--ev-r-md);
-  corner-shape: squircle;
   background: var(--ev-card);
   box-shadow: var(--ev-shadow-card);
   animation: ev-fade var(--ev-regular) var(--ev-ease);
@@ -1546,9 +1589,7 @@ button.step-row:focus-visible {
 /* ——— Conversation outline: a slim tick rail at the chat's right edge ——— */
 .outline-dock {
   position: sticky;
-  /* Status marks hanging under the rail toggle ride the same gutter; the page sets
-     --ev-rail-marks to their count so the rail sits clear of them. */
-  top: calc(50% + var(--ev-rail-marks, 0) * calc(38px * var(--ev-scale)));
+  top: 50%;
   z-index: 6;
   height: 0;
   display: flex;
@@ -1661,12 +1702,13 @@ button.step-row:focus-visible {
   z-index: 7;
   transform: translateX(-50%);
   padding: calc(5px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  border: 1px solid var(--ev-border);
   border-radius: 999px;
   font-size: var(--ev-footnote);
   font-weight: 500;
   color: var(--ev-label);
-  background-color: var(--ev-raised);
-  background-image: var(--ev-sheen-raised);
+  background: var(--ev-glass-bg);
+  backdrop-filter: blur(var(--ev-glass-blur)) saturate(var(--ev-glass-sat));
   box-shadow: var(--ev-shadow-float);
   animation: ev-fade var(--ev-fast) var(--ev-ease);
 }
@@ -1698,30 +1740,35 @@ button.step-row:focus-visible {
   color: var(--ev-label);
 }
 
-/* ——— Queued lines waiting above the composer ——— */
+/* ——— Attached queued rows inside `.composer-stack` ——— */
 .qdock {
   display: flex;
   flex-direction: column;
-  gap: calc(4px * var(--ev-scale));
+  border-bottom: 1px solid var(--ev-separator);
 }
 
 .qrow {
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ev-scale));
-  min-height: calc(34px * var(--ev-scale));
-  padding: calc(4px * var(--ev-scale)) calc(6px * var(--ev-scale)) calc(4px * var(--ev-scale)) calc(12px * var(--ev-scale));
-  border-radius: var(--ev-r-md);
-  corner-shape: squircle;
+  gap: calc(8px * var(--ev-scale));
+  min-height: calc(36px * var(--ev-scale));
+  padding: calc(4px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(4px * var(--ev-scale)) calc(16px * var(--ev-scale));
   font-size: var(--ev-control);
   color: var(--ev-label);
-  background: var(--ev-card);
-  box-shadow: var(--ev-shadow-card);
-  animation: ev-rise var(--ev-regular) var(--ev-ease);
+  background: color-mix(in oklab, var(--ev-label) 2.5%, transparent);
+  animation: ev-fade var(--ev-regular) var(--ev-ease);
+}
+
+.qrow+.qrow {
+  border-top: 1px solid var(--ev-separator);
+}
+
+.qdock:first-child .qrow:first-child {
+  border-radius: var(--ev-r-xl) var(--ev-r-xl) 0 0;
 }
 
 .qrow:focus-visible {
-  box-shadow: var(--ev-shadow-card), var(--ev-ring-in);
+  box-shadow: var(--ev-ring-in);
   outline: none;
 }
 

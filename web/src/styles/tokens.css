@@ -1,165 +1,362 @@
 /* Design tokens.
  *
- * Depth without lines: surfaces separate by a luminance step and a shadow, never a border.
- * One rung per component fixes its background and shadow together:
- *
- *   well      --ev-well   + --ev-shadow-well     things that hold a value (input, switch off, tray)
- *   ground    --ev-ground                        the window ground behind the cards
- *   page      --ev-page                          the main card, the conversation
- *   region    --ev-region                        sidebar, rail, a block inside a card
- *   card      --ev-card   + --ev-shadow-card     composer, question card, settings group
- *   floating  --ev-raised + --ev-shadow-float    menu, palette, hover card, toast
- *   modal     --ev-card   + --ev-shadow-modal + --ev-overlay
- *
- * Raised things you can press take --ev-shadow-raised and --ev-sheen-raised; ink buttons take
- * --ev-shadow-ink and --ev-sheen-ink. Components read only these semantic names; a theme only
- * remaps them. Neutrals carry no hue (dark leans a breath cool), so color always means something:
- *   --ev-user   amber, a question waiting for the user
- *   --ev-bad    red, blocked and failed
- *   --ev-accent focus ring, selection, a stored "on"; never a state
+ * Crisp, high-contrast surfaces inspired by T3 Code:
+ * - Light uses an airy near-white canvas (#fcfcfc), a whisper-light sidebar (#f7f7f8), pure white
+ *   cards and selected rows (#ffffff), and clean 1px hairlines (#e4e4e7) without muddy gray washes.
+ * - Dark uses an obsidian/true-black canvas (#09090b / #050507) with crisp 1px translucent borders
+ *   (rgb(255 255 255 / 0.08)) and subtle top inner highlights instead of milky gray fills.
+ * - Optional curated palettes (`data-palette="grove|ocean|ember|iris|rose"`) tint the canvas,
+ *   chrome, borders and primary action in oklch across both light and dark modes.
  */
 
 :root,
 [data-theme="light"] {
-  --ev-ground: hsl(0 0% 90.6%);
-  --ev-page: hsl(0 0% 97.6%);
-  --ev-region: hsl(0 0% 94.1%);
-  --ev-card: hsl(0 0% 100%);
-  --ev-raised: hsl(0 0% 100%);
-  --ev-well: hsl(0 0% 11% / 0.05);
-  --ev-tray: hsl(0 0% 11% / 0.06);
-  --ev-tray-raised: hsl(0 0% 100%);
+  --ev-ground: #fcfcfc;
+  --ev-page: #fcfcfc;
+  --ev-region: #f6f6f8;
+  --ev-card: #ffffff;
+  --ev-raised: #ffffff;
+  --ev-well: #ffffff;
+  --ev-tray: #f1f1f4;
+  --ev-tray-raised: #ffffff;
 
-  --ev-label: hsl(0 0% 11%);
-  --ev-side-ink: hsl(0 0% 11%);
-  --ev-prose: hsl(0 0% 13%);
-  --ev-label-2: hsl(0 0% 46%);
-  --ev-label-3: hsl(0 0% 62%);
-  /* The working mark is a thin turning arc; on a light page the third label tone fades to 2.5:1 and the
-     arc all but disappears, so it takes a darker gray that matches the dark theme's 3.7:1. */
-  --ev-working: hsl(0 0% 50%);
-  --ev-strong: hsl(0 0% 5%);
-  --ev-separator: hsl(0 0% 11% / 0.09);
-  --ev-hover: hsl(0 0% 11% / 0.06);
-  --ev-selected: hsl(0 0% 11% / 0.1);
-  --ev-ink: hsl(225 7% 12%);
-  --ev-on-ink: hsl(0 0% 100%);
-  --ev-on-user: hsl(0 0% 100%);
+  --ev-label: #18181b;
+  --ev-side-ink: #27272a;
+  --ev-prose: #18181b;
+  --ev-label-2: #52525b;
+  --ev-label-3: #71717a;
+  --ev-working: #52525b;
+  --ev-strong: #09090b;
 
-  --ev-accent: hsl(220 82% 65%);
-  --ev-link: hsl(212 72% 40%);
-  --ev-user: hsl(32 92% 46%);
-  --ev-bad: hsl(356 72% 48%);
-  --ev-ok: hsl(151 55% 36%);
-  --ev-overlay: hsl(0 0% 11% / 0.36);
-  --ev-code: hsl(0 0% 11% / 0.045);
-  --ev-skeleton: hsl(0 0% 91%);
+  --ev-border: #e4e4e7;
+  --ev-input-border: #d4d4d8;
+  --ev-separator: rgb(24 24 27 / 0.075);
+  --ev-hover: rgb(24 24 27 / 0.045);
+  --ev-selected: rgb(24 24 27 / 0.075);
 
-  --ev-shadow-well:
-    inset 0 1px 1.5px hsl(0 0% 11% / 0.08), inset 0 0 0 1px hsl(0 0% 11% / 0.06),
-    0 1px 0 hsl(0 0% 100% / 0.8);
-  --ev-shadow-raised:
-    0 0 0 0.5px hsl(0 0% 11% / 0.16), 0 1px 1px hsl(0 0% 11% / 0.06),
-    0 2px 4px -1px hsl(0 0% 11% / 0.07);
-  --ev-shadow-ink: inset 0 1px 0 hsl(0 0% 100% / 0.18), 0 1px 1.5px hsl(0 0% 11% / 0.2);
-  --ev-shadow-card:
-    0 0 0 0.5px hsl(0 0% 11% / 0.1), 0 1px 1.5px hsl(0 0% 11% / 0.04),
-    0 2px 6px -2px hsl(0 0% 11% / 0.05);
-  --ev-shadow-region: 0 0 0 0.5px hsl(0 0% 11% / 0.09), 0 1px 2px hsl(0 0% 11% / 0.03);
+  --ev-side-hover: rgb(24 24 27 / 0.045);
+  --ev-side-selected: #ffffff;
+  --ev-side-selected-shadow: 0 0 0 1px rgb(24 24 27 / 0.08), 0 1px 2px rgb(0 0 0 / 0.04);
+
+  --ev-primary: oklch(0.488 0.217 264);
+  --ev-primary-hover: oklch(0.445 0.21 264);
+  --ev-on-primary: #ffffff;
+
+  --ev-ink: #18181b;
+  --ev-on-ink: #ffffff;
+
+  --ev-accent: oklch(0.488 0.217 264);
+  --ev-link: oklch(0.47 0.195 262);
+  --ev-user: #d97706;
+  --ev-user-ink: #b45309;
+  --ev-user-film: rgb(245 158 11 / 0.12);
+  --ev-bad: #dc2626;
+  --ev-bad-ink: #b91c1c;
+  --ev-bad-film: rgb(239 68 68 / 0.1);
+  --ev-ok: #059669;
+  --ev-ok-ink: #047857;
+  --ev-ok-film: rgb(16 185 129 / 0.1);
+
+  --ev-msg-user: #f1f2f5;
+  --ev-overlay: rgb(9 9 11 / 0.36);
+  --ev-code: #f6f7f9;
+  --ev-skeleton: #ececef;
+
+  --ev-scrollbar: rgb(24 24 27 / 0.18);
+  --ev-scrollbar-hover: rgb(24 24 27 / 0.3);
+
+  --ev-glass-bg: color-mix(in srgb, var(--ev-card) 82%, transparent);
+  --ev-page-glass: color-mix(in srgb, var(--ev-page) 82%, transparent);
+  --ev-glass-blur: 14px;
+  --ev-glass-sat: 1.14;
+
+  --ev-shadow-well: 0 1px 2px rgb(0 0 0 / 0.03);
+  --ev-shadow-raised: 0 1px 2px rgb(0 0 0 / 0.04);
+  --ev-shadow-primary:
+    inset 0 1px 0 rgb(255 255 255 / 0.2),
+    0 1px 2px color-mix(in oklab, var(--ev-primary) 28%, transparent);
+  --ev-shadow-ink: inset 0 1px 0 rgb(255 255 255 / 0.16), 0 1px 2px rgb(0 0 0 / 0.14);
+  --ev-shadow-card: 0 1px 2px rgb(0 0 0 / 0.03);
+  --ev-shadow-composer:
+    0 1px 3px rgb(0 0 0 / 0.05), 0 10px 26px -14px rgb(0 0 0 / 0.1);
   --ev-shadow-float:
-    0 0 0 0.5px hsl(0 0% 11% / 0.11), 0 2px 4px -1px hsl(0 0% 11% / 0.06),
-    0 12px 32px -6px hsl(0 0% 11% / 0.16);
-  --ev-shadow-modal:
-    0 0 0 0.5px hsl(0 0% 11% / 0.08), 0 2px 6px -2px hsl(0 0% 11% / 0.08),
-    0 24px 56px -12px hsl(0 0% 11% / 0.28);
-  --ev-sheen-raised: linear-gradient(hsl(0 0% 11% / 0), hsl(0 0% 11% / 0.03));
-  --ev-sheen-ink: linear-gradient(hsl(0 0% 100% / 0.1), hsl(0 0% 100% / 0));
+    0 4px 12px -2px rgb(0 0 0 / 0.08), 0 16px 36px -8px rgb(0 0 0 / 0.12);
+  --ev-shadow-modal: 0 24px 64px -20px rgb(0 0 0 / 0.28);
   color-scheme: light;
 }
 
 [data-theme="dark"] {
-  --ev-ground: hsl(220 8% 5.8%);
-  --ev-page: hsl(220 7% 8%);
-  --ev-region: hsl(225 7% 10.6%);
-  --ev-card: hsl(216 8% 12.7%);
-  --ev-raised: hsl(216 7% 13.5%);
-  --ev-well: hsl(220 30% 2% / 0.3);
-  --ev-tray: hsl(220 20% 96% / 0.06);
-  --ev-tray-raised: hsl(220 6% 21%);
+  --ev-ground: #09090b;
+  --ev-page: #09090b;
+  --ev-region: #050507;
+  --ev-card: #111114;
+  --ev-raised: #151519;
+  --ev-well: rgb(255 255 255 / 0.035);
+  --ev-tray: rgb(255 255 255 / 0.055);
+  --ev-tray-raised: #222228;
 
-  /* Dark text sits under a brightness ceiling instead of pure white, which halates in long
-     reading: interface text at 13:1 against the page, prose a step above, bold above that.
-     Sidebar rows sit a step below, so the list you scan past stays quieter than what you read. */
-  --ev-label: hsl(220 4% 85%);
-  --ev-side-ink: hsl(220 4% 75%);
-  --ev-prose: hsl(220 5% 90%);
-  --ev-label-2: hsl(220 4% 62%);
-  --ev-label-3: hsl(220 4% 44%);
-  --ev-working: hsl(220 4% 44%);
-  --ev-strong: hsl(220 5% 94%);
-  --ev-separator: hsl(220 20% 96% / 0.08);
-  --ev-hover: hsl(220 20% 96% / 0.05);
-  --ev-selected: hsl(220 20% 96% / 0.08);
-  --ev-ink: hsl(210 3% 82%);
-  --ev-on-ink: hsl(220 7% 8%);
-  --ev-on-user: hsl(30 60% 8%);
+  --ev-label: #f4f4f5;
+  --ev-side-ink: #e4e4e7;
+  --ev-prose: #f4f4f5;
+  --ev-label-2: #a1a1aa;
+  --ev-label-3: #71717a;
+  --ev-working: #a1a1aa;
+  --ev-strong: #ffffff;
 
-  --ev-accent: hsl(200 70% 70%);
-  --ev-link: hsl(205 70% 72%);
-  --ev-user: hsl(41 96% 58%);
-  --ev-bad: hsl(0 92% 72%);
-  --ev-ok: hsl(151 58% 52%);
-  --ev-overlay: hsl(0 0% 0% / 0.56);
-  --ev-code: hsl(0 0% 100% / 0.05);
-  --ev-skeleton: hsl(220 6% 16%);
+  --ev-border: rgb(255 255 255 / 0.08);
+  --ev-input-border: rgb(255 255 255 / 0.13);
+  --ev-separator: rgb(255 255 255 / 0.07);
+  --ev-hover: rgb(255 255 255 / 0.055);
+  --ev-selected: rgb(255 255 255 / 0.09);
 
-  --ev-shadow-well:
-    inset 0 1px 2px hsl(0 0% 0% / 0.4), inset 0 0 0 1px hsl(0 0% 100% / 0.09),
-    0 1px 0 hsl(0 0% 100% / 0.04);
-  --ev-shadow-raised:
-    inset 0 1px 0 hsl(0 0% 100% / 0.08), 0 0 0 0.5px hsl(0 0% 0% / 0.7),
-    0 1px 2px hsl(0 0% 0% / 0.5);
-  --ev-shadow-ink: inset 0 1px 0 hsl(0 0% 100% / 0.55), 0 1px 2px hsl(0 0% 0% / 0.5);
-  --ev-shadow-card:
-    inset 0 1px 0 hsl(0 0% 100% / 0.04), 0 0 0 0.5px hsl(0 0% 100% / 0.08),
-    0 1px 2px hsl(0 0% 0% / 0.35);
-  --ev-shadow-region: inset 0 1px 0 hsl(0 0% 100% / 0.03), 0 0 0 0.5px hsl(0 0% 100% / 0.07);
+  --ev-side-hover: rgb(255 255 255 / 0.055);
+  --ev-side-selected: rgb(255 255 255 / 0.095);
+  --ev-side-selected-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+
+  --ev-primary: oklch(0.585 0.21 264);
+  --ev-primary-hover: oklch(0.63 0.2 264);
+  --ev-on-primary: #ffffff;
+
+  --ev-ink: #f4f4f5;
+  --ev-on-ink: #09090b;
+
+  --ev-accent: oklch(0.62 0.195 264);
+  --ev-link: oklch(0.72 0.15 256);
+  --ev-user: #f59e0b;
+  --ev-user-ink: #fbbf24;
+  --ev-user-film: rgb(245 158 11 / 0.16);
+  --ev-bad: #f87171;
+  --ev-bad-ink: #fca5a5;
+  --ev-bad-film: rgb(248 113 113 / 0.15);
+  --ev-ok: #34d399;
+  --ev-ok-ink: #34d399;
+  --ev-ok-film: rgb(52 211 153 / 0.14);
+
+  --ev-msg-user: #17171c;
+  --ev-overlay: rgb(0 0 0 / 0.64);
+  --ev-code: #0d0d10;
+  --ev-skeleton: #18181d;
+
+  --ev-scrollbar: rgb(255 255 255 / 0.24);
+  --ev-scrollbar-hover: rgb(255 255 255 / 0.38);
+
+  --ev-glass-bg: color-mix(in srgb, var(--ev-card) 82%, transparent);
+  --ev-page-glass: color-mix(in srgb, var(--ev-page) 80%, transparent);
+  --ev-glass-blur: 16px;
+  --ev-glass-sat: 1.08;
+
+  --ev-shadow-well: none;
+  --ev-shadow-raised: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 2px rgb(0 0 0 / 0.4);
+  --ev-shadow-primary:
+    inset 0 1px 0 rgb(255 255 255 / 0.22), 0 1px 3px rgb(0 0 0 / 0.45);
+  --ev-shadow-ink: inset 0 1px 0 rgb(255 255 255 / 0.4), 0 1px 2px rgb(0 0 0 / 0.45);
+  --ev-shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.025);
+  --ev-shadow-composer:
+    inset 0 1px 0 rgb(255 255 255 / 0.04), 0 14px 32px -18px rgb(0 0 0 / 0.78);
   --ev-shadow-float:
-    inset 0 1px 0 hsl(0 0% 100% / 0.07), 0 0 0 0.5px hsl(0 0% 100% / 0.09),
-    0 12px 32px -4px hsl(0 0% 0% / 0.6);
+    inset 0 1px 0 rgb(255 255 255 / 0.05), 0 16px 40px -8px rgb(0 0 0 / 0.78);
   --ev-shadow-modal:
-    inset 0 1px 0 hsl(0 0% 100% / 0.06), 0 0 0 0.5px hsl(0 0% 100% / 0.09),
-    0 24px 56px -8px hsl(0 0% 0% / 0.7);
-  --ev-sheen-raised: linear-gradient(hsl(0 0% 100% / 0.04), hsl(0 0% 100% / 0));
-  --ev-sheen-ink: linear-gradient(hsl(0 0% 0% / 0), hsl(0 0% 0% / 0.08));
+    inset 0 1px 0 rgb(255 255 255 / 0.05), 0 24px 72px -16px rgb(0 0 0 / 0.88);
   color-scheme: dark;
 }
 
-/* The values above are applied by `theme.ts` before first paint; this keeps a page that has not
-   run it yet (or a print) on the system palette. */
+/* ——— Curated Palettes ——— */
+
+[data-palette="grove"],
+[data-theme="light"][data-palette="grove"] {
+  --ev-ground: oklch(0.985 0.005 158);
+  --ev-page: oklch(0.985 0.005 158);
+  --ev-region: oklch(0.958 0.011 160);
+  --ev-card: #ffffff;
+  --ev-raised: #ffffff;
+  --ev-tray: oklch(0.935 0.014 160);
+  --ev-border: oklch(0.895 0.016 162);
+  --ev-input-border: oklch(0.855 0.018 162);
+  --ev-primary: oklch(0.515 0.135 156);
+  --ev-primary-hover: oklch(0.47 0.13 156);
+  --ev-accent: oklch(0.515 0.135 156);
+  --ev-link: oklch(0.46 0.125 158);
+  --ev-msg-user: oklch(0.938 0.016 160);
+  --ev-code: oklch(0.966 0.008 158);
+}
+
+[data-theme="dark"][data-palette="grove"] {
+  --ev-ground: oklch(0.155 0.015 162);
+  --ev-page: oklch(0.155 0.015 162);
+  --ev-region: oklch(0.125 0.014 162);
+  --ev-card: oklch(0.195 0.018 162);
+  --ev-raised: oklch(0.22 0.02 162);
+  --ev-tray-raised: oklch(0.265 0.024 162);
+  --ev-border: oklch(0.32 0.028 162 / 0.55);
+  --ev-input-border: oklch(0.38 0.032 162 / 0.65);
+  --ev-primary: oklch(0.68 0.145 156);
+  --ev-primary-hover: oklch(0.72 0.14 156);
+  --ev-on-primary: oklch(0.15 0.02 160);
+  --ev-accent: oklch(0.7 0.14 156);
+  --ev-link: oklch(0.76 0.13 156);
+  --ev-msg-user: oklch(0.225 0.024 162);
+  --ev-code: oklch(0.135 0.014 162);
+}
+
+[data-palette="ocean"],
+[data-theme="light"][data-palette="ocean"] {
+  --ev-ground: oklch(0.985 0.004 238);
+  --ev-page: oklch(0.985 0.004 238);
+  --ev-region: oklch(0.958 0.009 238);
+  --ev-card: #ffffff;
+  --ev-raised: #ffffff;
+  --ev-tray: oklch(0.936 0.013 238);
+  --ev-border: oklch(0.895 0.015 240);
+  --ev-input-border: oklch(0.855 0.018 240);
+  --ev-primary: oklch(0.51 0.145 242);
+  --ev-primary-hover: oklch(0.465 0.14 242);
+  --ev-accent: oklch(0.51 0.145 242);
+  --ev-link: oklch(0.47 0.14 242);
+  --ev-msg-user: oklch(0.938 0.015 238);
+  --ev-code: oklch(0.966 0.007 238);
+}
+
+[data-theme="dark"][data-palette="ocean"] {
+  --ev-ground: oklch(0.152 0.016 244);
+  --ev-page: oklch(0.152 0.016 244);
+  --ev-region: oklch(0.122 0.015 244);
+  --ev-card: oklch(0.192 0.02 244);
+  --ev-raised: oklch(0.218 0.022 244);
+  --ev-tray-raised: oklch(0.265 0.026 244);
+  --ev-border: oklch(0.32 0.03 244 / 0.55);
+  --ev-input-border: oklch(0.38 0.035 244 / 0.65);
+  --ev-primary: oklch(0.68 0.145 236);
+  --ev-primary-hover: oklch(0.72 0.14 236);
+  --ev-on-primary: oklch(0.14 0.025 244);
+  --ev-accent: oklch(0.7 0.14 236);
+  --ev-link: oklch(0.76 0.125 234);
+  --ev-msg-user: oklch(0.222 0.026 244);
+  --ev-code: oklch(0.132 0.015 244);
+}
+
+[data-palette="ember"],
+[data-theme="light"][data-palette="ember"] {
+  --ev-ground: oklch(0.986 0.005 58);
+  --ev-page: oklch(0.986 0.005 58);
+  --ev-region: oklch(0.96 0.01 56);
+  --ev-card: #ffffff;
+  --ev-raised: #ffffff;
+  --ev-tray: oklch(0.938 0.014 55);
+  --ev-border: oklch(0.896 0.016 55);
+  --ev-input-border: oklch(0.855 0.02 55);
+  --ev-primary: oklch(0.55 0.175 40);
+  --ev-primary-hover: oklch(0.505 0.17 40);
+  --ev-accent: oklch(0.55 0.175 40);
+  --ev-link: oklch(0.5 0.16 40);
+  --ev-msg-user: oklch(0.942 0.016 55);
+  --ev-code: oklch(0.968 0.008 56);
+}
+
+[data-theme="dark"][data-palette="ember"] {
+  --ev-ground: oklch(0.155 0.014 42);
+  --ev-page: oklch(0.155 0.014 42);
+  --ev-region: oklch(0.125 0.012 40);
+  --ev-card: oklch(0.195 0.017 42);
+  --ev-raised: oklch(0.22 0.02 42);
+  --ev-tray-raised: oklch(0.268 0.024 42);
+  --ev-border: oklch(0.32 0.028 42 / 0.55);
+  --ev-input-border: oklch(0.38 0.032 42 / 0.65);
+  --ev-primary: oklch(0.71 0.165 48);
+  --ev-primary-hover: oklch(0.75 0.155 48);
+  --ev-on-primary: oklch(0.15 0.025 40);
+  --ev-accent: oklch(0.72 0.16 48);
+  --ev-link: oklch(0.77 0.14 52);
+  --ev-msg-user: oklch(0.225 0.022 42);
+  --ev-code: oklch(0.135 0.012 40);
+}
+
+[data-palette="iris"],
+[data-theme="light"][data-palette="iris"] {
+  --ev-ground: oklch(0.985 0.005 296);
+  --ev-page: oklch(0.985 0.005 296);
+  --ev-region: oklch(0.958 0.011 296);
+  --ev-card: #ffffff;
+  --ev-raised: #ffffff;
+  --ev-tray: oklch(0.936 0.015 296);
+  --ev-border: oklch(0.895 0.017 296);
+  --ev-input-border: oklch(0.855 0.022 296);
+  --ev-primary: oklch(0.5 0.21 292);
+  --ev-primary-hover: oklch(0.455 0.2 292);
+  --ev-accent: oklch(0.5 0.21 292);
+  --ev-link: oklch(0.47 0.19 292);
+  --ev-msg-user: oklch(0.94 0.017 296);
+  --ev-code: oklch(0.966 0.008 296);
+}
+
+[data-theme="dark"][data-palette="iris"] {
+  --ev-ground: oklch(0.152 0.018 294);
+  --ev-page: oklch(0.152 0.018 294);
+  --ev-region: oklch(0.122 0.016 294);
+  --ev-card: oklch(0.192 0.022 294);
+  --ev-raised: oklch(0.218 0.025 294);
+  --ev-tray-raised: oklch(0.265 0.03 294);
+  --ev-border: oklch(0.32 0.034 294 / 0.55);
+  --ev-input-border: oklch(0.38 0.038 294 / 0.65);
+  --ev-primary: oklch(0.69 0.18 294);
+  --ev-primary-hover: oklch(0.73 0.17 294);
+  --ev-on-primary: oklch(0.14 0.03 294);
+  --ev-accent: oklch(0.71 0.175 294);
+  --ev-link: oklch(0.77 0.145 294);
+  --ev-msg-user: oklch(0.224 0.028 294);
+  --ev-code: oklch(0.132 0.016 294);
+}
+
+[data-palette="rose"],
+[data-theme="light"][data-palette="rose"] {
+  --ev-ground: oklch(0.985 0.006 340);
+  --ev-page: oklch(0.985 0.006 340);
+  --ev-region: oklch(0.958 0.013 338);
+  --ev-card: #ffffff;
+  --ev-raised: #ffffff;
+  --ev-tray: oklch(0.935 0.018 338);
+  --ev-border: oklch(0.895 0.02 338);
+  --ev-input-border: oklch(0.855 0.026 338);
+  --ev-primary: oklch(0.54 0.21 350);
+  --ev-primary-hover: oklch(0.495 0.205 350);
+  --ev-accent: oklch(0.54 0.21 350);
+  --ev-link: oklch(0.49 0.19 350);
+  --ev-msg-user: oklch(0.938 0.02 338);
+  --ev-code: oklch(0.966 0.009 338);
+}
+
+[data-theme="dark"][data-palette="rose"] {
+  --ev-ground: oklch(0.155 0.018 334);
+  --ev-page: oklch(0.155 0.018 334);
+  --ev-region: oklch(0.125 0.016 334);
+  --ev-card: oklch(0.195 0.022 334);
+  --ev-raised: oklch(0.22 0.025 334);
+  --ev-tray-raised: oklch(0.268 0.03 334);
+  --ev-border: oklch(0.32 0.034 334 / 0.55);
+  --ev-input-border: oklch(0.38 0.038 334 / 0.65);
+  --ev-primary: oklch(0.68 0.19 352);
+  --ev-primary-hover: oklch(0.72 0.18 352);
+  --ev-on-primary: #ffffff;
+  --ev-accent: oklch(0.7 0.185 352);
+  --ev-link: oklch(0.77 0.15 350);
+  --ev-msg-user: oklch(0.225 0.028 334);
+  --ev-code: oklch(0.135 0.016 334);
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     color-scheme: dark;
   }
 }
 
-/* Derived tints: a tone mixed into whatever is underneath, so one declaration reads on every rung. */
+/* Derived tints and focus rings. */
 :root,
 [data-theme] {
-  --ev-user-film: color-mix(in oklab, var(--ev-user) 14%, transparent);
-  --ev-user-ink: color-mix(in oklab, var(--ev-user) 55%, var(--ev-label));
-  --ev-bad-film: color-mix(in oklab, var(--ev-bad) 10%, transparent);
-  --ev-bad-ink: color-mix(in oklab, var(--ev-bad) 60%, var(--ev-label));
-  --ev-ok-ink: color-mix(in oklab, var(--ev-ok) 70%, var(--ev-label));
-  --ev-accent-film: color-mix(in oklab, var(--ev-accent) 22%, transparent);
-  --ev-add: color-mix(in oklab, var(--ev-ok) 11%, transparent);
-  --ev-del: color-mix(in oklab, var(--ev-bad) 9%, transparent);
-  /* Rings are for keyboard navigation: `dom.ts` zeroes the width while a pointer is in use, so
-     focus handed back after a click (a closed dialog, an opened drawer) draws nothing. Text fields
-     keep `--ev-ring-field`: whoever is typing needs to see where. */
+  --ev-accent-film: color-mix(in oklab, var(--ev-accent) 20%, transparent);
+  --ev-add: color-mix(in oklab, var(--ev-ok) 12%, transparent);
+  --ev-del: color-mix(in oklab, var(--ev-bad) 10%, transparent);
   --ev-ring: 0 0 0 var(--ev-ring-w) var(--ev-accent);
   --ev-ring-in: inset 0 0 0 var(--ev-ring-w) var(--ev-accent);
-  --ev-ring-field: 0 0 0 2px var(--ev-accent);
+  --ev-ring-field: 0 0 0 2px color-mix(in oklab, var(--ev-accent) 32%, transparent);
 }
 
 :root {
@@ -170,27 +367,20 @@
   --ev-ring-w: 0px;
 }
 
-/* Scales. Every type role and icon size is a ratio of one interface size, `--ev-ui` (14px unless
-   the reader picked another in settings; `theme.ts` sets it on the root before the app mounts).
-   `--ev-scale` is that choice as a unitless factor; control heights, row geometry, gutters and
-   column limits multiply by it, so a larger size sits roomier, not just larger. Radii stay fixed. */
 :root {
   --ev-ui: 14px;
   --ev-scale: 1;
 }
 
 :root {
-  /* Latin always comes from the bundled Inter; Chinese names its fonts before the system face so
-     every platform picks a real CJK sans instead of whatever system-ui falls back to. */
   --ev-font-base:
     "Inter Variable", "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
     "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
-  /* The reader's font goes ahead of the bundled stack (`theme.ts`); unset, this is the stack alone. */
   --ev-font: var(--ev-font-base);
   --ev-font-mono:
     "JetBrains Mono Variable", "JetBrains Mono", "Cascadia Code", ui-monospace, "SF Mono",
     Consolas, monospace;
-  /* caption is for digits, key caps and mono ids; words start at footnote. */
+
   --ev-caption: calc(var(--ev-ui) * 11 / 14);
   --ev-footnote: calc(var(--ev-ui) * 12 / 14);
   --ev-control: calc(var(--ev-ui) * 13 / 14);
@@ -203,28 +393,30 @@
   --ev-icon-sm: calc(var(--ev-ui) * 16 / 14);
   --ev-icon: calc(var(--ev-ui) * 18 / 14);
   --ev-icon-lg: calc(var(--ev-ui) * 22 / 14);
-  --ev-tracking: -0.01em;
+  --ev-tracking: -0.011em;
   --ev-reading: 1.72;
 
   --ev-r-mini: 5px;
-  --ev-r-sm: 8px;
-  --ev-r-md: 10px;
-  --ev-r-lg: 14px;
+  --ev-r-sm: 7px;
+  --ev-r-md: 9px;
+  --ev-r-lg: 12px;
+  --ev-r-xl: 16px;
   --ev-h-sm: calc(28px * var(--ev-scale));
   --ev-h-md: calc(32px * var(--ev-scale));
   --ev-h-lg: calc(36px * var(--ev-scale));
 
-  --ev-inset: 6px;
-  --ev-gap: 6px;
-  --ev-sidebar-w: calc(256px * var(--ev-scale));
-  --ev-rail-w: calc(336px * var(--ev-scale));
-  --ev-side-collapsed: calc(52px * var(--ev-scale));
-  --ev-header-h: calc(48px * var(--ev-scale));
-  --ev-chat-max: calc(720px * var(--ev-scale));
-  --ev-gutter: calc(32px * var(--ev-scale));
+  --ev-sidebar-w: calc(264px * var(--ev-scale));
+  --ev-rail-w: calc(340px * var(--ev-scale));
+  --ev-header-h: calc(52px * var(--ev-scale));
+  --ev-ctrl-inset: calc(12px * var(--ev-scale));
+  /* Horizontal room reserved at the outer edges of a header for the stationary panel triggers. */
+  --ev-titlebar-left: calc(var(--ev-ctrl-inset) + var(--ev-h-sm) + calc(10px * var(--ev-scale)));
+  --ev-titlebar-right: var(--ev-titlebar-left);
+  --ev-chat-max: calc(736px * var(--ev-scale));
+  --ev-gutter: calc(28px * var(--ev-scale));
 
   --ev-fast: 120ms;
   --ev-regular: 180ms;
-  --ev-slow: 320ms;
+  --ev-slow: 260ms;
   --ev-ease: cubic-bezier(0.2, 0, 0, 1);
 }

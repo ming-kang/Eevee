@@ -6,7 +6,8 @@ import {
   buildPaletteItems,
   deriveProjectState,
   filterPaletteItems,
-  projectHue,
+  filterSidebarProjects,
+  openSidebarTickets,
 } from "./projects.ts";
 
 function makeTicket(id: TicketId, stage: TicketStage, jobs = 0, closed = false): TicketView {
@@ -125,6 +126,7 @@ test("buildPaletteItems and filterPaletteItems build and filter pages, tickets, 
     boards,
     activeProjectId: "p1",
     sideShortcut: "Ctrl B",
+    activePalette: "ocean",
   });
 
   assert.equal(
@@ -133,6 +135,10 @@ test("buildPaletteItems and filterPaletteItems build and filter pages, tickets, 
   );
   assert.equal(
     items.some((i) => i.group === "Projects" && i.meta === "1 open"),
+    true,
+  );
+  assert.equal(
+    items.some((i) => i.kind === "palette" && i.palette === "ocean" && i.meta === "Active"),
     true,
   );
   assert.deepEqual(
@@ -154,25 +160,76 @@ test("buildPaletteItems and filterPaletteItems build and filter pages, tickets, 
 test("a palette page is found by plain English keywords, never a translated keyword bag", () => {
   const items = buildPaletteItems({ projects: [], boards: {} });
   const search = (id: string): string => items.find((i) => i.id === id)?.search ?? "";
-  // The keywords sit next to the label in the reader's language, so they must stay plain
-  // English. Wrapping one in t() translates it for a Chinese reader, which both drops the
-  // English keyword the search needs and repeats the words already in the bag.
   assert.equal(
     search("nav:settings:general"),
-    "Settings · General settings general theme font size language",
+    "Settings · General settings general theme palette font size language",
   );
   assert.equal(search("nav:settings:models"), "Settings · Models settings models thinking");
   assert.equal(search("nav:settings:roles"), "Settings · Roles settings roles");
 });
 
-test("projectHue is stable, in range, and spreads near ids", () => {
-  assert.equal(projectHue("pc071fd36"), projectHue("pc071fd36"));
-  for (const id of ["p1", "p2", "p99369cc8", "pc071fd36", "pba1d4828", ""]) {
-    const hue = projectHue(id);
-    assert.ok(Number.isInteger(hue) && hue >= 0 && hue < 360, `${id} -> ${hue}`);
-  }
-  // Ids that differ in one character hash to near seeds; the golden-angle step must keep their
-  // hues apart so neighbouring rows in the sidebar read as different projects.
-  const hues = new Set([...Array(12).keys()].map((i) => projectHue(`p${i}`)));
-  assert.ok(hues.size >= 10, `too many collisions: ${hues.size}/12`);
+test("openSidebarTickets orders urgent open tickets first and omits closed ones", () => {
+  const board: BoardView = {
+    tickets: [
+      makeTicket("t1", "working"),
+      makeTicket("t2", "blocked"),
+      makeTicket("t3", "answer"),
+      makeTicket("t4", "idle", 0, true),
+    ],
+    openQuestions: [],
+    router: { running: false },
+  };
+  assert.deepEqual(
+    openSidebarTickets(board).map((v) => v.ticket.id),
+    ["t3", "t2", "t1"],
+  );
+});
+
+test("filterSidebarProjects filters by project or ticket and auto-expands ticket matches", () => {
+  const projects: ProjectSummary[] = [
+    { id: "p1", title: "Optics paper", workspace: "D:/papers/optics", createdAt: 1 },
+    { id: "p2", title: "Backend rewrite", workspace: "D:/work/eevee", createdAt: 2 },
+  ];
+  const boards = {
+    p1: {
+      board: {
+        tickets: [makeTicket("t1", "working"), makeTicket("t9", "idle", 0, true)],
+        openQuestions: [],
+        router: { running: false },
+      },
+    },
+    p2: {
+      board: {
+        tickets: [makeTicket("t12", "answer")],
+        openQuestions: [],
+        router: { running: false },
+      },
+    },
+  };
+
+  const all = filterSidebarProjects(projects, boards, "  ");
+  assert.equal(all.length, 2);
+  assert.equal(all[0]?.forceExpand, false);
+  assert.deepEqual(
+    all[0]?.tickets.map((v) => v.ticket.id),
+    ["t1"],
+  );
+
+  const byTicket = filterSidebarProjects(projects, boards, "t9");
+  assert.equal(byTicket.length, 1);
+  assert.equal(byTicket[0]?.project.id, "p1");
+  assert.equal(byTicket[0]?.forceExpand, true);
+  assert.deepEqual(
+    byTicket[0]?.tickets.map((v) => v.ticket.id),
+    ["t9"],
+  );
+
+  const byProj = filterSidebarProjects(projects, boards, "backend");
+  assert.equal(byProj.length, 1);
+  assert.equal(byProj[0]?.project.id, "p2");
+  assert.equal(byProj[0]?.forceExpand, false);
+  assert.deepEqual(
+    byProj[0]?.tickets.map((v) => v.ticket.id),
+    ["t12"],
+  );
 });

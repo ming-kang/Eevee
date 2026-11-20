@@ -3,7 +3,6 @@ import type { ProjectSummary } from "@shared/api/contract.ts";
 import { t } from "../i18n.ts";
 import type { ProjectRowState } from "../projects.ts";
 import { formatRelativeTime } from "../time.ts";
-import Icon from "./Icon.vue";
 import StageGlyph from "./StageGlyph.vue";
 
 defineProps<{
@@ -28,7 +27,7 @@ defineProps<{
       <div class="hc-ws mono">{{ project.workspace }}</div>
       <div class="hc-body">
         <div v-if="state.questionCount > 0" class="hc-line user">
-          <span class="dot user" />
+          <StageGlyph stage="answer" />
           <span>{{ t("{n} question needs an answer|{n} questions need an answer", { n: state.questionCount }) }}</span>
         </div>
         <div v-if="state.routerFailed" class="hc-line bad">
@@ -54,7 +53,7 @@ defineProps<{
           <span>{{ t("No open tickets") }}</span>
         </div>
         <div v-if="state.routerRunning" class="hc-line">
-          <Icon name="spinner" size="xs" />
+          <StageGlyph stage="working" />
           <span>{{ t("The Router is working") }}</span>
         </div>
       </div>

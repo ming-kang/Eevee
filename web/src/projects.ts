@@ -1,22 +1,10 @@
-import type { BoardView, ProjectSummary } from "../../src/api/contract.ts";
+import type { BoardView, ProjectSummary, TicketView } from "../../src/api/contract.ts";
 import type { RunSummary } from "../../src/contracts/index.ts";
-import { countPendingQuestions, effectiveStage, type VisualStage } from "./board.ts";
+import { countPendingQuestions, effectiveStage, groupTickets, type VisualStage } from "./board.ts";
 import { t } from "./i18n.ts";
 import { failureText, STAGE_LABEL } from "./labels.ts";
 import type { Route } from "./router.ts";
-
-/**
- * A stable hue for a project id, the colour of its dot in the sidebar, palette and Home rows.
- * The id hashes to a seed that steps by the golden angle, so ids that hash to nearby seeds do
- * not land on near-identical hues either.
- */
-export function projectHue(id: string): number {
-  let hash = 5381;
-  for (let i = 0; i < id.length; i++) {
-    hash = (Math.imul(hash, 33) ^ id.charCodeAt(i)) >>> 0;
-  }
-  return Math.round(hash * 137.508) % 360;
-}
+import { PALETTE_IDS, type ThemePalette } from "./typography.ts";
 
 export type ProjectRowState = {
   kind: "user" | "bad" | "run" | "rest";
@@ -69,8 +57,79 @@ export function deriveProjectState(input: {
   };
 }
 
+/** Open tickets ordered for the sidebar sub-tree: urgent items (answer/blocked) first. */
+export function openSidebarTickets(board: BoardView | undefined): TicketView[] {
+  if (!board) return [];
+  const g = groupTickets(board.tickets);
+  return [...g.answer, ...g.blocked, ...g.review, ...g.active];
+}
+
+export type SidebarProjectEntry = {
+  project: ProjectSummary;
+  tickets: TicketView[];
+  /** Set when an inline filter matched specific tickets inside this project. */
+  forceExpand: boolean;
+};
+
+/**
+ * Filter projects and their tickets for the sidebar's inline search box.
+ * An empty query returns every project with its open tickets; a query matches against project
+ * title/id/workspace as well as ticket id/title/stage, auto-expanding projects with ticket hits.
+ */
+export function filterSidebarProjects(
+  projects: readonly ProjectSummary[],
+  boards: Record<string, { board?: BoardView } | undefined>,
+  query: string,
+): SidebarProjectEntry[] {
+  const q = query.trim().toLowerCase();
+  if (q === "") {
+    return projects.map((project) => ({
+      project,
+      tickets: openSidebarTickets(boards[project.id]?.board),
+      forceExpand: false,
+    }));
+  }
+
+  const out: SidebarProjectEntry[] = [];
+  for (const project of projects) {
+    const board = boards[project.id]?.board;
+    const projectHit =
+      project.title.toLowerCase().includes(q) ||
+      project.id.toLowerCase().includes(q) ||
+      project.workspace.toLowerCase().includes(q);
+
+    const g = groupTickets(board?.tickets ?? []);
+    const ordered = [...g.answer, ...g.blocked, ...g.review, ...g.active, ...g.closed];
+    const matchedTickets = ordered.filter((view) => {
+      const stageLabel = STAGE_LABEL[effectiveStage(view)].toLowerCase();
+      return (
+        view.ticket.id.toLowerCase().includes(q) ||
+        view.ticket.title.toLowerCase().includes(q) ||
+        stageLabel.includes(q)
+      );
+    });
+
+    if (matchedTickets.length > 0) {
+      out.push({ project, tickets: matchedTickets, forceExpand: true });
+    } else if (projectHit) {
+      out.push({ project, tickets: openSidebarTickets(board), forceExpand: false });
+    }
+  }
+  return out;
+}
+
+export const PALETTE_LABELS: Record<ThemePalette, () => string> = {
+  default: () => t("Default"),
+  grove: () => t("Grove"),
+  ocean: () => t("Ocean"),
+  ember: () => t("Ember"),
+  iris: () => t("Iris"),
+  rose: () => t("Rose"),
+};
+
 type PaletteIcon =
   | "home"
+  | "folder"
   | "radio"
   | "book"
   | "chart"
@@ -102,6 +161,16 @@ export type PaletteItem =
       kind: "action";
       action: "new-project" | "toggle-theme" | "toggle-side" | "toggle-rail";
       icon: "plus" | "moon" | "panel";
+    }
+  | {
+      id: string;
+      group: string;
+      label: string;
+      meta?: string;
+      search: string;
+      kind: "palette";
+      palette: ThemePalette;
+      icon: "palette";
     };
 
 export function buildPaletteItems(input: {
@@ -110,10 +179,10 @@ export function buildPaletteItems(input: {
   activeProjectId?: string;
   sideShortcut?: string;
   railShortcut?: string;
+  activePalette?: ThemePalette;
 }): PaletteItem[] {
   const items: PaletteItem[] = [];
   const pid = input.activeProjectId;
-  // A page to go to: found by its label in the reader's language and by English keywords.
   const go = (id: string, label: string, keywords: string, route: Route, icon: PaletteIcon) =>
     ({
       id,
@@ -139,7 +208,7 @@ export function buildPaletteItems(input: {
     go(
       "nav:settings:general",
       t("Settings · General"),
-      "settings general theme font size language",
+      "settings general theme palette font size language",
       { name: "settings", section: "general" },
       "sliders",
     ),
@@ -204,6 +273,7 @@ export function buildPaletteItems(input: {
       search: `${project.title} ${project.id} ${project.workspace}`,
       kind: "route",
       route: { name: "chat", pid: project.id },
+      icon: "folder",
       projectId: project.id,
     });
   }
@@ -248,6 +318,20 @@ export function buildPaletteItems(input: {
       icon: "panel",
     },
   );
+
+  for (const pal of PALETTE_IDS) {
+    const name = PALETTE_LABELS[pal]();
+    items.push({
+      id: `pal:${pal}`,
+      group: t("Color palette"),
+      label: t("Color palette · {name}", { name }),
+      ...(input.activePalette === pal ? { meta: t("Active") } : {}),
+      search: `${t("Color palette")} ${name} palette color theme ${pal}`,
+      kind: "palette",
+      palette: pal,
+      icon: "palette",
+    });
+  }
 
   return items;
 }

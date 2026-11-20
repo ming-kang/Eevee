@@ -62,7 +62,7 @@ const status = computed(() => {
 <template>
   <div class="qcard">
     <div class="qcard-h">
-      <span class="dot user" />
+      <Icon name="help" size="sm" class="dim" />
       <span>
         <template v-if="data?.ticketId">
           <TicketRef

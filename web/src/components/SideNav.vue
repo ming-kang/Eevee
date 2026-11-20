@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import type { ProjectSummary } from "@shared/api/contract.ts";
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import type { RunSummary } from "@shared/contracts/index.ts";
 import type { BoardState } from "../engine-data.ts";
 import { countPendingQuestions } from "../board.ts";
 import { t } from "../i18n.ts";
-import { deriveProjectState, type ProjectRowState } from "../projects.ts";
+import {
+  deriveProjectState,
+  filterSidebarProjects,
+  type ProjectRowState,
+  type SidebarProjectEntry,
+} from "../projects.ts";
 import { formatRoute, type Route } from "../router.ts";
 import type { StreamState } from "../stream.ts";
 import BrandLogo from "./BrandLogo.vue";
@@ -21,8 +26,6 @@ const props = defineProps<{
   route: Route;
   currentPid?: string;
   controlPid?: string;
-  sideCollapsed: boolean;
-  sideShortcut: string;
   paletteShortcut: string;
   statusError?: string;
   streamState?: StreamState;
@@ -30,16 +33,55 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   navigate: [];
-  "toggle-side": [];
   "new-project": [];
   "open-palette": [];
   "hover-show": [payload: { pid: string; top: number; left: number }];
   "hover-hide": [];
 }>();
 
+const EXPAND_KEY = "eevee.sideExpanded";
+
+function loadExpandedMap(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(EXPAND_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+
+const expandedOverrides = reactive<Record<string, boolean>>(loadExpandedMap());
+
+function saveExpandedMap(): void {
+  try {
+    localStorage.setItem(EXPAND_KEY, JSON.stringify(expandedOverrides));
+  } catch {}
+}
+
+function isProjectExpanded(entry: SidebarProjectEntry, state: ProjectRowState): boolean {
+  if (entry.forceExpand) return true;
+  const override = expandedOverrides[entry.project.id];
+  if (override !== undefined) return override;
+  return props.currentPid === entry.project.id || state.kind === "user";
+}
+
+function toggleProjectExpand(entry: SidebarProjectEntry, state: ProjectRowState): void {
+  const next = !isProjectExpanded(entry, state);
+  expandedOverrides[entry.project.id] = next;
+  saveExpandedMap();
+}
+
+const searchQuery = ref("");
+const searchInput = ref<HTMLInputElement>();
+
+const filteredEntries = computed(() =>
+  filterSidebarProjects(props.projects, props.boards, searchQuery.value),
+);
+
 const controlProject = computed(() => props.projects.find((p) => p.id === props.controlPid));
 
-/** Every open question across projects, the badge the Home row wears. */
 const questionTotal = computed(() =>
   props.projects.reduce(
     (total, project) => total + countPendingQuestions(props.boards[project.id]?.board),
@@ -62,6 +104,19 @@ function stateOf(project: ProjectSummary): ProjectRowState {
     router: project.id === props.activeRouterPid ? props.activeRouterSummary : undefined,
     activeAt: project.activeAt,
   });
+}
+
+function clearSearch(): void {
+  searchQuery.value = "";
+  searchInput.value?.focus();
+}
+
+function onSearchKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape" && searchQuery.value !== "") {
+    event.preventDefault();
+    event.stopPropagation();
+    searchQuery.value = "";
+  }
 }
 
 let showTimer: ReturnType<typeof setTimeout> | undefined;
@@ -137,21 +192,58 @@ onUnmounted(() => {
     <span class="spacer" />
     <button
       type="button"
-      class="btn ghost sm icon side-toggle"
-      :title="
-        sideCollapsed
-          ? t('Expand sidebar ({key})', { key: sideShortcut })
-          : t('Collapse sidebar ({key})', { key: sideShortcut })
+      class="btn ghost sm icon"
+      :title="t('New project')"
+      :aria-label="t('New project')"
+      @click="
+        hideHoverImmediate();
+        $emit('new-project');
       "
-      :aria-label="sideCollapsed ? t('Expand sidebar') : t('Collapse sidebar')"
-      @click="$emit('toggle-side')"
     >
-      <Icon name="sidebar" size="sm" />
+      <Icon name="folderPlus" size="sm" />
     </button>
   </div>
 
-  <div class="side-actions">
+  <div class="side-tools">
+    <div class="side-search">
+      <Icon name="search" size="xs" class="side-search-icon" />
+      <input
+        ref="searchInput"
+        v-model="searchQuery"
+        type="search"
+        class="side-search-input"
+        :placeholder="t('Filter projects or tickets…')"
+        :aria-label="t('Filter projects or tickets…')"
+        autocomplete="off"
+        spellcheck="false"
+        @keydown="onSearchKeydown"
+      />
+      <button
+        v-if="searchQuery !== ''"
+        type="button"
+        class="side-search-clear"
+        :aria-label="t('Clear filter')"
+        @click="clearSearch"
+      >
+        <Icon name="x" size="xs" />
+      </button>
+      <button
+        v-else
+        type="button"
+        class="side-search-kbd"
+        :title="t('Search ({key})', { key: paletteShortcut })"
+        :aria-label="t('Search ({key})', { key: paletteShortcut })"
+        @click="
+          hideHoverImmediate();
+          $emit('open-palette');
+        "
+      >
+        {{ paletteShortcut }}
+      </button>
+    </div>
+
     <a
+      v-if="searchQuery.trim() === ''"
       class="nav-row"
       :class="{ on: route.name === 'home' }"
       :href="formatRoute({ name: 'home' })"
@@ -161,51 +253,39 @@ onUnmounted(() => {
       <span class="label">{{ t("Home") }}</span>
       <span v-if="questionTotal > 0" class="count user">{{ questionTotal }}</span>
     </a>
-    <button
-      type="button"
-      class="nav-row"
-      @click="
-        hideHoverImmediate();
-        $emit('new-project');
-      "
-    >
-      <Icon name="compose" size="sm" />
-      <span class="label">{{ t("New project") }}</span>
-    </button>
-    <button
-      type="button"
-      class="nav-row"
-      :title="t('Search ({key})', { key: paletteShortcut })"
-      @click="
-        hideHoverImmediate();
-        $emit('open-palette');
-      "
-    >
-      <Icon name="search" size="sm" />
-      <span class="label">{{ t("Search") }}</span>
-      <span class="kbd">{{ paletteShortcut }}</span>
-    </button>
   </div>
 
-  <div v-if="projects.length > 0" class="side-h">{{ t("Projects") }}</div>
+  <div v-if="projects.length > 0" class="side-h">
+    <span>{{ t("Projects") }}</span>
+    <span class="side-h-count">{{ filteredEntries.length }}</span>
+  </div>
 
   <div class="side-scroll" @scroll="hideHoverImmediate">
     <ProjectRow
-      v-for="project in projects"
-      :key="project.id"
-      :project="project"
-      :state="stateOf(project)"
+      v-for="entry in filteredEntries"
+      :key="entry.project.id"
+      :project="entry.project"
+      :state="stateOf(entry.project)"
+      :tickets="entry.tickets"
+      :expanded="isProjectExpanded(entry, stateOf(entry.project))"
       :now-ms="nowMs"
-      :active="(route.name === 'chat' || route.name === 'worker') && currentPid === project.id"
-      :current="'pid' in route && route.pid === project.id"
-      :href="formatRoute({ name: 'chat', pid: project.id })"
+      :active="route.name === 'chat' && currentPid === entry.project.id"
+      :current="'pid' in route && route.pid === entry.project.id"
+      :active-ticket-id="
+        route.name === 'worker' && route.pid === entry.project.id ? route.tid : undefined
+      "
+      :href="formatRoute({ name: 'chat', pid: entry.project.id })"
       @select="
         hideHoverImmediate();
         $emit('navigate');
       "
-      @hover-enter="onHoverEnter(project.id, $event)"
+      @toggle-expand="toggleProjectExpand(entry, stateOf(entry.project))"
+      @hover-enter="onHoverEnter(entry.project.id, $event)"
       @hover-leave="onHoverLeave($event, $event.currentTarget)"
     />
+    <p v-if="projects.length > 0 && filteredEntries.length === 0" class="hint side-note">
+      {{ t("Nothing matches.") }}
+    </p>
     <p v-if="statusError" class="error hint side-note">
       {{ statusError }}
     </p>

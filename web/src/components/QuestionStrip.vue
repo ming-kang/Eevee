@@ -6,6 +6,7 @@ import { t } from "../i18n.ts";
 import { formatAnswer } from "../questions.ts";
 import { useSubmit } from "../submit.ts";
 import Icon from "./Icon.vue";
+import StageGlyph from "./StageGlyph.vue";
 import TicketRef from "./TicketRef.vue";
 
 const props = defineProps<{
@@ -40,7 +41,7 @@ function pick(option: string): void {
 
 <template>
   <div class="qstrip">
-    <span class="dot user" />
+    <StageGlyph stage="answer" />
     <span class="qstrip-asker">
       <TicketRef
         v-if="question.ticketId"

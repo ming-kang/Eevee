@@ -13,7 +13,6 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  "open-side": [];
   "open-ticket": [ticketId: string];
 }>();
 
@@ -102,10 +101,8 @@ function barWidth(summary: UsageSummary): string {
 <template>
   <section class="page-wrap">
     <header class="header">
-      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('Menu')" @click="$emit('open-side')">
-        <Icon name="menu" size="sm" />
-      </button>
       <h1>{{ t("Usage") }}</h1>
+      <span class="crumb-sep hide-sm" aria-hidden="true">/</span>
       <span class="sub ellipsis hide-sm">{{ project.title }}</span>
       <span class="spacer" />
       <button type="button" class="btn ghost sm icon" :disabled="loading" :aria-label="t('Refresh')" :title="t('Refresh')" @click="loadUsage">

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ProjectSummary } from "@shared/api/contract.ts";
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
-import { countPendingQuestions, type RailTab } from "./board.ts";
+import { countPendingQuestions, groupTickets, type RailTab } from "./board.ts";
 import AppShell from "./components/AppShell.vue";
 import BrandLogo from "./components/BrandLogo.vue";
 import CommandPalette from "./components/CommandPalette.vue";
@@ -12,6 +12,7 @@ import MemoryPage from "./components/MemoryPage.vue";
 import NewProjectDialog from "./components/NewProjectDialog.vue";
 import ProjectHoverCard from "./components/ProjectHoverCard.vue";
 import ProjectView from "./components/ProjectView.vue";
+import type { RailMark } from "./components/RailToggle.vue";
 import RightRail from "./components/RightRail.vue";
 import SettingsPage from "./components/SettingsPage.vue";
 import SideNav from "./components/SideNav.vue";
@@ -37,7 +38,7 @@ const paletteShortcut = isMac ? "⌘K" : "Ctrl K";
 const sideShortcut = isMac ? "⌘B" : "Ctrl B";
 const railShortcut = isMac ? "⌘⌥B" : "Ctrl Alt B";
 
-const { toggleTheme } = useTheme();
+const { palette, setPalette, toggleTheme } = useTheme();
 
 const session = shallowRef<SessionInfo>();
 const connecting = ref(true);
@@ -173,6 +174,18 @@ const withRail = computed(
     currentProject.value !== undefined,
 );
 
+const railMarks = computed<RailMark[]>(() => {
+  const board = currentBoardState.value?.board;
+  if (!board) return [];
+  const questions = countPendingQuestions(board);
+  const groups = groupTickets(board.tickets);
+  const list: RailMark[] = [];
+  if (questions > 0) list.push({ stage: "answer", count: questions });
+  if (groups.blocked.length > 0) list.push({ stage: "blocked", count: groups.blocked.length });
+  if (groups.review.length > 0) list.push({ stage: "review", count: groups.review.length });
+  return list;
+});
+
 const hoveredProject = computed(() =>
   hoverState.value.pid ? projects.value.find((p) => p.id === hoverState.value.pid) : undefined,
 );
@@ -201,6 +214,7 @@ const paletteItems = computed(() =>
     activeProjectId: controlPid.value,
     sideShortcut,
     railShortcut,
+    activePalette: palette.value,
   }),
 );
 
@@ -257,6 +271,8 @@ async function onProjectCreated(project: ProjectSummary): Promise<void> {
 function onPaletteSelect(item: PaletteItem): void {
   if (item.kind === "route") {
     navigate(item.route);
+  } else if (item.kind === "palette") {
+    setPalette(item.palette);
   } else if (item.action === "new-project") {
     openNewProject();
   } else if (item.action === "toggle-theme") {
@@ -306,8 +322,14 @@ watch(
     :with-rail="withRail"
     :side-collapsed="sideCollapsed"
     :rail-collapsed="railCollapsed"
+    :side-shortcut="sideShortcut"
+    :rail-shortcut="railShortcut"
+    :rail-marks="railMarks"
     :drawer="drawer"
     :modal-open="paletteOpen || newProjectOpen || memoryModalOpen"
+    @open-side-drawer="drawer = 'side'"
+    @open-rail-drawer="drawer = 'rail'"
+    @open-rail-tickets="openRail('tickets')"
     @close-drawer="drawer = null"
     @toggle-side="toggleSide"
     @toggle-rail="toggleRail"
@@ -321,13 +343,10 @@ watch(
         :route="route"
         :current-pid="currentProject?.id"
         :control-pid="controlPid"
-        :side-collapsed="sideCollapsed"
-        :side-shortcut="sideShortcut"
         :palette-shortcut="paletteShortcut"
         :status-error="engine.statusError.value"
         :stream-state="engine.streamState.value"
         @navigate="drawer = null"
-        @toggle-side="toggleSide"
         @new-project="openNewProject"
         @open-palette="
           drawer = null;
@@ -347,9 +366,6 @@ watch(
         :board="currentBoardState?.board"
         :router-conversation="routerConversation"
         :ticket-id="route.name === 'worker' ? route.tid : undefined"
-        :rail-collapsed="railCollapsed"
-        :rail-shortcut="railShortcut"
-        @open-side="drawer = 'side'"
         @open-rail="openRail"
         @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
         @close-ticket="navigate({ name: 'chat', pid: currentProject.id })"
@@ -361,16 +377,11 @@ watch(
       <HomePage
         :projects="projects"
         :boards="engine.boards.value"
-        @open-side="drawer = 'side'"
       />
     </template>
 
     <template v-else-if="route.name === 'chat' || route.name === 'worker' || route.name === 'home'">
-      <header class="header">
-        <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('Menu')" @click="drawer = 'side'">
-          <Icon name="menu" size="sm" />
-        </button>
-      </header>
+      <header class="header" />
       <div class="empty">
         <h3>{{ projects.length === 0 ? t("No projects yet") : t("Project not found") }}</h3>
         <button
@@ -389,7 +400,6 @@ watch(
       <MemoryPage
         :client="session.client"
         :project="currentProject"
-        @open-side="drawer = 'side'"
         @modal-change="memoryModalOpen = $event"
       />
     </template>
@@ -398,16 +408,12 @@ watch(
       <UsagePage
         :client="session.client"
         :project="currentProject"
-        @open-side="drawer = 'side'"
         @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
       />
     </template>
 
     <template v-else-if="route.name === 'memory' || route.name === 'usage'">
       <header class="header">
-        <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('Menu')" @click="drawer = 'side'">
-          <Icon name="menu" size="sm" />
-        </button>
         <h1>{{ route.name === "memory" ? t("Memory") : t("Usage") }}</h1>
       </header>
       <div class="empty">
@@ -423,7 +429,6 @@ watch(
         :status="engine.status.value"
         :stream-state="engine.streamState.value"
         :refresh-status="engine.refreshStatus"
-        @open-side="drawer = 'side'"
       />
     </template>
 
@@ -438,12 +443,9 @@ watch(
         :has-detail="route.name === 'worker'"
         :active-ticket-id="route.name === 'worker' ? route.tid : undefined"
         :open-job-id="openJobId"
-        :rail-shortcut="railShortcut"
         @update:tab="railTab = $event"
         @update:open-job-id="openJobId = $event"
         @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
-        @close-drawer="drawer = null"
-        @collapse-rail="setRailCollapsed(true)"
       />
     </template>
 

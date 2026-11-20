@@ -9,17 +9,11 @@ import { STAGE_LABEL } from "../labels.ts";
 import { formatRoute } from "../router.ts";
 import { formatRelativeTime } from "../time.ts";
 import Icon from "./Icon.vue";
-import ProjectDot from "./ProjectDot.vue";
 import StageGlyph from "./StageGlyph.vue";
-import WorkingGrid from "./WorkingGrid.vue";
 
 const props = defineProps<{
   projects: readonly ProjectSummary[];
   boards: Record<string, BoardState | undefined>;
-}>();
-
-defineEmits<{
-  "open-side": [];
 }>();
 
 const nowMs = ref(Date.now());
@@ -59,14 +53,6 @@ function runningRest(row: Extract<RunningRow, { kind: "ticket" }>): string {
 <template>
   <section class="page-wrap">
     <header class="header">
-      <button
-        type="button"
-        class="btn ghost sm icon menu-btn"
-        :aria-label="t('Menu')"
-        @click="$emit('open-side')"
-      >
-        <Icon name="menu" size="sm" />
-      </button>
       <h1>{{ t("Now") }}</h1>
     </header>
     <div class="page">
@@ -89,7 +75,7 @@ function runningRest(row: Extract<RunningRow, { kind: "ticket" }>): string {
               <span class="r-main">
                 <span class="r-t ellipsis">{{ needsYouTitle(row) }}</span>
                 <span class="r-d ellipsis"
-                  ><ProjectDot :id="row.pid" class="h-dot" />{{ row.project
+                  >{{ row.project
                   }}<template v-if="needsYouRest(row)"> · {{ needsYouRest(row) }}</template></span
                 >
               </span>
@@ -107,7 +93,6 @@ function runningRest(row: Extract<RunningRow, { kind: "ticket" }>): string {
         <section class="home-block">
           <header class="home-h">
             <h2>
-              <WorkingGrid />
               {{ t("Running") }}
               <span v-if="home.runningCount > 0" class="count">{{ home.runningCount }}</span>
             </h2>
@@ -132,7 +117,7 @@ function runningRest(row: Extract<RunningRow, { kind: "ticket" }>): string {
                 </span>
                 <span class="r-d ellipsis"
                   ><template v-if="row.kind === 'ticket'">{{ row.view.ticket.id }} · </template
-                  ><ProjectDot :id="row.pid" class="h-dot" />{{ row.project
+                  >{{ row.project
                   }}<template v-if="row.kind === 'ticket'"> · {{ runningRest(row) }}</template></span
                 >
               </span>
@@ -165,9 +150,7 @@ function runningRest(row: Extract<RunningRow, { kind: "ticket" }>): string {
               <span class="r-main">
                 <span class="r-t ellipsis">{{ row.view.ticket.title }}</span>
                 <span class="r-d ellipsis"
-                  >{{ row.view.ticket.id }} · <ProjectDot :id="row.pid" class="h-dot" />{{
-                    row.project
-                  }}</span
+                  >{{ row.view.ticket.id }} · {{ row.project }}</span
                 >
               </span>
               <span class="h-when">{{ formatRelativeTime(row.closedAt, nowMs, "short") }}</span>

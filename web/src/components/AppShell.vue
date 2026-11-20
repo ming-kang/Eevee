@@ -3,35 +3,49 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { focusFirst, useFocusReturn } from "../focus.ts";
 import { t } from "../i18n.ts";
 import {
-  RAIL,
-  SIDE,
-  collapsedSideW,
   dismissDrawer,
   drawerFade,
   fitRail,
   fitSidebar,
+  RAIL,
   readWidth,
+  SIDE,
   scaledColumn,
 } from "../layout.ts";
 import { useTypography } from "../theme.ts";
 import { TEXT_SIZE } from "../typography.ts";
+import Icon from "./Icon.vue";
+import RailToggle, { type RailMark } from "./RailToggle.vue";
 import Sash from "./Sash.vue";
 
-const props = defineProps<{
-  withRail: boolean;
-  sideCollapsed: boolean;
-  railCollapsed: boolean;
-  drawer: "side" | "rail" | null;
-  modalOpen?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    withRail: boolean;
+    sideCollapsed: boolean;
+    railCollapsed: boolean;
+    sideShortcut: string;
+    railShortcut?: string;
+    railMarks?: readonly RailMark[];
+    drawer: "side" | "rail" | null;
+    modalOpen?: boolean;
+  }>(),
+  {
+    railShortcut: "",
+    railMarks: () => [],
+    modalOpen: false,
+  },
+);
 
 const emit = defineEmits<{
+  "open-side-drawer": [];
+  "open-rail-drawer": [];
+  "open-rail-tickets": [];
   "close-drawer": [];
   "toggle-side": [];
   "toggle-rail": [];
 }>();
 
-/** Widths at which the rail and the sidebar turn into drawers; they match the container queries in `style.css`. */
+/** Widths at which the rail and the sidebar turn into drawers; they match the container queries in `shell.css`. */
 const RAIL_DRAWER = "(max-width: 1240px)";
 const SIDE_DRAWER = "(max-width: 760px)";
 const RAIL_DRAWER_PX = 1240;
@@ -45,39 +59,99 @@ const frame = ref<HTMLElement>();
 const sidebar = ref<HTMLElement>();
 const rail = ref<HTMLElement>();
 const drawerBg = ref<HTMLElement>();
+const sideTriggerBtn = ref<HTMLButtonElement>();
+const railTrigger = ref<InstanceType<typeof RailToggle>>();
 
-const vpWidth = ref(0);
+const vpWidth = ref(typeof window !== "undefined" ? window.innerWidth : 1280);
 
-/** The interface scale: every column limit and the collapsed width multiply by it, so the same
- *  stored pixel width stays meaningful while the columns' room grows with the text size. */
 const { size: textSize } = useTypography();
 const scale = computed(() => textSize.value / TEXT_SIZE.default);
 const sideSpec = computed(() => scaledColumn(SIDE, scale.value));
 const railSpec = computed(() => scaledColumn(RAIL, scale.value));
-const collapsedW = computed(() => collapsedSideW(scale.value));
 
 const sideW = ref(readWidth(localStorage.getItem(SIDE_W_KEY), SIDE, scale.value));
 const railW = ref(readWidth(localStorage.getItem(RAIL_W_KEY), RAIL, scale.value));
 
-/** The sidebar's rendered width: the icon column while collapsed. */
-const sideColW = computed(() => (props.sideCollapsed ? collapsedW.value : sideW.value));
+const isSideDrawerMode = computed(() => vpWidth.value <= SIDE_DRAWER_PX);
+const isRailDrawerMode = computed(() => vpWidth.value <= RAIL_DRAWER_PX);
+
+/** Offcanvas collapse: when collapsed or in drawer mode, the sidebar occupies 0px on the grid. */
+const sideColW = computed(() =>
+  props.sideCollapsed || isSideDrawerMode.value ? 0 : sideW.value,
+);
+
 /** The rail's width on the grid: 0 while it is collapsed or a drawer, so it holds no room. */
 const railColW = computed(() =>
-  props.withRail && !props.railCollapsed && vpWidth.value > RAIL_DRAWER_PX ? railW.value : 0,
+  props.withRail && !props.railCollapsed && !isRailDrawerMode.value ? railW.value : 0,
 );
+
+const sideVisiblyOpen = computed(() =>
+  isSideDrawerMode.value ? props.drawer === "side" : !props.sideCollapsed,
+);
+
+const railVisiblyOpen = computed(() =>
+  isRailDrawerMode.value ? props.drawer === "rail" : !props.railCollapsed,
+);
+
 const frameStyle = computed(() => ({
   "--ev-sidebar-w": `${sideW.value}px`,
   "--ev-rail-w": `${railW.value}px`,
+  "--ev-rail-pills": String(railVisiblyOpen.value ? 0 : props.railMarks.length),
 }));
 
 const persist = (key: string, value: number) => localStorage.setItem(key, String(value));
 
+function evacuateSidebarFocus(): void {
+  if (typeof document === "undefined") return;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && sidebar.value?.contains(active)) {
+    sideTriggerBtn.value?.focus();
+  }
+}
+
+function evacuateRailFocus(): void {
+  if (typeof document === "undefined") return;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && rail.value?.contains(active)) {
+    railTrigger.value?.focus();
+  }
+}
+
+function onSideTriggerClick(): void {
+  if (isSideDrawerMode.value) {
+    if (props.drawer === "side") emit("close-drawer");
+    else emit("open-side-drawer");
+    return;
+  }
+  if (!props.sideCollapsed) evacuateSidebarFocus();
+  emit("toggle-side");
+}
+
+function onRailTriggerClick(): void {
+  if (isRailDrawerMode.value) {
+    if (props.drawer === "rail") emit("close-drawer");
+    else emit("open-rail-drawer");
+    return;
+  }
+  if (!props.railCollapsed) evacuateRailFocus();
+  emit("toggle-rail");
+}
+
+watch(
+  () => props.sideCollapsed,
+  (collapsed) => {
+    if (collapsed && !isSideDrawerMode.value) evacuateSidebarFocus();
+  },
+);
+
+watch(
+  () => props.railCollapsed,
+  (collapsed) => {
+    if (collapsed && !isRailDrawerMode.value) evacuateRailFocus();
+  },
+);
+
 // ——— Sash drags ———
-// A pointermove must not go through the reactive widths: an inherited custom property on `.frame`
-// would restyle the whole subtree each move (and localStorage would write each move too). While a
-// drag runs, the columns and the sash's edge marker take imperative writes — `gridTemplateColumns`
-// on `.frame` and the positioning custom property on the sash element itself, both leaf-level —
-// and the refs + localStorage commit once at the drag's end.
 let dragSide: number | undefined;
 let dragRail: number | undefined;
 
@@ -94,28 +168,22 @@ function applyDrag(): void {
   const side = dragSide ?? sideColW.value;
   const tracks = [`${side}px`, "minmax(0, 1fr)"];
   if (railColW.value > 0 || dragRail !== undefined) {
-    // The rail track carries its margin-left gap: collapsing shrinks it to 0 without a stub.
-    tracks.push(`calc(${dragRail ?? railW.value}px + var(--ev-gap))`);
+    tracks.push(`${dragRail ?? railW.value}px`);
   }
   el.style.gridTemplateColumns = tracks.join(" ");
   if (dragSide !== undefined) {
+    el.style.setProperty("--ev-sidebar-w", `${side}px`);
     sashNode("side")?.style.setProperty("--ev-side-col", `${side}px`);
   }
   if (dragRail !== undefined) {
+    el.style.setProperty("--ev-rail-w", `${dragRail}px`);
     sashNode("rail")?.style.setProperty("--ev-rail-w", `${dragRail}px`);
   }
 }
 
-/** Hands the columns back to the stylesheet after a drag: the refs' values commit, the inline
- *  custom properties already hold the same widths, so dropping the imperative template leaves
- *  the rendered geometry untouched until Vue's own patch lands. */
 function commitDrag(): void {
   const el = frame.value;
   if (el) {
-    if (dragSide !== undefined) {
-      el.style.setProperty("--ev-sidebar-w", `${dragSide}px`);
-    }
-    if (dragRail !== undefined) el.style.setProperty("--ev-rail-w", `${dragRail}px`);
     el.style.removeProperty("grid-template-columns");
     sashNode("side")?.style.removeProperty("--ev-side-col");
     sashNode("rail")?.style.removeProperty("--ev-rail-w");
@@ -148,7 +216,6 @@ function onRailStep(proposed: number): void {
 }
 
 function onSideStep(proposed: number): void {
-  // Keyboard steps commit at once; only pointer drags defer to `commitDrag`.
   sideW.value = fitSidebar(proposed, vpWidth.value, railColW.value, scale.value);
   persist(SIDE_W_KEY, sideW.value);
 }
@@ -168,7 +235,6 @@ function onRailReset(): void {
   persist(RAIL_W_KEY, railW.value);
 }
 
-/** A stored width the viewport or interface scale no longer affords comes back into range. */
 function reclamp(): void {
   const w = vpWidth.value;
   if (w <= 0) return;
@@ -195,7 +261,6 @@ type DrawerDrag = {
   pointerId: number;
   which: "side" | "rail";
   el: HTMLElement;
-  /** Direction toward the dismiss edge: the sidebar leaves left, the rail leaves right. */
   dir: 1 | -1;
   startX: number;
   lastX: number;
@@ -210,7 +275,6 @@ function drawerDown(which: "side" | "rail", event: PointerEvent): void {
   if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
   const el = which === "side" ? sidebar.value : rail.value;
   if (!el) return;
-  // Touch/pen pointers capture implicitly, so the moves below arrive even off the element.
   el.classList.add("dragging");
   drawerBg.value?.classList.add("dragging");
   dd = {
@@ -251,12 +315,7 @@ function drawerUp(event: PointerEvent): void {
   const bg = drawerBg.value;
   bg?.classList.remove("dragging");
   if (dismiss) {
-    // Land on the drawer's own closed transform so it slides out from where the finger left it;
-    // the inline styles clear once the visibility transition has hidden it.
-    el.style.transform =
-      which === "side"
-        ? "translateX(calc(-100% - 2 * var(--ev-inset)))"
-        : "translateX(calc(100% + 2 * var(--ev-inset)))";
+    el.style.transform = which === "side" ? "translateX(-100%)" : "translateX(100%)";
     if (bg) bg.style.opacity = "0";
     emit("close-drawer");
     window.setTimeout(() => {
@@ -279,7 +338,6 @@ function dropDrawerDrag(): void {
   dd = undefined;
 }
 
-// A drawer closed from elsewhere mid-drag (Escape, a breakpoint) drops the gesture state.
 watch(
   () => props.drawer,
   (next) => {
@@ -298,13 +356,14 @@ function onKeydown(event: KeyboardEvent): void {
     event.altKey &&
     event.key.toLowerCase() === "b"
   ) {
+    if (!props.withRail) return;
     event.preventDefault();
-    emit("toggle-rail");
+    onRailTriggerClick();
     return;
   }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
     event.preventDefault();
-    emit("toggle-side");
+    onSideTriggerClick();
     return;
   }
   if (event.key === "Escape" && !props.modalOpen && props.drawer !== null) {
@@ -312,7 +371,6 @@ function onKeydown(event: KeyboardEvent): void {
   }
 }
 
-// A drawer left open while the window grows past its breakpoint would keep the rest of the page inert.
 const queries = [window.matchMedia(RAIL_DRAWER), window.matchMedia(SIDE_DRAWER)];
 function onBreakpoint(): void {
   const stale =
@@ -345,6 +403,44 @@ onUnmounted(() => {
 <template>
   <div ref="viewport" class="viewport">
     <div
+      class="side-trigger-anchor"
+      :class="{ hidden: drawer === 'rail' && isSideDrawerMode }"
+      :inert="drawer === 'rail' && isSideDrawerMode"
+    >
+      <button
+        ref="sideTriggerBtn"
+        type="button"
+        class="btn ghost sm icon side-trigger-btn"
+        :aria-expanded="sideVisiblyOpen"
+        :title="
+          sideVisiblyOpen
+            ? t('Collapse sidebar ({key})', { key: sideShortcut })
+            : t('Expand sidebar ({key})', { key: sideShortcut })
+        "
+        :aria-label="sideVisiblyOpen ? t('Collapse sidebar') : t('Expand sidebar')"
+        @click="onSideTriggerClick"
+      >
+        <Icon :name="sideVisiblyOpen ? 'sidebarClose' : 'sidebar'" size="sm" />
+      </button>
+    </div>
+
+    <div
+      v-if="withRail"
+      class="rail-trigger-anchor"
+      :class="{ hidden: drawer === 'side' && isSideDrawerMode }"
+      :inert="drawer === 'side' && isSideDrawerMode"
+    >
+      <RailToggle
+        ref="railTrigger"
+        :open="railVisiblyOpen"
+        :shortcut="railShortcut"
+        :marks="railMarks"
+        @toggle="onRailTriggerClick"
+        @open-tickets="emit('open-rail-tickets')"
+      />
+    </div>
+
+    <div
       ref="frame"
       class="frame"
       :class="{
@@ -359,13 +455,15 @@ onUnmounted(() => {
         class="sidebar"
         :class="{ open: drawer === 'side', collapsed: sideCollapsed }"
         :aria-label="t('Navigation')"
-        :inert="drawer === 'rail'"
+        :inert="drawer === 'rail' || (isSideDrawerMode ? drawer !== 'side' : sideCollapsed)"
         @pointerdown="drawerDown('side', $event)"
         @pointermove="drawerMove"
         @pointerup="drawerUp"
         @pointercancel="drawerUp"
       >
-        <slot name="sidebar" />
+        <div class="sidebar-inner">
+          <slot name="sidebar" />
+        </div>
       </nav>
       <main class="main" :inert="drawer !== null">
         <slot />
@@ -376,13 +474,15 @@ onUnmounted(() => {
         class="rail"
         :class="{ open: drawer === 'rail' }"
         :aria-label="t('Tickets and jobs')"
-        :inert="drawer === 'side' || (railCollapsed && vpWidth > RAIL_DRAWER_PX)"
+        :inert="drawer === 'side' || (isRailDrawerMode ? drawer !== 'rail' : railCollapsed)"
         @pointerdown="drawerDown('rail', $event)"
         @pointermove="drawerMove"
         @pointerup="drawerUp"
         @pointercancel="drawerUp"
       >
-        <slot name="rail" />
+        <div class="rail-inner">
+          <slot name="rail" />
+        </div>
       </aside>
       <Sash
         v-if="!sideCollapsed"

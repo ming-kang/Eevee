@@ -9,7 +9,7 @@ const props = defineProps<{
   label: string;
   min: number;
   max: number;
-  /** The column's rendered width right now (the collapsed sidebar's 52px). */
+  /** The column's rendered width right now. */
   now: number;
 }>();
 

@@ -90,7 +90,37 @@ pre,
 }
 
 *:hover {
-  scrollbar-color: color-mix(in oklab, var(--ev-label) 18%, transparent) transparent;
+  scrollbar-color: var(--ev-scrollbar) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background: var(--ev-scrollbar);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--ev-scrollbar-hover);
+}
+
+/* Applied transiently by `theme.ts` so theme and palette switches never flash transitions. */
+.no-transitions,
+.no-transitions *,
+.no-transitions *::before,
+.no-transitions *::after {
+  transition: none !important;
 }
 
 .sr {
@@ -106,11 +136,8 @@ pre,
   width: var(--ev-icon);
   height: var(--ev-icon);
   flex: none;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  fill: currentColor;
+  stroke: none;
 }
 
 .ico.sm {
@@ -121,24 +148,27 @@ pre,
 .ico.xs {
   width: var(--ev-icon-xs);
   height: var(--ev-icon-xs);
-  stroke-width: 1.9;
 }
 
 .ico.lg {
   width: var(--ev-icon-lg);
   height: var(--ev-icon-lg);
-  stroke-width: 1.6;
+}
+
+.ico.flip-x {
+  transform: scaleX(-1);
 }
 
 /* A turning icon is a box around its <svg> (see Icon.vue); the box takes the size, the <svg> fills
-   it and inherits the strokes. */
+   it and inherits currentColor. */
 span.ico {
   display: inline-flex;
 }
 
-span.ico > svg {
+span.ico>svg {
   width: 100%;
   height: 100%;
+  fill: currentColor;
 }
 
 .ico.spin {
@@ -231,6 +261,7 @@ span.ico > svg {
   from {
     transform: translateX(-100%);
   }
+
   to {
     transform: translateX(167%);
   }
@@ -242,24 +273,8 @@ span.ico > svg {
   }
 }
 
-/* The working grid's wave: each dot crests once per lap, staggered by its animation-delay. */
-@keyframes ev-dotwave {
-  0%,
-  100% {
-    opacity: 0.25;
-    transform: scale(0.8);
-  }
-  30% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  60% {
-    opacity: 0.25;
-    transform: scale(0.8);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {

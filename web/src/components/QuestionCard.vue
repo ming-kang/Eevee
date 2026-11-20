@@ -13,6 +13,7 @@ import {
 } from "../questions.ts";
 import { useSubmit } from "../submit.ts";
 import Icon from "./Icon.vue";
+import StageGlyph from "./StageGlyph.vue";
 import TicketRef from "./TicketRef.vue";
 
 const props = defineProps<{
@@ -152,7 +153,7 @@ function onInputKeydown(event: KeyboardEvent): void {
 <template>
   <form v-if="current" class="qcard" @submit.prevent="submit">
     <div class="qcard-h">
-      <span class="dot user" />
+      <StageGlyph stage="answer" />
       <span>
         <template v-if="current.ticketId">
           <TicketRef

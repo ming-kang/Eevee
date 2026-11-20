@@ -7,8 +7,9 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 14vh calc(16px * var(--ev-scale)) calc(16px * var(--ev-scale));
+  padding: 13vh calc(16px * var(--ev-scale)) calc(16px * var(--ev-scale));
   background: var(--ev-overlay);
+  backdrop-filter: blur(4px);
   animation: ev-fade var(--ev-regular) var(--ev-ease);
 }
 
@@ -18,8 +19,8 @@
   max-height: 100%;
   display: flex;
   flex-direction: column;
+  border: 1px solid var(--ev-border);
   border-radius: var(--ev-r-lg);
-  corner-shape: squircle;
   background: var(--ev-card);
   box-shadow: var(--ev-shadow-modal);
   overflow: hidden;
@@ -61,9 +62,10 @@
   width: min(calc(600px * var(--ev-scale)), 100%);
   display: flex;
   flex-direction: column;
+  border: 1px solid var(--ev-border);
   border-radius: var(--ev-r-lg);
-  corner-shape: squircle;
-  background: var(--ev-raised);
+  background: var(--ev-glass-bg);
+  backdrop-filter: blur(var(--ev-glass-blur)) saturate(var(--ev-glass-sat));
   box-shadow: var(--ev-shadow-modal);
   overflow: hidden;
   animation: ev-pop var(--ev-regular) var(--ev-ease);
@@ -142,11 +144,11 @@
 
 .pop-row.sel,
 .pop-row:hover {
-  background: color-mix(in oklab, var(--ev-raised) 94%, var(--ev-label));
+  background: var(--ev-hover);
 }
 
-.pop-row > .ico,
-.pop-row > .glyph {
+.pop-row>.ico,
+.pop-row>.glyph {
   color: var(--ev-label-2);
 }
 
@@ -161,9 +163,10 @@
   position: absolute;
   z-index: 30;
   padding: calc(4px * var(--ev-scale));
+  border: 1px solid var(--ev-border);
   border-radius: var(--ev-r-lg);
-  corner-shape: squircle;
-  background: var(--ev-raised);
+  background: var(--ev-glass-bg);
+  backdrop-filter: blur(var(--ev-glass-blur)) saturate(var(--ev-glass-sat));
   box-shadow: var(--ev-shadow-float);
   animation: ev-rise var(--ev-regular) var(--ev-ease);
 }
@@ -242,9 +245,10 @@
   z-index: 60;
   width: calc(272px * var(--ev-scale));
   padding: calc(12px * var(--ev-scale)) calc(14px * var(--ev-scale));
+  border: 1px solid var(--ev-border);
   border-radius: var(--ev-r-lg);
-  corner-shape: squircle;
-  background: var(--ev-raised);
+  background: var(--ev-glass-bg);
+  backdrop-filter: blur(var(--ev-glass-blur)) saturate(var(--ev-glass-sat));
   box-shadow: var(--ev-shadow-float);
   pointer-events: none;
   opacity: 0;
@@ -333,12 +337,13 @@
   gap: calc(8px * var(--ev-scale));
   max-width: min(calc(480px * var(--ev-scale)), calc(100vw - calc(32px * var(--ev-scale))));
   padding: calc(9px * var(--ev-scale)) calc(14px * var(--ev-scale)) calc(9px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  border: 1px solid var(--ev-border);
   border-radius: var(--ev-r-md);
-  corner-shape: squircle;
   font-size: var(--ev-control);
   font-weight: 500;
   letter-spacing: var(--ev-tracking);
-  background: var(--ev-raised);
+  background: var(--ev-glass-bg);
+  backdrop-filter: blur(var(--ev-glass-blur)) saturate(var(--ev-glass-sat));
   box-shadow: var(--ev-shadow-float);
   animation: ev-drop var(--ev-regular) var(--ev-ease);
 }
@@ -381,8 +386,8 @@
   flex-direction: column;
   gap: calc(18px * var(--ev-scale));
   padding: calc(28px * var(--ev-scale));
+  border: 1px solid var(--ev-border);
   border-radius: var(--ev-r-lg);
-  corner-shape: squircle;
   background: var(--ev-card);
   box-shadow: var(--ev-shadow-modal);
   animation: ev-pop var(--ev-slow) var(--ev-ease);

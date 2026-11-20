@@ -25,7 +25,6 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "open-side": [];
   "modal-change": [open: boolean];
 }>();
 
@@ -307,10 +306,8 @@ async function performUndo(): Promise<void> {
 <template>
   <section class="page-wrap">
     <header class="header">
-      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('Menu')" @click="$emit('open-side')">
-        <Icon name="menu" size="sm" />
-      </button>
       <h1>{{ t("Memory") }}</h1>
+      <span class="crumb-sep hide-sm" aria-hidden="true">/</span>
       <span class="sub ellipsis hide-sm">{{ project.title }}</span>
     </header>
     <div class="split" :class="{ 'has-detail': mobileDetail }">

@@ -22,9 +22,10 @@ import { levelsOf, switchModel, levelLabel } from "../model-choice.ts";
 import { useModelsView } from "../models-view.ts";
 import { formatRoute, NEW_ITEM, type SettingsSection } from "../router.ts";
 import { vSeg } from "../dom.ts";
+import { PALETTE_LABELS } from "../projects.ts";
 import type { StreamState } from "../stream.ts";
 import { useSubmit } from "../submit.ts";
-import { type ThemePreference, useTheme, useTypography } from "../theme.ts";
+import { THEME_PALETTES, type ThemePreference, useTheme, useTypography } from "../theme.ts";
 import { showToast } from "../toasts.ts";
 import { readTextSize, TEXT_SIZE } from "../typography.ts";
 import { notifyEnabled, notifySupported, setNotifyEnabled } from "../use-notifications.ts";
@@ -47,11 +48,7 @@ const props = defineProps<{
   refreshStatus: () => Promise<void>;
 }>();
 
-defineEmits<{
-  "open-side": [];
-}>();
-
-const { preference: themePref, setTheme } = useTheme();
+const { preference: themePref, palette: activePalette, resolved: resolvedTheme, setTheme, setPalette } = useTheme();
 const { size: textSize, font, setTextSize, setFont } = useTypography();
 
 // ——— Desktop notifications: the switch persists `eevee.notify`; the browser keeps the permission ———
@@ -396,9 +393,6 @@ const streamBadge = computed(() => {
 <template>
   <section class="page-wrap">
     <header class="header">
-      <button type="button" class="btn ghost sm icon menu-btn" :aria-label="t('Menu')" @click="$emit('open-side')">
-        <Icon name="menu" size="sm" />
-      </button>
       <h1>{{ t("Settings") }}</h1>
     </header>
     <div class="settings">
@@ -457,6 +451,37 @@ const streamBadge = computed(() => {
                     @click="setTheme(option.key)"
                   >
                     {{ option.label }}
+                  </button>
+                </div>
+              </div>
+              <div class="row row-palettes">
+                <div class="r-main">
+                  <span class="r-t">{{ t("Color palette") }}</span>
+                  <span class="r-d">{{ t("Applies to both light and dark modes") }}</span>
+                </div>
+                <div class="pal-grid" role="group" :aria-label="t('Color palette')">
+                  <button
+                    v-for="sw in THEME_PALETTES"
+                    :key="sw.id"
+                    type="button"
+                    class="pal-card"
+                    :class="{ on: activePalette === sw.id }"
+                    :aria-pressed="activePalette === sw.id"
+                    @click="setPalette(sw.id)"
+                  >
+                    <span
+                      class="pal-chip"
+                      aria-hidden="true"
+                      :style="{
+                        '--sw-side': (resolvedTheme === 'dark' ? sw.dark : sw.light).sidebar,
+                        '--sw-canvas': (resolvedTheme === 'dark' ? sw.dark : sw.light).canvas,
+                        '--sw-primary': (resolvedTheme === 'dark' ? sw.dark : sw.light).primary,
+                      }"
+                    >
+                      <i class="pal-chip-side" />
+                      <i class="pal-chip-canvas"><b class="pal-chip-dot" /></i>
+                    </span>
+                    <span class="pal-name">{{ PALETTE_LABELS[sw.id]() }}</span>
                   </button>
                 </div>
               </div>
