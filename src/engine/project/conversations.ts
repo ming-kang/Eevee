@@ -30,12 +30,9 @@ export class Conversations {
     this.#deps = deps;
   }
 
-  async send(
-    ref: ConversationRef,
-    text: string,
-    whenBusy: "steer" | "followUp" = "steer",
-  ): Promise<void> {
+  async send(ref: ConversationRef, text: string, whenBusy?: "steer" | "followUp"): Promise<void> {
     if (ref === "router") {
+      if (whenBusy !== undefined) throw new ProblemError({ code: "invalid", field: "mode" });
       await this.#deps.dispatch({ type: "user-message", id: crypto.randomUUID(), text });
       return;
     }
@@ -45,7 +42,7 @@ export class Conversations {
       id: crypto.randomUUID(),
       ticketId: ref,
       text,
-      whenBusy,
+      whenBusy: whenBusy ?? "steer",
     });
   }
 
@@ -115,9 +112,9 @@ export class Conversations {
   }
 
   async steerQueued(ref: ConversationRef, submissionId: string): Promise<void> {
-    const ticketId = ref === "router" ? undefined : ref;
-    if (ticketId !== undefined) await this.#openTicket(ticketId);
-    const conversation = await this.#conversationOf(ticketId);
+    if (ref === "router") throw new ProblemError({ code: "invalid", field: "conversation" });
+    await this.#openTicket(ref);
+    const conversation = await this.#conversationOf(ref);
     const item = await this.#queuedItem(conversation, submissionId);
     if (item === undefined || item.mode !== "followUp" || item.entry !== undefined) {
       throw new ProblemError({ code: "no_submission", submissionId });

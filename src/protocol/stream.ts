@@ -1,8 +1,8 @@
 /**
  * The realtime stream: one WebSocket at `/api/stream` per page, carrying any number of watches.
  *
- * The page connects with the subprotocols `eevee.v1` and `token.<session token>` (browsers cannot set headers on a
- * WebSocket); the Engine answers with `eevee.v1` only, so the token never echoes back. The first event is `hello` with
+ * The page connects with the subprotocols `eevee.v2` and `token.<session token>` (browsers cannot set headers on a
+ * WebSocket); the Engine answers with `eevee.v2` only, so the token never echoes back. The first event is `hello` with
  * the Engine's `bootId`: a page that sees it change after a reconnect starts its watches over.
  *
  * - A conversation watch forwards Durable's `Conversation.watch()`: one `value` with the structural view, then `ops`
@@ -20,19 +20,21 @@ import type {
 import { compile, int, obj, oneOf, opt, str, unsafe } from "@earendil-works/pi-schema";
 import type { TicketId } from "../domain/index.ts";
 import { ProblemError } from "../domain/index.ts";
-import type { BoardView, ProblemBody } from "./contract.ts";
+import type { BoardView, EngineView, ProblemBody } from "./contract.ts";
 
 export const STREAM_PATH = "/api/stream";
-export const STREAM_PROTOCOL = "eevee.v1";
+export const STREAM_PROTOCOL = "eevee.v2";
 export const TOKEN_PROTOCOL_PREFIX = "token.";
 
 /** The Router's conversation without `ticket`, else that ticket's. */
 export type ConversationTopic = { kind: "conversation"; project: string; ticket?: TicketId };
 export type BoardTopic = { kind: "board"; project: string };
+export type EngineTopic = { kind: "engine" };
 
 export type StreamRequest =
   | { type: "watch"; id: string; topic: ConversationTopic; window?: ConversationWindow }
   | { type: "watch"; id: string; topic: BoardTopic }
+  | { type: "watch"; id: string; topic: EngineTopic }
   | { type: "unwatch"; id: string }
   | {
       type: "entries";
@@ -47,6 +49,7 @@ export type StreamEvent =
   | { type: "value"; id: string; value: ConversationView }
   | { type: "ops"; id: string; ops: readonly Op[] }
   | { type: "board"; id: string; board: BoardView }
+  | { type: "engine"; id: string; engine: EngineView }
   | { type: "entries"; id: string; items: EntryRecord[] }
   /** The watch ended on its own, for good: `ended` when its source closed, `failed`, `listener_error`. */
   | { type: "end"; id: string; reason: string }
@@ -55,8 +58,8 @@ export type StreamEvent =
 const TICKET_PATTERN = "^t[1-9][0-9]*$";
 
 const TopicSchema = obj({
-  kind: oneOf(["conversation", "board"]),
-  project: str({ minLength: 1 }),
+  kind: oneOf(["conversation", "board", "engine"]),
+  project: opt(str({ minLength: 1 })),
   ticket: opt(str({ pattern: TICKET_PATTERN })),
 });
 
@@ -84,13 +87,20 @@ export function parseStreamRequest(value: unknown): StreamRequest {
   if (request.type === "unwatch") return { type: "unwatch", id: request.id };
   const topic = request.topic;
   if (topic === undefined) throw invalid("topic");
+  if (topic.kind === "engine") {
+    if (request.type !== "watch") throw invalid("topic.kind");
+    if (topic.project !== undefined) throw invalid("topic.project");
+    if (topic.ticket !== undefined) throw invalid("topic.ticket");
+    return { type: "watch", id: request.id, topic: { kind: "engine" } };
+  }
+  if (topic.project === undefined) throw invalid("topic.project");
   if (request.type === "entries") {
     if (request.query === undefined) throw invalid("query");
     if (request.limit === undefined) throw invalid("limit");
     return {
       type: "entries",
       id: request.id,
-      topic: conversationTopic(topic),
+      topic: conversationTopic({ ...topic, project: topic.project }),
       query: request.query,
       limit: request.limit,
     };
@@ -102,13 +112,13 @@ export function parseStreamRequest(value: unknown): StreamRequest {
   return {
     type: "watch",
     id: request.id,
-    topic: conversationTopic(topic),
+    topic: conversationTopic({ ...topic, project: topic.project }),
     ...(window === undefined ? {} : { window }),
   };
 }
 
 function conversationTopic(topic: {
-  kind: "conversation" | "board";
+  kind: "conversation" | "board" | "engine";
   project: string;
   ticket?: string;
 }): ConversationTopic {

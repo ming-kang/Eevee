@@ -32,7 +32,10 @@ type EngineData = {
   boardOf: (pid: string) => BoardState | undefined;
 };
 
-export function useEngineData(session: ShallowRef<SessionInfo | undefined>): EngineData {
+export function useEngineData(
+  session: ShallowRef<SessionInfo | undefined>,
+  openStream = createStreamClient,
+): EngineData {
   const stream = shallowRef<StreamClient>();
   const streamState = ref<StreamState>("connecting");
   const status = shallowRef<EngineStatus>();
@@ -46,10 +49,16 @@ export function useEngineData(session: ShallowRef<SessionInfo | undefined>): Eng
     const current = session.value;
     if (!current) return;
     try {
-      status.value = await current.client.call("GET /api/status");
+      const info = await current.client.call("GET /api/engine");
+      if (session.value !== current) return;
+      status.value = {
+        ...current.status,
+        ...status.value,
+        ...info,
+      };
       statusError.value = undefined;
     } catch (cause) {
-      statusError.value = errorText(cause);
+      if (session.value === current) statusError.value = errorText(cause);
     }
   }
 
@@ -116,21 +125,31 @@ export function useEngineData(session: ShallowRef<SessionInfo | undefined>): Eng
 
       status.value = nextSession.status;
       statusError.value = undefined;
-      const client = createStreamClient({
-        baseUrl: location.origin,
+      const client = openStream({
+        baseUrl: (globalThis as unknown as { location: { origin: string } }).location.origin,
         token: nextSession.token,
       });
       stream.value = client;
       streamState.value = client.state;
 
-      let firstHello = true;
       const offState = client.onState((next) => {
         streamState.value = next;
       });
+      let bootId = nextSession.status.bootId;
       const offHello = client.onHello((info) => {
-        const skipInitial = firstHello && info.bootId === nextSession.status.bootId;
-        firstHello = false;
-        if (!skipInitial) void refreshStatus();
+        if (info.bootId !== bootId) void refreshStatus();
+        bootId = info.bootId;
+      });
+      const stopEngine = client.watch("engine", {
+        topic: { kind: "engine" },
+        onEvent: (event) => {
+          if (event.type === "engine") {
+            status.value = { ...nextSession.status, ...status.value, ...event.engine };
+            statusError.value = undefined;
+          } else if (event.type === "error") {
+            statusError.value = problemText(event.error);
+          }
+        },
       });
 
       syncBoardWatches(client, projects.value);
@@ -138,6 +157,7 @@ export function useEngineData(session: ShallowRef<SessionInfo | undefined>): Eng
       onCleanup(() => {
         offState();
         offHello();
+        stopEngine();
         for (const stop of boardStops.values()) stop();
         boardStops.clear();
         client.close();

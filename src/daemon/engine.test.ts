@@ -170,7 +170,7 @@ test("the HTTP API exposes structured models, project activeAt, Board.router and
     const created = await client.call("POST /api/projects", { title: "HTTP", workspace });
     assert.equal(created.activeAt, created.createdAt);
 
-    const status = await client.call("GET /api/status");
+    const status = await client.call("GET /api/projects");
     assert.equal(status.projects[0]?.activeAt, created.createdAt);
 
     const board = await engine.projects.get(created.id)?.board();
@@ -178,26 +178,23 @@ test("the HTTP API exposes structured models, project activeAt, Board.router and
 
     await mkdir(join(paths.project(created.id).memory, "topics"), { recursive: true });
     await writeFile(join(paths.project(created.id).memory, "topics", "a.md"), "# Note A\n");
-    const listed = await client.call("GET /api/projects/:project/memory/:scope/files", {
+    const listed = await client.call("GET /api/projects/:project/memory/files", {
       project: created.id,
-      scope: "project",
     });
     assert.deepEqual(
       listed.files.map((f) => f.path),
       ["MEMORY.md", "topics/a.md"],
     );
 
-    const file = await client.call("GET /api/projects/:project/memory/:scope/files/:file", {
+    const file = await client.call("GET /api/projects/:project/memory/files/:file", {
       project: created.id,
-      scope: "project",
       file: "topics/a.md",
     });
     assert.equal(file.content, "# Note A\n");
 
     await assert.rejects(
-      client.call("GET /api/projects/:project/memory/:scope/files/:file", {
+      client.call("GET /api/projects/:project/memory/files/:file", {
         project: created.id,
-        scope: "project",
         file: ".git/HEAD",
       }),
       // A refusal is data the panel can word; the status follows from its code.
@@ -216,16 +213,15 @@ test("the HTTP API exposes structured models, project activeAt, Board.router and
       { status: 404, problem: { code: "no_job", jobId: "j1" } },
     );
     await assert.rejects(
-      client.call("GET /api/projects/:project/memory/:scope/files", {
+      client.call("GET /api/projects/:project/conversations/:conversation", {
         project: created.id,
-        scope: "team",
+        conversation: "team",
       }),
-      { status: 400, problem: { code: "invalid", field: "scope", allowed: ["project", "global"] } },
+      { status: 400, problem: { code: "invalid", field: "conversation" } },
     );
     await assert.rejects(
-      client.call("GET /api/projects/:project/memory/:scope/files", {
+      client.call("GET /api/projects/:project/memory/files", {
         project: "p0",
-        scope: "project",
       }),
       { status: 404, problem: { code: "no_project", projectId: "p0" } },
     );
@@ -282,7 +278,11 @@ test("the HTTP boundary refuses a body that is missing a field, of the wrong typ
       problem: { code: "invalid", field: "code" },
     });
     await assert.rejects(
-      client.call("POST /api/projects/:project/messages", { project: "p0" }, refused({ text: 7 })),
+      client.call(
+        "POST /api/projects/:project/conversations/:conversation/messages",
+        { project: "p0", conversation: "router" },
+        refused({ text: 7 }),
+      ),
       { status: 400, problem: { code: "invalid", field: "text" } },
     );
 
@@ -295,9 +295,9 @@ test("the HTTP boundary refuses a body that is missing a field, of the wrong typ
     // An enum names the values it takes.
     await assert.rejects(
       client.call(
-        "POST /api/settings/models",
+        "PUT /api/models/defaults/:role",
+        { role: "x" },
         refused({
-          role: "x",
           provider: "local",
           modelId: "demo",
         }),
@@ -313,8 +313,8 @@ test("the HTTP boundary refuses a body that is missing a field, of the wrong typ
     );
     await assert.rejects(
       client.call(
-        "POST /api/projects/:project/tickets/:ticket/messages",
-        { project: "p0", ticket: "t1" },
+        "POST /api/projects/:project/conversations/:conversation/messages",
+        { project: "p0", conversation: "t1" },
         refused({ text: "go on", mode: "now" }),
       ),
       {
@@ -324,7 +324,8 @@ test("the HTTP boundary refuses a body that is missing a field, of the wrong typ
     );
     await assert.rejects(
       client.call(
-        "POST /api/settings/models",
+        "PUT /api/models/defaults/:role",
+        { role: "default" },
         refused({
           provider: "local",
           modelId: "demo",
@@ -410,7 +411,7 @@ test("the panel edits providers over the local API: a write applies at once, the
     assert.equal(anthropic?.defaultBaseUrl, "https://api.anthropic.com");
 
     // References come from pi-ai's own catalog, the caller's API first, never from models.json.
-    const refs = await client.call("POST /api/models/builtin", {
+    const refs = await client.call("POST /api/models/builtin/search", {
       query: "claude-sonnet-4-5",
       api: "anthropic-messages",
     });
@@ -419,20 +420,24 @@ test("the panel edits providers over the local API: a write applies at once, the
       "anthropic/claude-sonnet-4-5",
     );
     assert.ok(refs.models.length <= 8);
-    const demo = await client.call("POST /api/models/builtin", { query: "m1" });
+    const demo = await client.call("POST /api/models/builtin/search", { query: "m1" });
     assert.equal(
       demo.models.some((m) => m.provider === "local" || m.provider === "gw"),
       false,
     );
-    await assert.rejects(client.call("POST /api/models/builtin", { query: " " }), {
+    await assert.rejects(client.call("POST /api/models/builtin/search", { query: " " }), {
       status: 400,
       problem: { code: "required", field: "query" },
     });
 
-    await client.call("POST /api/auth/:provider", { provider: "gw" }, { key: "sk-gw" });
+    await client.call(
+      "PUT /api/models/providers/:provider/credentials",
+      { provider: "gw" },
+      { key: "sk-gw" },
+    );
     let gwView = (await client.call("GET /api/models")).providers.find((p) => p.id === "gw");
     assert.deepEqual([gwView?.configured, gwView?.source], [true, "auth.json"]);
-    await client.call("DELETE /api/auth/:provider", { provider: "gw" });
+    await client.call("DELETE /api/models/providers/:provider/credentials", { provider: "gw" });
     gwView = (await client.call("GET /api/models")).providers.find((p) => p.id === "gw");
     assert.equal(gwView?.configured, false);
 
@@ -462,7 +467,11 @@ test("the panel edits providers over the local API: a write applies at once, the
         error.status === 422 && error.problem.code === "bad_config",
     );
 
-    await client.call("POST /api/auth/:provider", { provider: "gw" }, { key: "sk-gw" });
+    await client.call(
+      "PUT /api/models/providers/:provider/credentials",
+      { provider: "gw" },
+      { key: "sk-gw" },
+    );
     await client.call("DELETE /api/models/providers/:provider", { provider: "gw" });
     assert.equal(
       (await client.call("GET /api/models")).providers.some((p) => p.id === "gw"),
@@ -500,7 +509,7 @@ test("the panel edits MCP servers over the local API: only the changed one recon
     );
     assert.deepEqual((await client.call("GET /api/mcp/config")).servers, { weather: entry });
     await client.call(
-      "POST /api/capabilities/roles/:role",
+      "PATCH /api/capabilities/roles/:role",
       { role: "worker" },
       {
         extensions: ["mcp.weather"],

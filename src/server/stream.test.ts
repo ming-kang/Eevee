@@ -107,9 +107,16 @@ before(async () => {
   stream = attachStream(server, {
     source: {
       bootId: "boot-1",
-      projects: { get: (id) => (id === "p1" ? project : id === "p2" ? slowProject : undefined) },
+      projects: {
+        get: (id) => (id === "p1" ? project : id === "p2" ? slowProject : undefined),
+        watch: (listener) => {
+          listener([]);
+          return () => {};
+        },
+      },
     },
     auth,
+    version: "test",
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -157,6 +164,7 @@ async function connect(protocols = [STREAM_PROTOCOL, `${TOKEN_PROTOCOL_PREFIX}${
 test("a connection is refused with no token, a wrong token or no protocol", async () => {
   await assert.rejects(connect([STREAM_PROTOCOL]), /refused/);
   await assert.rejects(connect([STREAM_PROTOCOL, `${TOKEN_PROTOCOL_PREFIX}wrong`]), /refused/);
+  await assert.rejects(connect(["eevee.v1", `${TOKEN_PROTOCOL_PREFIX}${token}`]), /refused/);
   await assert.rejects(connect([`${TOKEN_PROTOCOL_PREFIX}${token}`]), /refused/);
 });
 
@@ -262,7 +270,8 @@ test("an unknown project and a bad message reply with error and keep the connect
   assert.deepEqual(error.type === "error" && error.error, {
     code: "no_project",
     projectId: "nope",
-    message: "No project nope",
+    title: "No project nope",
+    status: 404,
   });
   client.ws.send("{");
   assert.equal((await client.next()).type, "error");

@@ -19,21 +19,20 @@ let uiPort: number;
 const seen: unknown[] = [];
 
 const routes = {
-  "GET /api/health": { public: true, handle: async () => ({ ok: true }) },
+  "GET /api/health": { handle: async () => ({ version: "test", bootId: "boot" }) },
   "POST /api/session": {
-    public: true,
     handle: async ({ body }: { body: { code: string } }) => {
       seen.push(body);
       return { ok: true };
     },
   },
-  "POST /api/auth/:provider": {
+  "PUT /api/models/providers/:provider/credentials": {
     handle: async ({ params, body }: { params: { provider: string }; body: unknown }) => {
       seen.push({ params, body });
       return { ok: true };
     },
   },
-  "GET /api/status": {
+  "GET /api/engine": {
     handle: async () => {
       throw new ProblemError({ code: "no_project", projectId: "p1" });
     },
@@ -70,8 +69,7 @@ function send(
 
 const call = (method: string, path: string, options?: Parameters<typeof send>[3]) =>
   send(port, method, path, options);
-const errorCode = (reply: Reply) =>
-  (JSON.parse(reply.body) as { error: { code: string } }).error.code;
+const errorCode = (reply: Reply) => (JSON.parse(reply.body) as { code: string }).code;
 
 async function start(uiDir: string | undefined): Promise<[Server, number]> {
   const auth = await Auth.open({ tokenPath: join(dir, "token") });
@@ -100,19 +98,22 @@ test("a public route answers JSON without the token", async () => {
   assert.equal(reply.status, 200);
   assert.match(String(reply.headers["content-type"]), /application\/json/);
   assert.equal(reply.headers["cache-control"], "no-store");
-  assert.deepEqual(JSON.parse(reply.body), { ok: true });
+  assert.deepEqual(JSON.parse(reply.body), { version: "test", bootId: "boot" });
 });
 
 test("a guarded route needs the token and gets decoded params and the checked body", async () => {
-  const unauthorized = await call("POST", "/api/auth/open%20ai", { body: '{"key":"k"}' });
+  const unauthorized = await call("PUT", "/api/models/providers/open%20ai/credentials", {
+    body: '{"key":"k"}',
+  });
   assert.equal(unauthorized.status, 401);
   assert.equal(errorCode(unauthorized), "unauthorized");
 
-  const reply = await call("POST", "/api/auth/open%20ai", {
+  const reply = await call("PUT", "/api/models/providers/open%20ai/credentials", {
     headers: { [TOKEN_HEADER]: token, "content-type": "application/json" },
     body: '{"key":"k"}',
   });
-  assert.equal(reply.status, 200);
+  assert.equal(reply.status, 204);
+  assert.equal(reply.body, "");
   assert.deepEqual(seen.at(-1), { params: { provider: "open ai" }, body: { key: "k" } });
 });
 
@@ -127,11 +128,12 @@ test("a request from a foreign host or origin is refused", async () => {
 test("an unknown path or method is no_route", async () => {
   const path = await call("GET", "/api/nothing");
   assert.equal(path.status, 404);
-  assert.deepEqual(JSON.parse(path.body).error, {
+  assert.deepEqual(JSON.parse(path.body), {
     code: "no_route",
     method: "GET",
     path: "/api/nothing",
-    message: JSON.parse(path.body).error.message,
+    title: JSON.parse(path.body).title,
+    status: 404,
   });
   assert.equal((await call("DELETE", "/api/health")).status, 404);
 });
@@ -140,7 +142,7 @@ test("bodies are parsed, schema-checked and size-limited", async () => {
   const missing = await call("POST", "/api/session");
   assert.equal(missing.status, 400);
   assert.deepEqual(
-    { code: errorCode(missing), field: JSON.parse(missing.body).error.field },
+    { code: errorCode(missing), field: JSON.parse(missing.body).field },
     { code: "required", field: "code" },
   );
   const wrongType = await call("POST", "/api/session", { body: '{"code":1}' });
@@ -156,7 +158,7 @@ test("bodies are parsed, schema-checked and size-limited", async () => {
 });
 
 test("a handler's problem keeps its code and status", async () => {
-  const reply = await call("GET", "/api/status", { headers: { [TOKEN_HEADER]: token } });
+  const reply = await call("GET", "/api/engine", { headers: { [TOKEN_HEADER]: token } });
   assert.equal(reply.status, 404);
   assert.equal(errorCode(reply), "no_project");
 });

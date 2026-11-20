@@ -28,7 +28,8 @@ export function configProblemText(problem: ConfigProblem): string {
 
 /** What to show for anything a call threw: a refusal in the reader's words, else the error's text. */
 export function errorText(cause: unknown): string {
-  if (cause instanceof ApiRequestError || cause instanceof StreamError) {
+  if (cause instanceof ApiRequestError) return problemText(cause.body);
+  if (cause instanceof StreamError) {
     return problemText(cause.problem);
   }
   return cause instanceof Error ? cause.message : String(cause);

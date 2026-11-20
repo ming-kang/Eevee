@@ -304,10 +304,7 @@ const routerDiffers = computed(() => {
 
 async function saveRoleModel(roleKey: "default" | RoleName, choice: ModelChoice): Promise<boolean> {
   const ok = await savingModel.run(async () => {
-    await props.client.call("POST /api/settings/models", {
-      ...(roleKey === "default" ? {} : { role: roleKey }),
-      ...choice,
-    });
+    await props.client.call("PUT /api/models/defaults/:role", { role: roleKey }, choice);
   });
   if (ok) {
     pop.value = undefined;
@@ -345,7 +342,7 @@ async function toggleExtension(role: RoleName, extName: string): Promise<void> {
     : [...currentRole.enabled, extName];
   await savingRole.run(async () => {
     capabilities.value = await props.client.call(
-      "POST /api/capabilities/roles/:role",
+      "PATCH /api/capabilities/roles/:role",
       { role },
       { extensions: next },
     );
@@ -358,7 +355,7 @@ async function commitMaxTurns(role: RoleName, nextValue: number | null): Promise
   if ((currentRole.maxTurns ?? null) === nextValue) return;
   const ok = await savingRole.run(async () => {
     capabilities.value = await props.client.call(
-      "POST /api/capabilities/roles/:role",
+      "PATCH /api/capabilities/roles/:role",
       { role },
       { maxTurns: nextValue },
     );

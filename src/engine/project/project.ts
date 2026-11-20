@@ -19,6 +19,7 @@ type Parts = {
   activeAt: () => number;
   usage: () => Promise<UsageView>;
   close: () => Promise<void>;
+  changed?: () => void;
 };
 
 export class Project {
@@ -56,8 +57,9 @@ export class Project {
     return this.#parts.usage();
   }
 
-  setModel(role: RoleName | "default", choice: ModelChoice | null): Promise<void> {
-    return this.#parts.settings.setModel(role, choice);
+  async setModel(role: RoleName | "default", choice: ModelChoice | null): Promise<void> {
+    await this.#parts.settings.setModel(role, choice);
+    this.#parts.changed?.();
   }
 
   applyModels(): Promise<void> {

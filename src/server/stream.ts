@@ -10,8 +10,9 @@ import type {
 } from "@earendil-works/pi-durable";
 import { type WebSocket, WebSocketServer } from "ws";
 import type { ConversationRef } from "../domain/index.ts";
-import { ProblemError, problemOf } from "../domain/index.ts";
+import { ProblemError } from "../domain/index.ts";
 import type { BoardListener } from "../engine/board-feed.ts";
+import type { ProjectSummary } from "../protocol/contract.ts";
 import {
   type ConversationTopic,
   parseStreamRequest,
@@ -22,11 +23,15 @@ import {
   TOKEN_PROTOCOL_PREFIX,
 } from "../protocol/stream.ts";
 import { type Auth, isLoopbackRequest } from "./auth.ts";
+import { problemDetails } from "./http.ts";
 
 /** What the stream reads: the Engine, or a stand-in in tests. */
 export type StreamSource = {
   readonly bootId: string;
-  projects: { get(id: string): ProjectStream | undefined };
+  projects: {
+    get(id: string): ProjectStream | undefined;
+    watch(listener: (projects: ProjectSummary[]) => void): () => void;
+  };
 };
 
 export type ProjectStream = {
@@ -48,6 +53,7 @@ export type ProjectStream = {
 export type StreamOptions = {
   source: StreamSource;
   auth: Auth;
+  version: string;
 };
 
 const PING_MS = 30_000;
@@ -109,11 +115,10 @@ function serve(ws: WebSocket, options: StreamOptions): void {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event));
   };
   const fail = (id: string | undefined, error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
     send({
       type: "error",
       ...(id === undefined ? {} : { id }),
-      error: { ...problemOf(error), message },
+      error: problemDetails(error),
     });
   };
   const project = (id: string): ProjectStream => {
@@ -171,6 +176,20 @@ function serve(ws: WebSocket, options: StreamOptions): void {
       }
       case "watch":
         if (watches.has(request.id)) throw new ProblemError({ code: "invalid", field: "id" });
+        if (request.topic.kind === "engine") {
+          const id = request.id;
+          watches.set(
+            id,
+            source.projects.watch((projects) =>
+              send({
+                type: "engine",
+                id,
+                engine: { bootId: source.bootId, version: options.version, projects },
+              }),
+            ),
+          );
+          return;
+        }
         if (request.topic.kind === "board")
           return watchBoard(request.id, project(request.topic.project));
         return watchConversation(

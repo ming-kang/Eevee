@@ -6,12 +6,38 @@ import { createProjectMeta, listProjects } from "./project/store.ts";
 
 type Deps = {
   paths: EeveePaths;
-  open: (meta: ProjectSummary) => Promise<Project>;
+  open: (meta: ProjectSummary, changed: () => void) => Promise<Project>;
 };
 
 export class ProjectRegistry {
   readonly #deps: Deps;
   readonly #projects = new Map<string, Project>();
+  readonly #listeners = new Set<(projects: ProjectSummary[]) => void>();
+  #pending: ReturnType<typeof setImmediate> | undefined;
+
+  #changed = (): void => {
+    if (this.#pending !== undefined) return;
+    this.#pending = setImmediate(() => {
+      this.#pending = undefined;
+      const projects = this.list();
+      for (const listener of this.#listeners) listener(projects);
+    });
+  };
+
+  watch(listener: (projects: ProjectSummary[]) => void): () => void {
+    let previous = "";
+    const changed = (projects: ProjectSummary[]) => {
+      const value = JSON.stringify(projects);
+      if (value === previous) return;
+      previous = value;
+      listener(projects);
+    };
+    this.#listeners.add(changed);
+    changed(this.list());
+    return () => {
+      this.#listeners.delete(changed);
+    };
+  }
 
   constructor(deps: Deps) {
     this.#deps = deps;
@@ -19,7 +45,7 @@ export class ProjectRegistry {
 
   async initialize(): Promise<void> {
     for (const meta of await listProjects(this.#deps.paths)) {
-      this.#projects.set(meta.id, await this.#deps.open(meta));
+      this.#projects.set(meta.id, await this.#deps.open(meta, this.#changed));
     }
   }
 
@@ -39,8 +65,9 @@ export class ProjectRegistry {
 
   async create(input: { title: string; workspace: string }): Promise<ProjectSummary> {
     const meta = await createProjectMeta(this.#deps.paths, input);
-    const project = await this.#deps.open(meta);
+    const project = await this.#deps.open(meta, this.#changed);
     this.#projects.set(meta.id, project);
+    this.#changed();
     return project.summary();
   }
 
@@ -65,6 +92,8 @@ export class ProjectRegistry {
   }
 
   async close(): Promise<void> {
+    if (this.#pending !== undefined) clearImmediate(this.#pending);
+    this.#listeners.clear();
     await Promise.all([...this.#projects.values()].map((project) => project.close()));
     this.#projects.clear();
   }

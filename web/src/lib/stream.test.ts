@@ -149,6 +149,21 @@ test("subprotocol auth, hello replays the subscriptions, events are dispatched b
 
   stopBoard();
   assert.deepEqual(ws.sent[2], { type: "unwatch", id: "b1" });
+  const engineEvents: WatchEvent[] = [];
+  const stopEngine = client.watch("engine", {
+    topic: { kind: "engine" },
+    onEvent: (event) => engineEvents.push(event),
+  });
+  assert.deepEqual(ws.sent[3], { type: "watch", id: "engine", topic: { kind: "engine" } });
+  ws.receive({
+    type: "engine",
+    id: "engine",
+    engine: { bootId: "boot-1", version: "v2", projects: [] },
+  });
+  assert.equal(engineEvents[0]?.type, "engine");
+  assert.equal(convEvents.length, 1);
+  stopEngine();
+  assert.deepEqual(ws.sent[4], { type: "unwatch", id: "engine" });
   client.close();
 });
 

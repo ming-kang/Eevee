@@ -47,7 +47,7 @@ defineEmits<{
   "open-ticket": [ticketId: string];
 }>();
 
-const params = computed(() => ({ project: props.project, ticket: props.ticketId }));
+const params = computed(() => ({ project: props.project, conversation: props.ticketId }));
 const bridge = provideComposerInsert();
 const conversation = useConversationWatch(props.stream, () => ({
   kind: "conversation",
@@ -113,7 +113,7 @@ watch(
 );
 
 async function send(text: string): Promise<void> {
-  await props.client.call("POST /api/projects/:project/tickets/:ticket/messages", params.value, {
+  await props.client.call("POST /api/projects/:project/conversations/:conversation/messages", params.value, {
     text,
     mode: mode.value,
   });
@@ -122,7 +122,7 @@ async function send(text: string): Promise<void> {
 /** Interrupting withdraws queued inputs too; their text comes back into the composer, oldest first. */
 async function interrupt(): Promise<void> {
   const pending = queued.value;
-  await props.client.call("POST /api/projects/:project/tickets/:ticket/interrupt", params.value);
+  await props.client.call("POST /api/projects/:project/conversations/:conversation/interrupt", params.value);
   if (pending.length > 0) {
     bridge.insert(
       pending.map((message) => message.text).join("\n\n"),
@@ -132,7 +132,7 @@ async function interrupt(): Promise<void> {
 }
 
 async function retry(): Promise<void> {
-  await props.client.call("POST /api/projects/:project/tickets/:ticket/retry", params.value);
+  await props.client.call("POST /api/projects/:project/conversations/:conversation/retry", params.value);
 }
 
 async function answer(id: QuestionId, text: string, answers: readonly string[]): Promise<void> {
@@ -178,7 +178,7 @@ function queueEdit(message: QueuedMessage): Promise<void> {
     message,
     async () => {
       await props.client.call(
-        "POST /api/projects/:project/tickets/:ticket/queue/:submission/withdraw",
+        "DELETE /api/projects/:project/conversations/:conversation/queue/:submission",
         { ...params.value, submission: message.id },
       );
     },
@@ -189,7 +189,7 @@ function queueEdit(message: QueuedMessage): Promise<void> {
 function queueWithdraw(message: QueuedMessage): Promise<void> {
   return queueAction(message, async () => {
     await props.client.call(
-      "POST /api/projects/:project/tickets/:ticket/queue/:submission/withdraw",
+      "DELETE /api/projects/:project/conversations/:conversation/queue/:submission",
       { ...params.value, submission: message.id },
     );
   });
@@ -198,7 +198,7 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
 function queueSteer(message: QueuedMessage): Promise<void> {
   return queueAction(message, async () => {
     await props.client.call(
-      "POST /api/projects/:project/tickets/:ticket/queue/:submission/steer",
+      "POST /api/projects/:project/conversations/:conversation/queue/:submission/steer",
       { ...params.value, submission: message.id },
     );
   });

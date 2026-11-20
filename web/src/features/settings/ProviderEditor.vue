@@ -188,7 +188,7 @@ async function save(): Promise<void> {
         await props.client.call("PUT /api/models/providers/:provider", { provider: id }, { config: result.config });
       }
     }
-    if (key !== "") await props.client.call("POST /api/auth/:provider", { provider: id }, { key });
+    if (key !== "") await props.client.call("PUT /api/models/providers/:provider/credentials", { provider: id }, { key });
   });
   if (!ok) return;
   showToast(t("Saved {provider}", { provider: id }));
@@ -223,7 +223,7 @@ async function remove(): Promise<void> {
 
 async function removeKey(): Promise<void> {
   const ok = await removingKey.run(async () => {
-    await props.client.call("DELETE /api/auth/:provider", { provider: props.id });
+    await props.client.call("DELETE /api/models/providers/:provider/credentials", { provider: props.id });
   });
   if (!ok) return;
   showToast(t("Removed the saved {provider} API key", { provider: props.id }));
@@ -355,7 +355,7 @@ async function searchBuiltin(): Promise<void> {
   }
   const api = modelApi(model);
   await lookingUp.run(async () => {
-    const result = await props.client.call("POST /api/models/builtin", {
+    const result = await props.client.call("POST /api/models/builtin/search", {
       query,
       ...(api === undefined ? {} : { api }),
     });

@@ -30,7 +30,7 @@ import { Conversations } from "./conversations.ts";
 import { createDispatcher } from "./dispatch.ts";
 import { Dreaming } from "./dreaming.ts";
 import { Jobs } from "./jobs.ts";
-import { Memory } from "./memory.ts";
+import { INITIAL_GLOBAL_MEMORY, Memory } from "./memory.ts";
 import { Project } from "./project.ts";
 import { Questions } from "./questions.ts";
 import { installShared, ProjectSettings } from "./settings.ts";
@@ -38,8 +38,6 @@ import { type ProjectMeta, ProjectStore } from "./store.ts";
 
 const INITIAL_MEMORY =
   "# Project memory\n\nThe core conventions every conversation needs to know, plus an index pointing to the topic notes.\n";
-const INITIAL_GLOBAL_MEMORY =
-  "# Global memory\n\nCross-project preferences about the user themselves; keep it very short.\n";
 
 export type ProjectOptions = {
   paths: EeveePaths;
@@ -51,6 +49,7 @@ export type ProjectOptions = {
   shared: () => readonly Extension[];
   context: Context;
   upkeepMs?: number;
+  changed?: () => void;
 };
 
 export async function openProject(options: ProjectOptions): Promise<Project> {
@@ -188,7 +187,10 @@ export async function openProject(options: ProjectOptions): Promise<Project> {
   await jobs.recover();
   const watcher = harness.observeCommits({
     advance: (pub) => {
-      if (isActivityCommit(pub)) currentActiveAt = Math.max(currentActiveAt, Date.now());
+      if (isActivityCommit(pub)) {
+        currentActiveAt = Math.max(currentActiveAt, Date.now());
+        options.changed?.();
+      }
       if (isBoardCommit(pub)) feed.invalidate();
       scheduler?.hear(pub);
     },
@@ -219,6 +221,7 @@ export async function openProject(options: ProjectOptions): Promise<Project> {
   });
   const dispatch = createDispatcher(harness, root, context);
   const project = new Project({
+    changed: options.changed,
     store,
     settings,
     feed,
