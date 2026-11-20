@@ -230,8 +230,6 @@ async function removeKey(): Promise<void> {
   await props.reloadView();
 }
 
-// ── Models ───────────────────────────────────────────────────────────────────
-
 function toggleModel(model: ModelDraft): void {
   const next = new Set(expanded.value);
   if (next.has(model.key)) next.delete(model.key);
@@ -260,8 +258,6 @@ function modelSummary(model: ModelDraft): string {
   if (model.image) parts.push(t("Images"));
   return parts.join(" · ");
 }
-
-// ── Fetching the endpoint's models ───────────────────────────────────────────
 
 const canProbe = computed(() => !builtIn.value && /^https?:\/\//i.test(draft.baseUrl.trim()));
 const have = computed(() => new Set(draft.models.map((m) => m.id.trim())));
@@ -315,8 +311,6 @@ function importPicked(): void {
   probed.value = undefined;
   showToast(t("Added {n} model; save to apply|Added {n} models; save to apply", { n: added }));
 }
-
-// ── Built-in data ────────────────────────────────────────────────────────────
 
 /** The model whose built-in data panel is open, by key; one at a time. */
 const refKey = ref<string>();

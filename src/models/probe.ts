@@ -7,7 +7,6 @@
 import type { FetchFunction, ModelAuth } from "@earendil-works/pi-ai";
 import { ProblemError } from "../contracts/index.ts";
 
-/** A catalog entry, with the fields models.json takes that it declared. */
 export type ProbedModel = {
   id: string;
   name?: string;
@@ -316,7 +315,6 @@ function declaredLimit(
   return limit;
 }
 
-/** The models a catalog lists, or undefined when it is not a catalog. */
 export function parseCatalog(json: unknown): ProbedModel[] | undefined {
   const list = Array.isArray(json)
     ? json

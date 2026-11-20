@@ -8,7 +8,6 @@ import MarkdownText from "../markdown/MarkdownText.vue";
 
 const props = withDefaults(
   defineProps<{
-    /** The thinking item this line presents. */
     item: Extract<TranscriptDisplayItem, { kind: "thinking" }>;
     /** The fold-memory id; persisted choices ride on it. */
     foldId?: string;

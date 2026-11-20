@@ -19,7 +19,6 @@ import { continuation, LIST_PAGE, pageList, pageText } from "./paging.ts";
 export const READ_TOOL = "read";
 export const RESOURCES_EXTENSION = "eevee.resources";
 
-/** One transcript line as `read transcript://` shows it. */
 export type TranscriptLine = { id: number; role: string; text: string };
 
 /** A page of `limit` entries' lines; entries with nothing to show have no line. */
@@ -32,7 +31,6 @@ export type TranscriptPage = {
 };
 
 export type TranscriptSource = {
-  /** One entry's full text. */
   entry(conversationId: number, entryId: number, context: Context): Promise<string | undefined>;
   /** Entries from entry `from` on, or the newest ones without it; undefined for an unknown conversation. */
   page(

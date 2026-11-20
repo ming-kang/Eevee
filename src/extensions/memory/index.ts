@@ -86,7 +86,6 @@ function sourceLabel(source: MemorySource): string {
   return source.ticketId === undefined ? name : `${name} ${source.ticketId}`;
 }
 
-/** Renders one change's edits as readable unified-style text. */
 function renderChange(detail: MemoryChangeDetail): string {
   const out: string[] = [];
   for (const file of detail.files) {

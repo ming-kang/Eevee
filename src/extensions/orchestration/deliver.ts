@@ -164,7 +164,6 @@ export async function pump(host: DeliveryContext, limit: number, context: Contex
       continue;
     }
     const busy = (await host.snapshot(LiveDoc, conversationOf(ticket), context))?.run !== undefined;
-    // A busy ticket, or a full set of slots, leaves the start queued for the next pass.
     if (busy || active >= limit) continue;
     const handle = await host.conversation(conversationOf(ticket), context);
     if (handle === undefined) {

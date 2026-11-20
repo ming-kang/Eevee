@@ -26,7 +26,6 @@ export function configIssue(error: unknown): ConfigIssue {
   return issue;
 }
 
-/** Validates a parsed config value; the error names the file and every failing path. */
 export function parseConfig<S extends Schema>(schema: S, value: unknown, file: string): Static<S> {
   const result = compile(schema).validate(value);
   if (result.ok) return result.value as Static<S>;

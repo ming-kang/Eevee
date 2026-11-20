@@ -94,7 +94,6 @@ export class JobHost implements BackgroundJobs {
     }
   }
 
-  /** Kills one running background job and waits for its log & durable state to settle. */
   async kill(id: JobId): Promise<boolean> {
     const tracked = this.#running.get(id);
     if (tracked === undefined || tracked.settling) return false;

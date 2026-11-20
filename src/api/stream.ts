@@ -74,7 +74,6 @@ const validateRequest = compile(StreamRequestSchema);
 
 const invalid = (field: string): ProblemError => new ProblemError({ code: "invalid", field });
 
-/** The request `value` describes, or a Problem naming what is missing or wrong. */
 export function parseStreamRequest(value: unknown): StreamRequest {
   const parsed = validateRequest.validate(value);
   if (!parsed.ok) {

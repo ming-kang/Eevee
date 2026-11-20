@@ -36,7 +36,6 @@ export type EngineOptions = {
 /** Provider ids go into URLs and `provider/model` references: no spaces, slashes or leading punctuation. */
 const PROVIDER_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-/** An mcp.json the Engine could not read or change, as a refusal naming what is wrong. */
 async function mcpProblem<T>(work: Promise<T>): Promise<T> {
   try {
     return await work;
@@ -57,7 +56,6 @@ async function mcpProblem<T>(work: Promise<T>): Promise<T> {
 /** A change to one role's capabilities; `maxTurns: null` goes back to Durable's default. */
 export type RoleCapabilityChange = { extensions?: readonly string[]; maxTurns?: number | null };
 
-/** Every project, and what they share: the settings, the models, the global memory and the shared extensions. */
 export class Engine {
   readonly bootId = crypto.randomUUID();
   readonly #options: EngineOptions;
@@ -99,8 +97,6 @@ export class Engine {
     return host.summary();
   }
 
-  // ── Models ─────────────────────────────────────────────────────────────────
-
   async catalog(): Promise<ModelsView> {
     return buildModelsView({
       models: this.#options.models.models(),
@@ -112,7 +108,6 @@ export class Engine {
     });
   }
 
-  /** The providers models.json configures, as written. */
   modelsConfig(): Promise<Record<string, ProviderConfig>> {
     return this.#options.models.providerConfigs();
   }
@@ -218,8 +213,6 @@ export class Engine {
     await this.#options.models.reload();
   }
 
-  // ── Capabilities ───────────────────────────────────────────────────────────
-
   capabilities(): CapabilitiesView {
     const shared = this.#requireShared();
     const settings = this.#options.settings.current;
@@ -274,7 +267,6 @@ export class Engine {
     return this.capabilities();
   }
 
-  /** mcp.json's server entries as written. */
   mcpConfig(): Promise<Record<string, unknown>> {
     return mcpProblem(this.#requireShared().mcpEntries());
   }
@@ -310,8 +302,6 @@ export class Engine {
     }
     return this.capabilities();
   }
-
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   /** Closes the shared extensions first, so no change of theirs reaches a project that is closing. */
   async close(): Promise<void> {

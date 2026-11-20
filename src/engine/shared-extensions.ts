@@ -10,7 +10,6 @@ import type { EeveePaths } from "../shared/paths.ts";
 export type SharedExtensionsOptions = {
   paths: EeveePaths;
   client: { name: string; version: string };
-  /** Called whenever the list of extensions or one of them changes. */
   onChange(): void;
   /** Opens an MCP server's transport; tests pass an in-memory one. */
   openMcp?: McpHubOptions["open"];
@@ -62,17 +61,14 @@ export class SharedExtensions {
     return this.#hub.problems();
   }
 
-  /** Reads mcp.json again and reconnects every server. */
   reloadMcp(): Promise<void> {
     return this.#hub.reload();
   }
 
-  /** mcp.json's server entries as written. */
   mcpEntries(): Promise<Record<string, unknown>> {
     return this.#hub.entries();
   }
 
-  /** Changes one server's entry in mcp.json, or removes it, and reconnects that server. */
   saveMcpServer(name: string, entry: Record<string, unknown> | undefined): Promise<void> {
     return this.#hub.save(name, entry);
   }

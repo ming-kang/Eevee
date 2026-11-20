@@ -47,7 +47,6 @@ const overrideFields = {
   headers: opt(Headers),
 };
 
-/** One model entry of a provider, as written. */
 export const ModelDefinitionSchema = obj({
   id: str({ minLength: 1 }),
   api: opt(str({ minLength: 1 })),
@@ -55,10 +54,8 @@ export const ModelDefinitionSchema = obj({
   ...overrideFields,
 });
 
-/** Changes to the fields of a model that already exists. */
 export const ModelOverrideSchema = obj(overrideFields);
 
-/** One provider entry, as written. */
 export const ProviderConfigSchema = obj({
   name: opt(str({ minLength: 1 })),
   baseUrl: opt(str({ minLength: 1 })),
@@ -70,7 +67,6 @@ export const ProviderConfigSchema = obj({
   modelOverrides: opt(map(ModelOverrideSchema)),
 });
 
-/** The whole file: the providers it adds or changes. */
 export const ModelsConfigSchema = obj({
   $schema: opt(str()),
   providers: opt(map(ProviderConfigSchema)),

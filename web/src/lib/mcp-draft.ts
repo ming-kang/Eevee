@@ -117,9 +117,7 @@ function parseLoose(text: string): unknown {
   for (const candidate of [text, `{${text}}`, `{${text.replace(/,\s*$/, "")}}`]) {
     try {
       return JSON.parse(candidate);
-    } catch {
-      // try the next way of reading it
-    }
+    } catch {}
   }
   return undefined;
 }

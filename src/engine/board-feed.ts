@@ -13,7 +13,6 @@ const BOARD_DOC_KINDS = new Set([
   WorkerQueue.definition.kind,
 ]);
 
-/** Whether a stored commit changed a document the board view is built from. */
 export function isBoardCommit(pub: CommitPublication): boolean {
   return pub.changes.some((c) => c.type === "document" && BOARD_DOC_KINDS.has(c.record.kind));
 }
@@ -59,7 +58,6 @@ export class BoardFeed {
     return (await this.#current()).view;
   }
 
-  /** Feeds `listener` the current board and its changes until the returned function is called. */
   subscribe(listener: BoardListener): () => void {
     const subscriber: Subscriber = { listener, last: undefined };
     this.#subscribers.add(subscriber);
@@ -105,7 +103,6 @@ export class BoardFeed {
     return this.#building;
   }
 
-  /** The one delivery path: brings every subscriber up to the current snapshot. */
   async #deliver(): Promise<void> {
     if (this.#subscribers.size === 0) return;
     let view: BoardView;

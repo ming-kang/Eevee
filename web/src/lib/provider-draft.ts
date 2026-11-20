@@ -109,7 +109,6 @@ export type ProviderDraft = {
   models: ModelDraft[];
 };
 
-/** A form value that cannot be written, and where. */
 export type DraftError =
   | { code: "model_id"; index: number }
   | { code: "duplicate_model"; id: string }
@@ -121,7 +120,6 @@ const newKey = () => `m${++nextKey}`;
 
 const text = (value: number | undefined) => (value === undefined ? "" : String(value));
 
-/** A model as the form holds it; `original` is the entry as written, when there is one. */
 export function toModelDraft(
   model: ProviderModelConfig | ProbedModelView,
   original?: ProviderModelConfig,
@@ -161,7 +159,6 @@ export function toDraft(config: ProviderConfigView | undefined): ProviderDraft {
   };
 }
 
-/** Puts `value` under `key`, or takes the key away when there is nothing to write. */
 function setOrDrop<T extends object, K extends keyof T>(
   target: T,
   key: K,
@@ -242,8 +239,6 @@ export function isProviderId(id: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id);
 }
 
-// ── Built-in data ────────────────────────────────────────────────────────────
-
 /** The model fields a built-in model can fill in. Its id, API and endpoint stay the model's own. */
 const REFERENCE_FIELDS = [
   "name",
@@ -265,7 +260,6 @@ type ReferenceChange = {
 
 const COST_FIELDS = ["input", "output", "cacheRead", "cacheWrite"] as const;
 
-/** How each field of `model` compares with the built-in `reference`. */
 export function referenceChanges(
   model: ModelDraft,
   reference: BuiltinModelView,

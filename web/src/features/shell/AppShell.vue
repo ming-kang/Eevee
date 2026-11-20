@@ -152,7 +152,6 @@ watch(
   },
 );
 
-// ——— Sash drags ———
 let dragSide: number | undefined;
 let dragRail: number | undefined;
 
@@ -257,7 +256,6 @@ function reclamp(): void {
 
 watch([() => props.withRail, () => props.sideCollapsed, scale], reclamp);
 
-// ——— Drawer swipe: a touch drag toward the edge dismisses the open drawer ———
 type DrawerDrag = {
   pointerId: number;
   which: "side" | "rail";

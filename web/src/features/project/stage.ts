@@ -18,7 +18,6 @@ export function stageText(stage: string): string {
   return `text-xs whitespace-nowrap ${STAGE_INK[stage] ?? "text-fg-subtle"}`;
 }
 
-/** The stage beside a Worker conversation's title. */
 export function stagePill(stage: string): string {
   return `inline-flex h-6 flex-none items-center gap-1.25 rounded-full px-2 text-(length:--ev-caption) font-medium [&_.glyph]:size-3.25 ${STAGE_FILL[stage] ?? "bg-(--ev-tray) text-fg-muted"}`;
 }

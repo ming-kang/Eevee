@@ -64,10 +64,8 @@ export const Parameters = obj({
   ),
 });
 
-/** What the model sent, as the schema reads it back. */
 export type TicketArgs = Static<typeof Parameters>;
 
-/** The model a command names, with the thinking level it asks for. */
 export type ModelRequest = {
   provider: string;
   modelId: string;
@@ -93,7 +91,6 @@ export type TicketCommand =
   | { action: "close"; ticketId: TicketId; note: string }
   | { action: "model"; ticketId: TicketId; model: ModelRequest; modelReason?: string };
 
-/** A command the arguments did describe, or why they did not. */
 export type Parsed<T> = { ok: true; value: T } | { ok: false; reason: string };
 
 /**
@@ -196,7 +193,6 @@ function optionalModel(args: TicketArgs): Parsed<ModelRequest | undefined> {
   };
 }
 
-/** The model the arguments must name: the provider and the model ID, with the thinking level when set. */
 function requiredModel(args: TicketArgs): Parsed<ModelRequest> {
   if (args.provider === undefined || args.modelId === undefined) {
     return { ok: false, reason: "model needs provider and modelId." };

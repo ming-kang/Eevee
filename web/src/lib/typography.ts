@@ -10,7 +10,6 @@ export const TEXT_SIZE = { min: 12, max: 20, default: 14 } as const;
 export const TEXT_SIZE_KEY = "eevee.textSize";
 export const FONT_KEY = "eevee.font";
 
-/** A size the reader typed or stored, or undefined when it is not a whole number in range. */
 export function readTextSize(value: string | null): number | undefined {
   if (value === null || !/^\s*\d+\s*$/.test(value)) return undefined;
   const size = Number(value);

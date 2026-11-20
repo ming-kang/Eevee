@@ -2,7 +2,7 @@
 
 Eevee is a proactive agent: a Router dispatches tickets, Workers execute them in the background, and lessons go into a Git-backed memory. It is built on [Pi Durable](https://github.com/earendil-works/pi/tree/main/packages/durable), and Node 26 runs the TypeScript sources directly.
 
-docs/design is the source of truth
+The code is the source of truth for behavior; `docs/design` records intent, trade-offs, and domain rules the code cannot express.
 
 ## Boundaries
 
@@ -13,6 +13,7 @@ docs/design is the source of truth
 
 - Use only erasable TypeScript syntax (`erasableSyntaxOnly`): no `enum`, `namespace`, or constructor parameter properties.
 - Code must run on both Windows and POSIX; take particular care with paths, shells, and processes.
+- Express intent through names, types, and module structure, not comments. Comment only what the code cannot say: why a non-obvious choice was made, a constraint or workaround from a platform or library, or an external format or protocol. Never restate what a signature or the next lines already show, and don't use comments as section dividers; split the file instead.
 
 ## Verification
 
@@ -23,7 +24,7 @@ docs/design is the source of truth
 
 ## Docs
 
-- `docs/design` describes the overall design at a high level; keep implementation details out of it.
+- `docs/design` describes the overall design at a high level. Keep out anything the code already states: tool parameters, field lists, schemas, config keys, function names, internal storage layout. Update it when a design decision changes, not when the code is refactored.
 - `CHANGELOG.md` lists under `## [Unreleased]` only user-visible changes relative to the last released version.
 
 ## Git

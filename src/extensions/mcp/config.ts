@@ -80,7 +80,6 @@ export async function loadMcpConfig(
   return { servers, problems };
 }
 
-/** One server entry checked, or what is wrong with it. */
 export function parseMcpEntry(name: string, raw: unknown): McpServerEntry | ConfigIssue {
   const result = validateMcpServerConfig(name, raw);
   if (result.kind === "invalid") return { code: "failed", detail: result.error };

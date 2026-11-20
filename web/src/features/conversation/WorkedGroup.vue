@@ -61,8 +61,6 @@ const counts = computed(() => activityLabel(props.item.activity));
 /** Closed shows the replies and dispatches; open shows the turn exactly as it ran. */
 const shown = computed(() => (open.value ? props.item.items : closedItems(props.item)));
 
-// ——— Worker turns: the files a folded turn changed ———
-
 const summary = computed(() => editSummary(props.item.items));
 const pathsOpen = ref(false);
 const root = ref<HTMLElement>();

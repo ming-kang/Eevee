@@ -40,7 +40,6 @@ export type ProjectStream = {
     query: Omit<EntryQuery, "conversationId">,
     limit: number,
   ): Promise<EntryRecord[]>;
-  /** Feeds `listener` the current board and each change, in order, until the returned function is called. */
   watchBoard(listener: BoardListener): () => void;
 };
 
@@ -55,7 +54,6 @@ const MAX_ENTRIES = 200;
 const HIGH_WATER = 1 << 20;
 const MAX_MESSAGE = 64 * 1024;
 
-/** Serves the realtime stream on `server`'s upgrades to `/api/stream`. */
 export function attachStream(server: Server, options: StreamOptions): { close(): Promise<void> } {
   const wss = new WebSocketServer({
     noServer: true,
@@ -88,7 +86,6 @@ export function attachStream(server: Server, options: StreamOptions): { close():
   };
 }
 
-/** Why an upgrade is refused, as a status line; undefined to accept it. */
 function refuse(request: IncomingMessage, auth: Auth): string | undefined {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   if (url.pathname !== STREAM_PATH) return "404 Not Found";

@@ -184,7 +184,6 @@ export function route(event: EngineEvent): Delivery[] {
   }
 }
 
-/** Whether a delivery carries the user's own words rather than something the Engine says. */
 export const fromUser = (delivery: Delivery): boolean => delivery.notice === undefined;
 
 const wake = (
@@ -214,7 +213,6 @@ const record = (target: Target, notice: WordedNotice, requestId: string): Delive
 /** Notices whose text the Engine writes; an opening or a Router message brings its own. */
 type WordedNotice = Exclude<Notice, { type: "opening" | "router-message" }>;
 
-/** How the model reads a notice. */
 function speak(notice: WordedNotice): string {
   switch (notice.type) {
     case "report":

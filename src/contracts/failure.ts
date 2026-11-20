@@ -64,7 +64,6 @@ export type RunSummary = {
   failure?: RunFailureView;
 };
 
-/** Sums up a conversation's `pi.live` document. */
 export function summarizeRun(live: Pick<LiveState, "run" | "runFailure"> | undefined): RunSummary {
   if (live?.run !== undefined) return { running: true };
   const failure = live?.runFailure;

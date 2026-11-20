@@ -1,6 +1,5 @@
 import type { TicketView } from "@shared/api/contract.ts";
 
-/** An "@…" mention in flight at the caret: where the "@" sits and what was typed after it. */
 export type MentionQuery = {
   start: number;
   query: string;

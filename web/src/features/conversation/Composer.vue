@@ -61,8 +61,6 @@ function autosize(): void {
   el.style.height = `${Math.min(220, el.scrollHeight)}px`;
 }
 
-// ——— @ticket mentions ———
-
 const mention = computed(() => mentionQuery(text.value, caret.value));
 const matches = computed(() =>
   mention.value === undefined ? [] : rankTickets(props.tickets, mention.value.query),
@@ -97,8 +95,6 @@ function insertMention(view: TicketView): void {
     textarea.value?.setSelectionRange(pos, pos);
   });
 }
-
-// ——— Inserted text (e.g. a quoted selection from the transcript) ———
 
 const bridge = useComposerInsert();
 

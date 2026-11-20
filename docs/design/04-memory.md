@@ -33,17 +33,7 @@
 
 执行对话只读不写：发现的经验写进报告的 `lessons`，由 Router 或 Dreaming 提炼。
 
-Router 通过 `memory` 工具：
-
-| 动作 | 参数 | 行为 |
-|:-:|:-:|:-:|
-| `edit` | `scope`、`file`、`old`、`new` | 文本替换 |
-| `create` | `scope`、`file`、`content` | 新建文件 |
-| `history` | `scope` | 列出近期变更：编号、时间、来源与摘要 |
-| `show` | `scope`、`change` | 查看一次变更改了哪些内容 |
-| `undo` | `scope`、`change` | 撤销一次变更，撤销本身也记为一次新变更 |
-
-`scope` 为 `global` 时只允许改动 `MEMORY.md`。
+Router 可以编辑、新建记忆文件，查看变更历史并撤销某次变更；撤销本身也记为一次新变更。全局记忆库只允许改动 `MEMORY.md`。
 
 **变更**（`change`）是记忆库的版本单位：一个对话一次运行里的全部编辑合成一次变更，用户在记忆库目录里的手动修改也各自记为变更。变更按时间递增编号，并记录来源（Router、Dreaming 或用户，及相关工单）。
 
