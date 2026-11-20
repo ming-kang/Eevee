@@ -27,7 +27,6 @@ import {
 
 export const TICKET_TOOL = "ticket";
 
-/** The command of one action, as its handler takes it. */
 type Command<A extends TicketCommand["action"]> = Extract<TicketCommand, { action: A }>;
 
 export function createTicketTool(deps: OrchestrationDeps) {
@@ -116,7 +115,6 @@ async function create(
   } satisfies TicketDetails & { conversationId: number });
 }
 
-/** The model a command asks for, checked against the ones this project has. */
 function resolveModel(request: ModelRequest, api: ToolExecutionApi): Parsed<ModelChoice> {
   if (api.models.getModel(request.provider, request.modelId) === undefined) {
     return {
@@ -239,7 +237,6 @@ async function retarget(
   );
 }
 
-/** Why a terminal transition could not be written, in the Router's words. */
 function settleRefusal(error: unknown, ticketId: TicketId): string {
   const code = problemOf(error).code;
   if (code === "ticket_closed") return `${ticketId} is already closed.`;

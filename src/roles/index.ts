@@ -44,7 +44,6 @@ export type RolesDeps = {
   project: { title: string; workspace: string };
   memory(): Promise<MemorySnapshot>;
   defaultModel(role: RoleName): ModelChoice | undefined;
-  /** Extensions the user enabled for a role on top of its own, by name. */
   enabled(role: RoleName): readonly string[];
   maxTurns(role: RoleName): number | undefined;
   /** The last rounds of a conversation as text, for the opening that continues it after a reset. */
@@ -54,7 +53,6 @@ export type RolesDeps = {
 };
 
 export function createRoles(deps: RolesDeps) {
-  /** The agent change applying `role`: its extensions and the enabled ones, its prompt, the model. */
   const agent = (role: RoleName, registry: RegistrySnapshot, model?: ModelChoice): AgentChange => {
     const capability = resolveCapability(registry, [
       ...ROLES[role].extensions,

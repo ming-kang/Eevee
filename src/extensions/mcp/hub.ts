@@ -45,7 +45,6 @@ export type McpHubOptions = {
   /** Where the full text of outputs cut to fit the model goes. */
   outputDir: string;
   client: { name: string; version: string };
-  /** Called whenever a server's extension or state changes. */
   onChange(): void;
   /** Opens a server's transport; tests pass an in-memory one. */
   open?(
@@ -91,7 +90,6 @@ export class McpHub {
     this.#options.onChange();
   }
 
-  /** The server entries of mcp.json as written. */
   entries(): Promise<Record<string, unknown>> {
     return this.#serial(() => readMcpEntries(this.#options.configPath));
   }

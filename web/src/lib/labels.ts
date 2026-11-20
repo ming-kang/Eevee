@@ -73,7 +73,6 @@ export function failureText(failure: RunFailureView): string {
   return describeRunFailure(failure, t);
 }
 
-/** Where a background job stands, or how it ended. */
 export function jobStatusText(job: JobOutcome): string {
   if (job.status === "running") return t("Running");
   if (job.status === "killed") return t("Stopped");

@@ -10,7 +10,6 @@ function unquotePath(raw: string): string {
   return trimmed;
 }
 
-/** The patch of one change, split into files, hunks and numbered lines. */
 export function parseDiff(raw: string): FileDiff[] {
   const files: FileDiff[] = [];
   let current: FileDiff | undefined;

@@ -159,7 +159,6 @@ export type ConfigIssue =
   | { code: "disconnected" }
   | { code: "failed"; detail: string };
 
-/** A ConfigIssue and where it is: the file, and the provider, server or path inside it. */
 export type ConfigProblem = ConfigIssue & { file: string; entry?: string };
 
 export function describeConfigIssue(issue: ConfigIssue, t: Translate = fill): string {

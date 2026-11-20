@@ -4,9 +4,9 @@
 
 | 角色 | 职责 | 基础能力 | Opening |
 |:-:|---|---|---|
-| `router` | 全局规划、工单协调、报告处理、验收与记忆 | `ticket`、`ask_user`、`read`、`memory`、`handoff`，以及为 Router 启用的扩展 | 记忆 + 项目概况 + 工单一览 + 交接信息 |
-| `worker` | 在 Ticket 目标内自主完成工作，管理自己的执行过程，并通过 Report 协同 | `read`、`write`、`edit`、`bash`、`report`，以及为 Worker 启用的扩展 | 记忆 + 工单 + 最新报告 |
-| `dreamer` | 内部记忆维护配置，不构成独立的产品角色 | `read`、`memory`、`report` 等维护能力 | 记忆 + 待整理记录 |
+| `router` | 全局规划、工单协调、报告处理、验收与记忆 | 管理工单、提问、读取、编辑记忆、交接重置；没有工作区写入与命令执行 | 记忆 + 项目概况 + 工单一览 + 交接信息 |
+| `worker` | 在 Ticket 目标内自主完成工作，管理自己的执行过程，并通过 Report 协同 | 读写文件、执行命令与后台作业、提交报告 | 记忆 + 工单 + 最新报告 |
+| `dreamer` | 内部记忆维护配置，不构成独立的产品角色 | 读取记录、整理记忆、提交报告 | 记忆 + 待整理记录 |
 
 Ticket 只写明做什么（目标、输入、验收标准），怎么做由 Worker 自己决定。
 
@@ -26,15 +26,13 @@ Extension 可以提供工具、提示词段落、Hook、包装器和后台任务
 
 1. **安装**：Engine 把 Extension 注册到 Registry。扩展使用Durable Extension API，MCP 服务可以由桥接 Extension 接入。
 2. **按角色启用**：已安装的 Extension 可为每种角色分别配置启用与否。
-3. **向模型呈现**：已启用 Extension 的工具可以直接提供，也可以通过 `deferred + tool_search` 或 `codemode` 按需暴露；`modelTools` 控制模型看到和调用工具的方式。
+3. **向模型呈现**：已启用 Extension 的工具可以直接提供，也可以按需暴露，避免工具过多挤占上下文。
 
 ## 4. 配置原则
 
 - **能力优先于缓存**：同一角色配置尽量保持稳定以复用缓存，但不为了缓存前缀而牺牲需要的能力。
-- **统一机制**：`resources`、`workspace`、`orchestration`、`memory` 与用户扩展都通过 Registry 安装，再由角色选择。
-- **角色只声明名称**：应用角色时从 Registry 解析 Extension 和工具，角色定义不持有扩展实例。
-
-角色应用最终映射为 Durable 的 `configure()`：选择 `extensions`，按需收窄 `tools` 或 `modelTools`，并设置 `instructions`、模型和工作目录。具体协同工具与事件流见 [03 工单与调度](03-orchestration.md)。
+- **统一机制**：Eevee 自己的能力与用户扩展走同一套安装与选择机制，没有特殊通道。
+- **角色只声明名称**：角色定义不持有扩展实例，应用时才解析，所以扩展可以独立安装、卸载。
 
 ## 5. 角色配置
 

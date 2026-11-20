@@ -144,7 +144,6 @@ export type Question = {
   withdrawnAt?: number;
 };
 
-/** Who made a change in a memory store: the Router, Dreaming, the user editing files by hand, or Eevee itself. */
 export type MemorySource = {
   kind: "router" | "dreaming" | "user" | "system";
   ticketId?: TicketId;

@@ -41,7 +41,6 @@ export type SchedulerDeps = {
   settings: () => Settings;
   models: () => Models;
   context: Context;
-  /** Names the project in log lines. */
   label: string;
   upkeepMs?: number;
   /** Dreaming's trigger check, run at the end of every upkeep. */
@@ -58,7 +57,6 @@ export type SchedulerDeps = {
  */
 export class Scheduler {
   readonly #deps: SchedulerDeps;
-  /** Settled tickets whose execution has not been stopped yet. */
   readonly #stopping = new Set<TicketId>();
   readonly #pass: SerialPass;
   readonly #timer: NodeJS.Timeout;
@@ -151,7 +149,6 @@ export class Scheduler {
     }
   }
 
-  /** Wakes the Router to hand off when it is idle and its context is over the threshold. */
   async #nudgeHandoff(host: DeliveryContext, threshold: number): Promise<void> {
     const { context, models, root } = this.#deps;
     if (!(await routerIdle(host, context))) return;
@@ -162,7 +159,6 @@ export class Scheduler {
   }
 }
 
-/** A settled ticket whose execution has not been stopped yet. */
 const unstopped = (ticket: Ticket): boolean =>
   ticket.status !== "open" && ticket.stoppedAt === undefined;
 

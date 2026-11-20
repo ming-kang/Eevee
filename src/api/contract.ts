@@ -42,11 +42,9 @@ export type TicketView = {
   ticket: Ticket;
   stage: TicketStage;
   reports: Report[];
-  /** Background jobs still running for it. */
   jobs: Job[];
 };
 
-/** Whether the Router runs, and how its last run failed unless it was interrupted or reset on purpose. */
 export type BoardRouterView = RunSummary;
 
 export type BoardView = {
@@ -67,7 +65,6 @@ export type ConversationView = {
   failure?: RunFailureView;
 };
 
-/** Spend, summed over one or more conversations. */
 export type UsageSummary = {
   input: number;
   output: number;
@@ -134,10 +131,8 @@ export type ModelProviderView = {
   modelCount: number;
 };
 
-/** A models.json provider entry, as written; the Engine checks it against the schema. */
 export type ProviderConfigView = ProviderConfig;
 
-/** One model entry of a provider, as written. */
 export type ProviderModelConfig = ModelDefinition;
 
 /**
@@ -322,7 +317,6 @@ export type ProblemBody = Problem & { message: string };
 
 export type ApiError = { error: ProblemBody };
 
-/** Memory scopes as they appear in paths. */
 export const MEMORY_SCOPES: readonly MemoryScope[] = ["project", "global"];
 
 export const TOKEN_HEADER = "x-eevee-token";

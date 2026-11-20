@@ -58,7 +58,6 @@ export type TicketGroups = {
   openCount: number;
 };
 
-/** Partition board tickets by stage — answer, review, blocked, in progress — plus the closed set, sorting within each group by stage order. */
 export function groupTickets(tickets: readonly TicketView[]): TicketGroups {
   const answer: TicketView[] = [];
   const review: TicketView[] = [];
@@ -98,7 +97,6 @@ export function groupTickets(tickets: readonly TicketView[]): TicketGroups {
   };
 }
 
-/** Single-line summary of the first unanswered question belonging to a ticket. */
 export function ticketQuestionSummary(
   ticketId: TicketId,
   questions: readonly Question[],
@@ -116,7 +114,6 @@ export type RunningJobItem = {
   stage: TicketStage;
 };
 
-/** Extract active background jobs from open tickets in board order. */
 export function collectRunningJobs(tickets: readonly TicketView[]): RunningJobItem[] {
   const result: RunningJobItem[] = [];
   for (const view of tickets) {
@@ -129,7 +126,6 @@ export function collectRunningJobs(tickets: readonly TicketView[]): RunningJobIt
   return result;
 }
 
-/** Count unanswered questions visible on the project board. */
 export function countPendingQuestions(board: Pick<BoardView, "openQuestions"> | undefined): number {
   if (!board) return 0;
   return board.openQuestions.filter((q) => q.answer === undefined).length;

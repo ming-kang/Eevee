@@ -41,7 +41,6 @@ export function switchModel(current: ModelChoice | undefined, spec: ModelSpecVie
   };
 }
 
-/** Models grouped by provider, kept to those whose `provider/modelId` or name holds the query. */
 export function groupModels(
   available: readonly ModelSpecView[],
   query: string,

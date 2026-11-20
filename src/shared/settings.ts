@@ -36,7 +36,6 @@ const DreamingSchema = obj({
   afterLessons: opt(int({ minimum: 1 })),
 });
 
-/** Dreaming's trigger policy, every field resolved. */
 export type DreamingSettings = Required<Static<typeof DreamingSchema>>;
 
 export const DEFAULT_DREAMING: DreamingSettings = {
@@ -142,6 +141,5 @@ export class SettingsStore {
   }
 }
 
-/** Extensions enabled for `role` in `settings`. */
 export const enabledExtensions = (settings: Settings, role: RoleName): readonly string[] =>
   settings.roles[role]?.extensions ?? [];

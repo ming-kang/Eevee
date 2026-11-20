@@ -13,7 +13,6 @@ import { FileCredentialStore } from "./auth-store.ts";
 import { type BuiltinModelRef, builtinCatalog } from "./builtin-catalog.ts";
 import { applyModelsConfig, composeProvider, loadModelsConfig } from "./models-config.ts";
 
-/** What a built-in provider looks like before models.json changes it. */
 export type BuiltinProvider = { name: string; baseUrl?: string };
 
 export type ModelRuntime = {
@@ -21,13 +20,10 @@ export type ModelRuntime = {
   credentials: FileCredentialStore;
   /** Providers successfully added or customized by models.json at the last load. */
   customProviders: () => ReadonlySet<string>;
-  /** The providers pi-ai brings, as they are before models.json. */
   builtinProviders: () => ReadonlyMap<string, BuiltinProvider>;
-  /** Every model pi-ai ships, as generated: the references a models.json entry can copy fields from. */
   builtinCatalog: () => readonly BuiltinModelRef[];
   /** Problems found in models.json at the last load; the affected providers keep their built-in form. */
   problems: () => readonly ConfigProblem[];
-  /** The providers models.json configures, as written. */
   providerConfigs(): Promise<Record<string, ProviderConfig>>;
   /**
    * models.json's single writer: replaces one provider's entry, or removes it (`undefined`), then reloads.
@@ -143,7 +139,6 @@ function describeBuiltin(provider: Provider): BuiltinProvider {
   return { name: provider.name, ...(baseUrl ? { baseUrl } : {}) };
 }
 
-/** A models.json that cannot be read or would not validate, as a refusal naming what is wrong. */
 function badConfig(error: unknown): ProblemError {
   if (error instanceof ProblemError) return error;
   const problems: ConfigProblem[] =

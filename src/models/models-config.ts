@@ -164,7 +164,6 @@ export function composeProvider(
   return provider;
 }
 
-/** A provider entry models.json gets wrong. */
 const issue = (provider: string, what: ConfigIssue): ConfigError =>
   new ConfigError([{ ...what, file: "models.json", entry: provider }]);
 

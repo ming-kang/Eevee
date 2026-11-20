@@ -102,8 +102,6 @@ const live = computed(() => {
   return last.kind === "bash" && last.status === "run";
 });
 
-// ——— The running clock: how long the current turn has been at it ———
-
 const nowMs = ref(Date.now());
 let firstSeenRunning = 0;
 let clockTimer: number | undefined;
@@ -153,8 +151,6 @@ function toLatest(): void {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
 }
-
-// ——— Conversation outline: one tick per thing the reader said ———
 
 const outline = computed(() => outlineEntries(displayItems.value));
 const tops = ref<number[]>([]);
@@ -217,8 +213,6 @@ function jumpTo(key: string): void {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   el.scrollTo({ top: Math.max(0, top), behavior: reduce ? "auto" : "smooth" });
 }
-
-// ——— Quote a selection into the composer ———
 
 const bridge = useComposerInsert();
 const quoteBtn = ref<{ left: number; top: number }>();

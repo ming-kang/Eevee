@@ -38,7 +38,6 @@ export type ServerOptions = {
 
 const MAX_BODY = 1024 * 1024;
 
-/** A route's body schema, compiled once at startup. */
 type BodyCheck = { schema: Schema; check: Validator<unknown> };
 
 export function createHttpServer(options: ServerOptions): Server {
@@ -169,7 +168,6 @@ function allowedAt(schema: Schema, path: string): readonly string[] | undefined 
     : undefined;
 }
 
-/** The sub-schema of `node` at `segment`: a property, an array's items, a record's values, or a union's branch. */
 function subSchema(
   node: Record<string, unknown>,
   segment: string,

@@ -1,5 +1,3 @@
-/** Parsing and formatting for the values settings forms hold as text. */
-
 /** One line of a string map being edited: a header, an environment variable. */
 export type KeyValueRow = { key: string; value: string };
 

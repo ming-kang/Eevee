@@ -34,7 +34,6 @@ import { recentLines } from "./transcript.ts";
 
 type Reader = DocReader;
 
-/** Every ticket with its stage, reports and running jobs, and the questions waiting for the user. */
 export async function boardView(
   reader: Reader,
   runningJobs: (ticketId: TicketId) => Job[],
@@ -67,7 +66,6 @@ export async function boardView(
   return { tickets, openQuestions, router };
 }
 
-/** The newest lines of a conversation, whether it runs, and how its last run failed, if it did. */
 export async function conversationView(
   reader: Reader,
   conversation: Conversation,
@@ -83,7 +81,6 @@ export async function conversationView(
   };
 }
 
-/** `pi.usage` of the session, of the Router, and of each ticket's conversation. */
 export async function usageView(harness: Harness, context: Context): Promise<UsageView> {
   const total = await harness.usage(context);
   const own = async (id: ConversationId) =>

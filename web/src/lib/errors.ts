@@ -14,7 +14,6 @@ export function problemText(problem: Problem): string {
   return describeProblem(problem, t);
 }
 
-/** What is wrong with a config file or something loaded from it, in the reader's words. */
 export function configIssueText(issue: ConfigIssue): string {
   return describeConfigIssue(issue, t);
 }

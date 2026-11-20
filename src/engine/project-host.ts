@@ -132,7 +132,6 @@ export class ProjectHost {
   readonly #feed: BoardFeed;
   readonly #jobLogPath: (id: JobId) => string;
   readonly #repos: Record<MemoryScope, MemoryRepo>;
-  /** Names of the shared extensions installed now. */
   #shared: Set<string>;
   #activeAt: number;
   #watcher: CommitObservation | undefined;
@@ -300,8 +299,6 @@ export class ProjectHost {
     return host;
   }
 
-  // ── Conversations ──────────────────────────────────────────────────────────
-
   async sendUserMessage(text: string): Promise<void> {
     await this.#dispatch({ type: "user-message", id: crypto.randomUUID(), text });
   }
@@ -421,7 +418,6 @@ export class ProjectHost {
     );
   }
 
-  /** The inbox's record of a submission, while it is still queued. */
   async #queuedItem(
     conversation: Conversation,
     submissionId: string,
@@ -444,7 +440,6 @@ export class ProjectHost {
     }
   }
 
-  /** Runs the Router's, or a ticket's, failed last turn again. */
   async retry(ticketId?: TicketId): Promise<void> {
     if (ticketId !== undefined) await this.#openTicket(ticketId);
     const conversation = await this.#conversationOf(ticketId);
@@ -478,8 +473,6 @@ export class ProjectHost {
     await this.#applyRoles();
     this.#scheduler?.request();
   }
-
-  // ── Views ──────────────────────────────────────────────────────────────────
 
   summary(): ProjectSummary {
     return { ...this.meta, activeAt: this.#activeAt };
@@ -539,8 +532,6 @@ export class ProjectHost {
     return [...page.items];
   }
 
-  // ── Memory ─────────────────────────────────────────────────────────────────
-
   memory(scope: MemoryScope): MemoryRepo {
     return this.#repos[scope];
   }
@@ -561,9 +552,6 @@ export class ProjectHost {
     return { path: rel, content };
   }
 
-  // ── Capabilities ───────────────────────────────────────────────────────────
-
-  /** Installs the shared extensions as they are now and applies every role again. */
   async refreshExtensions(): Promise<void> {
     this.#shared = installShared(this.#registry, this.#shared, this.#options.shared());
     await this.#applyRoles();
@@ -590,8 +578,6 @@ export class ProjectHost {
       }
     }, this.#context);
   }
-
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   /**
    * Stops hearing commits first, then waits for every background pass under way, so nothing they do reaches the
@@ -628,9 +614,6 @@ export class ProjectHost {
     await deliver(deliveryHost(this.#harness, this.#root), route(event), this.#context, change);
   }
 
-  // ── Dreaming ───────────────────────────────────────────────────────────────
-
-  /** The Scheduler's dream check; logs the ticket it opens. */
   async #dream(now: number): Promise<void> {
     const port: DreamingPort = {
       // Off while the dreamer has no model, so it never opens a ticket that cannot run.
@@ -695,7 +678,6 @@ export class ProjectHost {
     return ticket;
   }
 
-  /** The Router's conversation without `ticketId`, else the ticket's. */
   async #conversationOf(ticketId?: TicketId): Promise<Conversation> {
     if (ticketId === undefined) return this.#root;
     const ticket = await this.#harness.snapshot(TicketDoc, ticketId, this.#context);

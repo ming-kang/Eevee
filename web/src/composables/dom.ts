@@ -89,9 +89,7 @@ export const vSeg: Directive<HTMLElement> = {
 export type FollowEnd = {
   /** Whether the scroller still counts as following; writable to re-follow without a scroll. */
   following: boolean;
-  /** Jumps to the end while following. */
   toEnd(): void;
-  /** Stops listening. */
   detach(): void;
 };
 

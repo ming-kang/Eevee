@@ -359,7 +359,6 @@ const brain: FauxResponseFactory = (context) => {
     );
   }
 
-  // Worker / Dreamer turns
   const opening = textOf(messages.find((m) => m.role === "user" && textOf(m).includes("<ticket>")));
 
   if (opening.includes("Build the paper template and directory structure")) {
@@ -532,7 +531,6 @@ const engine = await Engine.open({
   openMcp: () => fakeMcpServer([weatherTool]).client,
 });
 
-// Seed global memory
 const globalRepo = new MemoryRepo(paths.globalMemory);
 await globalRepo.ensure("# Global memory\n");
 await globalRepo.edit(
@@ -543,7 +541,6 @@ await globalRepo.edit(
 );
 await globalRepo.commitRound("seed-global", { kind: "router" });
 
-// Create Project 1: optics
 const ws1 = join(home, "workspaces", "optics");
 await mkdir(join(ws1, "chapters"), { recursive: true });
 await mkdir(join(ws1, "sim"), { recursive: true });

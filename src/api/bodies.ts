@@ -28,7 +28,6 @@ import type { ProviderConfigView, RouteBody, RouteKey } from "./contract.ts";
 const body = <P extends Properties>(properties: P): Schema<StaticObject<P>> =>
   obj(properties, { open: true });
 
-/** A model choice, with the thinking level when it is set. */
 const modelFields = {
   provider: str(),
   modelId: str(),
@@ -38,7 +37,6 @@ const modelFields = {
 /** A role a model setting names: one of the roles, or `default` for the settings' own. */
 const roleField = opt(oneOf([...ROLE_NAMES, "default"] as const));
 
-/** The body of every route that takes one, keyed as in the route table. */
 const schemas = {
   "POST /api/session": body({ code: str() }),
   "POST /api/settings/models": body({ role: roleField, ...modelFields }),
@@ -86,10 +84,8 @@ const schemas = {
  */
 export const ROUTE_BODIES: { [K in BodyRouteKey]: (typeof schemas)[K] } = schemas;
 
-/** Every route that takes a body, keyed as in the route table. */
 export type BodyRouteKey = {
   [K in RouteKey]: RouteBody<K> extends undefined ? never : K;
 }[RouteKey];
 
-/** One route's body schema, as the route table derives its type from it. */
 export type BodySchema<K extends BodyRouteKey> = (typeof schemas)[K];

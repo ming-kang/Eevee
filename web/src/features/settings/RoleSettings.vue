@@ -92,7 +92,6 @@ type ExtRow = {
   /** The second line; an uninstalled or failed entry carries `error` in bad ink as well. */
   detail?: string;
   error?: string;
-  /** A failed server's dot beside the label. */
   dot?: boolean;
 };
 

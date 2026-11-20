@@ -16,17 +16,12 @@ import { formatAddress, type Ticket, type TicketId } from "../../contracts/index
 
 /** Dreaming's trigger policy; the settings' resolved `dreaming` object carries it. */
 export type DreamPolicy = {
-  /** How long the project must be idle before dreaming may run. */
   idleMs: number;
-  /** Least time between two dreamings. */
   minGapMs: number;
-  /** Closed tickets since the last dreaming that make it due. */
   afterTickets: number;
-  /** Lessons in reports since the last dreaming that make it due. */
   afterLessons: number;
 };
 
-/** What Dreaming needs from outside the memory module. */
 export type DreamingPort = {
   /** The current policy; `undefined` while Dreaming is off or the dreamer has no model. */
   policy(): DreamPolicy | undefined;
@@ -34,7 +29,6 @@ export type DreamingPort = {
   idleSince(context: Context): Promise<number | undefined>;
   /** A conversation's entries, for listing the records a dreaming has not seen. */
   contextOf(id: ConversationId, context: Context): Promise<{ entries: readonly EntryRecord[] }>;
-  /** Opens the dreamer ticket in `tx`. */
   open(tx: Tx, draft: DreamDraft, now: number, context: Context): Promise<TicketId>;
 };
 
@@ -46,7 +40,6 @@ export type DreamDraft = {
 };
 
 export type DreamLogState = {
-  /** When the last dreaming ticket was opened. */
   lastAt: number | null;
   ticket: TicketId | null;
   /** Conversation → newest entry already handed to a dreaming ticket. */
@@ -109,7 +102,6 @@ export async function dreamIfDue(
   }, context);
 }
 
-/** Whether `log.ticket` still names an open dreamer ticket. */
 async function dreaming(reader: Reader, ticket: TicketId, context: Context): Promise<boolean> {
   return (await reader.snapshot(TicketDoc, ticket, context))?.status === "open";
 }
@@ -124,7 +116,6 @@ async function nonDreamerTickets(reader: Reader, context: Context): Promise<Tick
   return tickets;
 }
 
-/** Lessons reported on `tickets` since `since`, over every report they carry. */
 async function lessonsSince(
   reader: Reader,
   tickets: readonly Ticket[],
@@ -144,7 +135,6 @@ type ContextOf = (id: ConversationId) => Promise<{ entries: readonly EntryRecord
 /** Someone said something: notices, tool results and resets alone are no new record. */
 const spoken = (entry: EntryRecord) => UserEntry.is(entry) || AssistantEntry.is(entry);
 
-/** Conversations with entries the last dreaming did not see, and tickets closed since. */
 async function newRecords(
   reader: Reader,
   log: DreamLogState,

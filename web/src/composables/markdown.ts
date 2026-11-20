@@ -280,7 +280,6 @@ function words(text: string, refs: boolean): Inline[] {
   return out;
 }
 
-/** Appends inlines, merging neighbouring text and dropping empty text. */
 function push(out: Inline[], items: readonly Inline[]): void {
   for (const item of items) {
     if (item.type !== "text") {

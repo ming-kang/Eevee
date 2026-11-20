@@ -8,7 +8,6 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { getBuiltinModels, getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 
-/** One built-in model, with the fields a models.json entry can take from it. */
 export type BuiltinModelRef = {
   provider: string;
   id: string;
@@ -25,14 +24,12 @@ export type BuiltinModelRef = {
 
 export const MAX_MATCHES = 8;
 
-/** Every chat model pi-ai ships, as generated. */
 export function builtinCatalog(): BuiltinModelRef[] {
   return getBuiltinProviders().flatMap((provider) =>
     getBuiltinModels(provider).map((model) => refOf(provider, model)),
   );
 }
 
-/** A catalog model as a reference: what a models.json entry can copy, and whether its prices have tiers. */
 export function refOf(provider: string, model: Model<Api>): BuiltinModelRef {
   const { input, output, cacheRead, cacheWrite, tiers } = model.cost;
   return {
@@ -58,7 +55,6 @@ export function normalizeId(id: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** The built-in models closest to `query`, best first, at most `max`. */
 export function matchBuiltinModels(
   catalog: readonly BuiltinModelRef[],
   query: string,

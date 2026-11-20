@@ -1,6 +1,5 @@
 import type { Job, JobId, QuestionId, Report, TicketId } from "./domain.ts";
 
-/** How a background job ended. */
 export type JobOutcome = Pick<Job, "status" | "exitCode" | "error">;
 
 /**
@@ -44,5 +43,4 @@ export type TicketDetails = { ticketId: TicketId };
 /** `details` of an `ask_user` result. */
 export type AskDetails = { questionId: QuestionId };
 
-/** `details` of a `bash` result: its exit code, the job it became, or that it was stopped. */
 export type BashDetails = { exitCode?: number; jobId?: JobId; stopped?: true };

@@ -30,49 +30,10 @@
 
 系统内部还有 `dreamer` 执行配置，用于记忆整理工单；具体职责与 Extension 配置见 [02 角色与能力](02-roles.md)。
 
-## 3. 逻辑数据模型
+## 3. 状态
 
-核心字段如下（省略时间戳等元数据）：
-
-```ts
-type Ticket = {
-  id: TicketId;               // t1, t2, …
-  title: string;
-  goal: string;
-  inputs: string[];           // 文件路径或资源地址
-  acceptance: string[];       // 验收标准
-  output?: string;            // 产物位置
-  deliverTo: TicketId[];      // 验收后把结果投给这些工单
-  model?: ModelChoice;        // 缺省用角色默认模型
-  conversationId: number;     // 对应的 Worker 对话
-  status: "open" | "done" | "cancelled";
-  closeNote?: string;         // 验收证据或取消原因
-};
-
-type Report = {
-  ticketId: TicketId;
-  seq: number;                // 工单内递增，report://t12#3
-  status: "progress" | "waiting" | "ready" | "blocked" | "failed" | "dropped";
-  summary: string;            // 投给 Router 的摘要
-  detail?: string;            // 完整内容，按需 read
-  artifacts: { path: string; note: string }[];
-  need?: string;              // waiting 时缺什么
-  questions?: QuestionItem[]; // 要用户决定的问题
-  lessons?: string[];         // 值得记住的经验
-  handled: boolean;           // Router 是否已处理
-};
-
-type Question = {
-  id: QuestionId;             // q1, q2, …
-  ticketId?: TicketId;        // 缺省属于 Router
-  items: QuestionItem[];      // { text, options, recommended? }
-  answer?: string;
-};
-```
-
-这些状态存在项目的 `session.sqlite` 里：`Board`（编号分配、工单列表、未回答的问题）是 session 级文档；工单、报告记录、问题按编号存成文档族；每个 Worker 对话另有一份绑定文档，记录它属于哪张工单。
-
-工单存放三种状态；界面上的“工作中 / 待验收 / 受阻”等阶段由最新报告和运行情况推导，不另外存储（见 [03 工单与调度](03-orchestration.md)）。
+- 工单只有 `open` / `done` / `cancelled` 三种状态；界面上的“工作中 / 待验收 / 受阻”等阶段由最新报告和运行情况推导，不另外存储（见 [03 工单与调度](03-orchestration.md)）。
+- 工单可以声明把验收后的结果交给哪些工单；报告和问题都归属于某张工单或 Router。
 
 ## 4. 数据归属
 

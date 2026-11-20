@@ -198,7 +198,6 @@ export class MemoryRepo {
     });
   }
 
-  /** One change with the full text of its edits. */
   show(id: number): Promise<MemoryChangeDetail> {
     return this.#serial(async () => {
       await this.#saveUserEdits();
@@ -358,7 +357,6 @@ export class MemoryRepo {
     });
   }
 
-  /** One raw version's parsed edits: files, statuses, counts and hunks. */
   #fileDiffs(hash: string): Promise<MemoryChangeDetail["files"]> {
     return this.#git("show", "--format=", "--no-color", "--patch", hash).then(parseDiff);
   }
@@ -387,7 +385,6 @@ export class MemoryRepo {
     return changed;
   }
 
-  /** The files that differ from the latest change, with whether each was added, modified or deleted. */
   async #changedFiles(): Promise<StatusEntry[]> {
     const out = await this.#git("status", "--porcelain=v1", "-z", "--untracked-files=all");
     const fields = out.split("\0").filter((field) => field !== "");
