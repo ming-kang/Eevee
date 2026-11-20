@@ -435,6 +435,65 @@ test("apply validates the entire batch before writing any files or capturing han
   assert.equal(await store.read("x"), undefined);
 });
 
+test("apply rolls back every file when committing fails, preserves hand edits and permits retry", async (t) => {
+  const { dir, store } = await isolated(t);
+  await store.apply(
+    [
+      { action: "create", file: "delete.md", content: "keep until approval" },
+      { action: "create", file: "rename.md", content: "original name" },
+    ],
+    { kind: "user" },
+  );
+  await writeFile(join(dir, "hand.md"), "user advice");
+  let actions: MemoryOp[] = [];
+  for (const op of [
+    { action: "write", file: "MEMORY.md", content: "agent advice" },
+    { action: "create", file: "new.md", content: "new advice" },
+    { action: "delete", file: "delete.md" },
+    { action: "rename", from: "rename.md", to: "moved.md" },
+  ] satisfies MemoryOp[])
+    actions = await store.extend(actions, op);
+  const failure = new Error("Cannot commit memory");
+  const original = GitStore.prototype.commit;
+  const commit = t.mock.method(
+    GitStore.prototype,
+    "commit",
+    async function (this: GitStore, ...args: Parameters<GitStore["commit"]>) {
+      if (args[1].trailers["Eevee-Source"] === "router") throw failure;
+      return original.apply(this, args);
+    },
+  );
+  await assert.rejects(
+    store.apply(actions, { kind: "router" }, "Advice", "p1:m1"),
+    (error) => error === failure,
+  );
+  assert.equal(await store.read("MEMORY.md"), "alpha\nbeta\n");
+  assert.equal(await store.read("new.md"), undefined);
+  assert.equal(await store.read("delete.md"), "keep until approval");
+  assert.equal(await store.read("rename.md"), "original name");
+  assert.equal(await store.read("moved.md"), undefined);
+  assert.equal(await store.read("hand.md"), "user advice");
+  assert.equal(await store.captureUserEdits(), undefined);
+  assert.equal(await store.requestChange("p1:m1"), undefined);
+  const history = await store.history();
+  assert.equal(history.length, 3);
+  assert.deepEqual(history[0]?.source, { kind: "user" });
+  assert.deepEqual(
+    history[0]?.files.map((file) => file.path),
+    ["hand.md"],
+  );
+  commit.mock.restore();
+  const saved = await store.apply(actions, { kind: "router" }, "Advice", "p1:m1");
+  assert.ok(saved);
+  assert.deepEqual(saved.source, { kind: "router" });
+  assert.equal(saved.id, 4);
+  assert.equal(await store.read("MEMORY.md"), "agent advice");
+  assert.equal(await store.read("new.md"), "new advice");
+  assert.equal(await store.read("delete.md"), undefined);
+  assert.equal(await store.read("rename.md"), undefined);
+  assert.equal(await store.read("moved.md"), "original name");
+});
+
 test("create, edit, write, delete and rename compose and can be undone", async (t) => {
   const { store } = await isolated(t);
   const created = await store.apply(
