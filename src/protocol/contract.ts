@@ -90,15 +90,27 @@ function route<R>() {
     const K extends string,
     const P extends Record<string, Param>,
     B extends Schema | undefined,
+    const Q extends Record<string, Schema<string>> = Record<never, never>,
   >(
     key: K,
     params: P,
     body: B,
     status = 200,
     isPublic = false,
+    query?: Q,
   ) => {
     const [method, path] = key.split(" ") as [string, string];
-    return { key, method, path, params, body, status, public: isPublic, response: undefined as R };
+    return {
+      key,
+      method,
+      path,
+      params,
+      body,
+      status,
+      public: isPublic,
+      query,
+      response: undefined as R,
+    };
   };
 }
 
@@ -231,6 +243,24 @@ export const ROUTES = [
     { ...project, ...file },
     undefined,
   ),
+  route<MemoryChange | MemoryFileView>()(
+    "PUT /api/projects/:project/memory/files/:file",
+    { ...project, ...file },
+    body({ content: str(), version: opt(str()) }),
+  ),
+  route<MemoryChange>()(
+    "DELETE /api/projects/:project/memory/files/:file",
+    { ...project, ...file },
+    undefined,
+    200,
+    false,
+    { version: str() },
+  ),
+  route<MemoryChange>()(
+    "POST /api/projects/:project/memory/files/:file/rename",
+    { ...project, ...file },
+    body({ to: str({ minLength: 1 }), version: opt(str()) }),
+  ),
   route<{ changes: MemoryChange[] }>()(
     "GET /api/projects/:project/memory/changes",
     project,
@@ -248,6 +278,19 @@ export const ROUTES = [
   ),
   route<{ files: MemoryFileEntry[] }>()("GET /api/memory/files", {}, undefined),
   route<MemoryFileView>()("GET /api/memory/files/:file", file, undefined),
+  route<MemoryChange | MemoryFileView>()(
+    "PUT /api/memory/files/:file",
+    file,
+    body({ content: str(), version: opt(str()) }),
+  ),
+  route<MemoryChange>()("DELETE /api/memory/files/:file", file, undefined, 200, false, {
+    version: str(),
+  }),
+  route<MemoryChange>()(
+    "POST /api/memory/files/:file/rename",
+    file,
+    body({ to: str({ minLength: 1 }), version: opt(str()) }),
+  ),
   route<{ changes: MemoryChange[] }>()("GET /api/memory/changes", {}, undefined),
   route<MemoryChangeDetail>()("GET /api/memory/changes/:change", change, undefined),
   route<MemoryChange>()("POST /api/memory/changes/:change/undo", change, undefined),
@@ -263,4 +306,13 @@ export type RouteResponse<K extends RouteKey> = ApiRoutes[K]["response"];
 export type RouteParams<K extends RouteKey> = {
   [P in keyof ApiRoutes[K]["params"]]: ApiRoutes[K]["params"][P] extends Param<infer T> ? T : never;
 };
-export type ClientParams<K extends RouteKey> = { [P in keyof RouteParams<K>]: string | number };
+export type RouteQuery<K extends RouteKey> = {
+  [P in keyof NonNullable<ApiRoutes[K]["query"]>]?: NonNullable<
+    ApiRoutes[K]["query"]
+  >[P] extends Schema<infer T>
+    ? T
+    : never;
+};
+export type ClientParams<K extends RouteKey> = { [P in keyof RouteParams<K>]: string | number } & {
+  query?: RouteQuery<K>;
+};

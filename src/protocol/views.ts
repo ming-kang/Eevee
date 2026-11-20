@@ -87,6 +87,7 @@ export type MemoryFileEntry = {
 export type MemoryFileView = {
   path: string;
   content: string;
+  version: string;
 };
 
 export type JobLogView = {

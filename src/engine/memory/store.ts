@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { lstat, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -12,12 +13,17 @@ import { isNotFound, readText, writeFileAtomic } from "../../shared/fs.ts";
 import { resolveInside } from "../../shared/paths.ts";
 import { type GitChange, GitStore } from "./git.ts";
 
-export type MemoryOp =
+export type MemoryOp = (
   | { action: "create"; file: string; content: string }
   | { action: "edit"; file: string; oldText: string; newText: string }
   | { action: "write"; file: string; content: string }
   | { action: "delete"; file: string }
-  | { action: "rename"; from: string; to: string };
+  | { action: "rename"; from: string; to: string }
+) & { version?: string };
+
+export function memoryVersion(content: string | undefined): string {
+  return content === undefined ? "" : createHash("sha256").update(content).digest("hex");
+}
 export type MemoryFileInfo = { path: string; size: number };
 export type MemoryPolicy = "project" | "global";
 
@@ -67,11 +73,11 @@ export class MemoryStore {
     return this.#serial(() => this.#read(file));
   }
 
-  file(file: string): Promise<{ path: string; content: string }> {
+  file(file: string): Promise<{ path: string; content: string; version: string }> {
     return this.#serial(async () => {
       const content = await this.#read(file);
       if (content === undefined) throw new ProblemError({ code: "no_memory_file", file });
-      return { path: await this.#path(file), content };
+      return { path: await this.#path(file), content, version: memoryVersion(content) };
     });
   }
 
@@ -215,7 +221,7 @@ export class MemoryStore {
     const before = new Map<string, string | undefined>();
     const after = new Map<string, string | undefined>();
     const get = async (file: string) => {
-      const path = await this.#path(file);
+      const path = await this.#path(file, true);
       for (const [other, content] of after) {
         if (content !== undefined && (path.startsWith(`${other}/`) || other.startsWith(`${path}/`)))
           throw new MemoryConflict(file, `A file conflicts with a directory in ${file}.`, "");
@@ -228,12 +234,18 @@ export class MemoryStore {
       return { path, current: after.get(path) };
     };
     for (const op of ops) {
+      if (
+        this.#policy === "global" &&
+        (op.action === "create" || op.action === "delete" || op.action === "rename")
+      )
+        throw new ProblemError({ code: "memory_restricted" });
       if (op.action === "rename") {
         const from = await get(op.from);
+        this.#checkVersion(op.from, from.current, op.version);
         const to = await get(op.to);
         if (from.current === undefined)
           throw new MemoryConflict(op.from, `${op.from} does not exist.`, "");
-        if (from.path === to.path) continue;
+        if (from.path === to.path) throw new ProblemError({ code: "invalid", field: "to" });
         if (to.current !== undefined)
           throw new MemoryConflict(op.to, `${op.to} already exists.`, to.current);
         after.set(from.path, undefined);
@@ -241,6 +253,9 @@ export class MemoryStore {
         continue;
       }
       const { path, current } = await get(op.file);
+      this.#checkVersion(op.file, current, op.version);
+      if (this.#policy === "global" && current === undefined)
+        throw new ProblemError({ code: "memory_restricted" });
       if (op.action === "create" && current !== undefined)
         throw new MemoryConflict(
           op.file,
@@ -274,7 +289,12 @@ export class MemoryStore {
     return { before, after };
   }
 
-  async #path(file: string): Promise<string> {
+  #checkVersion(file: string, content: string | undefined, version: string | undefined): void {
+    if (version !== undefined && memoryVersion(content) !== version)
+      throw new ProblemError({ code: "memory_changed", file });
+  }
+
+  async #path(file: string, mutation = false): Promise<string> {
     const input = file.replaceAll("\\", "/");
     const fail = () =>
       new MemoryConflict(
@@ -297,8 +317,10 @@ export class MemoryStore {
       throw fail();
     }
     const path = relative(this.dir, full).replaceAll("\\", "/");
-    if (this.#policy === "global" && path !== "MEMORY.md")
+    if (this.#policy === "global" && path !== "MEMORY.md") {
+      if (mutation) throw new ProblemError({ code: "memory_restricted" });
       throw new MemoryConflict(file, "The global memory store has only one file, MEMORY.md.", "");
+    }
     let parent = this.dir;
     for (const part of path.split("/")) {
       parent = join(parent, part);

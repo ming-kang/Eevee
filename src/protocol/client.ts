@@ -49,7 +49,13 @@ export function createClient(options: ClientOptions) {
         throw new Error(`The request is missing the ${name} path parameter.`);
       return encodeURIComponent(String(value));
     });
-    const response = await doFetch(new URL(path, options.baseUrl), {
+    const url = new URL(path, options.baseUrl);
+    const query = (params as { query?: Record<string, string> }).query;
+    for (const name of Object.keys(definition.query ?? {})) {
+      const value = query?.[name];
+      if (value !== undefined) url.searchParams.set(name, value);
+    }
+    const response = await doFetch(url, {
       method,
       headers: {
         ...(body === undefined ? {} : { "content-type": "application/json" }),

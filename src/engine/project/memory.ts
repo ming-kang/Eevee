@@ -1,5 +1,6 @@
 import type { MemoryScope } from "../../domain/index.ts";
 import type { MemoryFileView } from "../../protocol/contract.ts";
+import { deleteMemoryFile, putMemoryFile, renameMemoryFile } from "../memory/edit.ts";
 import type { MemoryStore } from "../memory/store.ts";
 
 export const INITIAL_GLOBAL_MEMORY =
@@ -22,6 +23,18 @@ export class Memory {
 
   history(scope: MemoryScope) {
     return this.#repos[scope].history();
+  }
+
+  put(scope: MemoryScope, file: string, content: string, version?: string) {
+    return putMemoryFile(this.#repos[scope], file, content, version);
+  }
+
+  delete(scope: MemoryScope, file: string, version?: string) {
+    return deleteMemoryFile(this.#repos[scope], file, version);
+  }
+
+  rename(scope: MemoryScope, file: string, to: string, version?: string) {
+    return renameMemoryFile(this.#repos[scope], file, to, version);
   }
 
   show(scope: MemoryScope, change: number) {
