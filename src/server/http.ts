@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createServer, type Server } from "node:http";
 import { extname, join } from "node:path";
 import { compile, type Schema, type Validator } from "@earendil-works/pi-schema";
+import { getRequestListener, type HttpBindings } from "@hono/node-server";
+import { type Context, Hono, type MiddlewareHandler } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { ROUTE_BODIES } from "../api/bodies.ts";
 import {
   type ApiError,
@@ -35,79 +38,68 @@ export type ServerOptions = {
 
 const MAX_BODY = 1024 * 1024;
 
-type CompiledRoute = {
-  method: string;
-  pattern: RegExp;
-  names: string[];
-  key: RouteKey;
-  definition: RouteDefinition<RouteKey>;
-  body: BodyCheck | undefined;
-};
-
 /** A route's body schema, compiled once at startup. */
 type BodyCheck = { schema: Schema; check: Validator<unknown> };
 
 export function createHttpServer(options: ServerOptions): Server {
+  return createServer(getRequestListener(createApp(options).fetch));
+}
+
+type Env = { Bindings: HttpBindings };
+
+/** The HTTP interface: loopback only, token-guarded routes with schema-checked bodies, and the built panel. */
+export function createApp(options: ServerOptions): Hono<Env> {
   const bodies = new Map<string, BodyCheck>(
     Object.entries(ROUTE_BODIES).map(([key, schema]) => [key, { schema, check: compile(schema) }]),
   );
-  const compiled: CompiledRoute[] = Object.entries(options.routes).map(([key, definition]) => {
-    const [method, template] = key.split(" ") as [string, string];
-    const names: string[] = [];
-    const pattern = new RegExp(
-      `^${template.replace(/:([a-z]+)/g, (_, name: string) => {
-        names.push(name);
-        return "([^/]+)";
-      })}$`,
-    );
-    const routeKey = key as RouteKey;
-    return {
-      method,
-      pattern,
-      names,
-      key: routeKey,
-      definition: definition as RouteDefinition<RouteKey>,
-      body: bodies.get(routeKey),
-    };
+  const app = new Hono<Env>();
+  app.onError((error) => problemResponse(error));
+  app.notFound((c) =>
+    problemResponse(new ProblemError({ code: "no_route", method: c.req.method, path: c.req.path })),
+  );
+
+  app.use(async (c, next) => {
+    if (!isLoopbackRequest(c.env.incoming)) throw new ProblemError({ code: "forbidden_host" });
+    await next();
   });
 
-  return createServer(async (request, response) => {
-    try {
-      if (!isLoopbackRequest(request)) throw new ProblemError({ code: "forbidden_host" });
-      const url = new URL(request.url ?? "/", "http://127.0.0.1");
-      if (url.pathname === "/" || url.pathname.startsWith("/ui")) {
-        return await serveUi(options.uiDir, url.pathname, response);
-      }
-      const route = compiled.find(
-        (r) => r.method === request.method && r.pattern.test(url.pathname),
-      );
-      if (route === undefined) {
-        throw new ProblemError({
-          code: "no_route",
-          method: request.method ?? "",
-          path: url.pathname,
-        });
-      }
+  const ui = (c: Context<Env>) => serveUi(options.uiDir, new URL(c.req.url).pathname);
+  app.all("/", ui);
+  app.all("/ui", ui);
+  app.all("/ui/*", ui);
 
-      if (!route.definition.public && !options.auth.verify(header(request, TOKEN_HEADER))) {
+  const limit = bodyLimit({
+    maxSize: MAX_BODY,
+    onError: () => {
+      throw new ProblemError({ code: "too_large" });
+    },
+  });
+  for (const [key, definition] of Object.entries(options.routes)) {
+    const [method, path] = key.split(" ") as [string, string];
+    const route = definition as RouteDefinition<RouteKey>;
+    const body = bodies.get(key);
+    const guard: MiddlewareHandler<Env> = async (c, next) => {
+      if (!route.public && !options.auth.verify(c.req.header(TOKEN_HEADER))) {
         throw new ProblemError({ code: "unauthorized" });
       }
-      const match = route.pattern.exec(url.pathname) ?? [];
-      const params = Object.fromEntries(
-        route.names.map((name, i) => [name, decodeURIComponent(match[i + 1] ?? "")]),
-      );
-      const body = parseBody(route.body, await readBody(request));
+      await next();
+    };
+    app.on(method, path, guard, limit, async (c) => {
+      const value = parseBody(body, await readBody(c));
       // The route's own schema has checked the body; only the erased route type is left to cast.
-      const result = await route.definition.handle({ params, body } as RouteContext<RouteKey>);
-      sendJson(response, 200, result);
-    } catch (error) {
-      const problem = problemOf(error);
-      if (problem.code === "internal") console.error(error);
-      const message = error instanceof Error ? error.message : String(error);
-      const payload: ApiError = { error: { ...problem, message } };
-      sendJson(response, STATUS[problem.code], payload);
-    }
-  });
+      const context = { params: c.req.param(), body: value } as RouteContext<RouteKey>;
+      return json(200, await route.handle(context));
+    });
+  }
+  return app;
+}
+
+function problemResponse(error: unknown): Response {
+  const problem = problemOf(error);
+  if (problem.code === "internal") console.error(error);
+  const message = error instanceof Error ? error.message : String(error);
+  const payload: ApiError = { error: { ...problem, message } };
+  return json(STATUS[problem.code], payload);
 }
 
 /** The status each problem answers with; a new code has to pick one here. */
@@ -205,18 +197,12 @@ function subSchema(
   return undefined;
 }
 
-async function readBody(request: IncomingMessage): Promise<unknown> {
-  if (request.method === "GET" || request.method === "HEAD") return undefined;
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    size += (chunk as Buffer).length;
-    if (size > MAX_BODY) throw new ProblemError({ code: "too_large" });
-    chunks.push(chunk as Buffer);
-  }
-  if (size === 0) return undefined;
+async function readBody(c: Context<Env>): Promise<unknown> {
+  if (c.req.method === "GET" || c.req.method === "HEAD") return undefined;
+  const text = await c.req.text();
+  if (text === "") return undefined;
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return JSON.parse(text);
   } catch {
     throw new ProblemError({ code: "bad_json" });
   }
@@ -231,13 +217,12 @@ const MIME: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
-async function serveUi(uiDir: string | undefined, pathname: string, response: ServerResponse) {
+async function serveUi(uiDir: string | undefined, pathname: string): Promise<Response> {
   if (uiDir === undefined) {
-    response.writeHead(503, { "content-type": "text/plain; charset=utf-8" });
-    response.end(
+    return new Response(
       "The panel is not built yet. Run npm run build, or npm run web:dev for a development server.",
+      { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } },
     );
-    return;
   }
   const relative = pathname.replace(/^\/(ui\/?)?/, "") || "index.html";
   let file: string;
@@ -248,23 +233,18 @@ async function serveUi(uiDir: string | undefined, pathname: string, response: Se
   }
   const data = await readFile(file).catch(() => readFile(join(uiDir, "index.html")));
   const type = MIME[extname(file)] ?? MIME[".html"] ?? "text/html";
-  response.writeHead(200, {
-    "content-type": type,
-    "x-content-type-options": "nosniff",
-    "content-security-policy": "default-src 'self'; connect-src 'self'; img-src 'self' data:",
+  return new Response(new Uint8Array(data), {
+    headers: {
+      "content-type": type,
+      "x-content-type-options": "nosniff",
+      "content-security-policy": "default-src 'self'; connect-src 'self'; img-src 'self' data:",
+    },
   });
-  response.end(data);
 }
 
-function sendJson(response: ServerResponse, status: number, payload: unknown) {
-  response.writeHead(status, {
-    "content-type": "application/json; charset=utf-8",
-    "cache-control": "no-store",
+function json(status: number, payload: unknown): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
   });
-  response.end(JSON.stringify(payload));
-}
-
-function header(request: IncomingMessage, name: string): string | undefined {
-  const value = request.headers[name];
-  return Array.isArray(value) ? value[0] : value;
 }
