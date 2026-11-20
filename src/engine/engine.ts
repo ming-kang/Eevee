@@ -65,25 +65,30 @@ export class Engine {
           context: options.context,
         }),
     });
-    shared = await SharedExtensions.open({
-      paths: options.paths,
-      client: options.client ?? { name: "eevee", version: "0.0.0" },
-      onChange: () => void projects.refreshExtensions(),
-      ...(options.openMcp === undefined ? {} : { openMcp: options.openMcp }),
-    });
-    const models = new ModelService({
-      paths: options.paths,
-      settings: options.settings,
-      runtime: options.models,
-      projects,
-    });
-    const capabilities = new CapabilityService({
-      shared,
-      settings: options.settings,
-      refreshProjects: () => projects.refreshExtensions(),
-    });
-    await projects.initialize();
-    return new Engine(projects, models, capabilities, shared, globalMemory);
+    try {
+      shared = await SharedExtensions.open({
+        paths: options.paths,
+        client: options.client ?? { name: "eevee", version: "0.0.0" },
+        onChange: () => void projects.refreshExtensions(),
+        ...(options.openMcp === undefined ? {} : { openMcp: options.openMcp }),
+      });
+      const models = new ModelService({
+        paths: options.paths,
+        settings: options.settings,
+        runtime: options.models,
+        projects,
+      });
+      const capabilities = new CapabilityService({
+        shared,
+        settings: options.settings,
+        refreshProjects: () => projects.refreshExtensions(),
+      });
+      await projects.initialize();
+      return new Engine(projects, models, capabilities, shared, globalMemory);
+    } catch (error) {
+      await Promise.allSettled([projects.close(), ...(shared ? [shared.close()] : [])]);
+      throw error;
+    }
   }
 
   async close(): Promise<void> {
