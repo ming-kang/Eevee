@@ -542,21 +542,21 @@ const VALUE_TEXT = "text-right font-mono text-xs leading-[1.4] wrap-anywhere tex
               <template v-if="availableModels.length > 0">
                 <div :class="SECTION_T"><h3>{{ t("Available models") }}</h3></div>
                 <div :class="PANEL">
-                  <table :class="TABLE">
+                  <table :class="TABLE" class="table-fixed [&_tr>th]:px-2 [&_tr>td]:px-2 [&_td]:wrap-anywhere [&_td]:py-2 @max-[44.2857em]/vp:text-xs">
                     <thead>
                       <tr>
-                        <th>{{ t("Model") }}</th>
-                        <th>{{ t("Name") }}</th>
-                        <th>{{ t("Context") }}</th>
-                        <th class="hide-sm">{{ t("Pricing") }}</th>
+                        <th class="w-[30%]">{{ t("Model") }}</th>
+                        <th class="w-[20%]">{{ t("Name") }}</th>
+                        <th class="w-[18%]">{{ t("Context") }}</th>
+                        <th class="w-[32%]">{{ t("Pricing") }}</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr v-for="entry in availableModels" :key="`${entry.provider}/${entry.modelId}`">
-                        <td class="mono">{{ entry.provider }}/{{ entry.modelId }}</td>
-                        <td class="name">{{ entry.name }}</td>
+                        <td class="font-mono">{{ entry.provider }}/{{ entry.modelId }}</td>
+                        <td>{{ entry.name }}</td>
                         <td class="num muted">{{ compactTokens(entry.contextWindow) }}</td>
-                        <td class="hide-sm muted">{{ formatModelMeta(entry) }}</td>
+                        <td class="muted">{{ formatModelMeta(entry) }}</td>
                       </tr>
                     </tbody>
                   </table>
