@@ -2,7 +2,7 @@ import type { Context } from "@earendil-works/chord/context";
 import type { SettingsStore } from "../config/settings.ts";
 import type { EeveePaths } from "../shared/paths.ts";
 import { CapabilityService } from "./capability-service.ts";
-import { MemoryRepo } from "./extensions/memory/index.ts";
+import { MemoryStore } from "./memory/store.ts";
 import { ModelService } from "./model-service.ts";
 import type { ModelRuntime } from "./models/index.ts";
 import { INITIAL_GLOBAL_MEMORY } from "./project/memory.ts";
@@ -27,7 +27,7 @@ export class Engine {
   readonly projects: ProjectRegistry;
   readonly models: ModelService;
   readonly capabilities: CapabilityService;
-  readonly memory: MemoryRepo;
+  readonly memory: MemoryStore;
   readonly #shared: SharedExtensions;
 
   private constructor(
@@ -35,7 +35,7 @@ export class Engine {
     models: ModelService,
     capabilities: CapabilityService,
     shared: SharedExtensions,
-    memory: MemoryRepo,
+    memory: MemoryStore,
   ) {
     this.projects = projects;
     this.models = models;
@@ -45,7 +45,7 @@ export class Engine {
   }
 
   static async open(options: EngineOptions): Promise<Engine> {
-    const globalMemory = new MemoryRepo(options.paths.globalMemory);
+    const globalMemory = new MemoryStore(options.paths.globalMemory, "global");
     await globalMemory.ensure(INITIAL_GLOBAL_MEMORY);
     let shared: SharedExtensions | undefined;
     const projects = new ProjectRegistry({

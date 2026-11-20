@@ -3,9 +3,9 @@ import { test } from "node:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai";
 import { createRegistry, Harness, MemoryStorage, type Tx } from "@earendil-works/pi-durable";
-import type { Report, Ticket, TicketId } from "../../../domain/index.ts";
-import { ReportLog, TicketDoc } from "../../docs.ts";
-import { allocateTicketId, saveTicket } from "../../orchestration/board.ts";
+import type { Report, Ticket, TicketId } from "../../domain/index.ts";
+import { Board, ProposalDoc, ReportLog, TicketDoc } from "../docs.ts";
+import { allocateTicketId, saveTicket } from "../orchestration/board.ts";
 import {
   type DreamDraft,
   type DreamingPort,
@@ -13,6 +13,7 @@ import {
   type DreamPolicy,
   dreamIfDue,
 } from "./dreaming.ts";
+import { addProposal } from "./proposals.ts";
 
 const context = BACKGROUND_CONTEXT;
 
@@ -93,6 +94,39 @@ test("opens nothing while Dreaming is off", async () => {
   } finally {
     await harness.close(context);
   }
+});
+
+test("a pending dreaming proposal gates dreaming, but a Router proposal or a decision does not", async (t) => {
+  const harness = await openHarness();
+  t.after(() => harness.close(context));
+  await harness.commit(async (tx) => {
+    await saveTicket_(tx, { status: "done", closedAt: 10 });
+    await saveTicket_(tx, { status: "done", closedAt: 11 });
+    await addProposal(tx, {
+      scope: "global",
+      source: { kind: "dreaming", ticketId: "t9" },
+      conversationId: 42,
+      summary: "Pending advice",
+      actions: [],
+      createdAt: 1,
+    });
+  }, context);
+  const { port: p, drafts } = port();
+  assert.equal(await dreamIfDue(host(harness), p, 10000, context), undefined);
+  assert.equal(drafts.length, 0);
+  await harness.commit(async (tx) => {
+    (await tx.doc(ProposalDoc, "m1", null)).status = "rejected";
+    (await tx.doc(Board)).openProposals = [];
+    await addProposal(tx, {
+      scope: "project",
+      source: { kind: "router" },
+      conversationId: 0,
+      summary: "Router advice",
+      actions: [],
+      createdAt: 2,
+    });
+  }, context);
+  assert.equal(await dreamIfDue(host(harness), p, 10000, context), "t3");
 });
 
 test("opens nothing while the project is busy, however much piled up", async () => {

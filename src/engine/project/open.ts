@@ -15,11 +15,12 @@ import { readText } from "../../shared/fs.ts";
 import type { EeveePaths } from "../../shared/paths.ts";
 import { initialActiveAt, isActivityCommit } from "../activity.ts";
 import { BoardFeed, isBoardCommit } from "../board-feed.ts";
-import { createMemory, MemoryRepo } from "../extensions/memory/index.ts";
+import { createMemory } from "../extensions/memory/index.ts";
 import { createOrchestration } from "../extensions/orchestration/index.ts";
 import { createResources } from "../extensions/resources/index.ts";
 import { createWorkspace } from "../extensions/workspace/index.ts";
 import { JobHost } from "../jobs.ts";
+import { MemoryStore } from "../memory/store.ts";
 import { renderCatalog } from "../models/catalog.ts";
 import { type DeliveryContext, flush } from "../orchestration/index.ts";
 import { createRoles } from "../roles/index.ts";
@@ -32,6 +33,7 @@ import { Dreaming } from "./dreaming.ts";
 import { Jobs } from "./jobs.ts";
 import { INITIAL_GLOBAL_MEMORY, Memory } from "./memory.ts";
 import { Project } from "./project.ts";
+import { Proposals } from "./proposals.ts";
 import { Questions } from "./questions.ts";
 import { installShared, ProjectSettings } from "./settings.ts";
 import { type ProjectMeta, ProjectStore } from "./store.ts";
@@ -44,7 +46,7 @@ export type ProjectOptions = {
   meta: ProjectMeta;
   models: () => Models;
   settings: () => Settings;
-  globalMemory: MemoryRepo;
+  globalMemory: MemoryStore;
   /** Extensions every project installs on top of Eevee's own; read again by `refreshExtensions()`. */
   shared: () => readonly Extension[];
   context: Context;
@@ -56,8 +58,8 @@ export async function openProject(options: ProjectOptions): Promise<Project> {
   const { meta, context } = options;
   const store = ProjectStore.open(options.paths, meta);
   const paths = options.paths.project(meta.id);
-  const repos: Record<MemoryScope, MemoryRepo> = {
-    project: new MemoryRepo(paths.memory),
+  const repos: Record<MemoryScope, MemoryStore> = {
+    project: new MemoryStore(paths.memory),
     global: options.globalMemory,
   };
   await repos.project.ensure(INITIAL_MEMORY);
@@ -217,9 +219,13 @@ export async function openProject(options: ProjectOptions): Promise<Project> {
     context,
     label: meta.id,
     ...(options.upkeepMs === undefined ? {} : { upkeepMs: options.upkeepMs }),
-    dream: (now) => dreaming.run(now),
+    dream: async (now) => {
+      await Promise.all(Object.values(repos).map((repo) => repo.captureUserEdits()));
+      await dreaming.run(now);
+    },
   });
   const dispatch = createDispatcher(harness, root, context);
+  const proposals = new Proposals({ project: meta.id, harness, context, dispatch, stores: repos });
   const project = new Project({
     changed: options.changed,
     store,
@@ -227,11 +233,13 @@ export async function openProject(options: ProjectOptions): Promise<Project> {
     feed,
     conversations: new Conversations({ harness, root, context, dispatch }),
     questions: new Questions({ harness, context, dispatch }),
+    proposals,
     jobs: new Jobs({ harness, context, jobs, jobLogPath: jobLog }),
     memory: new Memory(repos),
     activeAt: () => currentActiveAt,
     usage: () => usageView(harness, context),
     close: async () => {
+      await proposals.close();
       watcher.detach();
       await Promise.all([scheduler?.close(), feed.close()]);
       await jobs.close();

@@ -1,6 +1,6 @@
 import { type ModelChoice, ProblemError } from "../domain/index.ts";
 import type { Engine } from "../engine/engine.ts";
-import { memoryFile } from "../engine/project/memory.ts";
+import { deleteMemoryFile, putMemoryFile, renameMemoryFile } from "../engine/memory/edit.ts";
 import type { Auth } from "./auth.ts";
 import type { RouteTable } from "./http.ts";
 
@@ -186,8 +186,33 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
         files: await project(params.project).memory.files("project"),
       }),
     },
+    "GET /api/projects/:project/memory/proposals": {
+      handle: async ({ params }) => ({ proposals: await project(params.project).proposals.list() }),
+    },
+    "GET /api/projects/:project/memory/proposals/:proposal": {
+      handle: async ({ params }) => project(params.project).proposals.get(params.proposal),
+    },
+    "POST /api/projects/:project/memory/proposals/:proposal/approve": {
+      handle: async ({ params }) => project(params.project).proposals.approve(params.proposal),
+    },
+    "POST /api/projects/:project/memory/proposals/:proposal/reject": {
+      handle: async ({ params, body }) =>
+        project(params.project).proposals.reject(params.proposal, body.reason),
+    },
     "GET /api/projects/:project/memory/files/:file": {
       handle: async ({ params }) => project(params.project).memory.file("project", params.file),
+    },
+    "PUT /api/projects/:project/memory/files/:file": {
+      handle: async ({ params, body }) =>
+        project(params.project).memory.put("project", params.file, body.content, body.version),
+    },
+    "DELETE /api/projects/:project/memory/files/:file": {
+      handle: async ({ params, query }) =>
+        project(params.project).memory.delete("project", params.file, query.version),
+    },
+    "POST /api/projects/:project/memory/files/:file/rename": {
+      handle: async ({ params, body }) =>
+        project(params.project).memory.rename("project", params.file, body.to, body.version),
     },
     "GET /api/projects/:project/memory/changes": {
       handle: async ({ params }) => ({
@@ -200,9 +225,21 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     "POST /api/projects/:project/memory/changes/:change/undo": {
       handle: async ({ params }) => project(params.project).memory.undo("project", params.change),
     },
-    "GET /api/memory/files": { handle: async () => ({ files: await engine.memory.listFiles() }) },
+    "GET /api/memory/files": { handle: async () => ({ files: await engine.memory.files() }) },
     "GET /api/memory/files/:file": {
-      handle: async ({ params }) => memoryFile(engine.memory, params.file),
+      handle: async ({ params }) => engine.memory.file(params.file),
+    },
+    "PUT /api/memory/files/:file": {
+      handle: async ({ params, body }) =>
+        putMemoryFile(engine.memory, params.file, body.content, body.version),
+    },
+    "DELETE /api/memory/files/:file": {
+      handle: async ({ params, query }) =>
+        deleteMemoryFile(engine.memory, params.file, query.version),
+    },
+    "POST /api/memory/files/:file/rename": {
+      handle: async ({ params, body }) =>
+        renameMemoryFile(engine.memory, params.file, body.to, body.version),
     },
     "GET /api/memory/changes": { handle: async () => ({ changes: await engine.memory.history() }) },
     "GET /api/memory/changes/:change": {

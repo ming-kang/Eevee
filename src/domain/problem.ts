@@ -22,6 +22,10 @@ export type Problem =
   | { code: "no_question"; questionId: string }
   | { code: "no_job"; jobId: string }
   | { code: "no_memory_file"; file: string }
+  | { code: "memory_changed"; file: string }
+  | { code: "memory_restricted" }
+  | { code: "no_proposal"; proposalId: string }
+  | { code: "proposal_decided"; proposalId: string }
   | { code: "no_change"; change: number }
   | { code: "no_submission"; submissionId: string }
   | { code: "already_delivered" }
@@ -97,6 +101,14 @@ export function describeProblem(problem: Problem, t: Translate = fill): string {
       return t("No job {jobId}", problem);
     case "no_memory_file":
       return t("No memory file {file}", problem);
+    case "memory_changed":
+      return t("Memory file {file} changed. Reload the latest content and try again.", problem);
+    case "memory_restricted":
+      return t("Global memory only supports editing the existing MEMORY.md file");
+    case "no_proposal":
+      return t("No memory proposal {proposalId}", problem);
+    case "proposal_decided":
+      return t("Memory proposal {proposalId} has already been decided", problem);
     case "no_change":
       return t("No change #{change}", problem);
     case "no_submission":

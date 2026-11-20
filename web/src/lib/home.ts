@@ -8,6 +8,7 @@ export const DONE_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const DONE_LIMIT = 8;
 
 export type NeedsYouRow =
+  | { kind: "proposal"; pid: string; project: string; proposal: BoardView["openProposals"][number] }
   | { kind: "question"; pid: string; project: string; question: Question; text: string }
   | { kind: "router"; pid: string; project: string; failure: string };
 
@@ -46,6 +47,7 @@ export function buildHomeBoard(input: {
 }): HomeBoard {
   const questions: Extract<NeedsYouRow, { kind: "question" }>[] = [];
   const failures: NeedsYouRow[] = [];
+  const proposals: NeedsYouRow[] = [];
   const tickets: Extract<RunningRow, { kind: "ticket" }>[] = [];
   const routers: RunningRow[] = [];
   const done: DoneRow[] = [];
@@ -53,6 +55,8 @@ export function buildHomeBoard(input: {
   for (const project of input.projects) {
     const board = input.boards[project.id]?.board;
     if (!board) continue;
+    for (const proposal of board.openProposals ?? [])
+      proposals.push({ kind: "proposal", pid: project.id, project: project.title, proposal });
 
     for (const question of board.openQuestions) {
       if (question.answer !== undefined) continue;
@@ -107,7 +111,7 @@ export function buildHomeBoard(input: {
   done.sort((a, b) => b.closedAt - a.closedAt);
 
   return {
-    needsYou: [...questions, ...failures],
+    needsYou: [...questions, ...proposals, ...failures],
     running: [...tickets, ...routers],
     done: done.slice(0, DONE_LIMIT),
     runningCount: tickets.length + routers.length,

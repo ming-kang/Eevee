@@ -86,7 +86,7 @@ const controlProject = computed(() => props.projects.find((p) => p.id === props.
 const attentionTotal = computed(() =>
   props.projects.reduce((total, project) => {
     const board = props.boards[project.id]?.board;
-    return total + countPendingQuestions(board) + (board?.router.failure ? 1 : 0);
+    return total + countPendingQuestions(board) + (board?.openProposals?.length ?? 0) + (board?.router.failure ? 1 : 0);
   }, 0),
 );
 
@@ -311,6 +311,7 @@ onUnmounted(() => {
   </p>
 
   <ControlTiles
+    :pending-proposals="controlPid ? boards[controlPid]?.board?.openProposals?.length : undefined"
     :control-pid="controlPid"
     :control-title="controlProject?.title"
     :route-name="route.name"

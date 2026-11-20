@@ -3,6 +3,9 @@ import type {
   ConfigIssue,
   ConfigProblem,
   Job,
+  MemoryChange,
+  MemoryChangeDetail,
+  MemoryProposal,
   ModelChoice,
   ModelDefaults,
   Problem,
@@ -47,7 +50,12 @@ export type BoardRouterView = RunSummary;
 export type BoardView = {
   tickets: TicketView[];
   openQuestions: Question[];
+  openProposals: Pick<MemoryProposal, "id" | "scope" | "summary" | "source">[];
   router: BoardRouterView;
+};
+export type MemoryProposalView = MemoryProposal & {
+  files: MemoryChangeDetail["files"];
+  conflict?: string;
 };
 
 export type ChatLine = {
@@ -87,7 +95,9 @@ export type MemoryFileEntry = {
 export type MemoryFileView = {
   path: string;
   content: string;
+  version: string;
 };
+export type MemoryMutationView = { file: MemoryFileView | null; change: MemoryChange | null };
 
 export type JobLogView = {
   job: Job;

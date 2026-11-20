@@ -6,6 +6,32 @@ import { buildHomeBoard, DONE_LIMIT, DONE_WINDOW_MS } from "./home.ts";
 
 const NOW = 1_000_000_000;
 
+test("pending memory proposals are board attention rows, including global proposals", () => {
+  const home = buildHomeBoard({
+    projects: [{ id: "p1", title: "Project", workspace: "/work", createdAt: 0 }],
+    boards: {
+      p1: {
+        board: {
+          tickets: [],
+          openQuestions: [],
+          router: { running: false },
+          openProposals: [
+            {
+              id: "m1",
+              scope: "global",
+              summary: "Advice",
+              source: { kind: "dreaming", ticketId: "t1" },
+            },
+          ],
+        },
+      },
+    },
+    now: NOW,
+  });
+  assert.equal(home.needsYou[0]?.kind, "proposal");
+  assert.ok(home.needsYou[0]?.kind === "proposal" && home.needsYou[0].proposal.id === "m1");
+});
+
 function project(id: string, title = `Project ${id}`): ProjectSummary {
   return { id, title, workspace: `/work/${id}`, createdAt: 1 };
 }
@@ -51,7 +77,13 @@ function question(id: `q${number}`, askedAt: number, ticketId?: TicketId): Quest
 }
 
 function board(partial: Partial<BoardView>): BoardView {
-  return { tickets: [], openQuestions: [], router: { running: false }, ...partial };
+  return {
+    tickets: [],
+    openProposals: [],
+    openQuestions: [],
+    router: { running: false },
+    ...partial,
+  };
 }
 
 test("an empty set of projects or boards gives an empty home board", () => {
@@ -78,6 +110,7 @@ test("Pending lists open questions newest first, then failed Routers", () => {
   const boards = {
     p1: {
       board: board({
+        openProposals: [],
         openQuestions: [
           question("q1", 10),
           { ...question("q2", 20, "t3"), answer: "yes" },
@@ -87,6 +120,7 @@ test("Pending lists open questions newest first, then failed Routers", () => {
     },
     p2: {
       board: board({
+        openProposals: [],
         openQuestions: [question("q9", 5)],
         router: { running: false, failure: { reason: "model_error", detail: "401" } },
       }),

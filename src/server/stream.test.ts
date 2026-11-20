@@ -47,7 +47,7 @@ function fakeWatch(value: ConversationView) {
 
 const view = { conversation: { id: 1 }, entries: [], docs: {} } as unknown as ConversationView;
 const emptyRouter = { running: false };
-let board: BoardView = { tickets: [], openQuestions: [], router: emptyRouter };
+let board: BoardView = { tickets: [], openProposals: [], openQuestions: [], router: emptyRouter };
 let watch = fakeWatch(view);
 const watched: unknown[] = [];
 
@@ -75,6 +75,7 @@ const project: ProjectStream = {
 /** A real board feed whose builds the test finishes one at a time; each returns the board as it was when it began. */
 const boardWith = (question: string): BoardView => ({
   tickets: [],
+  openProposals: [],
   openQuestions: [{ id: question } as never],
   router: emptyRouter,
 });
@@ -191,13 +192,18 @@ test("on connect the client gets hello; a conversation watch sends value then fo
 });
 
 test("a board watch sends the current board then changes, and stops after unwatch", async () => {
-  board = { tickets: [], openQuestions: [], router: emptyRouter };
+  board = { tickets: [], openProposals: [], openQuestions: [], router: emptyRouter };
   const client = await connect();
   await client.next();
   client.send({ type: "watch", id: "b", topic: { kind: "board", project: "p1" } });
   assert.deepEqual(await client.next(), { type: "board", id: "b", board });
 
-  setBoard({ tickets: [], openQuestions: [{ id: "q1" } as never], router: emptyRouter });
+  setBoard({
+    tickets: [],
+    openProposals: [],
+    openQuestions: [{ id: "q1" } as never],
+    router: emptyRouter,
+  });
   assert.deepEqual(await client.next(), { type: "board", id: "b", board });
 
   client.send({ type: "unwatch", id: "b" });
@@ -213,7 +219,7 @@ test("a board watch sends the current board then changes, and stops after unwatc
     id: "e",
     items: [{ id: 3, limit: 200 }],
   });
-  setBoard({ tickets: [], openQuestions: [], router: emptyRouter });
+  setBoard({ tickets: [], openProposals: [], openQuestions: [], router: emptyRouter });
   client.send({
     type: "entries",
     id: "e2",

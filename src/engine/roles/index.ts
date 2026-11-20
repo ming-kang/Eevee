@@ -98,7 +98,7 @@ export function createRoles(deps: RolesDeps) {
     name: HANDOFF_TOOL,
     description:
       "Write a handoff summary, then start fresh from memory, the ticket overview, the summary and the last few rounds verbatim." +
-      " Record decisions of lasting value in memory first.",
+      " Propose decisions of lasting value for memory first; user approval is required before they are saved. Include pending proposals in the handoff.",
     parameters: obj({
       summary: str({
         description: "What you're working on, what you've decided and what comes next",

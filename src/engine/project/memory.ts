@@ -1,29 +1,40 @@
-import { relative } from "node:path";
-import { type MemoryScope, ProblemError } from "../../domain/index.ts";
+import type { MemoryScope } from "../../domain/index.ts";
 import type { MemoryFileView } from "../../protocol/contract.ts";
-import { resolveInside } from "../../shared/paths.ts";
-import type { MemoryRepo } from "../extensions/memory/repo.ts";
+import { deleteMemoryFile, putMemoryFile, renameMemoryFile } from "../memory/edit.ts";
+import type { MemoryStore } from "../memory/store.ts";
 
 export const INITIAL_GLOBAL_MEMORY =
   "# Global memory\n\nCross-project preferences about the user themselves; keep it very short.\n";
 
 export class Memory {
-  readonly #repos: Record<MemoryScope, MemoryRepo>;
+  readonly #repos: Record<MemoryScope, MemoryStore>;
 
-  constructor(repos: Record<MemoryScope, MemoryRepo>) {
+  constructor(repos: Record<MemoryScope, MemoryStore>) {
     this.#repos = repos;
   }
 
   files(scope: MemoryScope) {
-    return this.#repos[scope].listFiles();
+    return this.#repos[scope].files();
   }
 
   async file(scope: MemoryScope, file: string): Promise<MemoryFileView> {
-    return memoryFile(this.#repos[scope], file);
+    return this.#repos[scope].file(file);
   }
 
   history(scope: MemoryScope) {
     return this.#repos[scope].history();
+  }
+
+  put(scope: MemoryScope, file: string, content: string, version?: string) {
+    return putMemoryFile(this.#repos[scope], file, content, version);
+  }
+
+  delete(scope: MemoryScope, file: string, version?: string) {
+    return deleteMemoryFile(this.#repos[scope], file, version);
+  }
+
+  rename(scope: MemoryScope, file: string, to: string, version?: string) {
+    return renameMemoryFile(this.#repos[scope], file, to, version);
   }
 
   show(scope: MemoryScope, change: number) {
@@ -33,19 +44,4 @@ export class Memory {
   undo(scope: MemoryScope, change: number) {
     return this.#repos[scope].undo(change, { kind: "user" });
   }
-}
-
-export async function memoryFile(repo: MemoryRepo, file: string): Promise<MemoryFileView> {
-  const missingFile = new ProblemError({ code: "no_memory_file", file });
-  let resolved: string;
-  try {
-    resolved = resolveInside(repo.dir, file);
-  } catch {
-    throw missingFile;
-  }
-  const rel = relative(repo.dir, resolved).replaceAll("\\", "/");
-  if (rel === ".git" || rel.startsWith(".git/")) throw missingFile;
-  const content = await repo.read(rel);
-  if (content === undefined) throw missingFile;
-  return { path: rel, content };
 }

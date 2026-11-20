@@ -13,6 +13,7 @@ import {
   type RouteBody,
   type RouteKey,
   type RouteParams,
+  type RouteQuery,
   type RouteResponse,
   TOKEN_HEADER,
 } from "../protocol/contract.ts";
@@ -22,6 +23,7 @@ import { type Auth, isLoopbackRequest } from "./auth.ts";
 export type RouteContext<K extends RouteKey> = {
   params: RouteParams<K>;
   body: RouteBody<K>;
+  query: RouteQuery<K>;
 };
 
 export type RouteDefinition<K extends RouteKey> = {
@@ -84,6 +86,9 @@ export function createApp(options: ServerOptions): Hono<Env> {
       parameter: parameter as Param,
       check: compile((parameter as Param).schema),
     }));
+    const queries = Object.entries(
+      (definitionSchema.query ?? {}) as Record<string, Schema<string>>,
+    ).map(([name, schema]) => ({ name, check: compile(schema) }));
     const guard: MiddlewareHandler<Env> = async (c, next) => {
       if (!definitionSchema.public && !options.auth.verify(c.req.header(TOKEN_HEADER))) {
         throw new ProblemError({ code: "unauthorized" });
@@ -105,8 +110,17 @@ export function createApp(options: ServerOptions): Hono<Env> {
         parsedParams[name] = parameter.parse(raw);
       }
       const value = parseBody(body, await readBody(c));
+      const query: Record<string, string> = {};
+      for (const { name, check } of queries) {
+        const values = c.req.queries(name);
+        if (values === undefined) continue;
+        const [value] = values;
+        if (values.length !== 1 || value === undefined || !check.validate(value).ok)
+          throw new ProblemError({ code: "invalid", field: name });
+        query[name] = value;
+      }
       // The route's own schema has checked the body; only the erased route type is left to cast.
-      const context = { params: parsedParams, body: value } as RouteContext<RouteKey>;
+      const context = { params: parsedParams, body: value, query } as RouteContext<RouteKey>;
       const result = await route.handle(context);
       return definitionSchema.status === 204
         ? new Response(null, { status: 204, headers: { "cache-control": "no-store" } })
@@ -148,6 +162,10 @@ const STATUS: Record<ProblemCode, number> = {
   no_question: 404,
   no_job: 404,
   no_memory_file: 404,
+  memory_changed: 409,
+  memory_restricted: 403,
+  no_proposal: 404,
+  proposal_decided: 409,
   no_change: 404,
   no_submission: 404,
   no_model: 404,

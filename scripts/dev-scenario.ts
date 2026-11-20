@@ -19,7 +19,7 @@ import { DEFAULT_SETTINGS, type Settings, SettingsStore } from "../src/config/se
 import { writeRuntimeRecord } from "../src/daemon/instance.ts";
 import { Engine } from "../src/engine/engine.ts";
 import { fakeMcpServer, weatherTool } from "../src/engine/extensions/mcp/testing.ts";
-import { MemoryRepo } from "../src/engine/extensions/memory/index.ts";
+import { MemoryStore } from "../src/engine/memory/store.ts";
 import { createModelRuntime } from "../src/engine/models/index.ts";
 import { Auth } from "../src/server/auth.ts";
 import { createHttpServer } from "../src/server/http.ts";
@@ -531,15 +531,20 @@ const engine = await Engine.open({
   openMcp: () => fakeMcpServer([weatherTool]).client,
 });
 
-const globalRepo = new MemoryRepo(paths.globalMemory);
+const globalRepo = engine.memory;
 await globalRepo.ensure("# Global memory\n");
-await globalRepo.edit(
-  "MEMORY.md",
-  "# Global memory\n",
-  "# Global memory\n\n- Prefer replies in English, and keep a space between numbers and units\n",
-  "seed-global",
+await globalRepo.apply(
+  [
+    {
+      action: "edit",
+      file: "MEMORY.md",
+      oldText: "# Global memory\n",
+      newText:
+        "# Global memory\n\n- Prefer replies in English, and keep a space between numbers and units\n",
+    },
+  ],
+  { kind: "router" },
 );
-await globalRepo.commitRound("seed-global", { kind: "router" });
 
 const ws1 = join(home, "workspaces", "optics");
 await mkdir(join(ws1, "chapters"), { recursive: true });
@@ -584,19 +589,29 @@ const p1 = await engine.projects.create({
 const host1 = engine.projects.get(p1.id);
 if (!host1) throw new Error(`No project ${p1.id}`);
 
-const p1Repo = new MemoryRepo(paths.project(p1.id).memory);
-await p1Repo.create(
-  "optics-sim.md",
-  "## FDTD simulation\n- the mesh defaults to λ/15\n- above 45° the PML needs 12 layers\n",
-  "seed-p1",
+const p1Repo = new MemoryStore(paths.project(p1.id).memory);
+await p1Repo.apply(
+  [
+    {
+      action: "create",
+      file: "optics-sim.md",
+      content:
+        "## FDTD simulation\n- the mesh defaults to λ/15\n- above 45° the PML needs 12 layers\n",
+    },
+  ],
+  { kind: "dreaming", ticketId: "t0" },
 );
-await p1Repo.commitRound("seed-p1", { kind: "dreaming", ticketId: "t0" });
-await p1Repo.create(
-  "writing-style.md",
-  "# Writing preferences\n- give the conclusion first, then the evidence\n- use the passive voice sparingly\n",
-  "seed-p1-2",
+await p1Repo.apply(
+  [
+    {
+      action: "create",
+      file: "writing-style.md",
+      content:
+        "# Writing preferences\n- give the conclusion first, then the evidence\n- use the passive voice sparingly\n",
+    },
+  ],
+  { kind: "router" },
 );
-await p1Repo.commitRound("seed-p1-2", { kind: "router" });
 
 // Round 1 on p1: t1 created & accepted
 await host1.conversations.send(
