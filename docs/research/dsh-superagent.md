@@ -1,6 +1,6 @@
 # DeepSeek Super-Agent
 
-原文也放在了 research/ 目录下
+原文存档在 [dsh-superagent/](dsh-superagent/) 目录
 
 ---
 

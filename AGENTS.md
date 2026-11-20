@@ -1,9 +1,5 @@
 # Eevee Development Rules
 
-Eevee is a proactive agent: a Router dispatches tickets, Workers execute them in the background, and lessons go into a Git-backed memory. It is built on [Pi Durable](https://github.com/earendil-works/pi/tree/main/packages/durable), and Node 26 runs the TypeScript sources directly.
-
-The code is the source of truth for behavior; `docs/design` records intent, trade-offs, and domain rules the code cannot express.
-
 ## Boundaries
 
 - Use the installed Pi packages; never vendor or copy them. Take Pi APIs from the types in `node_modules`; don't guess.
@@ -13,7 +9,7 @@ The code is the source of truth for behavior; `docs/design` records intent, trad
 
 - Use only erasable TypeScript syntax (`erasableSyntaxOnly`): no `enum`, `namespace`, or constructor parameter properties.
 - Code must run on both Windows and POSIX; take particular care with paths, shells, and processes.
-- Express intent through names, types, and module structure, not comments. Comment only what the code cannot say: why a non-obvious choice was made, a constraint or workaround from a platform or library, or an external format or protocol. Never restate what a signature or the next lines already show, and don't use comments as section dividers; split the file instead.
+- Let names, types, and file boundaries carry intent. Comment only *why*: trade-offs, workarounds, external protocols, or hidden invariants. Never narrate *what* the code already shows. Split files instead of writing section-divider comments.
 
 ## Verification
 
@@ -23,9 +19,9 @@ The code is the source of truth for behavior; `docs/design` records intent, trad
 - When running the Engine or CLI by hand, set `EEVEE_HOME` to a temp directory; never touch `~/.eevee/`.
 
 ## Docs
-
-- `docs/design` describes the overall design at a high level. Keep out anything the code already states: tool parameters, field lists, schemas, config keys, function names, internal storage layout. Update it when a design decision changes, not when the code is refactored.
-- `CHANGELOG.md` lists under `## [Unreleased]` only user-visible changes relative to the last released version.
+- `docs/design.md`: High-level design. Omit anything already evident in code.
+- Other `docs/*`: Current behavior and conventions; update alongside code changes to keep in sync.
+- `CHANGELOG.md`: Log only user-visible changes since the last release under `## [Unreleased]`.
 
 ## Git
 
