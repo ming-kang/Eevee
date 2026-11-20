@@ -88,7 +88,7 @@ const tabs = computed(() => {
     </Segmented>
     <Button v-if="activeTicketId" variant="ghost" size="sm" icon :aria-label="t('Close {ticket}', { ticket: displayId(activeTicketId) })" @click="emit('close-ticket')"><Icon name="x" size="xs" /></Button>
     <span class="spacer" />
-    <Button v-if="effectiveTab === 'worker'" variant="ghost" size="sm" icon :aria-label="maximized ? t('Restore Worker panel') : t('Maximize Worker panel')" :title="maximized ? t('Restore Worker panel') : t('Maximize Worker panel')" @click="emit('toggle-maximize')"><Icon :name="maximized ? 'panelClose' : 'panel'" size="sm" /></Button>
+    <Button v-if="effectiveTab === 'worker'" variant="ghost" size="sm" icon :aria-label="maximized ? t('Restore Worker panel') : t('Maximize Worker panel')" :title="maximized ? t('Restore Worker panel') : t('Maximize Worker panel')" @click="emit('toggle-maximize')"><Icon :name="maximized ? 'minimize' : 'maximize'" size="sm" /></Button>
   </div>
   <div
     id="rail-panel"

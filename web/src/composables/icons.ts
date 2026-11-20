@@ -55,7 +55,7 @@ import {
   RiToolsLine,
   RiUser3Line,
 } from "@remixicon/vue";
-import type { Component } from "vue";
+import { type Component, defineComponent, h } from "vue";
 
 export type IconSpec = {
   component: Component;
@@ -64,6 +64,28 @@ export type IconSpec = {
 
 const icon = (component: Component, flipX = false): IconSpec =>
   flipX ? { component, flipX: true } : { component };
+
+const strokeIcon = (d: string): IconSpec =>
+  icon(
+    defineComponent({
+      setup: () => () =>
+        h(
+          "svg",
+          {
+            xmlns: "http://www.w3.org/2000/svg",
+            width: 24,
+            height: 24,
+            viewBox: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            "stroke-width": 2,
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+          },
+          [h("path", { d })],
+        ),
+    }),
+  );
 
 export const ICONS = {
   search: icon(RiSearchLine),
@@ -90,6 +112,8 @@ export const ICONS = {
   menu: icon(RiMenuLine),
   panel: icon(RiLayoutRightLine),
   panelClose: icon(RiSidebarUnfoldLine),
+  maximize: strokeIcon("M15 3h6v6M21 3l-7 7M9 21H3v-6M3 21l7-7"),
+  minimize: strokeIcon("M4 14h6v6M3 21l7-7M20 10h-6V4M14 10l7-7"),
   sidebar: icon(RiSideBarLine),
   sidebarClose: icon(RiSidebarUnfoldLine, true),
   compose: icon(RiEditBoxLine),
