@@ -23,6 +23,7 @@ export type EngineOptions = {
 
 export class Engine {
   readonly bootId = crypto.randomUUID();
+  readonly startedAt = Date.now();
   readonly projects: ProjectRegistry;
   readonly models: ModelService;
   readonly capabilities: CapabilityService;

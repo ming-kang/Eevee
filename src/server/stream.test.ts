@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -101,8 +101,8 @@ let url: string;
 
 before(async () => {
   dir = await mkdtemp(join(tmpdir(), "eevee-stream-"));
-  const auth = await Auth.open({ tokenPath: join(dir, "token") });
-  token = (await readFile(join(dir, "token"), "utf8")).trim();
+  const auth = new Auth();
+  token = auth.token;
   server = createServer((_request, response) => response.end());
   stream = attachStream(server, {
     source: {

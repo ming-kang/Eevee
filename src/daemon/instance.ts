@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   type FileHandle,
   link,
@@ -17,7 +18,9 @@ export type RuntimeRecord = {
   pid: number;
   port: number;
   bootId: string;
+  version: string;
   startedAt: number;
+  token: string;
 };
 
 export class InstanceLocked extends Error {
@@ -129,14 +132,60 @@ function holdsLock(owner: LockOwner): boolean {
   return isAlive(owner.pid);
 }
 
-export const readRuntimeRecord = (path: string) => readJson<RuntimeRecord>(path);
+export async function readRuntimeRecord(path: string): Promise<RuntimeRecord | undefined> {
+  let record: Partial<RuntimeRecord> | undefined;
+  try {
+    record = await readJson<Partial<RuntimeRecord>>(path);
+  } catch (error) {
+    if (error instanceof SyntaxError) return undefined;
+    throw error;
+  }
+  if (
+    record === undefined ||
+    record === null ||
+    !Number.isSafeInteger(record.pid) ||
+    (record.pid ?? 0) <= 0 ||
+    !Number.isInteger(record.port) ||
+    (record.port ?? 0) < 1 ||
+    (record.port ?? 0) > 65535 ||
+    typeof record.bootId !== "string" ||
+    !record.bootId ||
+    typeof record.version !== "string" ||
+    !record.version ||
+    typeof record.startedAt !== "number" ||
+    !Number.isFinite(record.startedAt) ||
+    typeof record.token !== "string" ||
+    !record.token
+  )
+    return undefined;
+  return record as RuntimeRecord;
+}
+
+export async function removeRuntimeRecord(path: string, owner: RuntimeRecord): Promise<void> {
+  const current = await readRuntimeRecord(path);
+  if (
+    current?.bootId === owner.bootId &&
+    current.pid === owner.pid &&
+    current.token === owner.token
+  )
+    await rm(path, { force: true });
+}
 
 export const writeRuntimeRecord = (path: string, record: RuntimeRecord) =>
-  writeJsonAtomic(path, record, { mode: 0o600 });
+  writeJsonAtomic(path, record, process.platform === "win32" ? {} : { mode: 0o600 });
 
 export function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
+    // A zombie has exited, but kill(pid, 0) succeeds until its parent reaps it.
+    if (process.platform === "linux") {
+      try {
+        const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+        if (stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z")) return false;
+      } catch (error) {
+        if (isNotFound(error)) return false;
+      }
+    }
     return true;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "EPERM";

@@ -28,7 +28,13 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
   return {
     "GET /api/health": { handle: async () => ({ version, bootId: engine.bootId }) },
     "GET /api/engine": {
-      handle: async () => ({ bootId: engine.bootId, version, port: port(), pid: process.pid }),
+      handle: async () => ({
+        bootId: engine.bootId,
+        version,
+        port: port(),
+        pid: process.pid,
+        startedAt: engine.startedAt,
+      }),
     },
     "POST /api/engine/shutdown": {
       handle: async () => {

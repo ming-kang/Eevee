@@ -1,51 +1,33 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { mkdir, open } from "node:fs/promises";
-import { join } from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
-import { engineEntry } from "../shared/package.ts";
 import { eeveePaths } from "../shared/paths.ts";
 import { connect, findEngine } from "./connection.ts";
+import { startEngine, stopEngine } from "./lifecycle.ts";
 import { createProgram } from "./program.ts";
 
 const paths = eeveePaths();
 
 const program = createProgram({
-  async start() {
-    const running = await findEngine(paths);
-    if (running) return console.log(`Already running: ${running.baseUrl}/ui/`);
-    await mkdir(paths.runtime.dir, { recursive: true });
-    const log = await open(join(paths.runtime.dir, "engine.log"), "a");
-    const child = spawn(process.execPath, [engineEntry], {
-      detached: true,
-      windowsHide: true,
-      stdio: ["ignore", log.fd, log.fd],
-      env: { ...process.env, EEVEE_HOME: paths.home },
-    });
-    child.unref();
-    await log.close();
-    for (let i = 0; i < 60; i++) {
-      await sleep(250);
-      const connection = await findEngine(paths);
-      if (connection) return console.log(`Started: ${connection.baseUrl}/ui/`);
-    }
-    throw new Error(
-      `Timed out waiting for the Engine to start. See the log: ${join(paths.runtime.dir, "engine.log")}`,
-    );
+  async start(options) {
+    const result = await startEngine(paths, options);
+    if (result)
+      console.log(
+        `${result.started ? "Started" : "Already running"}: ${result.connection.baseUrl}/ui/ (pid ${result.connection.record.pid})`,
+      );
   },
 
   async stop() {
-    const running = await findEngine(paths);
-    if (!running) return console.log("The Engine is not running.");
-    await running.client.call("POST /api/engine/shutdown");
-    console.log("Stopped.");
+    console.log((await stopEngine(paths)) ? "Stopped." : "The Engine is not running.");
   },
 
   async status() {
     const running = await findEngine(paths);
     if (!running) return console.log("The Engine is not running.");
     const status = await running.client.call("GET /api/engine");
-    console.log(`Eevee ${status.version} · ${running.baseUrl}/ui/ · pid ${running.record.pid}`);
+    const uptime = Math.max(0, Math.floor((Date.now() - status.startedAt) / 1000));
+    console.log(
+      `Eevee ${status.version} · pid ${status.pid} · port ${status.port} · bootId ${status.bootId} · uptime ${uptime}s\nPanel: ${running.baseUrl}/ui/`,
+    );
     for (const p of (await running.client.call("GET /api/projects")).projects)
       console.log(`  ${p.id}  ${p.title}  ${p.workspace}`);
   },

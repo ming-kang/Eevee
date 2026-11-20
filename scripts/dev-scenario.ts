@@ -677,7 +677,7 @@ if (checkOnly) {
   process.exit(0);
 }
 
-const auth = await Auth.open({ tokenPath: paths.runtime.token });
+const auth = new Auth();
 
 let port = Number(process.env.EEVEE_PORT ?? initialSettings.port);
 let stopping = false;
@@ -687,6 +687,7 @@ const shutdown = async () => {
   await stream.close();
   server.close();
   await engine.close();
+  await rm(paths.runtime.record, { force: true });
   if (ownHome)
     await rm(home, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
   process.exit(0);
@@ -709,7 +710,9 @@ await writeRuntimeRecord(paths.runtime.record, {
   pid: process.pid,
   port,
   bootId: engine.bootId,
-  startedAt: Date.now(),
+  version: `${version}-dev`,
+  token: auth.token,
+  startedAt: engine.startedAt,
 });
 
 const codeUi = auth.issueCode();

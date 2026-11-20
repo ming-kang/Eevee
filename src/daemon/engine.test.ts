@@ -138,8 +138,8 @@ test("the HTTP API exposes structured models, project activeAt, Board.router and
     models: await createModelRuntime(paths),
     context: BACKGROUND_CONTEXT,
   });
-  const auth = await Auth.open({ tokenPath: paths.runtime.token });
-  const token = (await readText(paths.runtime.token))?.trim();
+  const auth = new Auth();
+  const token = auth.token;
   let listenPort = 0;
   const server = createHttpServer({
     routes: createRoutes({
@@ -352,9 +352,9 @@ test("the HTTP boundary refuses a body that is missing a field, of the wrong typ
 const refused = (body: unknown) => body as never;
 
 /** Serves the Engine's routes on a free port, with a client holding the token. */
-async function serve(engine: Engine, paths: ReturnType<typeof eeveePaths>) {
-  const auth = await Auth.open({ tokenPath: paths.runtime.token });
-  const token = (await readText(paths.runtime.token))?.trim();
+async function serve(engine: Engine, _paths: ReturnType<typeof eeveePaths>) {
+  const auth = new Auth();
+  const token = auth.token;
   let port = 0;
   const server = createHttpServer({
     routes: createRoutes({ engine, auth, port: () => port, version: "0", shutdown: () => {} }),

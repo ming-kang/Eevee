@@ -18,7 +18,7 @@ test("engine pushes own the project list, including while an engine-info refresh
   const requested: string[] = [];
   let finish: (info: EngineInfo) => void = () => {};
   let closed = false;
-  const info: EngineInfo = { bootId: "boot", version: "test", port: 19190, pid: 1 };
+  const info: EngineInfo = { bootId: "boot", version: "test", port: 19190, pid: 1, startedAt: 1 };
   const stream = {
     state: "connected",
     watch: (id: string, registration: Parameters<StreamClient["watch"]>[1]) => {

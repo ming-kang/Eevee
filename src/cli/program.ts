@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { version } from "../shared/package.ts";
 
 export type CliActions = {
-  start(): Promise<void>;
+  start(options?: { foreground?: boolean }): Promise<void>;
   stop(): Promise<void>;
   status(): Promise<void>;
   web(): Promise<void>;
@@ -25,15 +25,16 @@ export function createProgram(actions: CliActions): Command {
 
   program
     .command("start")
-    .description("Start the Engine in the background")
-    .action(() => actions.start());
+    .description("Start the Engine (detached by default)")
+    .option("--foreground", "Run in this process with logs in the terminal")
+    .action((options: { foreground?: boolean }) => actions.start(options));
   program
     .command("stop")
     .description("Stop the Engine")
     .action(() => actions.stop());
   program
     .command("status")
-    .description("Show the run status and the projects")
+    .description("Show Engine identity, uptime and projects")
     .action(() => actions.status());
   program
     .command("web")

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -41,8 +41,8 @@ test("v2 parses resource params, emits problems and empty commands, and pushes e
     models: await createModelRuntime(paths),
     context: BACKGROUND_CONTEXT,
   });
-  const auth = await Auth.open({ tokenPath: paths.runtime.token });
-  const token = (await readFile(paths.runtime.token, "utf8")).trim();
+  const auth = new Auth();
+  const token = auth.token;
   let port = 0;
   const server = createHttpServer({
     auth,
@@ -109,6 +109,8 @@ test("v2 parses resource params, emits problems and empty commands, and pushes e
       pid: process.pid,
       port,
       bootId: "stale",
+      version: "test-v2",
+      token,
       startedAt: Date.now(),
     });
     assert.equal(await findEngine(paths), undefined);
@@ -116,6 +118,8 @@ test("v2 parses resource params, emits problems and empty commands, and pushes e
       pid: process.pid,
       port,
       bootId: engine.bootId,
+      version: "test-v2",
+      token,
       startedAt: Date.now(),
     });
     assert.equal((await findEngine(paths))?.record.bootId, engine.bootId);
