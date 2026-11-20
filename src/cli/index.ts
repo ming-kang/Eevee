@@ -37,21 +37,22 @@ const program = createProgram({
   async stop() {
     const running = await findEngine(paths);
     if (!running) return console.log("The Engine is not running.");
-    await running.client.call("POST /api/shutdown");
+    await running.client.call("POST /api/engine/shutdown");
     console.log("Stopped.");
   },
 
   async status() {
     const running = await findEngine(paths);
     if (!running) return console.log("The Engine is not running.");
-    const status = await running.client.call("GET /api/status");
+    const status = await running.client.call("GET /api/engine");
     console.log(`Eevee ${status.version} · ${running.baseUrl}/ui/ · pid ${running.record.pid}`);
-    for (const p of status.projects) console.log(`  ${p.id}  ${p.title}  ${p.workspace}`);
+    for (const p of (await running.client.call("GET /api/projects")).projects)
+      console.log(`  ${p.id}  ${p.title}  ${p.workspace}`);
   },
 
   async web() {
     const { client, baseUrl } = await connect(paths);
-    const { code } = await client.call("POST /api/session/code");
+    const { code } = await client.call("POST /api/session/codes");
     const url = `${baseUrl}/ui/#code=${encodeURIComponent(code)}`;
     openBrowser(url);
     console.log(

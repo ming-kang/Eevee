@@ -4,6 +4,7 @@ import type { ProblemBody } from "../../../src/protocol/contract.ts";
 import {
   type BoardTopic,
   type ConversationTopic,
+  type EngineTopic,
   STREAM_PATH,
   STREAM_PROTOCOL,
   type StreamEvent,
@@ -19,8 +20,8 @@ export class StreamError extends Error {
   override name = "StreamError";
   readonly problem: Problem;
 
-  constructor({ message, ...problem }: ProblemBody) {
-    super(message);
+  constructor({ title, status: _, ...problem }: ProblemBody) {
+    super(title);
     this.problem = problem as Problem;
   }
 }
@@ -44,11 +45,11 @@ type TimerLike = {
 };
 
 export type WatchEvent =
-  | Extract<StreamEvent, { type: "value" | "ops" | "board" | "end" }>
+  | Extract<StreamEvent, { type: "value" | "ops" | "board" | "engine" | "end" }>
   | { type: "error"; id: string; error: ProblemBody };
 
 type WatchRegistration = {
-  topic: ConversationTopic | BoardTopic;
+  topic: ConversationTopic | BoardTopic | EngineTopic;
   window?: () => ConversationWindow | undefined;
   onReset?: () => void;
   onEvent: (event: WatchEvent) => void;
@@ -129,6 +130,10 @@ export function createStreamClient(options: StreamClientOptions) {
   }
 
   function sendWatch(id: string, reg: WatchRegistration): void {
+    if (reg.topic.kind === "engine") {
+      send({ type: "watch", id, topic: reg.topic });
+      return;
+    }
     if (reg.topic.kind === "board") {
       send({ type: "watch", id, topic: reg.topic });
       return;
@@ -221,6 +226,7 @@ export function createStreamClient(options: StreamClientOptions) {
       }
       case "value":
       case "ops":
+      case "engine":
       case "board": {
         watches.get(event.id)?.onEvent(event);
         return;

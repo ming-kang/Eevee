@@ -106,11 +106,11 @@ onUnmounted(() => window.removeEventListener("mousedown", onWindowDown));
 async function save(model: ModelChoice | null): Promise<void> {
   busy.value = true;
   try {
-    await props.client.call(
-      "POST /api/projects/:project/models",
-      { project: props.project.id },
-      { role: "router", model },
-    );
+    if (model === null) {
+      await props.client.call("DELETE /api/projects/:project/models/:role", { project: props.project.id, role: "router" });
+    } else {
+      await props.client.call("PUT /api/projects/:project/models/:role", { project: props.project.id, role: "router" }, model);
+    }
     emit("changed");
   } catch (err) {
     showToast(errorText(err), "error");

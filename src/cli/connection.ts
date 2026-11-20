@@ -23,7 +23,8 @@ export async function findEngine(paths: EeveePaths): Promise<Connection | undefi
   const baseUrl = `http://127.0.0.1:${record.port}`;
   const client = createClient({ baseUrl, ...(token ? { token } : {}) });
   try {
-    await client.call("GET /api/health");
+    const health = await client.call("GET /api/health");
+    if (health.bootId !== record.bootId) return undefined;
   } catch {
     return undefined;
   }

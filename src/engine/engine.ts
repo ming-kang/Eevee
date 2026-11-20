@@ -5,6 +5,7 @@ import { CapabilityService } from "./capability-service.ts";
 import { MemoryRepo } from "./extensions/memory/index.ts";
 import { ModelService } from "./model-service.ts";
 import type { ModelRuntime } from "./models/index.ts";
+import { INITIAL_GLOBAL_MEMORY } from "./project/memory.ts";
 import { openProject } from "./project/open.ts";
 import { ProjectRegistry } from "./project-registry.ts";
 import { SharedExtensions, type SharedExtensionsOptions } from "./shared-extensions.ts";
@@ -25,6 +26,7 @@ export class Engine {
   readonly projects: ProjectRegistry;
   readonly models: ModelService;
   readonly capabilities: CapabilityService;
+  readonly memory: MemoryRepo;
   readonly #shared: SharedExtensions;
 
   private constructor(
@@ -32,20 +34,24 @@ export class Engine {
     models: ModelService,
     capabilities: CapabilityService,
     shared: SharedExtensions,
+    memory: MemoryRepo,
   ) {
     this.projects = projects;
     this.models = models;
     this.capabilities = capabilities;
     this.#shared = shared;
+    this.memory = memory;
   }
 
   static async open(options: EngineOptions): Promise<Engine> {
     const globalMemory = new MemoryRepo(options.paths.globalMemory);
+    await globalMemory.ensure(INITIAL_GLOBAL_MEMORY);
     let shared: SharedExtensions | undefined;
     const projects = new ProjectRegistry({
       paths: options.paths,
-      open: (meta) =>
+      open: (meta, changed) =>
         openProject({
+          changed,
           paths: options.paths,
           meta,
           models: options.models.models,
@@ -76,7 +82,7 @@ export class Engine {
       refreshProjects: () => projects.refreshExtensions(),
     });
     await projects.initialize();
-    return new Engine(projects, models, capabilities, shared);
+    return new Engine(projects, models, capabilities, shared, globalMemory);
   }
 
   async close(): Promise<void> {

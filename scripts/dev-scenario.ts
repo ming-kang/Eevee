@@ -703,7 +703,7 @@ const server = createHttpServer({
   auth,
   uiDir: uiDir(),
 });
-const stream = attachStream(server, { source: engine, auth });
+const stream = attachStream(server, { source: engine, auth, version });
 port = await listen(server, port);
 await writeRuntimeRecord(paths.runtime.record, {
   pid: process.pid,

@@ -53,7 +53,8 @@ export async function openSessionWith(env: SessionEnv): Promise<SessionInfo> {
   if (!token) throw new Unauthorized(t("Not signed in yet"));
   const client = makeClient({ baseUrl: env.origin, token });
   try {
-    const status = await client.call("GET /api/status");
+    const info = await client.call("GET /api/engine");
+    const status = { ...info, projects: [] };
     return { client, token, status };
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 401) {
