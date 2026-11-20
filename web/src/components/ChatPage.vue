@@ -150,6 +150,7 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
   <section class="chat-page" :class="{ landing: empty }">
     <header class="header">
       <div v-if="!empty" class="header-title">
+        <Icon name="folderOpen" size="sm" class="dim" />
         <h1 class="ellipsis" :title="project.workspace">{{ project.title }}</h1>
       </div>
       <span class="spacer" />

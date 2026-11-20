@@ -67,18 +67,32 @@ button.group-h.closed .chev {
 .strip {
   display: grid;
   grid-template-columns: var(--ev-icon-sm) minmax(0, 1fr) auto;
-  align-items: center;
+  align-items: start;
   column-gap: calc(9px * var(--ev-scale));
-  row-gap: calc(1px * var(--ev-scale));
+  row-gap: calc(4px * var(--ev-scale));
   width: 100%;
   min-height: calc(32px * var(--ev-scale));
-  padding: calc(6px * var(--ev-scale)) calc(10px * var(--ev-scale));
+  padding: calc(9px * var(--ev-scale)) calc(10px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
   corner-shape: squircle;
   font-size: var(--ev-body);
   letter-spacing: var(--ev-tracking);
   text-align: left;
   transition: background-color var(--ev-fast) var(--ev-ease);
+}
+
+.strip > .glyph,
+.strip > .t-id {
+  margin-top: calc(3px * var(--ev-scale));
+}
+
+.ticket-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
 }
 
 .strip:hover {

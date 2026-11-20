@@ -1037,10 +1037,11 @@ textarea.input {
 
 /* ——— Home: the Now page ——— */
 .page-inner.home {
-  max-width: calc(1100px * var(--ev-scale));
+  max-width: calc(900px * var(--ev-scale));
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: calc(20px * var(--ev-scale)) calc(24px * var(--ev-scale));
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(32px * var(--ev-scale));
+  padding-top: calc(32px * var(--ev-scale));
   align-content: start;
 }
 
@@ -1048,9 +1049,54 @@ textarea.input {
   min-width: 0;
 }
 
-/* Needs you reads full width; Running and Recently done split the row below it. */
-.home-block:first-child {
-  grid-column: 1 / -1;
+.home .rows {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.home .rows > .row {
+  min-height: calc(68px * var(--ev-scale));
+  padding: calc(14px * var(--ev-scale)) calc(12px * var(--ev-scale));
+  border-radius: var(--ev-r-md);
+}
+
+.home .row + .row {
+  border-top-color: var(--ev-separator);
+}
+
+.home .home-attention {
+  background: var(--ev-card);
+  border: 1px solid var(--ev-border);
+  box-shadow: var(--ev-shadow-card);
+}
+
+.home .home-attention + .home-attention {
+  margin-top: calc(8px * var(--ev-scale));
+  border-top-color: var(--ev-border);
+}
+
+.home a.row:hover {
+  background: var(--ev-hover);
+}
+
+.home .r-main {
+  gap: calc(5px * var(--ev-scale));
+}
+
+.home .home-attention > .glyph {
+  align-self: flex-start;
+  margin-top: calc(2px * var(--ev-scale));
+}
+
+.home .home-attention .r-t {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  line-height: 1.5;
 }
 
 .home-h {
@@ -1061,7 +1107,7 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ev-scale));
-  font-size: var(--ev-headline);
+  font-size: var(--ev-control);
   font-weight: 600;
   letter-spacing: -0.015em;
   color: var(--ev-label);
@@ -1078,10 +1124,4 @@ textarea.input {
   font-size: var(--ev-footnote);
   font-variant-numeric: tabular-nums;
   color: var(--ev-label-3);
-}
-
-@container main (max-width: 51.4286em) {
-  .page-inner.home {
-    grid-template-columns: 1fr;
-  }
 }

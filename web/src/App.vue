@@ -377,6 +377,7 @@ watch(
       <HomePage
         :projects="projects"
         :boards="engine.boards.value"
+        @new-project="openNewProject"
       />
     </template>
 

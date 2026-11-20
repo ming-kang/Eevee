@@ -37,7 +37,7 @@ function latestReport(view: TicketView): TicketView["reports"][number] | undefin
 
 function rowTooltip(view: TicketView): string {
   const stage = effectiveStage(view);
-  return [STAGE_LABEL[stage], latestReport(view)?.summary ?? view.ticket.closeNote]
+  return [view.ticket.title, STAGE_LABEL[stage], latestReport(view)?.summary ?? view.ticket.closeNote]
     .filter(Boolean)
     .join(" · ");
 }
@@ -85,7 +85,7 @@ function contextLine(view: TicketView): string | undefined {
           @click="$emit('open-ticket', view.ticket.id)"
         >
           <StageGlyph :stage="effectiveStage(view)" />
-          <span class="ellipsis">{{ view.ticket.title }}</span>
+          <span class="ticket-title">{{ view.ticket.title }}</span>
           <span class="t-id">{{ view.ticket.id }}</span>
           <span v-if="group.stage || contextLine(view)" class="t-line">
             <span v-if="group.stage" class="t-stage" :class="`s-${view.stage}`">{{ STAGE_LABEL[view.stage] }}</span>
