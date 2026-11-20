@@ -245,20 +245,20 @@ export class MemoryStore {
       if (changed.length === 0) return undefined;
       try {
         await this.#write(prepared.after, changed);
+        const subject =
+          summary ??
+          [...changed]
+            .sort()
+            .map(
+              (file) =>
+                `${prepared.before.get(file) === undefined ? "create" : prepared.after.get(file) === undefined ? "delete" : "edit"} ${file}`,
+            )
+            .join("; ");
+        return await this.#save(changed, source, subject, request);
       } catch (error) {
         await this.#write(prepared.before, changed);
         throw error;
       }
-      const subject =
-        summary ??
-        [...changed]
-          .sort()
-          .map(
-            (file) =>
-              `${prepared.before.get(file) === undefined ? "create" : prepared.after.get(file) === undefined ? "delete" : "edit"} ${file}`,
-          )
-          .join("; ");
-      return this.#save(changed, source, subject, request);
     });
   }
 
