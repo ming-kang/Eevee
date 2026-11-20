@@ -218,7 +218,7 @@ export const zhCN: Record<string, string> = {
   "Filter projects…": "筛选项目…",
   Conversation: "对话",
   "Worker view": "Worker 视图",
-  "Close {ticket}": "关闭 {ticket}",
+  "Back to tickets": "返回工单列表",
   "Maximize Worker panel": "最大化 Worker 面板",
   "Restore Worker panel": "还原 Worker 面板",
   "Filter the endpoint's models": "筛选端点列出的模型",

@@ -2,17 +2,21 @@
 import type { Client } from "@shared/protocol/client.ts";
 import type { QuestionId } from "@shared/domain/index.ts";
 import type { BoardView, ProjectSummary } from "@shared/protocol/contract.ts";
-import { computed, ref, type ShallowRef, watch } from "vue";
+import { computed, nextTick, ref, type ShallowRef, watch } from "vue";
 import type { StreamClient } from "../../lib/stream.ts";
 import { displayId } from "../../lib/ids.ts";
 import {
   collectRunningJobs,
   countPendingQuestions,
+  effectiveStage,
   groupTickets,
   type RailTab,
-  resolveRailTab,
+  resolveRailView,
 } from "../../lib/board.ts";
 import { t } from "../../lib/i18n.ts";
+import { STAGE_LABEL } from "../../lib/labels.ts";
+import { ID_TEXT } from "./stage.ts";
+import StageGlyph from "./StageGlyph.vue";
 import DetailTab from "./DetailTab.vue";
 import JobsTab from "./JobsTab.vue";
 import TicketsTab from "./TicketsTab.vue";
@@ -44,9 +48,14 @@ const emit = defineEmits<{
   "open-rail": [tab?: RailTab, jobId?: string];
 }>();
 
-const effectiveTab = computed(() => resolveRailTab(props.tab, !!props.activeTicketId));
+const railView = computed(() => resolveRailView(props.tab, props.activeTicketId));
 const workerPanel = ref<"conversation" | "details">("conversation");
-watch(() => props.activeTicketId, () => { workerPanel.value = "conversation"; });
+const backButton = ref<{ focus(): void }>();
+watch(() => props.activeTicketId, (id, previous) => {
+  workerPanel.value = "conversation";
+  if (id) void nextTick(() => backButton.value?.focus());
+  if (previous && !id) void nextTick(() => document.getElementById(`rail-tab-${props.tab}`)?.focus());
+}, { immediate: true });
 watch(() => props.questionId, (id) => { if (id !== undefined) workerPanel.value = "conversation"; });
 const groups = computed(() => groupTickets(props.board?.tickets ?? []));
 const jobs = computed(() => collectRunningJobs(props.board?.tickets ?? []));
@@ -56,13 +65,21 @@ const activeTicket = computed(() =>
     ? props.board?.tickets.find((t) => t.ticket.id === props.activeTicketId)
     : undefined,
 );
+const stage = computed(() => activeTicket.value ? effectiveStage(activeTicket.value) : undefined);
+
+function onEscape(event: KeyboardEvent): void {
+  if (event.defaultPrevented || !props.activeTicketId) return;
+  event.preventDefault();
+  event.stopPropagation();
+  emit("close-ticket");
+}
 
 const tabs = computed(() => {
   const list: { key: RailTab; label: string; dot: boolean }[] = [
     {
       key: "tickets",
       label: t("Tickets"),
-      dot: pendingQuestions.value > 0 && effectiveTab.value !== "tickets",
+      dot: pendingQuestions.value > 0 && props.tab !== "tickets",
     },
     {
       key: "jobs",
@@ -70,43 +87,49 @@ const tabs = computed(() => {
       dot: false,
     },
   ];
-  if (props.activeTicketId) {
-    list.push({ key: "worker", label: displayId(props.activeTicketId), dot: false });
-  }
   return list;
 });
 </script>
 
 <template>
+  <section class="flex min-h-0 flex-1 flex-col" @keydown.esc="onEscape">
   <div class="rail-head">
-    <Segmented :model-value="effectiveTab" mode="tabs" class="min-w-0" id-prefix="rail-tab" controls="rail-panel" :options="tabs.map((item) => ({ value: item.key, label: item.label }))" :label="t('Ticket rail tabs')" @update:model-value="emit('update:tab', $event)">
+    <template v-if="activeTicketId">
+      <Button ref="backButton" variant="ghost" size="sm" icon :aria-label="t('Back to tickets')" :title="t('Back to tickets')" @click="emit('close-ticket')"><Icon name="arrowL" size="sm" /></Button>
+      <div class="flex min-w-0 flex-1 items-center gap-1.5">
+        <span :class="ID_TEXT" class="shrink-0">{{ displayId(activeTicketId) }}</span>
+        <h2 class="ellipsis min-w-0 text-sm font-medium" :title="activeTicket?.ticket.title">{{ activeTicket ? activeTicket.ticket.title : board ? t('Ticket {id} not found', { id: activeTicketId }) : '' }}</h2>
+        <StageGlyph v-if="stage" :stage="stage" :title="STAGE_LABEL[stage]" />
+      </div>
+      <Segmented v-model="workerPanel" :options="[{ value: 'conversation', label: t('Conversation') }, { value: 'details', label: t('Details') }]" :label="t('Worker view')" />
+      <Button variant="ghost" size="sm" icon :aria-label="maximized ? t('Restore Worker panel') : t('Maximize Worker panel')" :title="maximized ? t('Restore Worker panel') : t('Maximize Worker panel')" @click="emit('toggle-maximize')"><Icon :name="maximized ? 'minimize' : 'maximize'" size="sm" /></Button>
+    </template>
+    <Segmented v-else :model-value="tab" mode="tabs" class="min-w-0" id-prefix="rail-tab" controls="rail-panel" :options="tabs.map((item) => ({ value: item.key, label: item.label }))" :label="t('Ticket rail tabs')" @update:model-value="emit('update:tab', $event)">
       <template #default="{ option, index }">
         <span>{{ option.label }}</span>
         <span v-if="tabs[index]?.dot" class="size-1.5 flex-none rounded-full bg-(--ev-user)" aria-hidden="true" />
         <span v-if="tabs[index]?.dot" class="sr">{{ t("(questions waiting)") }}</span>
       </template>
     </Segmented>
-    <Button v-if="activeTicketId" variant="ghost" size="sm" icon :aria-label="t('Close {ticket}', { ticket: displayId(activeTicketId) })" @click="emit('close-ticket')"><Icon name="x" size="xs" /></Button>
-    <span class="spacer" />
-    <Button v-if="effectiveTab === 'worker'" variant="ghost" size="sm" icon :aria-label="maximized ? t('Restore Worker panel') : t('Maximize Worker panel')" :title="maximized ? t('Restore Worker panel') : t('Maximize Worker panel')" @click="emit('toggle-maximize')"><Icon :name="maximized ? 'minimize' : 'maximize'" size="sm" /></Button>
   </div>
   <div
     id="rail-panel"
     class="flex min-h-0 flex-1 flex-col"
-    role="tabpanel"
-    :aria-labelledby="`rail-tab-${effectiveTab}`"
+    :role="activeTicketId ? 'region' : 'tabpanel'"
+    :aria-label="activeTicketId ? t('Worker view') : undefined"
+    :aria-labelledby="activeTicketId ? undefined : `rail-tab-${tab}`"
   >
     <p v-if="error" class="error hint px-2.5 py-1.5">{{ error }}</p>
-    <div v-show="effectiveTab !== 'worker'" class="rail-scroll">
+    <div v-show="railView !== 'detail'" class="rail-scroll">
     <TicketsTab
-      v-if="effectiveTab === 'tickets'"
+      v-if="tab === 'tickets'"
       :board="board"
       :groups="groups"
       :active-ticket-id="activeTicketId"
       @open-ticket="emit('open-ticket', $event)"
     />
     <JobsTab
-      v-else-if="effectiveTab === 'jobs'"
+      v-else-if="tab === 'jobs'"
       :client="client"
       :project-id="project?.id"
       :jobs="jobs"
@@ -115,10 +138,7 @@ const tabs = computed(() => {
       @open-ticket="emit('open-ticket', $event)"
     />
     </div>
-    <div v-if="activeTicketId && project" v-show="effectiveTab === 'worker'" class="@container/vp flex min-h-0 flex-1 flex-col">
-      <div class="flex shrink-0 justify-end border-b border-separator px-3 py-2">
-        <Segmented v-model="workerPanel" :options="[{ value: 'conversation', label: t('Conversation') }, { value: 'details', label: t('Details') }]" :label="t('Worker view')" />
-      </div>
+    <div v-if="activeTicketId && project" class="@container/vp flex min-h-0 flex-1 flex-col">
       <WorkerView
         v-show="workerPanel === 'conversation'"
         :key="`${project.id}:${activeTicketId}`"
@@ -148,4 +168,5 @@ const tabs = computed(() => {
       </div>
     </div>
   </div>
+  </section>
 </template>

@@ -8,7 +8,7 @@ import {
   effectiveStage,
   groupTickets,
   reportStage,
-  resolveRailTab,
+  resolveRailView,
   ticketActivityAt,
   ticketQuestionSummary,
 } from "./board.ts";
@@ -187,14 +187,17 @@ test("collectRunningJobs returns running jobs only from open tickets", () => {
   );
 });
 
-test("resolveRailTab falls back from a closed ticket and reportStage maps statuses", () => {
-  assert.equal(resolveRailTab("worker", false), "tickets");
-  assert.equal(resolveRailTab("worker", true), "worker");
-  assert.equal(resolveRailTab("jobs", false), "jobs");
-  assert.equal(resolveRailTab("jobs", true), "jobs");
-  assert.equal(resolveRailTab("tickets", false), "tickets");
-  assert.equal(resolveRailTab("tickets", true), "tickets");
+test("ticket detail replaces either list and closing it restores that list", () => {
+  for (const list of ["tickets", "jobs"] as const) {
+    assert.equal(resolveRailView(list, undefined), list);
+    assert.equal(resolveRailView(list, "t4"), "detail");
+    assert.equal(resolveRailView(list, "missing"), "detail");
+    assert.equal(resolveRailView(list, ""), list);
+    assert.equal(resolveRailView(list, undefined), list);
+  }
+});
 
+test("reportStage maps statuses", () => {
   assert.equal(reportStage("progress"), "progress");
   assert.equal(reportStage("waiting"), "waiting");
   assert.equal(reportStage("ready"), "review");

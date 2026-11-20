@@ -3,13 +3,12 @@ import type { Client } from "@shared/protocol/client.ts";
 import type { TicketView } from "@shared/protocol/contract.ts";
 import type { Question, QuestionId, TicketId } from "@shared/domain/index.ts";
 import { computed, ref, type ShallowRef, watch } from "vue";
-import { effectiveStage, type RailTab } from "../../lib/board.ts";
+import type { RailTab } from "../../lib/board.ts";
 import { provideComposerInsert } from "../../composables/composer-bridge.ts";
 import { useConversationWatch } from "../../composables/engine-data.ts";
 import { useQuestionNavigation } from "../../composables/question-navigation.ts";
 import { errorText } from "../../lib/errors.ts";
 import { t } from "../../lib/i18n.ts";
-import { STAGE_LABEL } from "../../lib/labels.ts";
 import type { StreamClient } from "../../lib/stream.ts";
 import { useSubmit } from "../../composables/submit.ts";
 import { showToast } from "../../composables/toasts.ts";
@@ -21,14 +20,11 @@ import QuestionReview from "../conversation/QuestionReview.vue";
 import QuestionStrip from "../conversation/QuestionStrip.vue";
 import QueuedDock from "../conversation/QueuedDock.vue";
 import Skeleton from "../../ui/Skeleton.vue";
-import StageGlyph from "./StageGlyph.vue";
 import Transcript from "../conversation/Transcript.vue";
 import Segmented from "../../ui/Segmented.vue";
 import { STOP } from "../conversation/composer.ts";
-import { displayId } from "../../lib/ids.ts";
 import { COMPOSER_STACK, DOCK, DOCK_INNER, DOCK_NOTE } from "../conversation/dock.ts";
 import { EMPTY, ERROR_TEXT } from "../../ui/surface.ts";
-import { ID_TEXT, stagePill } from "./stage.ts";
 
 const props = defineProps<{
   client: Client;
@@ -88,7 +84,6 @@ const ticketQuestions = computed(() =>
   ),
 );
 
-const stage = computed(() => (props.view ? effectiveStage(props.view) : undefined));
 const mode = ref<"steer" | "followUp">("steer");
 const open = computed(() => props.view?.ticket.status === "open");
 const later = ref(false);
@@ -208,24 +203,6 @@ function queueSteer(message: QueuedMessage): Promise<void> {
 
 <template>
   <section class="worker">
-    <header class="header">
-      <div class="flex min-w-0 flex-1 items-center gap-2">
-        <span :class="ID_TEXT">{{ displayId(ticketId) }}</span>
-        <h1 class="ellipsis">
-          {{ view ? view.ticket.title : boardLoaded ? t("Ticket {id} not found", { id: ticketId }) : "" }}
-        </h1>
-      </div>
-      <span
-        v-if="view && stage"
-        :class="stagePill(stage)"
-        :title="STAGE_LABEL[stage]"
-      >
-        <StageGlyph :stage="stage" />
-        <span class="hide-sm">{{ STAGE_LABEL[stage] }}</span>
-      </span>
-      <span class="spacer" />
-    </header>
-
     <div v-if="displayItems.length === 0 && loading" class="chat">
       <div class="chat-inner">
         <Skeleton :lines="5" />

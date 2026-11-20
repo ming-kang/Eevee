@@ -81,12 +81,14 @@ function showHover(payload: { pid: string; top: number; left: number }): void {
 }
 
 function onHashChange(): void {
+  const previous = route.value;
   hash.value = location.hash;
   drawer.value = null;
   paletteOpen.value = false;
   newProjectOpen.value = false;
   hideHover();
-  if (resolveRoute(hash.value).name === "worker") openRail("worker");
+  const next = resolveRoute(hash.value);
+  if (next.name === "worker" || (previous.name === "worker" && next.name === "chat" && previous.pid === next.pid)) openRail();
 }
 
 function onGlobalKeydown(event: KeyboardEvent): void {
@@ -263,7 +265,7 @@ function navigate(next: Route): void {
   drawer.value = null;
   hideHover();
   if (location.hash === target) {
-    if (next.name === "worker") openRail("worker");
+    if (next.name === "worker") openRail();
     return;
   }
   location.hash = target;
@@ -291,7 +293,10 @@ function toggleRail(): void {
 }
 
 function openRail(tab?: RailTab, jobId?: string): void {
-  if (tab) railTab.value = tab;
+  if (tab) {
+    railTab.value = tab;
+    if (route.value.name === "worker") navigate({ name: "chat", pid: route.value.pid });
+  }
   if (jobId !== undefined) openJobId.value = jobId;
   setRailCollapsed(false);
   if (window.innerWidth <= 1240) {
@@ -303,10 +308,9 @@ const activeTicketId = computed(() => route.value.name === "worker" ? route.valu
 watch(
   [() => currentProject.value?.id, activeTicketId],
   ([, ticket]) => {
-    if (ticket) openRail("worker");
+    if (ticket) openRail();
     else {
       railMaximized.value = false;
-      if (railTab.value === "worker") railTab.value = "tickets";
     }
   },
   { immediate: true },
@@ -373,8 +377,8 @@ watch(
   <AppShell
     v-else
     :with-rail="withRail"
-    :worker-active="railTab === 'worker' && !!activeTicketId"
-    :rail-maximized="railMaximized && railTab === 'worker' && !!activeTicketId"
+    :worker-active="!!activeTicketId"
+    :rail-maximized="railMaximized && !!activeTicketId"
     :side-collapsed="sideCollapsed"
     :rail-collapsed="railCollapsed"
     :side-shortcut="sideShortcut"
