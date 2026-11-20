@@ -29,6 +29,21 @@
   gap: calc(8px * var(--ev-scale));
 }
 
+.worked {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: calc(8px * var(--ev-scale));
+}
+
+.chat-inner>.worked {
+  margin-block: calc(8px * var(--ev-scale));
+}
+
+.chat-page.landing .dock {
+  margin-bottom: auto;
+}
+
 /* ——— Landing: an empty conversation centers its title over the composer ——— */
 .chat-page.landing .header {
   border-bottom-color: transparent;
@@ -254,12 +269,11 @@
 .note {
   display: flex;
   align-items: center;
-  gap: calc(7px * var(--ev-scale));
-  min-height: calc(26px * var(--ev-scale));
-  width: fit-content;
+  gap: calc(6px * var(--ev-scale));
+  min-height: calc(24px * var(--ev-scale));
+  width: 100%;
   max-width: 100%;
-  padding: calc(3px * var(--ev-scale)) calc(6px * var(--ev-scale));
-  margin-left: calc(-6px * var(--ev-scale));
+  padding: 0;
   border-radius: var(--ev-r-sm);
 }
 
@@ -291,6 +305,34 @@
 .proc .chev {
   color: var(--ev-label-3);
   transition: transform var(--ev-fast) var(--ev-ease);
+}
+
+.proc>summary>:first-child,
+.note>:first-child:is(.ico, .glyph) {
+  width: calc(16px * var(--ev-scale));
+  height: calc(16px * var(--ev-scale));
+  flex: none;
+}
+
+.proc>summary>:first-child.chev {
+  opacity: 0.5;
+}
+
+.proc>summary:focus-visible .chev,
+.proc[open]>summary .chev {
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .proc>summary:hover .chev {
+    opacity: 1;
+  }
+}
+
+.note>.ellipsis,
+.proc>summary>.ellipsis {
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .proc[open]>summary .chev {
@@ -330,12 +372,6 @@
   }
 }
 
-.note .glyph,
-.proc summary .glyph {
-  width: var(--ev-icon-xs);
-  height: var(--ev-icon-xs);
-}
-
 .note>.ico,
 .note>.glyph {
   color: var(--ev-label-3);
@@ -359,7 +395,7 @@
 }
 
 .proc>.tsheet {
-  margin-left: calc(13px * var(--ev-scale));
+  margin-left: calc(22px * var(--ev-scale));
 }
 
 /* ——— Report ——— */

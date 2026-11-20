@@ -43,7 +43,7 @@ const ticketIds = computed(() => [...new Set(props.actions.flatMap((action) => a
     <summary>
       <Icon name="chevR" size="xs" class="chev" />
       <span class="ellipsis" :class="{ shimmer: hasRunning }">{{ summary }}</span>
-      <span class="flex min-w-0 flex-wrap items-center gap-1">
+      <span class="flex min-w-0 items-center gap-1 overflow-hidden">
         <TicketRef v-for="ticketId in ticketIds" :key="ticketId" :ticket-id="ticketId" :tickets="tickets" @open-ticket="$emit('open-ticket', $event)" />
       </span>
       <span v-if="hasError" class="minus">· {{ t("Failed") }}</span>

@@ -18,11 +18,10 @@ function onRetry(): void {
 </script>
 
 <template>
-  <div class="flex items-center gap-2.5 rounded-lg border border-[color-mix(in_oklab,var(--danger)_28%,var(--border))] bg-[color-mix(in_oklab,var(--surface)_93%,var(--danger))] py-2 pr-2 pl-3 text-sm shadow-(--ev-shadow-card) [&>.ico]:text-danger">
+  <div class="flex min-w-0 items-start gap-2.5 rounded-lg border border-border bg-surface px-3 py-3 text-sm leading-5 [&>.ico]:mt-0.5 [&>.ico]:text-danger" role="alert">
     <Icon name="alert" size="sm" />
-    <span>{{ t("The last turn didn't finish: {text}", { text }) }}</span>
+    <span class="min-w-0 flex-1 wrap-anywhere text-fg-muted">{{ t("The last turn didn't finish: {text}", { text }) }}</span>
     <span v-if="retrying.error.value" class="error">{{ retrying.error.value }}</span>
-    <span class="spacer" />
     <Button v-if="retry" size="sm" :disabled="retrying.busy.value" @click="onRetry">
       {{ t("Retry") }}
     </Button>

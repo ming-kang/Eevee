@@ -370,9 +370,9 @@ watch(
           @open-question="$emit('open-question', $event)"
         />
       </template>
-      <div v-if="running" class="-ml-1.5 flex min-h-6.5 w-fit items-center gap-1.75 px-1.5 py-0.75 text-sm text-fg-muted [&_.glyph]:size-(--ev-icon-xs)">
+      <div v-if="running" class="flex min-h-6 w-fit items-center gap-1.5 text-sm text-fg-subtle [&_.glyph]:size-4">
         <StageGlyph stage="working" />
-        <span>{{ t("Working") }} · {{ workingClock }}</span>
+        <span class="shimmer">{{ t("Working") }} · {{ workingClock }}</span>
       </div>
       <slot name="tail" />
     </div>
