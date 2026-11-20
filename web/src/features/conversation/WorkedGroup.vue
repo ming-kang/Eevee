@@ -128,7 +128,7 @@ async function reveal(key: string): Promise<void> {
           v-for="p in summary.paths"
           :key="p.key"
           type="button"
-          class="flex min-h-5.5 max-w-full items-center gap-2 rounded-xs px-1.5 py-0.5 text-left text-xs text-fg-muted transition-colors hover:bg-hover hover:text-fg focus-visible:bg-hover focus-visible:text-fg"
+          class="flex min-h-5.5 max-w-full items-center gap-2 rounded-sm px-1.5 py-0.5 text-left text-xs text-fg-muted transition-colors hover:bg-hover hover:text-fg focus-visible:bg-hover focus-visible:text-fg"
           @click="reveal(p.key)"
         >
           <span class="mono ellipsis">{{ p.path }}</span>

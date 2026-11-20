@@ -14,7 +14,7 @@ const { toasts } = useToasts();
     move-class="transition-transform duration-(--ev-regular) ease-(--ev-ease)"
     aria-live="polite"
   >
-    <div v-for="item in toasts" :key="item.id" class="flex max-w-[min(calc(480px*var(--ev-scale)),calc(100vw_-_calc(32px*var(--ev-scale))))] animate-[ev-drop_var(--ev-regular)_var(--ev-ease)] items-center gap-2 rounded-md border border-border bg-(--ev-glass-bg) py-2.25 pr-3.5 pl-3 text-sm font-medium tracking-(--ev-tracking) shadow-(--ev-shadow-float) backdrop-blur-(--ev-glass-blur) backdrop-saturate-(--ev-glass-sat)" :class="item.tone === 'error' ? '[&_.ico]:text-danger' : '[&_.ico]:text-success'">
+    <div v-for="item in toasts" :key="item.id" class="flex max-w-[min(calc(480px*var(--ev-scale)),calc(100vw_-_calc(32px*var(--ev-scale))))] animate-[ev-drop_var(--ev-regular)_var(--ev-ease)] items-center gap-2 rounded-lg border-0 bg-(--ev-glass-bg) py-2.25 pr-3.5 pl-3 text-sm font-medium tracking-(--ev-tracking) shadow-(--ev-shadow-float) backdrop-blur-(--ev-glass-blur) backdrop-saturate-(--ev-glass-sat)" :class="item.tone === 'error' ? '[&_.ico]:text-danger' : '[&_.ico]:text-success'">
       <Icon :name="item.tone === 'error' ? 'alert' : 'check'" size="sm" />
       <span>{{ item.message }}</span>
     </div>

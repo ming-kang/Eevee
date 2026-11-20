@@ -48,15 +48,15 @@ function sectionRoute(section: ControlSection): Route {
 <template>
   <DialogRoot :open="open" @update:open="(next) => next || emit('close')">
     <DialogPortal>
-      <DialogOverlay class="fixed inset-0 z-50 bg-overlay backdrop-blur-[4px]" />
+      <DialogOverlay class="fixed inset-0 z-50 bg-overlay" />
       <DialogContent
         ref="content"
         :aria-describedby="undefined"
-        class="fixed top-1/2 left-1/2 z-50 flex h-[min(88dvh,960px)] w-[min(94vw,1280px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-surface text-fg shadow-lg max-sm:h-dvh max-sm:w-screen max-sm:rounded-none max-sm:border-0"
+        class="fixed top-1/2 left-1/2 z-50 flex h-[min(88dvh,960px)] w-[min(94vw,1280px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-panel border-0 bg-surface text-fg shadow-prominent max-sm:h-dvh max-sm:w-screen max-sm:rounded-none max-sm:border-0"
         @close-auto-focus="(event) => event.preventDefault()"
       >
         <header class="flex h-13 shrink-0 items-center gap-3 border-b border-separator px-4">
-          <DialogTitle class="text-lg font-semibold">{{ t("Control") }}</DialogTitle>
+          <DialogTitle class="text-lg font-medium">{{ t("Control") }}</DialogTitle>
           <span class="spacer" />
           <span v-if="project && (section === 'memory' || section === 'usage')" class="truncate text-sm text-fg-muted">{{ project.title }}</span>
           <Button variant="ghost" size="sm" icon :aria-label="t('Close')" @click="emit('close')">
@@ -70,7 +70,7 @@ function sectionRoute(section: ControlSection): Route {
               :key="entry.key"
               :href="formatRoute(sectionRoute(entry.key))"
               :aria-current="section === entry.key ? 'page' : undefined"
-              class="flex h-9 shrink-0 items-center gap-2 rounded-sm px-2.5 text-sm transition-colors hover:bg-hover"
+              class="flex h-9 shrink-0 items-center gap-2 rounded-md px-2.5 text-sm transition-colors hover:bg-hover"
               :class="section === entry.key ? 'bg-selected text-fg' : 'text-fg-muted'"
               @click.prevent="emit('navigate', sectionRoute(entry.key))"
             >

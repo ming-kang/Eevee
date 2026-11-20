@@ -9,4 +9,4 @@ export const STEP_ROW =
 export const STEP_NOTE = "pb-1 text-xs whitespace-pre-wrap text-fg-subtle";
 
 export const STEP_OUT =
-  "step-out mt-0.5 mb-1.5 max-h-70 overflow-auto rounded-sm border border-border bg-(--ev-code) px-3 py-2.5 font-mono text-xs leading-[1.6] break-words whitespace-pre-wrap text-fg [.proc>&]:ml-3.25";
+  "step-out mt-0.5 mb-1.5 max-h-70 overflow-auto rounded-lg border border-border bg-(--ev-code) px-3 py-2.5 font-mono text-xs leading-[1.6] break-words whitespace-pre-wrap text-fg [.proc>&]:ml-3.25";

@@ -310,7 +310,7 @@ async function performUndo(): Promise<void> {
 
 function commitClass(on: boolean): string {
   return [
-    "grid w-full grid-cols-[calc(22px*var(--ev-scale))_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0.5 rounded-sm px-2.5 py-2 text-left transition-colors focus-visible:shadow-(--ev-ring-in)",
+    "grid w-full grid-cols-[calc(22px*var(--ev-scale))_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0.5 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:shadow-(--ev-ring-in)",
     on ? "bg-selected" : "hover:bg-hover",
   ].join(" ");
 }
@@ -330,7 +330,7 @@ const COMMIT_META =
 const MEASURE = "mx-auto w-full max-w-[calc(760px*var(--ev-scale))]";
 const DETAIL_INNER =
   "flex animate-[ev-fade_var(--ev-regular)_var(--ev-ease)] flex-col gap-4 px-(--ev-gutter) pt-4.5 pb-12 @max-[54.2857em]/vp:px-4 @max-[54.2857em]/vp:pt-1 @max-[54.2857em]/vp:pb-10 [&>.hint]:mx-auto [&>.hint]:w-full [&>.hint]:max-w-[calc(760px*var(--ev-scale))]";
-const DETAIL_HEAD = `flex items-start gap-3 ${MEASURE} [&_h2]:text-(length:--ev-headline) [&_h2]:font-semibold [&_h2]:tracking-[-0.015em] [&_h2]:wrap-anywhere [&_h2.mono]:text-base`;
+const DETAIL_HEAD = `flex items-start gap-3 ${MEASURE} [&_h2]:text-(length:--ev-headline) [&_h2]:font-medium [&_h2]:tracking-[-0.015em] [&_h2]:wrap-anywhere [&_h2.mono]:text-base`;
 </script>
 
 <template>

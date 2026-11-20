@@ -1,7 +1,7 @@
 /* Design tokens.
  *
  * Quiet, neutral surfaces: one canvas, a slightly recessed sidebar,
- * hairline borders, and a single indigo accent.
+ * hairline borders, ink actions, and a blue accent.
  *
  * A theme is the small set of base colors in the first two blocks. Everything else, including the Tailwind
  * colors in `theme.css` and the legacy `--ev-*` names, derives from them, so a custom theme only has to set
@@ -10,20 +10,21 @@
 
 :root,
 [data-theme="light"] {
-  --bg: #fcfcfd;
-  --bg-sidebar: #f6f6f7;
+  --bg: #ffffff;
+  --bg-sidebar: #f7f8fa;
   --surface: #ffffff;
-  --surface-2: #f3f3f5;
-  --fg: #1b1b1f;
-  --fg-muted: #5c5c66;
-  --fg-subtle: #8b8b95;
-  --border: #e6e6ea;
-  --border-strong: #d6d6dc;
-  --accent: #5e6ad2;
+  --surface-2: #f2f3f5;
+  --fg: #16181d;
+  --fg-muted: #5b616e;
+  --fg-subtle: #8d93a0;
+  --border: rgb(16 24 40 / 0.10);
+  --border-strong: rgb(16 24 40 / 0.16);
+  --accent: #4176e6;
   --accent-fg: #ffffff;
-  --danger: #dc3e42;
-  --success: #2b9a66;
-  --warning: #e5930f;
+  --switch-thumb: #ffffff;
+  --danger: #d94b55;
+  --success: #259768;
+  --warning: #d99520;
   --warning-fg: #a35f00;
 
   --shadow-color: 0 0 0;
@@ -32,16 +33,16 @@
 }
 
 [data-theme="dark"] {
-  --bg: #151517;
-  --bg-sidebar: #111113;
-  --surface: #1c1c1f;
-  --surface-2: #232327;
-  --fg: #ececef;
-  --fg-muted: #a1a1aa;
-  --fg-subtle: #70707a;
+  --bg: #17181b;
+  --bg-sidebar: #121315;
+  --surface: #1e1f23;
+  --surface-2: #26282d;
+  --fg: #eceef2;
+  --fg-muted: #a3a8b3;
+  --fg-subtle: #6f7480;
   --border: rgb(255 255 255 / 0.08);
   --border-strong: rgb(255 255 255 / 0.14);
-  --accent: #7c85e0;
+  --accent: #6b93f0;
   --accent-fg: #ffffff;
   --danger: #ff6b6e;
   --success: #3dd68c;
@@ -49,7 +50,7 @@
   --warning-fg: #ffca5c;
 
   --shadow-color: 0 0 0;
-  --shadow-strength: 3;
+  --shadow-strength: 2;
   color-scheme: dark;
 }
 
@@ -70,19 +71,22 @@
   --danger-soft: color-mix(in oklab, var(--danger) 12%, transparent);
   --success-soft: color-mix(in oklab, var(--success) 12%, transparent);
   --warning-soft: color-mix(in oklab, var(--warning) 14%, transparent);
-  --overlay: color-mix(in oklab, var(--bg-sidebar) 55%, rgb(0 0 0 / 0.35));
+  --overlay: rgb(0 0 0 / 0.35);
   --skeleton: color-mix(in oklab, var(--fg) 7%, var(--surface));
   --scrollbar: color-mix(in oklab, var(--fg) 18%, transparent);
   --scrollbar-hover: color-mix(in oklab, var(--fg) 30%, transparent);
 
-  --elev-xs: 0 1px 2px rgb(var(--shadow-color) / calc(0.04 * var(--shadow-strength)));
-  --elev-sm:
-    0 0 0 1px var(--border), 0 1px 3px rgb(var(--shadow-color) / calc(0.05 * var(--shadow-strength)));
-  --elev-md:
-    0 0 0 1px var(--border), 0 4px 12px -2px rgb(var(--shadow-color) / calc(0.07 * var(--shadow-strength))),
-    0 12px 28px -8px rgb(var(--shadow-color) / calc(0.1 * var(--shadow-strength)));
-  --elev-lg:
-    0 0 0 1px var(--border), 0 24px 64px -16px rgb(var(--shadow-color) / calc(0.22 * var(--shadow-strength)));
+  --hairline: 0.5px;
+  --elev-stroke: 0 0 0 var(--hairline) var(--border);
+  --elev-panel:
+    var(--elev-stroke), 0 3px 8px rgb(var(--shadow-color) / calc(0.03 * var(--shadow-strength))),
+    0 0 16px rgb(var(--shadow-color) / calc(0.02 * var(--shadow-strength)));
+  --elev-prominent:
+    var(--elev-stroke), 0 3px 8px rgb(var(--shadow-color) / calc(0.04 * var(--shadow-strength))),
+    0 0 20px rgb(var(--shadow-color) / calc(0.05 * var(--shadow-strength)));
+  --elev-soft:
+    var(--elev-stroke), 0 4px 16px rgb(var(--shadow-color) / calc(0.03 * var(--shadow-strength))),
+    0 0 24px rgb(var(--shadow-color) / calc(0.03 * var(--shadow-strength)));
 
   --ring: 0 0 0 var(--ring-w) var(--accent);
   --ring-inset: inset 0 0 0 var(--ring-w) var(--accent);
@@ -110,7 +114,7 @@
     "JetBrains Mono Variable", "JetBrains Mono", "Cascadia Code", ui-monospace, "SF Mono",
     Consolas, monospace;
 
-  --ev-caption: calc(var(--ev-ui) * 11 / 14);
+  --ev-caption: calc(var(--ev-ui) * 12 / 14);
   --ev-footnote: calc(var(--ev-ui) * 12 / 14);
   --ev-control: calc(var(--ev-ui) * 13 / 14);
   --ev-body: var(--ev-ui);
@@ -123,13 +127,14 @@
   --ev-icon: calc(var(--ev-ui) * 18 / 14);
   --ev-icon-lg: calc(var(--ev-ui) * 22 / 14);
   --ev-tracking: -0.006em;
-  --ev-reading: 1.7;
+  --ev-reading: calc(24 / 14);
 
   --ev-r-mini: 4px;
-  --ev-r-sm: 6px;
-  --ev-r-md: 8px;
-  --ev-r-lg: 10px;
-  --ev-r-xl: 12px;
+  --ev-r-sm: 8px;
+  --ev-r-md: 12px;
+  --ev-r-lg: 16px;
+  --ev-r-xl: 20px;
+  --ev-r-panel: 28px;
   --ev-h-sm: calc(28px * var(--ev-scale));
   --ev-h-md: calc(32px * var(--ev-scale));
   --ev-h-lg: calc(36px * var(--ev-scale));
@@ -177,9 +182,9 @@
   --ev-separator: var(--separator);
   --ev-hover: var(--hover);
 
-  --ev-primary: var(--accent);
-  --ev-primary-hover: var(--accent-hover);
-  --ev-on-primary: var(--accent-fg);
+  --ev-primary: var(--fg);
+  --ev-primary-hover: color-mix(in oklab, var(--fg) 88%, var(--bg));
+  --ev-on-primary: var(--bg);
   --ev-ink: var(--fg);
   --ev-on-ink: var(--bg);
   --ev-accent: var(--accent);
@@ -210,12 +215,12 @@
   --ev-glass-sat: 1.1;
 
   --ev-shadow-well: none;
-  --ev-shadow-raised: var(--elev-xs);
-  --ev-shadow-primary: var(--elev-xs);
+  --ev-shadow-raised: none;
+  --ev-shadow-primary: none;
   --ev-shadow-card: none;
-  --ev-shadow-composer: var(--elev-sm);
-  --ev-shadow-float: var(--elev-md);
-  --ev-shadow-modal: var(--elev-lg);
+  --ev-shadow-composer: var(--elev-soft);
+  --ev-shadow-float: var(--elev-panel);
+  --ev-shadow-modal: var(--elev-prominent);
 
   --ev-ring: var(--ring);
   --ev-ring-in: var(--ring-inset);

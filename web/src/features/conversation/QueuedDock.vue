@@ -63,7 +63,7 @@ function rowKey(event: KeyboardEvent, message: QueuedMessage): void {
 </script>
 
 <template>
-  <div v-if="messages.length > 0" class="flex flex-col border-b border-separator first:[&>:first-child]:rounded-t-xl [&>*+*]:border-t [&>*+*]:border-separator">
+  <div v-if="messages.length > 0" class="flex flex-col border-b border-separator first:[&>:first-child]:rounded-t-panel [&>*+*]:border-t [&>*+*]:border-separator">
     <div
       v-for="message in messages"
       :key="message.id"

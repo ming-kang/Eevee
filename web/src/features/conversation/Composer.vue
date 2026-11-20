@@ -206,7 +206,7 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <form class="composer relative flex cursor-text flex-col gap-1.5 rounded-xl pt-3 pr-2.5 pb-2.5 pl-4" @submit.prevent="submit" @click.self="textarea?.focus()">
+  <form class="composer relative flex cursor-text flex-col gap-1.5 rounded-panel pt-3 pr-2.5 pb-2.5 pl-4" @submit.prevent="submit" @click.self="textarea?.focus()">
     <textarea
       ref="textarea"
       class="block max-h-55 min-h-14 w-full resize-none border-0 bg-transparent py-0 pr-1.5 pl-0 text-base leading-[1.572] text-fg focus:shadow-none focus-visible:shadow-none disabled:opacity-60"

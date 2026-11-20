@@ -29,9 +29,9 @@ const labels: Record<MemoryProposal["status"], string> = {
     <div class="grid items-start gap-5 @min-[900px]/vp:grid-cols-[minmax(220px,1fr)_minmax(0,3fr)]">
       <aside class="flex flex-col gap-3" :class="{ '@max-[899px]/vp:hidden': mobileDetail }">
         <section v-for="group in [{ title: t('Pending approval'), proposals: pending }, { title: t('Decided proposals'), proposals: decided }]" :key="group.title">
-          <h2 class="mb-2 text-sm font-semibold">{{ group.title }} · {{ group.proposals.length }}</h2>
+          <h2 class="mb-2 text-sm font-medium">{{ group.title }} · {{ group.proposals.length }}</h2>
           <p v-if="group.proposals.length === 0" class="text-sm text-fg-muted">{{ t("No memory proposals") }}</p>
-          <button v-for="proposal in group.proposals" :key="proposal.id" type="button" class="mb-1 flex w-full flex-col gap-1 rounded-sm border border-border px-3 py-2 text-left text-sm hover:bg-hover" :class="{ 'bg-selected': review.detail.value?.id === proposal.id }" :disabled="review.busy.value" @click="select(proposal.id)">
+          <button v-for="proposal in group.proposals" :key="proposal.id" type="button" class="mb-1 flex w-full flex-col gap-1 rounded-lg border border-border px-3 py-2 text-left text-sm hover:bg-hover" :class="{ 'bg-selected': review.detail.value?.id === proposal.id }" :disabled="review.busy.value" @click="select(proposal.id)">
             <span>{{ proposal.id }} · {{ proposal.scope === "global" ? t("Global") : t("Project") }} · {{ labels[proposal.status] }}</span>
             <span class="break-words">{{ proposal.summary }}</span>
             <span class="text-xs text-fg-muted">{{ proposal.source.kind === "dreaming" ? t("Dreaming") : t("Router") }} {{ proposal.source.ticketId }} · {{ formatRelativeTime(proposal.createdAt) }}</span>
@@ -41,7 +41,7 @@ const labels: Record<MemoryProposal["status"], string> = {
       <article v-if="review.detail.value" class="min-w-0" :class="{ '@max-[899px]/vp:hidden': !mobileDetail }">
         <Button v-if="mobileDetail" class="mb-3 @min-[900px]/vp:hidden" @click="mobileDetail = false">{{ t("Back") }}</Button>
         <header class="mb-4 flex flex-col gap-2">
-          <h2 class="break-words text-sm font-semibold">{{ review.detail.value.id }} · {{ review.detail.value.summary }}</h2>
+          <h2 class="break-words text-sm font-medium">{{ review.detail.value.id }} · {{ review.detail.value.summary }}</h2>
           <p class="text-xs text-fg-muted">{{ labels[review.detail.value.status] }} <template v-if="review.detail.value.decidedAt">· {{ formatRelativeTime(review.detail.value.decidedAt) }}</template></p>
           <p v-if="review.decisionReason.value && review.decisionReason.value !== review.error.value" class="whitespace-pre-wrap text-sm">{{ review.decisionReason.value }}</p>
           <p v-if="review.previewConflict.value" :class="ERROR_TEXT">{{ review.previewConflict.value }}</p>

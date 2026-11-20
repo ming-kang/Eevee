@@ -47,17 +47,28 @@
   --radius-md: var(--ev-r-md);
   --radius-lg: var(--ev-r-lg);
   --radius-xl: var(--ev-r-xl);
+  --radius-panel: var(--ev-r-panel);
   --radius-full: 9999px;
 
   --shadow-*: initial;
-  --shadow-xs: var(--elev-xs);
-  --shadow-sm: var(--elev-sm);
-  --shadow-md: var(--elev-md);
-  --shadow-lg: var(--elev-lg);
+  --shadow-panel: var(--elev-panel);
+  --shadow-prominent: var(--elev-prominent);
+  --shadow-soft: var(--elev-soft);
 
   --spacing: calc(4px * var(--ev-scale));
 
   --ease-out: var(--ev-ease);
   --default-transition-duration: var(--ev-fast);
   --default-transition-timing-function: var(--ev-ease);
+  --default-border-width: var(--hairline);
+}
+
+@utility border-hairline {
+  border-style: solid;
+  border-width: var(--hairline);
+}
+
+@utility rounded-full {
+  border-radius: 9999px;
+  corner-shape: round;
 }

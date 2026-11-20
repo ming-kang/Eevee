@@ -4,11 +4,11 @@ const FADE = "animate-[ev-fade_var(--ev-regular)_var(--ev-ease)]";
 const CHIP_BG = "bg-[color-mix(in_oklab,var(--fg)_7%,transparent)]";
 
 export const QCARD =
-  "qcard flex animate-[ev-rise_var(--ev-regular)_var(--ev-ease)] flex-col rounded-xl border border-[color-mix(in_oklab,var(--ev-user)_35%,var(--border))] bg-surface shadow-(--ev-shadow-composer)";
+  "qcard flex animate-[ev-rise_var(--ev-regular)_var(--ev-ease)] flex-col rounded-xl border-0 bg-surface shadow-panel";
 export const Q_HEAD =
   "flex min-h-11 flex-none items-center gap-2 pr-2.5 pl-5 text-xs font-medium text-fg-muted";
 export const PAGER =
-  "inline-flex items-center gap-0.5 text-xs text-fg-subtle tabular-nums [&>button]:inline-grid [&>button]:size-6 [&>button]:place-items-center [&>button]:rounded-xs [&>button]:text-fg-muted [&>button:hover]:bg-hover [&>button:hover]:text-fg";
+  "inline-flex items-center gap-0.5 text-xs text-fg-subtle tabular-nums [&>button]:inline-grid [&>button]:size-6 [&>button]:place-items-center [&>button]:rounded-sm [&>button]:text-fg-muted hover:[&>button:hover]:bg-hover hover:[&>button:hover]:text-fg";
 export const Q_BODY = "flex flex-col gap-4 px-5 pb-1";
 export const Q_ITEM = "flex flex-col gap-2";
 export const Q_ITEM_T =
@@ -17,7 +17,7 @@ export const Q_OPTS = "flex flex-col gap-0.5";
 export const Q_FOOT = "flex flex-none items-center gap-1.5 py-3 pr-3 pl-5";
 
 const OPTION =
-  "-mx-2.5 flex min-h-8.5 items-center gap-2.5 rounded-sm py-1.5 text-left text-base leading-[1.43] transition-colors focus-visible:shadow-(--ring-inset)";
+  "-mx-2.5 flex min-h-8.5 items-center gap-2.5 rounded-md py-1.5 text-left text-base leading-[1.43] transition-colors focus-visible:shadow-(--ring-inset)";
 
 /** An answer; a chosen one fills its radio. */
 export function qOption(on: boolean): string {
@@ -25,7 +25,7 @@ export function qOption(on: boolean): string {
     OPTION,
     "px-2.5 disabled:cursor-default disabled:opacity-55",
     on
-      ? "bg-selected [&>.radio]:border-transparent [&>.radio]:bg-(--ev-primary) [&>.radio]:after:absolute [&>.radio]:after:inset-1 [&>.radio]:after:rounded-full [&>.radio]:after:bg-(--ev-on-primary) [&>.radio]:after:content-['']"
+      ? "bg-accent-soft [&>.radio]:border-transparent [&>.radio]:bg-accent [&>.radio]:after:absolute [&>.radio]:after:inset-1 [&>.radio]:after:rounded-full [&>.radio]:after:bg-accent-fg [&>.radio]:after:content-['']"
       : "hover:bg-hover",
   ].join(" ");
 }

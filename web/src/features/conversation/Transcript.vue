@@ -379,7 +379,7 @@ watch(
     <button
       v-if="quoteBtn"
       type="button"
-      class="absolute z-7 -translate-x-1/2 animate-[ev-fade_var(--ev-fast)_var(--ev-ease)] rounded-full border border-border bg-(--ev-glass-bg) shadow-(--ev-shadow-float) backdrop-blur-(--ev-glass-blur) backdrop-saturate-(--ev-glass-sat) focus-visible:shadow-[var(--ev-shadow-float),var(--ring)] focus-visible:outline-none px-3 py-1.25 text-xs font-medium text-fg"
+      class="absolute z-7 -translate-x-1/2 animate-[ev-fade_var(--ev-fast)_var(--ev-ease)] rounded-full border-0 bg-(--ev-glass-bg) shadow-(--ev-shadow-float) backdrop-blur-(--ev-glass-blur) backdrop-saturate-(--ev-glass-sat) focus-visible:shadow-[var(--ev-shadow-float),var(--ring)] focus-visible:outline-none px-3 py-1.25 text-xs font-medium text-fg"
       :style="{ left: `${quoteBtn.left}px`, top: `${quoteBtn.top}px` }"
       @mousedown.prevent
       @click="insertQuote"
@@ -391,7 +391,7 @@ watch(
         <button
           v-if="!following"
           type="button"
-          class="pointer-events-auto absolute bottom-6 inline-flex size-8 items-center justify-center rounded-full border border-border bg-(--ev-glass-bg) shadow-(--ev-shadow-float) backdrop-blur-(--ev-glass-blur) backdrop-saturate-(--ev-glass-sat) focus-visible:shadow-[var(--ev-shadow-float),var(--ring)] focus-visible:outline-none text-fg-muted transition-[color,translate] duration-(--ev-fast) hover:-translate-y-px hover:text-fg"
+          class="pointer-events-auto absolute bottom-6 inline-flex size-8 items-center justify-center rounded-full border-0 bg-(--ev-glass-bg) shadow-(--ev-shadow-float) backdrop-blur-(--ev-glass-blur) backdrop-saturate-(--ev-glass-sat) focus-visible:shadow-[var(--ev-shadow-float),var(--ring)] focus-visible:outline-none text-fg-muted transition-[color,translate] duration-(--ev-fast) hover:-translate-y-px hover:text-fg"
           :class="{ '[&>.ico]:hidden hover:[&>.glyph]:hidden hover:[&>.ico]:block focus-visible:[&>.glyph]:hidden focus-visible:[&>.ico]:block': live }"
           :aria-label="t('Jump to latest')"
           @click="toLatest"

@@ -33,7 +33,7 @@ const hasDetails = computed(
     <Icon name="flag" size="xs" />
     <span>{{ t("Progress: {summary}", { summary }) }}</span>
   </div>
-  <div v-else class="rounded-md border border-border bg-surface px-3.5 py-3 text-sm shadow-(--ev-shadow-card) [&_.proc]:mt-1.5">
+  <div v-else class="rounded-lg border border-border bg-surface px-3.5 py-3 text-sm shadow-(--ev-shadow-card) [&_.proc]:mt-1.5">
     <div class="flex items-center gap-1.5 text-xs text-fg-muted">
       <StageGlyph :stage="stage" />
       <span>{{ t("Report #{seq} · {status}", { seq: report.seq, status: REPORT_LABEL[report.status] }) }}</span>

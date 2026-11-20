@@ -8,4 +8,4 @@ export const DOCK_INNER = "mx-auto flex max-w-(--ev-chat-max) flex-col gap-2";
 export const DOCK_NOTE = "py-1.5 text-center text-xs text-fg-subtle";
 
 export const COMPOSER_STACK =
-  "flex flex-col rounded-xl border border-border bg-surface shadow-(--ev-shadow-composer) transition-[border-color,box-shadow] duration-(--ev-regular) focus-within:border-[color-mix(in_oklab,var(--accent)_42%,var(--border))] focus-within:shadow-[var(--ev-shadow-composer),0_0_0_3px_color-mix(in_oklab,var(--accent)_12%,transparent)]";
+  "flex flex-col rounded-panel border-0 bg-surface shadow-soft transition-shadow duration-(--ev-regular) focus-within:shadow-[var(--elev-soft),0_0_0_2px_var(--accent-soft)]";

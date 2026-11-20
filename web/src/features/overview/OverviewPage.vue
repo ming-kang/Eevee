@@ -132,13 +132,13 @@ const columns = computed(() => [
     </div>
     <div v-if="projects.length === 0" class="empty"><h3>{{ t("No projects yet") }}</h3></div>
     <div v-else class="grid min-h-0 flex-1 grid-cols-3 gap-4 overflow-hidden p-5 @max-[960px]/overview:grid-cols-1 @max-[960px]/overview:auto-rows-[minmax(220px,1fr)] @max-[960px]/overview:overflow-y-auto @max-[960px]/overview:p-3">
-      <section v-for="column in columns" :key="column.key" :aria-labelledby="`overview-${column.key}`" class="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-surface-2">
+      <section v-for="column in columns" :key="column.key" :aria-labelledby="`overview-${column.key}`" class="flex min-h-0 min-w-0 flex-col overflow-hidden">
         <header class="flex h-11 shrink-0 items-center gap-2 border-b border-separator px-3.5">
-          <h2 :id="`overview-${column.key}`" class="text-sm font-semibold">{{ column.label }}</h2>
+          <h2 :id="`overview-${column.key}`" class="text-sm font-medium">{{ column.label }}</h2>
           <span class="count" :class="{ user: column.key === 'pending' && column.count > 0 }">{{ column.count }}</span>
         </header>
         <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2.5">
-          <a v-for="card in column.cards" :key="card.key" :href="formatRoute(card.route)" class="flex shrink-0 flex-col gap-2 rounded-md border border-border bg-surface p-3 text-fg transition-colors hover:bg-hover focus-visible:shadow-(--ring)">
+          <a v-for="card in column.cards" :key="card.key" :href="formatRoute(card.route)" class="flex shrink-0 flex-col gap-2 rounded-xl border border-border bg-surface p-3 text-fg transition-colors hover:bg-hover focus-visible:shadow-(--ring)">
             <div class="flex min-w-0 items-center gap-2 text-xs text-fg-muted">
               <StageGlyph :stage="card.stage" class="shrink-0" />
               <span class="min-w-0 flex-1 truncate">{{ card.project }}</span>

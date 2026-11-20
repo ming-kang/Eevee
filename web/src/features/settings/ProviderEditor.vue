@@ -621,7 +621,7 @@ function probedMeta(model: ProbedModelView): string {
         <div class="min-h-11 gap-3 py-1 pr-2 pl-2.5" :class="row({ size: 'none' })">
           <button
             type="button"
-            class="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-sm px-1.5 text-left text-sm hover:bg-hover focus-visible:shadow-(--ring) focus-visible:outline-none"
+            class="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left text-sm hover:bg-hover focus-visible:shadow-(--ring) focus-visible:outline-none"
             :aria-expanded="expanded.has(model.key)"
             @click="toggleModel(model)"
           >
@@ -641,7 +641,7 @@ function probedMeta(model: ProbedModelView): string {
             </Button>
             <span :class="FIELD_NOTE">{{ t("Copy the name, context, prices and more from a built-in model") }}</span>
           </div>
-          <div v-else class="m-ref col-span-full flex flex-col overflow-hidden rounded-md border border-border bg-sidebar [--ev-glyph-cut:var(--bg-sidebar)] animate-[ev-rise_var(--ev-regular)_var(--ev-ease)] [&>*+*]:border-t [&>*+*]:border-separator">
+          <div v-else class="m-ref col-span-full flex flex-col overflow-hidden rounded-lg border border-border bg-sidebar [--ev-glyph-cut:var(--bg-sidebar)] animate-[ev-rise_var(--ev-regular)_var(--ev-ease)] [&>*+*]:border-t [&>*+*]:border-separator">
             <template v-if="refPicked === undefined">
               <div class="min-h-13 gap-2 py-1.5 pr-2 pl-3" :class="row({ size: 'none' })">
                 <Input v-model="refQuery" mono class="min-w-0 flex-1" spellcheck="false" autocomplete="off" :placeholder="t('Search built-in models')" :aria-label="t('Search built-in models')" @input="onRefQuery" />

@@ -6,14 +6,14 @@ const SEPARATED = "[&>*+*]:border-t [&>*+*]:border-separator";
 export function rows(options: { plain?: boolean; spaced?: boolean } = {}): string {
   if (options.spaced) return "flex flex-col gap-2";
   if (options.plain) return `flex flex-col ${SEPARATED}`;
-  return `flex flex-col rounded-lg border border-border bg-surface [--ev-glyph-cut:var(--surface)] ${SEPARATED}`;
+  return `flex flex-col rounded-xl border border-border bg-surface [--ev-glyph-cut:var(--surface)] ${SEPARATED}`;
 }
 
 const ROW_SIZE = {
   md: "min-h-13 gap-3 px-4 py-2.5",
   sm: "min-h-11 gap-3 px-4 py-2.5",
   sect: "gap-3 px-4 pt-3.5 pb-1",
-  home: "min-h-17 gap-3 rounded-md px-3 py-3.5",
+  home: "min-h-17 gap-3 rounded-xl px-3 py-3.5",
   none: "",
 };
 
@@ -30,7 +30,7 @@ export function row(
     parts.push(
       "text-inherit no-underline transition-colors hover:bg-hover focus-visible:shadow-(--ring) focus-visible:outline-none [&_.go]:text-fg-subtle",
     );
-    if (size !== "home") parts.push("first:rounded-t-lg last:rounded-b-lg only:rounded-lg");
+    if (size !== "home") parts.push("first:rounded-t-xl last:rounded-b-xl only:rounded-xl");
   }
   if (options.overlay) parts.push("relative [&>:not(.row-link)]:relative [&>:not(.row-link)]:z-1");
   return parts.join(" ");
@@ -42,7 +42,7 @@ export const ROW_PICK =
 
 /** The link covering an `overlay` row. */
 export const ROW_LINK =
-  "row-link rounded-sm text-inherit no-underline after:absolute after:inset-0 after:content-[''] focus-visible:shadow-(--ring) focus-visible:outline-none";
+  "row-link rounded-md text-inherit no-underline after:absolute after:inset-0 after:content-[''] focus-visible:shadow-(--ring) focus-visible:outline-none";
 
 export function rowMain(options: { loose?: boolean } = {}): string {
   return [
@@ -60,7 +60,7 @@ export function rowTitle(
     : options.block
       ? "block"
       : "flex flex-wrap items-center gap-1.5";
-  const text = options.muted ? "text-xs text-fg-subtle" : "text-base";
+  const text = options.muted ? "text-xs text-fg-subtle" : "text-sm";
   return `${layout} ${text} font-medium tracking-(--ev-tracking)`;
 }
 

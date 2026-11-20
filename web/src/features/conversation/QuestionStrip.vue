@@ -41,7 +41,7 @@ function pick(option: string): void {
 </script>
 
 <template>
-  <div class="flex min-h-9.5 animate-[ev-fade_var(--ev-regular)_var(--ev-ease)] items-center gap-2 rounded-t-xl border-b border-separator bg-(--ev-user-film) py-1 pr-2.5 pl-4 text-left text-sm font-medium text-warning-fg transition-colors hover:bg-[color-mix(in_oklab,var(--ev-user)_18%,transparent)] [&_.ico]:text-warning-fg">
+  <div class="flex min-h-9.5 animate-[ev-fade_var(--ev-regular)_var(--ev-ease)] items-center gap-2 rounded-t-panel border-b border-separator bg-(--ev-user-film) py-1 pr-2.5 pl-4 text-left text-sm font-medium text-warning-fg transition-colors hover:bg-[color-mix(in_oklab,var(--ev-user)_18%,transparent)] [&_.ico]:text-warning-fg">
     <StageGlyph stage="answer" />
     <span class="flex min-w-0 flex-none items-center">
       <TicketRef

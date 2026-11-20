@@ -2,7 +2,7 @@
 
 /** A bordered surface holding a table, a form or a block of text. */
 export const PANEL =
-  "overflow-hidden rounded-lg border border-border bg-surface [--ev-glyph-cut:var(--surface)]";
+  "overflow-hidden rounded-xl border border-border bg-surface [--ev-glyph-cut:var(--surface)]";
 
 /** A small label beside a title: a kind, a count, a state. */
 export function badge(options: { mono?: boolean } = {}): string {
@@ -15,7 +15,7 @@ export function badge(options: { mono?: boolean } = {}): string {
 /** A note across the top of a page; `danger` for problems that need attention. */
 export function banner(tone?: "danger"): string {
   return [
-    "flex items-start gap-2.5 rounded-md border px-3 py-2.5 text-sm leading-[1.385] [&_ul]:mt-1 [&_ul]:pl-4.5 [&>.ico]:mt-px",
+    "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm leading-[1.385] [&_ul]:mt-1 [&_ul]:pl-4.5 [&>.ico]:mt-px",
     tone === "danger"
       ? "border-[color-mix(in_oklab,var(--danger)_30%,var(--border))] bg-[color-mix(in_oklab,var(--surface)_93%,var(--danger))] [&>.ico]:text-danger"
       : "border-border bg-surface [&>.ico]:text-fg-muted",
@@ -30,10 +30,10 @@ export const CODELINE =
 
 /** A data table inside a panel; `td.r` aligns numbers right, `tr.row-link` rows open something. */
 export const TABLE =
-  "w-full border-separate border-spacing-0 text-sm [&_th]:h-9 [&_th]:border-b [&_th]:border-separator [&_th]:px-3.5 [&_th]:text-left [&_th]:text-xs [&_th]:font-medium [&_th]:whitespace-nowrap [&_th]:text-fg-muted [&_td]:h-11 [&_td]:border-b [&_td]:border-separator [&_td]:px-3.5 [&_tbody_tr:last-child_td]:border-b-0 [&_td.mono]:whitespace-nowrap [&_td.name]:whitespace-nowrap [&_td.r]:text-right [&_td.r]:tabular-nums [&_tr.row-link]:cursor-pointer [&_tr.row-link:hover_td]:bg-hover";
+  "w-full border-separate border-spacing-0 text-sm [&_th]:h-9 [&_th]:border-b [&_th]:border-separator [&_th]:px-3.5 [&_th]:text-left [&_th]:text-xs [&_th]:font-medium [&_th]:whitespace-nowrap [&_th]:text-fg-muted [&_td]:h-11 [&_td]:border-b [&_td]:border-separator [&_td]:px-3.5 [&_tbody_tr:last-child_td]:border-b-0 [&_td.mono]:whitespace-nowrap [&_td.name]:whitespace-nowrap [&_td.r]:text-right [&_td.r]:tabular-nums [&_tr.row-link]:cursor-pointer hover:[&_tr.row-link:hover_td]:bg-hover";
 
-export const SECTION_H = "mt-6.5 mb-2.5 text-xs font-semibold text-fg-muted first:mt-0";
+export const SECTION_H = "mt-6.5 mb-2.5 text-xs font-medium text-fg-muted first:mt-0";
 
 /** A centered empty state: an `h3`, an optional `p` and an action. */
 export const EMPTY =
-  "flex flex-1 flex-col items-center justify-center gap-2.5 px-6 py-12 text-center text-fg-muted [&_:is(button,a)]:mt-1.5 [&_h3]:text-(length:--ev-headline) [&_h3]:font-semibold [&_h3]:tracking-[-0.015em] [&_h3]:text-fg [&_p]:text-sm [&_p]:text-fg-subtle";
+  "flex flex-1 flex-col items-center justify-center gap-2.5 px-6 py-12 text-center text-fg-muted [&_:is(button,a)]:mt-1.5 [&_h3]:text-(length:--ev-headline) [&_h3]:font-medium [&_h3]:tracking-[-0.015em] [&_h3]:text-fg [&_p]:text-sm [&_p]:text-fg-subtle";

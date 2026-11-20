@@ -4,6 +4,14 @@
   box-sizing: border-box;
 }
 
+@supports (corner-shape: superellipse(1.5)) {
+  *,
+  *::before,
+  *::after {
+    corner-shape: superellipse(1.5);
+  }
+}
+
 html,
 body,
 #app {
@@ -89,8 +97,10 @@ pre,
   scrollbar-color: transparent transparent;
 }
 
-*:hover {
-  scrollbar-color: var(--ev-scrollbar) transparent;
+@media (hover: hover) {
+  *:hover {
+    scrollbar-color: var(--ev-scrollbar) transparent;
+  }
 }
 
 *::-webkit-scrollbar {
@@ -105,14 +115,17 @@ pre,
 *::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 999px;
+  corner-shape: round;
 }
 
-*:hover::-webkit-scrollbar-thumb {
-  background: var(--ev-scrollbar);
-}
+@media (hover: hover) {
+  *:hover::-webkit-scrollbar-thumb {
+    background: var(--ev-scrollbar);
+  }
 
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--ev-scrollbar-hover);
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--ev-scrollbar-hover);
+  }
 }
 
 /* Applied transiently by `theme.ts` so theme and palette switches never flash transitions. */

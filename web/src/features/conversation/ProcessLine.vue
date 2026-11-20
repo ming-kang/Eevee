@@ -46,7 +46,7 @@ function toggle(step: ToolStepItem): void {
       <template v-for="step in steps" :key="step.id">
         <button
           type="button"
-          :class="[STEP_ROW, 'w-full rounded-xs text-left transition-colors hover:bg-hover focus-visible:shadow-(--ev-ring-in)']"
+          :class="[STEP_ROW, 'w-full rounded-sm text-left transition-colors hover:bg-hover focus-visible:shadow-(--ev-ring-in)']"
           :aria-expanded="openStep === step.id"
           @click="toggle(step)"
         >

@@ -31,13 +31,14 @@ const tabs = computed(() => props.mode === "tabs");
 const keys = computed(() => props.options.map((option) => option.value));
 
 const root = computed(() => [
-  "seg relative isolate flex-none items-stretch bg-surface-2 p-0.5 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--border)_60%,transparent)]",
+  "seg relative isolate flex-none items-stretch rounded-md bg-surface-2",
   props.stretch ? "flex w-full" : "inline-flex",
-  props.size === "sm" ? "sm h-7 rounded-sm" : "h-8 rounded-md",
+  props.size === "sm" ? "sm h-7 p-0.5" : "h-9 p-1",
 ]);
 const item = computed(() => [
   "relative z-1 inline-flex min-w-0 items-center justify-center gap-1.25 whitespace-nowrap text-sm font-medium tracking-(--ev-tracking) text-fg-muted transition-colors hover:text-fg",
-  props.size === "sm" ? "rounded-[5px] px-2.25" : "rounded-sm px-3",
+  "rounded-sm",
+  props.size === "sm" ? "px-2.25" : "px-3",
   props.stretch && "flex-1",
 ]);
 

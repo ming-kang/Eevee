@@ -26,7 +26,7 @@ const output = computed(() => (props.output ?? "").replace(ANSI, "").trim());
 </script>
 
 <template>
-  <div class="tsheet mt-1 mb-2 flex flex-col gap-2 rounded-md border border-border bg-surface px-3 py-2.5 shadow-(--ev-shadow-card) animate-[ev-fade_var(--ev-regular)_var(--ev-ease)] [&_.step-out]:m-0">
+  <div class="tsheet mt-1 mb-2 flex flex-col gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 shadow-(--ev-shadow-card) animate-[ev-fade_var(--ev-regular)_var(--ev-ease)] [&_.step-out]:m-0">
     <HighlightedCode v-if="lang && label" class="tsheet-code" :code="label" :lang="lang" />
     <div v-else-if="label" class="m-0 overflow-x-auto p-0 font-mono text-xs leading-[1.6] break-words whitespace-pre-wrap text-fg">{{ label }}</div>
     <pre v-if="output" v-tail :class="STEP_OUT">{{ output }}</pre>

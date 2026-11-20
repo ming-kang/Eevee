@@ -15,8 +15,8 @@ const props = withDefaults(
 );
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  default: "border-border-strong bg-surface text-fg shadow-xs hover:bg-surface-2",
-  primary: "border-transparent bg-accent text-accent-fg shadow-xs hover:bg-accent-hover",
+  default: "border-border-strong bg-surface text-fg hover:bg-surface-2",
+  primary: "border-transparent bg-fg text-bg hover:bg-(--ev-primary-hover)",
   danger:
     "border-[color-mix(in_oklab,var(--danger)_32%,var(--border-strong))] bg-surface text-danger hover:bg-danger-soft",
   ghost: "border-transparent bg-transparent text-fg-muted hover:bg-hover hover:text-fg active:bg-selected",
@@ -24,7 +24,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
 };
 
 const SIZES = {
-  md: { box: "h-8 gap-1.5 rounded-md px-3", icon: "w-8 px-0" },
+  md: { box: "h-9 gap-1.5 rounded-md px-3", icon: "w-9 px-0" },
   sm: { box: "h-7 gap-1 rounded-sm px-2.5", icon: "w-7 px-0" },
 };
 

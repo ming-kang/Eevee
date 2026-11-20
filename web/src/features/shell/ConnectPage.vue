@@ -29,9 +29,9 @@ async function copy(text: string): Promise<void> {
 
 <template>
   <div class="grid h-full place-items-center bg-(--ev-region) p-6">
-    <div class="flex w-[min(calc(400px*var(--ev-scale)),100%)] animate-[ev-pop_var(--ev-slow)_var(--ev-ease)] flex-col gap-4.5 rounded-lg border border-border bg-surface p-7 shadow-(--ev-shadow-modal)">
+    <div class="flex w-[min(calc(400px*var(--ev-scale)),100%)] animate-[ev-pop_var(--ev-slow)_var(--ev-ease)] flex-col gap-4.5 rounded-panel border-0 bg-surface p-7 shadow-(--ev-shadow-modal)">
       <span class="flex items-center [&_svg]:size-7"><BrandLogo /></span>
-      <h1 class="text-(length:--ev-title) font-semibold tracking-[-0.02em]">{{ t("Connect to the Engine") }}</h1>
+      <h1 class="text-(length:--ev-title) font-medium tracking-[-0.02em]">{{ t("Connect to the Engine") }}</h1>
       <div v-if="networkError" :class="banner('danger')" role="alert">
         <Icon name="alert" size="sm" />
         <div>{{ networkError }}</div>

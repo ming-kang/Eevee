@@ -118,7 +118,7 @@ function barWidth(summary: UsageSummary): string {
         <p v-if="error" class="error hint">{{ error }}</p>
         <Skeleton v-else-if="loading && !usage" />
         <template v-else-if="usage">
-          <div class="grid grid-cols-4 @max-[54.2857em]/vp:grid-cols-2 [&>div]:flex [&>div]:flex-col [&>div]:gap-1 [&>div]:px-4.5 [&>div]:py-4 [&>div+div]:shadow-[inset_1px_0_0_var(--ev-separator)] @max-[54.2857em]/vp:[&>div:nth-child(3)]:shadow-[inset_0_1px_0_var(--ev-separator)] @max-[54.2857em]/vp:[&>div:nth-child(4)]:shadow-[inset_1px_0_0_var(--ev-separator),inset_0_1px_0_var(--ev-separator)] [&_.k]:text-xs [&_.k]:text-fg-muted [&_.v]:text-(length:--ev-display) [&_.v]:font-semibold [&_.v]:tracking-[-0.02em] [&_.v]:tabular-nums" :class="PANEL">
+          <div class="grid grid-cols-4 @max-[54.2857em]/vp:grid-cols-2 [&>div]:flex [&>div]:flex-col [&>div]:gap-1 [&>div]:px-4.5 [&>div]:py-4 [&>div+div]:shadow-[inset_1px_0_0_var(--ev-separator)] @max-[54.2857em]/vp:[&>div:nth-child(3)]:shadow-[inset_0_1px_0_var(--ev-separator)] @max-[54.2857em]/vp:[&>div:nth-child(4)]:shadow-[inset_1px_0_0_var(--ev-separator),inset_0_1px_0_var(--ev-separator)] [&_.k]:text-xs [&_.k]:text-fg-muted [&_.v]:text-(length:--ev-display) [&_.v]:font-medium [&_.v]:tracking-[-0.02em] [&_.v]:tabular-nums" :class="PANEL">
             <div :title="t('From provider bills; estimated from list prices when missing')">
               <span class="k">{{ t("Cost") }}</span>
               <span class="v">{{ formatCost(usage.total.cost) }}</span>

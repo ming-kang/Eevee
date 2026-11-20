@@ -162,7 +162,7 @@ const B_ITEM =
     </dl>
 
     <div v-if="sortedReports.length > 0" class="flex flex-col gap-2">
-      <div class="text-xs font-semibold text-fg-muted">{{ t("Reports") }}</div>
+      <div class="text-xs font-medium text-fg-muted">{{ t("Reports") }}</div>
       <div class="flex flex-col gap-2">
         <ReportCard
           v-for="report in sortedReports"
