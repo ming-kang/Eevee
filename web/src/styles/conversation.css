@@ -1232,6 +1232,21 @@
     padding: 0 calc(12px * var(--ev-scale)) calc(12px * var(--ev-scale));
   }
 
+  /* Show the whole question before Submit. If it exceeds the viewport, scroll the entire
+     card (including its footer) instead of quietly hiding choices in a second scroll area. */
+  .dock:has(.qcard) {
+    flex-shrink: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scroll-padding-block: calc(12px * var(--ev-scale));
+  }
+
+  .qbody {
+    max-height: none;
+    overflow: visible;
+  }
+
   .msg-user {
     max-width: 88%;
   }

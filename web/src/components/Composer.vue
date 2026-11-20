@@ -247,7 +247,7 @@ function onKeydown(event: KeyboardEvent): void {
     <div class="c-actions">
       <slot name="actions" />
       <span class="spacer" />
-      <span :id="`${listId}-hint`" class="composer-hint">{{ t("Shift Enter for a new line") }}</span>
+      <span :id="`${listId}-hint`" class="composer-hint">{{ t("Shift+Enter for a new line") }}</span>
       <slot name="end" />
       <button
         class="send"

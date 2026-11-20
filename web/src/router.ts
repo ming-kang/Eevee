@@ -1,3 +1,5 @@
+import type { QuestionId } from "../../src/contracts/index.ts";
+
 const SETTINGS_SECTIONS = ["general", "models", "roles", "mcp", "engine"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
@@ -6,7 +8,7 @@ export const NEW_ITEM = "+";
 const ITEM_SECTIONS: readonly SettingsSection[] = ["models", "mcp"];
 
 export type Route =
-  | { name: "chat"; pid: string }
+  | { name: "chat"; pid: string; qid?: QuestionId }
   | { name: "worker"; pid: string; tid: string }
   | { name: "memory"; pid: string }
   | { name: "usage"; pid: string }
@@ -54,6 +56,10 @@ export function parseRoute(hash: string): Route | undefined {
     const pid = decode(parts[1]);
     if (!pid) return undefined;
     if (parts.length === 2) return { name: "chat", pid };
+    if (parts[2] === "q" && parts[3] && parts.length === 4) {
+      const qid = decode(parts[3]);
+      return qid && /^q\d+$/.test(qid) ? { name: "chat", pid, qid: qid as QuestionId } : undefined;
+    }
     if (parts[2] === "t" && parts[3] && parts.length === 4) {
       const tid = decode(parts[3]);
       return tid ? { name: "worker", pid, tid } : undefined;
@@ -75,7 +81,7 @@ export function resolveRoute(hash: string, fallbackPid?: string): Route {
 export function formatRoute(route: Route): string {
   switch (route.name) {
     case "chat":
-      return `#/p/${encodeURIComponent(route.pid)}`;
+      return `#/p/${encodeURIComponent(route.pid)}${route.qid === undefined ? "" : `/q/${encodeURIComponent(route.qid)}`}`;
     case "worker":
       return `#/p/${encodeURIComponent(route.pid)}/t/${encodeURIComponent(route.tid)}`;
     case "memory":
