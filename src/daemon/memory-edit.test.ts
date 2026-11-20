@@ -59,7 +59,7 @@ test("project and global memory routes save user edits with atomic version check
         version: initial.body.version,
       });
       assert.equal(saved.status, 200);
-      assert.deepEqual(saved.body.source, { kind: "user" });
+      assert.deepEqual((saved.body.change as { source: unknown }).source, { kind: "user" });
       const empty = await request("GET", `${root}/files/MEMORY.md`);
       assert.equal(empty.body.content, "");
       assert.notEqual(empty.body.version, initial.body.version);
@@ -67,7 +67,7 @@ test("project and global memory routes save user edits with atomic version check
         content: "",
         version: empty.body.version,
       });
-      assert.deepEqual(same.body, empty.body);
+      assert.deepEqual(same.body, { file: empty.body, change: null });
       const stale = await request("PUT", `${root}/files/MEMORY.md`, {
         content: "stale",
         version: initial.body.version,
@@ -79,12 +79,15 @@ test("project and global memory routes save user edits with atomic version check
       assert.match(String(stale.body.title), /Reload/);
       assert.equal((await request("GET", `${root}/files/MEMORY.md`)).body.content, "");
       const last = await request("GET", `${root}/changes`);
-      assert.equal((last.body.changes as { id: number }[])[0]?.id, saved.body.id);
+      assert.equal(
+        (last.body.changes as { id: number }[])[0]?.id,
+        (saved.body.change as { id: number }).id,
+      );
     }
     const file = `${prefix}/files/${encodeURIComponent("topics/new file.md")}`;
     const added = await request("PUT", file, { content: "new", version: "" });
     assert.equal(added.status, 200);
-    assert.deepEqual(added.body.source, { kind: "user" });
+    assert.deepEqual((added.body.change as { source: unknown }).source, { kind: "user" });
     assert.equal((await request("PUT", file, { content: "collision", version: "" })).status, 409);
     const current = await request("GET", file);
     assert.equal(
@@ -96,7 +99,7 @@ test("project and global memory routes save user edits with atomic version check
       version: current.body.version,
     });
     assert.equal(renamed.status, 200);
-    assert.deepEqual(renamed.body.source, { kind: "user" });
+    assert.deepEqual((renamed.body.change as { source: unknown }).source, { kind: "user" });
     assert.equal((await request("GET", file)).status, 404);
     const renamedPath = `${prefix}/files/renamed.md`;
     assert.equal((await request("DELETE", `${renamedPath}?version=stale`)).status, 409);
@@ -106,7 +109,7 @@ test("project and global memory routes save user edits with atomic version check
       file: "renamed.md",
       query: { version: String(current.body.version) },
     });
-    assert.equal(deleted.source.kind, "user");
+    assert.equal(deleted.change?.source.kind, "user");
     assert.equal((await request("GET", renamedPath)).status, 404);
     assert.equal(
       (await request("PUT", renamedPath, { content: "stale", version: current.body.version }))
