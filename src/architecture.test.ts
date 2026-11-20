@@ -73,10 +73,10 @@ function violation(file: string, specifier: string): string | undefined {
   if (
     path[0] === "src" &&
     path[1] === "engine" &&
-    path[2] === "orchestration" &&
+    (path[2] === "orchestration" || path[2] === "memory") &&
     (enginePath[0] === "extensions" || enginePath[0] === "roles")
   ) {
-    return `${relative(root, file)}: ${specifier} (orchestration -> ${enginePath[0]})`;
+    return `${relative(root, file)}: ${specifier} (${path[2]} -> ${enginePath[0]})`;
   }
   const destination = relative(join(root, "src"), target).split(sep);
   if (destination[0] === "..") return undefined;
@@ -97,6 +97,88 @@ test("source imports respect layer boundaries", () => {
   assert.deepEqual(violations, [], `Layer violations:\n${violations.join("\n")}`);
 });
 
+function gitCommands(text: string): string[] {
+  const ast = ts.createSourceFile("source.ts", text, ts.ScriptTarget.Latest, true);
+  const found: string[] = [];
+  const executors = new Set<string>();
+  const namespaces = new Set<string>();
+  const spawning = new Set(["exec", "execSync", "execFile", "execFileSync", "spawn", "spawnSync"]);
+  for (const statement of ast.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      !["node:child_process", "child_process"].includes(statement.moduleSpecifier.text)
+    )
+      continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const item of bindings.elements) {
+        if (spawning.has(item.propertyName?.text ?? item.name.text)) executors.add(item.name.text);
+      }
+    } else if (bindings) namespaces.add(bindings.name.text);
+    if (statement.importClause?.name) namespaces.add(statement.importClause.name.text);
+  }
+  const isExecutor = (node: ts.Expression): boolean =>
+    ts.isIdentifier(node)
+      ? executors.has(node.text)
+      : ts.isPropertyAccessExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        namespaces.has(node.expression.text) &&
+        spawning.has(node.name.text);
+  function visit(node: ts.Node): void {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isCallExpression(node.initializer) &&
+      node.initializer.arguments[0] &&
+      isExecutor(node.initializer.arguments[0])
+    )
+      executors.add(node.name.text);
+    if (ts.isCallExpression(node) && isExecutor(node.expression)) {
+      const command = node.arguments[0];
+      if (
+        command &&
+        ts.isStringLiteralLike(command) &&
+        /(?:^|[;&|]\s*)(?:[^\s]*[/\\])?git(?:\.exe)?(?:\s|$)/i.test(command.text)
+      )
+        found.push(command.text);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(ast);
+  return found;
+}
+
+test("only GitStore invokes Git in production sources", () => {
+  const violations = sources(join(root, "src"))
+    .filter(
+      (file) =>
+        !file.endsWith(".test.ts") &&
+        relative(root, file).split(sep).join("/") !== "src/engine/memory/git.ts",
+    )
+    .flatMap((file) =>
+      gitCommands(readFileSync(file, "utf8")).map(
+        (command) => `${relative(root, file)}: ${command}`,
+      ),
+    );
+  assert.deepEqual(violations, []);
+});
+
+test("Git invocation detection covers aliases, promises, namespaces and shell commands", () => {
+  for (const source of [
+    'import { spawn as launch } from "node:child_process"; launch("git", []);',
+    'import { execFile } from "node:child_process"; const run = promisify(execFile); run("git", []);',
+    'import * as cp from "node:child_process"; cp.exec("git status");',
+    'import { execFileSync } from "child_process"; execFileSync("git.exe", []);',
+  ])
+    assert.equal(gitCommands(source).length, 1, source);
+  assert.deepEqual(
+    gitCommands('import { spawn } from "node:child_process"; spawn("node", []);'),
+    [],
+  );
+});
+
 test("boundary detection covers allowed, external, and forbidden imports", () => {
   assert.equal(violation(join(root, "src/engine/example.ts"), "../domain/index.ts"), undefined);
   assert.equal(violation(join(root, "src/domain/example.ts"), "node:fs"), undefined);
@@ -106,6 +188,10 @@ test("boundary detection covers allowed, external, and forbidden imports", () =>
   );
   assert.deepEqual(imports("", "empty.ts"), []);
   for (const dependency of ["extensions", "roles"]) {
+    assert.match(
+      violation(join(root, "src/engine/memory/example.ts"), `../${dependency}/index.ts`) ?? "",
+      new RegExp(`memory -> ${dependency}`),
+    );
     assert.match(
       violation(join(root, "src/engine/orchestration/example.ts"), `../${dependency}/index.ts`) ??
         "",

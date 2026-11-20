@@ -854,7 +854,14 @@ test("the opening is written into the worker conversation when the ticket is cre
 });
 
 test("a board watcher hears the current board, then its changes, without calling board()", async () => {
-  const project = await openTestProject(() => say("OK."));
+  let release = () => {};
+  const answer = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const project = await openTestProject(async () => {
+    await answer;
+    return say("OK.");
+  });
   const views: BoardView[] = [];
   const unsubscribe = project.host.watchBoard({
     view: (board) => views.push(board),
@@ -864,8 +871,10 @@ test("a board watcher hears the current board, then its changes, without calling
     await project.until(async () => views.length > 0, 1500);
     await project.host.conversations.send("router", "hello");
     await project.until(async () => views.some((board) => board.router.running), 1500);
+    release();
     await project.until(async () => views.at(-1)?.router.running === false, 1500);
   } finally {
+    release();
     unsubscribe();
     await project.close();
   }

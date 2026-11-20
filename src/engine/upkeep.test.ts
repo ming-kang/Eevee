@@ -1,7 +1,30 @@
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
+import { eeveePaths } from "../shared/paths.ts";
 import { type Brain, call, openTestProject, say, textOf, toolName } from "./testing.ts";
+
+test("project upkeep captures hand edits even when Dreaming is disabled", async () => {
+  const project = await openTestProject(() => say("OK."));
+  try {
+    const paths = eeveePaths(project.home);
+    await writeFile(join(paths.project(project.host.meta.id).memory, "manual.md"), "hand edited\n");
+    await writeFile(join(paths.globalMemory, "MEMORY.md"), "global hand edit\n");
+    const saved = await project.until(async () => {
+      const history = await project.host.memory.history("project");
+      return history.find((change) => change.files.some((file) => file.path === "manual.md"));
+    });
+    assert.deepEqual(saved.source, { kind: "user" });
+    const global = await project.until(async () =>
+      (await project.host.memory.history("global")).find((change) => change.source.kind === "user"),
+    );
+    assert.equal(global.files[0]?.path, "MEMORY.md");
+  } finally {
+    await project.close();
+  }
+});
 
 test("when a Worker run fails, the Engine files a failed report for it and wakes the Router, once", async () => {
   const brain: Brain = ({ role, last }) => {

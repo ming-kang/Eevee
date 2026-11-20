@@ -15,7 +15,7 @@ import {
 import type { Extension, JsonObject } from "@earendil-works/pi-durable";
 import { DEFAULT_SETTINGS, type Settings } from "../config/settings.ts";
 import { eeveePaths } from "../shared/paths.ts";
-import { MemoryRepo } from "./extensions/memory/index.ts";
+import { MemoryStore } from "./memory/store.ts";
 import { openProject } from "./project/open.ts";
 import type { Project } from "./project/project.ts";
 import { createProjectMeta } from "./project/store.ts";
@@ -146,7 +146,7 @@ export async function openTestProject(
       meta,
       models: () => models,
       settings: () => settings,
-      globalMemory: new MemoryRepo(paths.globalMemory),
+      globalMemory: new MemoryStore(paths.globalMemory, "global"),
       shared: () => shared,
       context: BACKGROUND_CONTEXT,
       upkeepMs: 100,

@@ -1,4 +1,4 @@
-import type { MemoryChangeDetail, MemoryDiffLine } from "../../../domain/index.ts";
+import type { MemoryChangeDetail, MemoryDiffLine } from "../../domain/index.ts";
 
 export type FileDiff = MemoryChangeDetail["files"][number];
 
@@ -61,11 +61,14 @@ export function parseDiff(raw: string): FileDiff[] {
       current.binary = true;
       continue;
     }
+    if (line.startsWith("rename to ")) {
+      current.path = unquotePath(line.slice("rename to ".length));
+      continue;
+    }
     if (
       line.startsWith("index ") ||
       line.startsWith("similarity index ") ||
-      line.startsWith("rename from ") ||
-      line.startsWith("rename to ")
+      line.startsWith("rename from ")
     ) {
       continue;
     }
