@@ -3,8 +3,8 @@
  * Crisp, high-contrast surfaces inspired by T3 Code:
  * - Light uses an airy near-white canvas (#fcfcfc), a whisper-light sidebar (#f7f7f8), pure white
  *   cards and selected rows (#ffffff), and clean 1px hairlines (#e4e4e7) without muddy gray washes.
- * - Dark uses an obsidian/true-black canvas (#09090b / #050507) with crisp 1px translucent borders
- *   (rgb(255 255 255 / 0.08)) and subtle top inner highlights instead of milky gray fills.
+ * - Dark uses a soft charcoal canvas with gently lifted cards, readable secondary text,
+ *   and visible surface edges rather than true-black wells.
  * - Optional curated palettes (`data-palette="grove|ocean|ember|iris|rose"`) tint the canvas,
  *   chrome, borders and primary action in oklch across both light and dark modes.
  */
@@ -86,39 +86,39 @@
 }
 
 [data-theme="dark"] {
-  --ev-ground: #09090b;
-  --ev-page: #09090b;
-  --ev-region: #050507;
-  --ev-card: #111114;
-  --ev-raised: #151519;
-  --ev-well: rgb(255 255 255 / 0.035);
-  --ev-tray: rgb(255 255 255 / 0.055);
-  --ev-tray-raised: #222228;
+  --ev-ground: #1e2127;
+  --ev-page: #1e2127;
+  --ev-region: #191c22;
+  --ev-card: #282c34;
+  --ev-raised: #30353e;
+  --ev-well: color-mix(in oklab, var(--ev-card) 70%, var(--ev-region));
+  --ev-tray: color-mix(in oklab, var(--ev-card) 92%, white);
+  --ev-tray-raised: #383e49;
 
-  --ev-label: #f4f4f5;
-  --ev-side-ink: #e4e4e7;
-  --ev-prose: #f4f4f5;
-  --ev-label-2: #a1a1aa;
-  --ev-label-3: #71717a;
-  --ev-working: #a1a1aa;
-  --ev-strong: #ffffff;
+  --ev-label: #eceef3;
+  --ev-side-ink: #d3d9e2;
+  --ev-prose: #dce1e8;
+  --ev-label-2: #bac2cf;
+  --ev-label-3: #a6b0bf;
+  --ev-working: #bac2cf;
+  --ev-strong: #f7f9fc;
 
-  --ev-border: rgb(255 255 255 / 0.08);
-  --ev-input-border: rgb(255 255 255 / 0.13);
-  --ev-separator: rgb(255 255 255 / 0.07);
-  --ev-hover: rgb(255 255 255 / 0.055);
-  --ev-selected: rgb(255 255 255 / 0.09);
+  --ev-border: rgb(255 255 255 / 0.12);
+  --ev-input-border: rgb(255 255 255 / 0.2);
+  --ev-separator: rgb(255 255 255 / 0.085);
+  --ev-hover: rgb(255 255 255 / 0.065);
+  --ev-selected: rgb(255 255 255 / 0.11);
 
-  --ev-side-hover: rgb(255 255 255 / 0.055);
-  --ev-side-selected: rgb(255 255 255 / 0.095);
-  --ev-side-selected-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+  --ev-side-hover: rgb(255 255 255 / 0.065);
+  --ev-side-selected: rgb(255 255 255 / 0.1);
+  --ev-side-selected-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
 
-  --ev-primary: oklch(0.585 0.21 264);
-  --ev-primary-hover: oklch(0.63 0.2 264);
+  --ev-primary: oklch(0.57 0.21 264);
+  --ev-primary-hover: oklch(0.54 0.21 264);
   --ev-on-primary: #ffffff;
 
   --ev-ink: #f4f4f5;
-  --ev-on-ink: #09090b;
+  --ev-on-ink: #1e2127;
 
   --ev-accent: oklch(0.62 0.195 264);
   --ev-link: oklch(0.72 0.15 256);
@@ -132,10 +132,10 @@
   --ev-ok-ink: #34d399;
   --ev-ok-film: rgb(52 211 153 / 0.14);
 
-  --ev-msg-user: #17171c;
-  --ev-overlay: rgb(0 0 0 / 0.64);
-  --ev-code: #0d0d10;
-  --ev-skeleton: #18181d;
+  --ev-msg-user: #303640;
+  --ev-overlay: rgb(9 12 17 / 0.55);
+  --ev-code: #22262d;
+  --ev-skeleton: #343a44;
 
   --ev-scrollbar: rgb(255 255 255 / 0.24);
   --ev-scrollbar-hover: rgb(255 255 255 / 0.38);
@@ -146,17 +146,17 @@
   --ev-glass-sat: 1.08;
 
   --ev-shadow-well: none;
-  --ev-shadow-raised: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 2px rgb(0 0 0 / 0.4);
+  --ev-shadow-raised: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 2px rgb(0 0 0 / 0.2);
   --ev-shadow-primary:
     inset 0 1px 0 rgb(255 255 255 / 0.22), 0 1px 3px rgb(0 0 0 / 0.45);
   --ev-shadow-ink: inset 0 1px 0 rgb(255 255 255 / 0.4), 0 1px 2px rgb(0 0 0 / 0.45);
-  --ev-shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.025);
+  --ev-shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.04);
   --ev-shadow-composer:
-    inset 0 1px 0 rgb(255 255 255 / 0.04), 0 14px 32px -18px rgb(0 0 0 / 0.78);
+    inset 0 1px 0 rgb(255 255 255 / 0.04), 0 14px 32px -18px rgb(0 0 0 / 0.4);
   --ev-shadow-float:
-    inset 0 1px 0 rgb(255 255 255 / 0.05), 0 16px 40px -8px rgb(0 0 0 / 0.78);
+    inset 0 1px 0 rgb(255 255 255 / 0.05), 0 16px 40px -8px rgb(0 0 0 / 0.45);
   --ev-shadow-modal:
-    inset 0 1px 0 rgb(255 255 255 / 0.05), 0 24px 72px -16px rgb(0 0 0 / 0.88);
+    inset 0 1px 0 rgb(255 255 255 / 0.05), 0 24px 72px -16px rgb(0 0 0 / 0.55);
   color-scheme: dark;
 }
 
@@ -181,21 +181,21 @@
 }
 
 [data-theme="dark"][data-palette="grove"] {
-  --ev-ground: oklch(0.155 0.015 162);
-  --ev-page: oklch(0.155 0.015 162);
-  --ev-region: oklch(0.125 0.014 162);
-  --ev-card: oklch(0.195 0.018 162);
-  --ev-raised: oklch(0.22 0.02 162);
-  --ev-tray-raised: oklch(0.265 0.024 162);
-  --ev-border: oklch(0.32 0.028 162 / 0.55);
-  --ev-input-border: oklch(0.38 0.032 162 / 0.65);
+  --ev-ground: oklch(0.25 0.015 162);
+  --ev-page: oklch(0.25 0.015 162);
+  --ev-region: oklch(0.225 0.014 162);
+  --ev-card: oklch(0.295 0.018 162);
+  --ev-raised: oklch(0.33 0.02 162);
+  --ev-tray-raised: oklch(0.37 0.024 162);
+  --ev-border: oklch(0.42 0.028 162 / 0.7);
+  --ev-input-border: oklch(0.48 0.032 162 / 0.8);
   --ev-primary: oklch(0.68 0.145 156);
   --ev-primary-hover: oklch(0.72 0.14 156);
   --ev-on-primary: oklch(0.15 0.02 160);
   --ev-accent: oklch(0.7 0.14 156);
   --ev-link: oklch(0.76 0.13 156);
-  --ev-msg-user: oklch(0.225 0.024 162);
-  --ev-code: oklch(0.135 0.014 162);
+  --ev-msg-user: oklch(0.32 0.024 162);
+  --ev-code: oklch(0.265 0.014 162);
 }
 
 [data-palette="ocean"],
@@ -217,21 +217,21 @@
 }
 
 [data-theme="dark"][data-palette="ocean"] {
-  --ev-ground: oklch(0.152 0.016 244);
-  --ev-page: oklch(0.152 0.016 244);
-  --ev-region: oklch(0.122 0.015 244);
-  --ev-card: oklch(0.192 0.02 244);
-  --ev-raised: oklch(0.218 0.022 244);
-  --ev-tray-raised: oklch(0.265 0.026 244);
-  --ev-border: oklch(0.32 0.03 244 / 0.55);
-  --ev-input-border: oklch(0.38 0.035 244 / 0.65);
+  --ev-ground: oklch(0.25 0.016 244);
+  --ev-page: oklch(0.25 0.016 244);
+  --ev-region: oklch(0.225 0.015 244);
+  --ev-card: oklch(0.295 0.02 244);
+  --ev-raised: oklch(0.33 0.022 244);
+  --ev-tray-raised: oklch(0.37 0.026 244);
+  --ev-border: oklch(0.42 0.03 244 / 0.7);
+  --ev-input-border: oklch(0.48 0.035 244 / 0.8);
   --ev-primary: oklch(0.68 0.145 236);
   --ev-primary-hover: oklch(0.72 0.14 236);
   --ev-on-primary: oklch(0.14 0.025 244);
   --ev-accent: oklch(0.7 0.14 236);
   --ev-link: oklch(0.76 0.125 234);
-  --ev-msg-user: oklch(0.222 0.026 244);
-  --ev-code: oklch(0.132 0.015 244);
+  --ev-msg-user: oklch(0.32 0.026 244);
+  --ev-code: oklch(0.265 0.015 244);
 }
 
 [data-palette="ember"],
@@ -253,21 +253,21 @@
 }
 
 [data-theme="dark"][data-palette="ember"] {
-  --ev-ground: oklch(0.155 0.014 42);
-  --ev-page: oklch(0.155 0.014 42);
-  --ev-region: oklch(0.125 0.012 40);
-  --ev-card: oklch(0.195 0.017 42);
-  --ev-raised: oklch(0.22 0.02 42);
-  --ev-tray-raised: oklch(0.268 0.024 42);
-  --ev-border: oklch(0.32 0.028 42 / 0.55);
-  --ev-input-border: oklch(0.38 0.032 42 / 0.65);
+  --ev-ground: oklch(0.25 0.014 42);
+  --ev-page: oklch(0.25 0.014 42);
+  --ev-region: oklch(0.225 0.012 40);
+  --ev-card: oklch(0.295 0.017 42);
+  --ev-raised: oklch(0.33 0.02 42);
+  --ev-tray-raised: oklch(0.37 0.024 42);
+  --ev-border: oklch(0.42 0.028 42 / 0.7);
+  --ev-input-border: oklch(0.48 0.032 42 / 0.8);
   --ev-primary: oklch(0.71 0.165 48);
   --ev-primary-hover: oklch(0.75 0.155 48);
   --ev-on-primary: oklch(0.15 0.025 40);
   --ev-accent: oklch(0.72 0.16 48);
   --ev-link: oklch(0.77 0.14 52);
-  --ev-msg-user: oklch(0.225 0.022 42);
-  --ev-code: oklch(0.135 0.012 40);
+  --ev-msg-user: oklch(0.32 0.022 42);
+  --ev-code: oklch(0.265 0.012 40);
 }
 
 [data-palette="iris"],
@@ -289,21 +289,21 @@
 }
 
 [data-theme="dark"][data-palette="iris"] {
-  --ev-ground: oklch(0.152 0.018 294);
-  --ev-page: oklch(0.152 0.018 294);
-  --ev-region: oklch(0.122 0.016 294);
-  --ev-card: oklch(0.192 0.022 294);
-  --ev-raised: oklch(0.218 0.025 294);
-  --ev-tray-raised: oklch(0.265 0.03 294);
-  --ev-border: oklch(0.32 0.034 294 / 0.55);
-  --ev-input-border: oklch(0.38 0.038 294 / 0.65);
+  --ev-ground: oklch(0.25 0.018 294);
+  --ev-page: oklch(0.25 0.018 294);
+  --ev-region: oklch(0.225 0.016 294);
+  --ev-card: oklch(0.295 0.022 294);
+  --ev-raised: oklch(0.33 0.025 294);
+  --ev-tray-raised: oklch(0.37 0.03 294);
+  --ev-border: oklch(0.42 0.034 294 / 0.7);
+  --ev-input-border: oklch(0.48 0.038 294 / 0.8);
   --ev-primary: oklch(0.69 0.18 294);
   --ev-primary-hover: oklch(0.73 0.17 294);
   --ev-on-primary: oklch(0.14 0.03 294);
   --ev-accent: oklch(0.71 0.175 294);
   --ev-link: oklch(0.77 0.145 294);
-  --ev-msg-user: oklch(0.224 0.028 294);
-  --ev-code: oklch(0.132 0.016 294);
+  --ev-msg-user: oklch(0.32 0.028 294);
+  --ev-code: oklch(0.265 0.016 294);
 }
 
 [data-palette="rose"],
@@ -325,21 +325,26 @@
 }
 
 [data-theme="dark"][data-palette="rose"] {
-  --ev-ground: oklch(0.155 0.018 334);
-  --ev-page: oklch(0.155 0.018 334);
-  --ev-region: oklch(0.125 0.016 334);
-  --ev-card: oklch(0.195 0.022 334);
-  --ev-raised: oklch(0.22 0.025 334);
-  --ev-tray-raised: oklch(0.268 0.03 334);
-  --ev-border: oklch(0.32 0.034 334 / 0.55);
-  --ev-input-border: oklch(0.38 0.038 334 / 0.65);
+  --ev-ground: oklch(0.25 0.018 334);
+  --ev-page: oklch(0.25 0.018 334);
+  --ev-region: oklch(0.225 0.016 334);
+  --ev-card: oklch(0.295 0.022 334);
+  --ev-raised: oklch(0.33 0.025 334);
+  --ev-tray-raised: oklch(0.37 0.03 334);
+  --ev-border: oklch(0.42 0.034 334 / 0.7);
+  --ev-input-border: oklch(0.48 0.038 334 / 0.8);
   --ev-primary: oklch(0.68 0.19 352);
   --ev-primary-hover: oklch(0.72 0.18 352);
-  --ev-on-primary: #ffffff;
+  --ev-on-primary: oklch(0.14 0.03 334);
   --ev-accent: oklch(0.7 0.185 352);
   --ev-link: oklch(0.77 0.15 350);
-  --ev-msg-user: oklch(0.225 0.028 334);
-  --ev-code: oklch(0.135 0.016 334);
+  --ev-msg-user: oklch(0.32 0.028 334);
+  --ev-code: oklch(0.265 0.016 334);
+}
+
+/* Curated light palettes define trays too; do not inherit those bright fills in dark mode. */
+[data-theme="dark"][data-palette] {
+  --ev-tray: color-mix(in oklab, var(--ev-card) 92%, white);
 }
 
 @media (prefers-color-scheme: dark) {
