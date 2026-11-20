@@ -479,7 +479,7 @@ const VALUE_TEXT = "text-right font-mono text-xs leading-[1.4] wrap-anywhere tex
               </div>
               <p v-if="savingModel.error.value" class="error hint">{{ savingModel.error.value }}</p>
               <div :class="rows()">
-                <div v-for="roleRow in MODEL_ROLES" :key="roleRow.key" class="relative [&>.pop]:top-[calc(100%_-_calc(6px*var(--ev-scale)))] [&>.pop]:right-3" :class="row()">
+                <div v-for="roleRow in MODEL_ROLES" :key="roleRow.key" class="model-row-ctrl relative [&>.pop]:top-[calc(100%_-_calc(6px*var(--ev-scale)))] [&>.pop]:right-3" :class="row()">
                   <div :class="rowMain()">
                     <span :class="rowTitle()">
                       {{ roleRow.label }}
