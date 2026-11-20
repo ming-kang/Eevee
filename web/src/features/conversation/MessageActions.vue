@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { t } from "../i18n.ts";
-import { formatClockTime } from "../time.ts";
-import Icon from "./Icon.vue";
+import { t } from "../../lib/i18n.ts";
+import { formatClockTime } from "../../lib/time.ts";
+import Icon from "../../ui/Icon.vue";
 
 /**
  * The quiet row under a message: copy the raw text, and when it arrived. It appears while the
@@ -28,11 +28,11 @@ const timeText = computed(() => (props.at === undefined ? "" : formatClockTime(p
 </script>
 
 <template>
-  <div class="msg-actions" :class="{ latest }">
-    <button type="button" class="msg-act" @click="copy">
+  <div class="mt-0.5 flex min-h-5 items-center gap-2.5 px-1 text-xs text-fg-subtle opacity-0 transition-opacity focus-within:opacity-100 in-[.turn:focus-within]:opacity-100 in-[.turn:hover]:opacity-100 in-[.u-wrap:focus-within]:opacity-100 in-[.u-wrap:hover]:opacity-100" :class="{ '[@media(hover:none)]:opacity-100': latest }">
+    <button type="button" class="-ml-1.25 inline-flex items-center gap-1 rounded-xs px-1.25 py-px text-fg-subtle transition-colors hover:bg-hover hover:text-fg focus-visible:shadow-(--ring-inset)" @click="copy">
       <Icon :name="copied ? 'check' : 'copy'" size="xs" />
       <span>{{ copied ? t("Copied") : t("Copy") }}</span>
     </button>
-    <span v-if="timeText" class="msg-when">{{ timeText }}</span>
+    <span v-if="timeText" class="tabular-nums">{{ timeText }}</span>
   </div>
 </template>

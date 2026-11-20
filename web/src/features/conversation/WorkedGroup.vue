@@ -2,14 +2,15 @@
 import type { QuestionId } from "@shared/contracts/index.ts";
 import type { TicketView } from "@shared/api/contract.ts";
 import { computed, nextTick, ref } from "vue";
-import { activityLabel, editSummary } from "../activity.ts";
-import { fold } from "../folds.ts";
-import { t } from "../i18n.ts";
-import { formatDurationMs } from "../time.ts";
-import type { TranscriptDisplayItem } from "../transcript-map.ts";
-import { closedItems } from "../turns.ts";
-import Icon from "./Icon.vue";
+import { activityLabel, editSummary } from "../../lib/activity.ts";
+import { fold } from "../../composables/folds.ts";
+import { t } from "../../lib/i18n.ts";
+import { formatDurationMs } from "../../lib/time.ts";
+import type { TranscriptDisplayItem } from "../../lib/transcript-map.ts";
+import { closedItems } from "../../lib/turns.ts";
+import Icon from "../../ui/Icon.vue";
 import TranscriptItem from "./TranscriptItem.vue";
+import { DIFFSTAT } from "../../ui/diff.ts";
 
 type Worked = Extract<TranscriptDisplayItem, { kind: "worked" }>;
 
@@ -79,11 +80,22 @@ async function reveal(key: string): Promise<void> {
 </script>
 
 <template>
-  <div ref="root" class="worked" :class="{ open }">
-    <button type="button" class="worked-h" :aria-expanded="open" @click="open = !open">
+  <div ref="root" class="worked group/worked">
+    <button
+      type="button"
+      class="group/wh -ml-1.5 flex min-h-6.5 w-fit max-w-full items-center gap-1.75 rounded-sm px-1.5 py-0.75 text-left text-sm leading-[1.385] transition-colors hover:text-fg focus-visible:shadow-(--ring-inset)"
+      :class="open ? 'text-fg' : 'text-fg-muted'"
+      :aria-expanded="open"
+      @click="open = !open"
+    >
       <span class="ellipsis">{{ label }}</span>
-      <span v-if="counts" class="worked-c ellipsis">{{ counts }}</span>
-      <Icon name="chevR" size="xs" class="chev" />
+      <span v-if="counts" class="ellipsis text-fg-subtle">{{ counts }}</span>
+      <Icon
+        name="chevR"
+        size="xs"
+        class="text-fg-subtle transition-[opacity,transform]"
+        :class="open ? 'rotate-90' : 'opacity-0 group-hover/worked:opacity-100 group-focus-visible/wh:opacity-100 [@media(hover:none)]:opacity-100'"
+      />
     </button>
     <TranscriptItem
       v-for="child in shown"
@@ -99,10 +111,10 @@ async function reveal(key: string): Promise<void> {
       @open-job="emit('open-job', $event)"
       @open-question="emit('open-question', $event)"
     />
-    <div v-if="!open && summary" class="worked-files">
+    <div v-if="!open && summary" class="mt-px ml-1.5">
       <button
         type="button"
-        class="worked-files-h"
+        class="-ml-1.5 flex min-h-5.5 max-w-full items-center gap-1.75 rounded-sm px-1.5 py-0.5 text-xs text-fg-subtle transition-colors hover:text-fg focus-visible:text-fg [&_.minus]:ml-1 [&_.minus]:font-mono [&_.plus]:ml-1 [&_.plus]:font-mono"
         :aria-expanded="pathsOpen"
         @click="pathsOpen = !pathsOpen"
       >
@@ -111,18 +123,18 @@ async function reveal(key: string): Promise<void> {
           <span class="plus">+{{ summary.added }}</span>
           <span class="minus">−{{ summary.removed }}</span>
         </span>
-        <Icon name="chevR" size="xs" class="chev" :class="{ open: pathsOpen }" />
+        <Icon name="chevR" size="xs" class="text-fg-subtle transition-transform" :class="{ 'rotate-90': pathsOpen }" />
       </button>
-      <div v-if="pathsOpen" class="worked-files-list">
+      <div v-if="pathsOpen" class="mt-0.5 mb-1 ml-2.5 flex flex-col gap-px animate-[ev-fade_var(--ev-regular)_var(--ev-ease)]">
         <button
           v-for="p in summary.paths"
           :key="p.key"
           type="button"
-          class="worked-file"
+          class="flex min-h-5.5 max-w-full items-center gap-2 rounded-xs px-1.5 py-0.5 text-left text-xs text-fg-muted transition-colors hover:bg-hover hover:text-fg focus-visible:bg-hover focus-visible:text-fg"
           @click="reveal(p.key)"
         >
           <span class="mono ellipsis">{{ p.path }}</span>
-          <span class="diffstat">
+          <span :class="DIFFSTAT">
             <span v-if="p.added > 0" class="plus">+{{ p.added }}</span>
             <span v-if="p.removed > 0" class="minus">−{{ p.removed }}</span>
           </span>

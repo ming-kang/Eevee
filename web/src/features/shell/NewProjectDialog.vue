@@ -2,11 +2,15 @@
 import type { Client } from "@shared/api/client.ts";
 import type { ProjectSummary } from "@shared/api/contract.ts";
 import { ref, watch } from "vue";
-import { trapTab, useFocusReturn } from "../focus.ts";
-import { t } from "../i18n.ts";
-import { useSubmit } from "../submit.ts";
-import { showToast } from "../toasts.ts";
-import Icon from "./Icon.vue";
+import { t } from "../../lib/i18n.ts";
+import { useSubmit } from "../../composables/submit.ts";
+import { showToast } from "../../composables/toasts.ts";
+import Icon from "../../ui/Icon.vue";
+import Button from "../../ui/Button.vue";
+import Dialog from "../../ui/Dialog.vue";
+import Input from "../../ui/Input.vue";
+import { ERROR_TEXT } from "../../ui/surface.ts";
+import { FIELD } from "../../ui/form.ts";
 
 const props = defineProps<{
   open: boolean;
@@ -21,17 +25,8 @@ const emit = defineEmits<{
 const title = ref("");
 const workspace = ref("");
 const localError = ref<string>();
-const titleInput = ref<HTMLInputElement>();
-const formEl = ref<HTMLFormElement>();
+const titleInput = ref<{ focus(): void }>();
 const { busy, error, run } = useSubmit();
-
-useFocusReturn(
-  () => props.open,
-  () => {
-    titleInput.value?.focus();
-    return formEl.value;
-  },
-);
 
 watch(
   () => props.open,
@@ -70,72 +65,30 @@ async function submit(): Promise<void> {
   }
 }
 
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    emit("close");
-    return;
-  }
-  trapTab(event, formEl.value);
+function focusTitle(event: Event): void {
+  event.preventDefault();
+  titleInput.value?.focus();
 }
 </script>
 
 <template>
-  <div v-if="open" class="overlay" @click.self="$emit('close')" @keydown="onKeydown">
-    <form
-      ref="formEl"
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="new-proj-title"
-      @submit.prevent="submit"
-    >
-      <div class="modal-h">
-        <h2 id="new-proj-title">{{ t("New project") }}</h2>
-        <span class="spacer" />
-        <button
-          type="button"
-          class="btn ghost sm icon"
-          :aria-label="t('Close')"
-          @click="$emit('close')"
-        >
-          <Icon name="x" size="sm" />
-        </button>
-      </div>
-      <div class="modal-b">
-        <div class="field">
-          <label for="new-proj-name">{{ t("Title") }}</label>
-          <input
-            id="new-proj-name"
-            ref="titleInput"
-            v-model="title"
-            class="input"
-            :disabled="busy"
-          />
-        </div>
-        <div class="field">
-          <label for="new-proj-ws">{{ t("Working directory") }}</label>
-          <input
-            id="new-proj-ws"
-            v-model="workspace"
-            class="input mono"
-            :disabled="busy"
-          />
-        </div>
-        <p v-if="localError || error" class="composer-error" role="alert">
-          {{ localError ?? error }}
-        </p>
-      </div>
-      <div class="modal-f">
-        <button type="button" class="btn" :disabled="busy" @click="$emit('close')">{{ t("Cancel") }}</button>
-        <button
-          type="submit"
-          class="btn primary"
-          :disabled="busy || !title.trim() || !workspace.trim()"
-        >
-          {{ busy ? t("Creating…") : t("Create project") }}
-        </button>
-      </div>
-    </form>
-  </div>
+  <Dialog :open="open" :title="t('New project')" as="form" @close="$emit('close')" @submit="submit" @open-auto-focus="focusTitle">
+    <div :class="FIELD">
+      <label for="new-proj-name">{{ t("Title") }}</label>
+      <Input id="new-proj-name" ref="titleInput" v-model="title" :disabled="busy" />
+    </div>
+    <div :class="FIELD">
+      <label for="new-proj-ws">{{ t("Working directory") }}</label>
+      <Input id="new-proj-ws" v-model="workspace" mono :disabled="busy" />
+    </div>
+    <p v-if="localError || error" :class="ERROR_TEXT" role="alert">
+      {{ localError ?? error }}
+    </p>
+    <template #footer>
+      <Button :disabled="busy" @click="$emit('close')">{{ t("Cancel") }}</Button>
+      <Button type="submit" variant="primary" :disabled="busy || !title.trim() || !workspace.trim()">
+        {{ busy ? t("Creating…") : t("Create project") }}
+      </Button>
+    </template>
+  </Dialog>
 </template>

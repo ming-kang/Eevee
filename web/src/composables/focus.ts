@@ -1,5 +1,5 @@
 import { nextTick, watch } from "vue";
-import { tabStep } from "./keyboard.ts";
+import { tabStep } from "../lib/keyboard.ts";
 
 const FOCUSABLE = [
   "a[href]",
@@ -21,26 +21,6 @@ function focusables(root: HTMLElement): HTMLElement[] {
 export function focusFirst(root: HTMLElement | undefined): HTMLElement | undefined {
   (root && (focusables(root)[0] ?? root))?.focus();
   return root;
-}
-
-/** Keeps Tab and Shift+Tab cycling inside `root`, for a modal dialog. */
-export function trapTab(event: KeyboardEvent, root: HTMLElement | undefined): void {
-  if (event.key !== "Tab" || !root) return;
-  const items = focusables(root);
-  const first = items[0];
-  const last = items.at(-1);
-  if (!first || !last) {
-    event.preventDefault();
-    return;
-  }
-  const active = document.activeElement;
-  if (event.shiftKey && (active === first || !root.contains(active))) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && (active === last || !root.contains(active))) {
-    event.preventDefault();
-    first.focus();
-  }
 }
 
 /**

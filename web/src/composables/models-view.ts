@@ -1,7 +1,7 @@
 import type { Client } from "@shared/api/client.ts";
 import type { ModelsView } from "@shared/api/contract.ts";
 import { ref, shallowRef } from "vue";
-import { errorText } from "./errors.ts";
+import { errorText } from "../lib/errors.ts";
 
 // One copy of the model catalog for the settings page and the composer, so a default changed in one
 // shows in the other without a second load.

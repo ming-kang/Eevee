@@ -1,6 +1,6 @@
 import { createApp } from "vue";
 import App from "./App.vue";
-import { trackFocusModality } from "./dom.ts";
+import { trackFocusModality } from "./composables/dom.ts";
 import "./style.css";
 
 trackFocusModality();

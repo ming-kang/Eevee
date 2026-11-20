@@ -1,0 +1,63 @@
+/* The tokens as Tailwind utilities: `bg-surface`, `text-fg-muted`, `border-border`, `rounded-md`, `text-sm`… */
+@theme inline {
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-bg: var(--bg);
+  --color-sidebar: var(--bg-sidebar);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-separator: var(--separator);
+  --color-hover: var(--hover);
+  --color-selected: var(--selected);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-fg: var(--warning-fg);
+  --color-warning-soft: var(--warning-soft);
+  --color-overlay: var(--overlay);
+  --color-skeleton: var(--skeleton);
+
+  --font-sans: var(--ev-font);
+  --font-mono: var(--ev-font-mono);
+
+  --text-*: initial;
+  --text-2xs: var(--ev-caption);
+  --text-xs: var(--ev-footnote);
+  --text-sm: var(--ev-control);
+  --text-base: var(--ev-body);
+  --text-lg: var(--ev-headline);
+  --text-xl: var(--ev-title);
+  --text-2xl: var(--ev-display);
+
+  --radius-*: initial;
+  --radius-xs: var(--ev-r-mini);
+  --radius-sm: var(--ev-r-sm);
+  --radius-md: var(--ev-r-md);
+  --radius-lg: var(--ev-r-lg);
+  --radius-xl: var(--ev-r-xl);
+  --radius-full: 9999px;
+
+  --shadow-*: initial;
+  --shadow-xs: var(--elev-xs);
+  --shadow-sm: var(--elev-sm);
+  --shadow-md: var(--elev-md);
+  --shadow-lg: var(--elev-lg);
+
+  --spacing: calc(4px * var(--ev-scale));
+
+  --ease-out: var(--ev-ease);
+  --default-transition-duration: var(--ev-fast);
+  --default-transition-timing-function: var(--ev-ease);
+}

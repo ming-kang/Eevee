@@ -3,26 +3,31 @@ import type { Client } from "@shared/api/client.ts";
 import type { TicketView } from "@shared/api/contract.ts";
 import type { Question, QuestionId, TicketId } from "@shared/contracts/index.ts";
 import { computed, ref, type ShallowRef, watch } from "vue";
-import { effectiveStage, type RailTab } from "../board.ts";
-import { provideComposerInsert } from "../composer-bridge.ts";
-import { vSeg } from "../dom.ts";
-import { useConversationWatch } from "../engine-data.ts";
-import { errorText } from "../errors.ts";
-import { t } from "../i18n.ts";
-import { STAGE_LABEL } from "../labels.ts";
-import type { StreamClient } from "../stream.ts";
-import { useSubmit } from "../submit.ts";
-import { showToast } from "../toasts.ts";
-import { mapTranscript, type QueuedMessage, queuedMessages } from "../transcript-map.ts";
-import Composer from "./Composer.vue";
-import Icon from "./Icon.vue";
-import QuestionCard from "./QuestionCard.vue";
-import QuestionReview from "./QuestionReview.vue";
-import QuestionStrip from "./QuestionStrip.vue";
-import QueuedDock from "./QueuedDock.vue";
-import Skeleton from "./Skeleton.vue";
+import { effectiveStage, type RailTab } from "../../lib/board.ts";
+import { provideComposerInsert } from "../../composables/composer-bridge.ts";
+import { useConversationWatch } from "../../composables/engine-data.ts";
+import { errorText } from "../../lib/errors.ts";
+import { t } from "../../lib/i18n.ts";
+import { STAGE_LABEL } from "../../lib/labels.ts";
+import type { StreamClient } from "../../lib/stream.ts";
+import { useSubmit } from "../../composables/submit.ts";
+import { showToast } from "../../composables/toasts.ts";
+import { mapTranscript, type QueuedMessage, queuedMessages } from "../../lib/transcript-map.ts";
+import Composer from "../conversation/Composer.vue";
+import Icon from "../../ui/Icon.vue";
+import QuestionCard from "../conversation/QuestionCard.vue";
+import QuestionReview from "../conversation/QuestionReview.vue";
+import QuestionStrip from "../conversation/QuestionStrip.vue";
+import QueuedDock from "../conversation/QueuedDock.vue";
+import Skeleton from "../../ui/Skeleton.vue";
 import StageGlyph from "./StageGlyph.vue";
-import Transcript from "./Transcript.vue";
+import Transcript from "../conversation/Transcript.vue";
+import Segmented from "../../ui/Segmented.vue";
+import { STOP } from "../conversation/composer.ts";
+import { displayId } from "../../lib/ids.ts";
+import { COMPOSER_STACK, DOCK, DOCK_INNER, DOCK_NOTE } from "../conversation/dock.ts";
+import { EMPTY, ERROR_TEXT } from "../../ui/surface.ts";
+import { ID_TEXT, stagePill } from "./stage.ts";
 
 const props = defineProps<{
   client: Client;
@@ -216,15 +221,14 @@ function queueSteer(message: QueuedMessage): Promise<void> {
           <Icon name="chevL" size="xs" class="show-sm" />
         </button>
         <span class="crumb-sep hide-sm" aria-hidden="true">/</span>
-        <span class="t-id-h">{{ ticketId }}</span>
+        <span :class="ID_TEXT">{{ displayId(ticketId) }}</span>
         <h1 class="ellipsis">
           {{ view ? view.ticket.title : boardLoaded ? t("Ticket {id} not found", { id: ticketId }) : "" }}
         </h1>
       </nav>
       <span
         v-if="view && stage"
-        class="stage-h"
-        :class="`s-${stage}`"
+        :class="stagePill(stage)"
         :title="STAGE_LABEL[stage]"
       >
         <StageGlyph :stage="stage" />
@@ -239,7 +243,7 @@ function queueSteer(message: QueuedMessage): Promise<void> {
       </div>
     </div>
     <div v-else-if="displayItems.length === 0" class="chat">
-      <div class="empty">
+      <div :class="EMPTY">
         <p>
           {{
             !view && boardLoaded
@@ -271,9 +275,9 @@ function queueSteer(message: QueuedMessage): Promise<void> {
       @open-question="openQuestion"
     />
 
-    <div class="dock">
-      <div class="dock-inner">
-        <p v-if="conversation.error.value || interrupting.error.value" class="composer-error" role="alert">
+    <div class="dock" :class="DOCK">
+      <div :class="DOCK_INNER">
+        <p v-if="conversation.error.value || interrupting.error.value" :class="ERROR_TEXT" role="alert">
           {{ conversation.error.value ?? interrupting.error.value }}
         </p>
         <template v-if="open">
@@ -297,8 +301,7 @@ function queueSteer(message: QueuedMessage): Promise<void> {
           />
           <div
             v-else
-            class="composer-stack"
-            :class="{ 'has-seam': ticketQuestions.length > 0 || queued.length > 0 }"
+            :class="[COMPOSER_STACK, { 'has-seam': ticketQuestions.length > 0 || queued.length > 0 }]"
           >
             <QuestionStrip
               v-if="ticketQuestions.length > 0"
@@ -325,36 +328,12 @@ function queueSteer(message: QueuedMessage): Promise<void> {
               :placeholder="t('Message {ticket}', { ticket: ticketId })"
             >
               <template v-if="conversation.running.value" #actions>
-                <div
-                  v-seg
-                  class="seg sm"
-                  role="group"
-                  :aria-label="t('Delivery timing')"
-                >
-                  <button
-                    type="button"
-                    :class="{ on: mode === 'steer' }"
-                    :aria-pressed="mode === 'steer'"
-                    :title="t('Seen as soon as the current tool calls finish')"
-                    @click="mode = 'steer'"
-                  >
-                    {{ t("Steer") }}
-                  </button>
-                  <button
-                    type="button"
-                    :class="{ on: mode === 'followUp' }"
-                    :aria-pressed="mode === 'followUp'"
-                    :title="t('Starts a new turn after this one ends')"
-                    @click="mode = 'followUp'"
-                  >
-                    {{ t("Queue") }}
-                  </button>
-                </div>
+                <Segmented v-model="mode" :options="[{ value: 'steer', label: t('Steer'), title: t('Seen as soon as the current tool calls finish') }, { value: 'followUp', label: t('Queue'), title: t('Starts a new turn after this one ends') }]" :label="t('Delivery timing')" />
               </template>
               <template v-if="conversation.running.value" #end>
                 <button
                   type="button"
-                  class="stop"
+                  :class="STOP"
                   :disabled="interrupting.busy.value"
                   :title="t('Interrupt this turn (the ticket stays open)')"
                   :aria-label="t('Interrupt this turn')"
@@ -366,7 +345,7 @@ function queueSteer(message: QueuedMessage): Promise<void> {
             </Composer>
           </div>
         </template>
-        <p v-else-if="view" class="dock-note">
+        <p v-else-if="view" :class="DOCK_NOTE">
           {{ view.ticket.status === "done" ? t("Done") : t("Cancelled")
           }}{{ view.ticket.closeNote ? ` · ${view.ticket.closeNote}` : "" }}
         </p>

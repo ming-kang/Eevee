@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApiRequestError } from "../../src/api/client.ts";
+import { ApiRequestError } from "../../../src/api/client.ts";
 import { parseRoute } from "./router.ts";
 import { openSessionWith, type SessionEnv, Unauthorized } from "./session.ts";
 

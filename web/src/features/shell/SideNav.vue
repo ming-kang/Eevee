@@ -2,21 +2,22 @@
 import type { ProjectSummary } from "@shared/api/contract.ts";
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import type { RunSummary } from "@shared/contracts/index.ts";
-import type { BoardState } from "../engine-data.ts";
-import { countPendingQuestions } from "../board.ts";
-import { t } from "../i18n.ts";
+import type { BoardState } from "../../composables/engine-data.ts";
+import { countPendingQuestions } from "../../lib/board.ts";
+import { t } from "../../lib/i18n.ts";
 import {
   deriveProjectState,
   filterSidebarProjects,
   type ProjectRowState,
   type SidebarProjectEntry,
-} from "../projects.ts";
-import { formatRoute, type Route } from "../router.ts";
-import type { StreamState } from "../stream.ts";
-import BrandLogo from "./BrandLogo.vue";
+} from "../../lib/projects.ts";
+import { formatRoute, type Route } from "../../lib/router.ts";
+import type { StreamState } from "../../lib/stream.ts";
+import BrandLogo from "../../ui/BrandLogo.vue";
 import ControlTiles from "./ControlTiles.vue";
-import Icon from "./Icon.vue";
+import Icon from "../../ui/Icon.vue";
 import ProjectRow from "./ProjectRow.vue";
+import Button from "../../ui/Button.vue";
 
 const props = defineProps<{
   projects: readonly ProjectSummary[];
@@ -184,34 +185,28 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="side-top">
-    <a class="brand" :href="formatRoute({ name: 'home' })" @click="$emit('navigate')">
+  <div class="flex h-(--ev-header-h) flex-none items-center gap-1.5 pr-(--ev-ctrl-inset) pl-(--ev-titlebar-left)">
+    <a class="flex min-w-0 items-center gap-2 rounded-sm [&_svg]:size-5 [&_svg]:flex-none" :href="formatRoute({ name: 'home' })" @click="$emit('navigate')">
       <BrandLogo />
-      <span class="brand-name">Eevee</span>
+      <span class="text-base font-semibold tracking-[-0.018em] text-fg">Eevee</span>
     </a>
     <span class="spacer" />
-    <button
-      type="button"
-      class="btn ghost sm icon"
-      :title="t('New project')"
-      :aria-label="t('New project')"
-      @click="
+    <Button variant="ghost" size="sm" icon :title="t('New project')" :aria-label="t('New project')" @click="
         hideHoverImmediate();
         $emit('new-project');
-      "
-    >
+      ">
       <Icon name="folderPlus" size="sm" />
-    </button>
+    </Button>
   </div>
 
-  <div class="side-tools">
-    <div class="side-search">
-      <Icon name="search" size="xs" class="side-search-icon" />
+  <div class="flex flex-none flex-col gap-1.5 px-2.5 pt-2.5 pb-1">
+    <div class="flex h-7 items-center gap-1.5 rounded-sm border border-border bg-surface pr-1.25 pl-2 transition-[border-color,box-shadow] focus-within:border-accent focus-within:shadow-(--ring-field)">
+      <Icon name="search" size="xs" class="flex-none text-fg-subtle" />
       <input
         ref="searchInput"
         v-model="searchQuery"
         type="search"
-        class="side-search-input"
+        class="h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-xs text-fg focus:shadow-none focus-visible:shadow-none [&::-webkit-search-cancel-button]:hidden"
         :placeholder="t('Filter projects or tickets…')"
         :aria-label="t('Filter projects or tickets…')"
         autocomplete="off"
@@ -221,7 +216,7 @@ onUnmounted(() => {
       <button
         v-if="searchQuery !== ''"
         type="button"
-        class="side-search-clear"
+        class="inline-grid size-5 place-items-center rounded-[4px] text-fg-subtle hover:bg-hover hover:text-fg"
         :aria-label="t('Clear filter')"
         @click="clearSearch"
       >
@@ -230,7 +225,7 @@ onUnmounted(() => {
       <button
         v-else
         type="button"
-        class="side-search-kbd"
+        class="side-search-kbd h-4.5 flex-none rounded-[4px] bg-surface-2 px-1.25 text-2xs leading-none font-medium text-fg-subtle transition-colors hover:bg-hover hover:text-fg"
         :title="t('Search ({key})', { key: paletteShortcut })"
         :aria-label="t('Search ({key})', { key: paletteShortcut })"
         @click="
@@ -244,27 +239,37 @@ onUnmounted(() => {
 
     <a
       v-if="searchQuery.trim() === ''"
-      class="nav-row"
-      :class="{ on: route.name === 'home' }"
+      class="flex h-8 w-full flex-none items-center gap-2.25 rounded-sm pr-2 pl-2.25 text-left text-sm font-medium tracking-(--ev-tracking) text-fg transition-[background-color,box-shadow] focus-visible:shadow-(--ring-inset) pointer-coarse:h-9.5 [&_.ico]:inline-flex [&_.ico]:flex-none [&_.ico]:transition-colors"
+      :class="route.name === 'home' ? 'bg-selected [--ev-glyph-cut:var(--selected)] [&_.ico]:text-fg' : 'hover:bg-hover [&_.ico]:text-fg-subtle'"
       :href="formatRoute({ name: 'home' })"
       :aria-label="attentionTotal > 0 ? `${t('Home')} · ${attentionTotal}` : t('Home')"
       :aria-current="route.name === 'home' ? 'page' : undefined"
       @click="$emit('navigate')"
     >
-      <span class="nav-status" aria-hidden="true">
+      <span class="grid w-5 flex-none place-items-center" aria-hidden="true">
         <span v-if="attentionTotal > 0" class="count user">{{ attentionTotal > 99 ? "99+" : attentionTotal }}</span>
         <Icon v-else name="home" size="sm" />
       </span>
-      <span class="label">{{ t("Home") }}</span>
+      <span class="min-w-0 flex-1 truncate">{{ t("Home") }}</span>
     </a>
   </div>
 
-  <div v-if="projects.length > 0" class="side-h">
+  <div v-if="projects.length > 0" class="group/ph flex h-7 flex-none items-center justify-between pr-2 pl-3.5 pt-1.5 text-2xs font-semibold tracking-[0.02em] text-fg-subtle uppercase">
     <span>{{ t("Projects") }}</span>
-    <span class="side-h-count">{{ filteredEntries.length }}</span>
+    <Button
+      variant="ghost"
+      size="sm"
+      icon
+      class="size-5 opacity-0 transition-opacity group-hover/ph:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+      :title="t('New project')"
+      :aria-label="t('New project')"
+      @click="$emit('new-project')"
+    >
+      <Icon name="plus" size="xs" />
+    </Button>
   </div>
 
-  <div class="side-scroll" @scroll="hideHoverImmediate">
+  <div class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pt-1 pb-3" @scroll="hideHoverImmediate">
     <ProjectRow
       v-for="entry in filteredEntries"
       :key="entry.project.id"
@@ -287,17 +292,17 @@ onUnmounted(() => {
       @hover-enter="onHoverEnter(entry.project.id, $event)"
       @hover-leave="onHoverLeave($event, $event.currentTarget)"
     />
-    <p v-if="projects.length > 0 && filteredEntries.length === 0" class="hint side-note">
+    <p v-if="projects.length > 0 && filteredEntries.length === 0" class="hint px-2.5 py-1.5">
       {{ t("Nothing matches.") }}
     </p>
-    <p v-if="statusError" class="error hint side-note">
+    <p v-if="statusError" class="error hint px-2.5 py-1.5">
       {{ statusError }}
     </p>
   </div>
 
   <p
     v-if="streamState === 'reconnecting'"
-    class="side-conn"
+    class="mx-2.5 mb-1.5 flex flex-none items-center gap-2 rounded-sm bg-danger-soft px-2.5 py-1.75 text-xs text-danger"
     role="status"
     :title="t('Lost the live connection to the Engine; reconnecting')"
   >

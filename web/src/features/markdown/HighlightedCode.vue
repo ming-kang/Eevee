@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { highlightToHtml, resolveLang } from "../highlight.ts";
+import { highlightToHtml, resolveLang } from "../../lib/highlight.ts";
 
 /**
  * A code block that renders its plain text first and swaps in Shiki's markup once the grammar is

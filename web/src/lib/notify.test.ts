@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { BoardView, TicketView } from "../../src/api/contract.ts";
-import type { Question, TicketId, TicketStage } from "../../src/contracts/index.ts";
+import type { BoardView, TicketView } from "../../../src/api/contract.ts";
+import type { Question, TicketId, TicketStage } from "../../../src/contracts/index.ts";
 import { boardEvents } from "./notify.ts";
 
 function ticket(id: TicketId, stage: TicketStage, closed = false, createdAt = 100): TicketView {

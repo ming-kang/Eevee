@@ -3,10 +3,10 @@ import type { Client } from "@shared/api/client.ts";
 import type { BoardView, ProjectSummary } from "@shared/api/contract.ts";
 import type { QuestionId } from "@shared/contracts/index.ts";
 import { computed, type ShallowRef } from "vue";
-import type { RailTab } from "../board.ts";
-import type { ConversationWatch } from "../engine-data.ts";
-import type { StreamClient } from "../stream.ts";
-import ChatPage from "./ChatPage.vue";
+import type { RailTab } from "../../lib/board.ts";
+import type { ConversationWatch } from "../../composables/engine-data.ts";
+import type { StreamClient } from "../../lib/stream.ts";
+import ChatPage from "../conversation/ChatPage.vue";
 import WorkerView from "./WorkerView.vue";
 
 const props = defineProps<{

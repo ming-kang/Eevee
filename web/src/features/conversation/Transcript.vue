@@ -2,19 +2,19 @@
 import type { QuestionId } from "@shared/contracts/index.ts";
 import type { TicketView } from "@shared/api/contract.ts";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { useComposerInsert } from "../composer-bridge.ts";
-import type { GapItem } from "../conversation.ts";
-import { type FollowEnd, followEnd, isSashDragging, onSashDragEnd } from "../dom.ts";
-import { folds } from "../folds.ts";
-import { t } from "../i18n.ts";
-import { activeEntry, outlineEntries } from "../outline.ts";
-import { quoteMarkdown } from "../quote.ts";
-import { formatWorkingClock } from "../time.ts";
-import { type TranscriptDisplayItem } from "../transcript-map.ts";
-import { finalAssistantKeys, foldTurns } from "../turns.ts";
+import { useComposerInsert } from "../../composables/composer-bridge.ts";
+import type { GapItem } from "../../lib/conversation.ts";
+import { type FollowEnd, followEnd, isSashDragging, onSashDragEnd } from "../../composables/dom.ts";
+import { folds } from "../../composables/folds.ts";
+import { t } from "../../lib/i18n.ts";
+import { activeEntry, outlineEntries } from "../../lib/outline.ts";
+import { quoteMarkdown } from "../../lib/quote.ts";
+import { formatWorkingClock } from "../../lib/time.ts";
+import { type TranscriptDisplayItem } from "../../lib/transcript-map.ts";
+import { finalAssistantKeys, foldTurns } from "../../lib/turns.ts";
 import ConversationOutline from "./ConversationOutline.vue";
-import Icon from "./Icon.vue";
-import StageGlyph from "./StageGlyph.vue";
+import Icon from "../../ui/Icon.vue";
+import StageGlyph from "../project/StageGlyph.vue";
 import TranscriptItem from "./TranscriptItem.vue";
 import WorkedGroup from "./WorkedGroup.vue";
 
@@ -334,7 +334,7 @@ watch(
 
 <template>
   <div ref="scroller" class="chat">
-    <div v-if="outline.length >= 3" class="outline-dock">
+    <div v-if="outline.length >= 3" class="pointer-events-none sticky top-1/2 z-6 flex h-0 justify-end @max-[45em]/chat:hidden">
       <ConversationOutline
         :entries="outline"
         :ticks="outlineTicks"
@@ -376,7 +376,7 @@ watch(
           @open-question="$emit('open-question', $event)"
         />
       </template>
-      <div v-if="running" class="turn-working">
+      <div v-if="running" class="-ml-1.5 flex min-h-6.5 w-fit items-center gap-1.75 px-1.5 py-0.75 text-sm text-fg-muted [&_.glyph]:size-(--ev-icon-xs)">
         <StageGlyph stage="working" />
         <span>{{ t("Working") }} · {{ workingClock }}</span>
       </div>
@@ -385,20 +385,20 @@ watch(
     <button
       v-if="quoteBtn"
       type="button"
-      class="quote-btn"
+      class="absolute z-7 -translate-x-1/2 animate-[ev-fade_var(--ev-fast)_var(--ev-ease)] rounded-full border border-border bg-(--ev-glass-bg) shadow-(--ev-shadow-float) backdrop-blur-(--ev-glass-blur) backdrop-saturate-(--ev-glass-sat) focus-visible:shadow-[var(--ev-shadow-float),var(--ring)] focus-visible:outline-none px-3 py-1.25 text-xs font-medium text-fg"
       :style="{ left: `${quoteBtn.left}px`, top: `${quoteBtn.top}px` }"
       @mousedown.prevent
       @click="insertQuote"
     >
       {{ t("Quote") }}
     </button>
-    <div class="to-latest-dock">
-      <Transition name="to-latest">
+    <div class="pointer-events-none sticky bottom-0 flex h-0 justify-center">
+      <Transition enter-active-class="transition-[opacity,translate] duration-(--ev-fast) ease-(--ev-ease)" leave-active-class="transition-[opacity,translate] duration-(--ev-fast) ease-(--ev-ease)" enter-from-class="translate-y-1 opacity-0" leave-to-class="translate-y-1 opacity-0">
         <button
           v-if="!following"
           type="button"
-          class="to-latest"
-          :class="{ live }"
+          class="pointer-events-auto absolute bottom-6 inline-flex size-8 items-center justify-center rounded-full border border-border bg-(--ev-glass-bg) shadow-(--ev-shadow-float) backdrop-blur-(--ev-glass-blur) backdrop-saturate-(--ev-glass-sat) focus-visible:shadow-[var(--ev-shadow-float),var(--ring)] focus-visible:outline-none text-fg-muted transition-[color,translate] duration-(--ev-fast) hover:-translate-y-px hover:text-fg"
+          :class="{ '[&>.ico]:hidden hover:[&>.glyph]:hidden hover:[&>.ico]:block focus-visible:[&>.glyph]:hidden focus-visible:[&>.ico]:block': live }"
           :aria-label="t('Jump to latest')"
           @click="toLatest"
         >

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { EntryId } from "@earendil-works/pi-durable";
-import { STREAM_PROTOCOL, type StreamEvent, TOKEN_PROTOCOL_PREFIX } from "../../src/api/stream.ts";
+import {
+  STREAM_PROTOCOL,
+  type StreamEvent,
+  TOKEN_PROTOCOL_PREFIX,
+} from "../../../src/api/stream.ts";
 import { createStreamClient, type SocketLike, streamUrl, type WatchEvent } from "./stream.ts";
 
 class FakeSocket implements SocketLike {

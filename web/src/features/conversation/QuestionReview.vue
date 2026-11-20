@@ -3,12 +3,15 @@ import { ApiRequestError, type Client } from "@shared/api/client.ts";
 import type { TicketView } from "@shared/api/contract.ts";
 import type { Question, QuestionId } from "@shared/contracts/index.ts";
 import { computed, ref, watch } from "vue";
-import { errorText } from "../errors.ts";
-import { t } from "../i18n.ts";
-import { formatRelativeTime } from "../time.ts";
-import Icon from "./Icon.vue";
-import Skeleton from "./Skeleton.vue";
-import TicketRef from "./TicketRef.vue";
+import { errorText } from "../../lib/errors.ts";
+import { t } from "../../lib/i18n.ts";
+import { formatRelativeTime } from "../../lib/time.ts";
+import Icon from "../../ui/Icon.vue";
+import Skeleton from "../../ui/Skeleton.vue";
+import TicketRef from "../project/TicketRef.vue";
+import Button from "../../ui/Button.vue";
+import { QCARD, Q_BODY, Q_CUSTOM, Q_HEAD, Q_ITEM, Q_ITEM_T, Q_OPTS, Q_STATUS, RADIO, REC, qOption } from "./question.ts";
+import { ERROR_TEXT } from "../../ui/surface.ts";
 
 const props = defineProps<{
   client: Client;
@@ -71,8 +74,8 @@ const status = computed(() => {
 </script>
 
 <template>
-  <div class="qcard">
-    <div class="qcard-h">
+  <div :class="QCARD">
+    <div :class="Q_HEAD">
       <Icon name="help" size="sm" class="dim" />
       <span>
         <template v-if="data?.ticketId">
@@ -86,50 +89,43 @@ const status = computed(() => {
         <template v-else>{{ t("The Router asked") }}</template>
       </span>
       <span class="spacer" />
-      <span v-if="status !== ''" class="qstatus">{{ status }}</span>
-      <button
-        type="button"
-        class="btn ghost sm icon"
-        :title="t('Close')"
-        :aria-label="t('Close')"
-        @click="$emit('close')"
-      >
+      <span v-if="status !== ''" :class="Q_STATUS">{{ status }}</span>
+      <Button variant="ghost" size="sm" icon :title="t('Close')" :aria-label="t('Close')" @click="$emit('close')">
         <Icon name="x" size="sm" />
-      </button>
+      </Button>
     </div>
-    <div v-if="loading" class="qbody"><Skeleton :lines="2" /></div>
-    <div v-else-if="missing" class="qbody">
+    <div v-if="loading" :class="Q_BODY"><Skeleton :lines="2" /></div>
+    <div v-else-if="missing" :class="Q_BODY">
       <p class="dim" role="status">{{ t("This question is no longer available.") }}</p>
-      <button type="button" class="btn ghost sm" @click="$emit('close')">{{ t("Back to conversation") }}</button>
+      <Button variant="ghost" size="sm" @click="$emit('close')">{{ t("Back to conversation") }}</Button>
     </div>
-    <div v-else-if="error !== undefined" class="qbody">
-      <p class="composer-error" role="alert">{{ error }}</p>
-      <button type="button" class="btn ghost sm" @click="load">{{ t("Retry") }}</button>
+    <div v-else-if="error !== undefined" :class="Q_BODY">
+      <p :class="ERROR_TEXT" role="alert">{{ error }}</p>
+      <Button variant="ghost" size="sm" @click="load">{{ t("Retry") }}</Button>
     </div>
-    <div v-else-if="data" class="qbody">
-      <div v-for="(item, i) in data.items" :key="i" class="qitem">
-        <div class="qitem-t">
+    <div v-else-if="data" :class="Q_BODY">
+      <div v-for="(item, i) in data.items" :key="i" :class="Q_ITEM">
+        <div :class="Q_ITEM_T">
           <span v-if="data.items.length > 1" class="n">{{ i + 1 }}.</span>
           <span>{{ item.text }}</span>
         </div>
-        <div class="opts">
-          <div v-if="item.options.length > 0" class="opts-group">
+        <div :class="Q_OPTS">
+          <div v-if="item.options.length > 0" :class="Q_OPTS">
             <button
               v-for="option in item.options"
               :key="option"
               type="button"
-              class="opt"
-              :class="{ on: chosen(data, i) === option }"
+              :class="qOption(chosen(data, i) === option)"
               disabled
             >
-              <span class="radio" />
+              <span :class="RADIO" />
               <span>{{ option }}</span>
-              <span v-if="option === item.recommended" class="rec">{{ t("Recommended") }}</span>
+              <span v-if="option === item.recommended" :class="REC">{{ t("Recommended") }}</span>
             </button>
           </div>
           <p
             v-if="chosen(data, i) !== undefined && !item.options.includes(chosen(data, i) ?? '')"
-            class="qcustom"
+            :class="Q_CUSTOM"
           >
             {{ chosen(data, i) }}
           </p>

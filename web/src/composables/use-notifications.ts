@@ -1,9 +1,9 @@
 import type { ShallowRef } from "vue";
 import { watch } from "vue";
-import type { BoardView, ProjectSummary } from "../../src/api/contract.ts";
+import type { BoardView, ProjectSummary } from "../../../src/api/contract.ts";
+import { boardEvents } from "../lib/notify.ts";
+import type { Route } from "../lib/router.ts";
 import type { BoardState } from "./engine-data.ts";
-import { boardEvents } from "./notify.ts";
-import type { Route } from "./router.ts";
 
 export const NOTIFY_KEY = "eevee.notify";
 

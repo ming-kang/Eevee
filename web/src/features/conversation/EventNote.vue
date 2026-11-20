@@ -2,14 +2,15 @@
 import type { TicketView } from "@shared/api/contract.ts";
 import type { ReportStatus } from "@shared/contracts/index.ts";
 import { computed } from "vue";
-import type { VisualStage } from "../board.ts";
-import { t } from "../i18n.ts";
-import type { IconName } from "../icons.ts";
-import { REPORT_LABEL } from "../labels.ts";
-import type { EventKind } from "../transcript-map.ts";
-import Icon from "./Icon.vue";
-import StageGlyph from "./StageGlyph.vue";
-import TicketRef from "./TicketRef.vue";
+import type { VisualStage } from "../../lib/board.ts";
+import { t } from "../../lib/i18n.ts";
+import type { IconName } from "../../composables/icons.ts";
+import { REPORT_LABEL } from "../../lib/labels.ts";
+import type { EventKind } from "../../lib/transcript-map.ts";
+import Icon from "../../ui/Icon.vue";
+import StageGlyph from "../project/StageGlyph.vue";
+import TicketRef from "../project/TicketRef.vue";
+import { STEP_OUT } from "./steps.ts";
 
 const props = defineProps<{
   eventKind: EventKind;
@@ -51,7 +52,7 @@ const glyph = computed<{ stage: VisualStage } | { icon: IconName }>(() => {
       <span class="ellipsis">{{ text }}</span>
       <Icon name="chevR" size="xs" class="chev" />
     </summary>
-    <pre class="step-out">{{ detail }}</pre>
+    <pre :class="STEP_OUT">{{ detail }}</pre>
   </details>
   <div v-else class="note">
     <StageGlyph v-if="'stage' in glyph" :stage="glyph.stage" />

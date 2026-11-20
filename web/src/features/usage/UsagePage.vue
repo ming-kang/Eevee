@@ -2,10 +2,14 @@
 import type { Client } from "@shared/api/client.ts";
 import type { ProjectSummary, UsageSummary, UsageView } from "@shared/api/contract.ts";
 import { computed, ref, watch } from "vue";
-import { errorText } from "../errors.ts";
-import { t } from "../i18n.ts";
-import Icon from "./Icon.vue";
-import Skeleton from "./Skeleton.vue";
+import { errorText } from "../../lib/errors.ts";
+import { t } from "../../lib/i18n.ts";
+import Icon from "../../ui/Icon.vue";
+import Skeleton from "../../ui/Skeleton.vue";
+import Button from "../../ui/Button.vue";
+import { PANEL, SECTION_H, TABLE } from "../../ui/surface.ts";
+import { row as rowClass, rows } from "../../ui/rows.ts";
+import { displayId } from "../../lib/ids.ts";
 
 const props = defineProps<{
   client: Client;
@@ -105,16 +109,16 @@ function barWidth(summary: UsageSummary): string {
       <span class="crumb-sep hide-sm" aria-hidden="true">/</span>
       <span class="sub ellipsis hide-sm">{{ project.title }}</span>
       <span class="spacer" />
-      <button type="button" class="btn ghost sm icon" :disabled="loading" :aria-label="t('Refresh')" :title="t('Refresh')" @click="loadUsage">
+      <Button variant="ghost" size="sm" icon :disabled="loading" :aria-label="t('Refresh')" :title="t('Refresh')" @click="loadUsage">
         <Icon name="refresh" size="sm" :spin="loading" />
-      </button>
+      </Button>
     </header>
-    <div class="page">
-      <div class="page-inner">
+    <div class="min-h-0 flex-1 overflow-y-auto">
+      <div class="mx-auto max-w-[calc(780px*var(--ev-scale))] px-(--ev-gutter) pt-4.5 pb-12 @max-[54.2857em]/vp:px-4 @max-[54.2857em]/vp:pt-2 @max-[54.2857em]/vp:pb-10">
         <p v-if="error" class="error hint">{{ error }}</p>
         <Skeleton v-else-if="loading && !usage" />
         <template v-else-if="usage">
-          <div class="panel stats">
+          <div class="grid grid-cols-4 @max-[54.2857em]/vp:grid-cols-2 [&>div]:flex [&>div]:flex-col [&>div]:gap-1 [&>div]:px-4.5 [&>div]:py-4 [&>div+div]:shadow-[inset_1px_0_0_var(--ev-separator)] @max-[54.2857em]/vp:[&>div:nth-child(3)]:shadow-[inset_0_1px_0_var(--ev-separator)] @max-[54.2857em]/vp:[&>div:nth-child(4)]:shadow-[inset_1px_0_0_var(--ev-separator),inset_0_1px_0_var(--ev-separator)] [&_.k]:text-xs [&_.k]:text-fg-muted [&_.v]:text-(length:--ev-display) [&_.v]:font-semibold [&_.v]:tracking-[-0.02em] [&_.v]:tabular-nums" :class="PANEL">
             <div :title="t('From provider bills; estimated from list prices when missing')">
               <span class="k">{{ t("Cost") }}</span>
               <span class="v">{{ formatCost(usage.total.cost) }}</span>
@@ -133,14 +137,14 @@ function barWidth(summary: UsageSummary): string {
             </div>
           </div>
 
-          <div class="section-h">{{ t("By model") }}</div>
-          <div class="rows">
-            <div v-if="modelRows.length === 0" class="row usage-row">
+          <div :class="SECTION_H">{{ t("By model") }}</div>
+          <div :class="rows()">
+            <div v-if="modelRows.length === 0" class="[&_.mono]:min-w-0 [&_.mono]:flex-1 [&_.mono]:truncate [&_.mono]:text-xs" :class="rowClass({ size: 'sm' })">
               <span class="muted">{{ t("No calls yet") }}</span>
             </div>
-            <div v-for="item in modelRows" :key="item.model" class="row usage-row">
+            <div v-for="item in modelRows" :key="item.model" class="[&_.mono]:min-w-0 [&_.mono]:flex-1 [&_.mono]:truncate [&_.mono]:text-xs" :class="rowClass({ size: 'sm' })">
               <span class="mono">{{ item.model }}</span>
-              <span class="tokens hide-sm">
+              <span class="hide-sm text-xs text-fg-subtle tabular-nums">
                 {{
                   t("In {input} · Out {output}", {
                     input: formatTokens(item.summary.input),
@@ -151,13 +155,13 @@ function barWidth(summary: UsageSummary): string {
                   · {{ t("Cache {tokens}", { tokens: formatTokens(item.summary.cacheRead) }) }}
                 </template>
               </span>
-              <span class="cost">{{ formatCost(item.summary.cost) }}</span>
+              <span class="w-18 text-right tabular-nums">{{ formatCost(item.summary.cost) }}</span>
             </div>
           </div>
 
-          <div class="section-h">{{ t("By conversation") }}</div>
-          <div class="panel">
-            <table class="table">
+          <div :class="SECTION_H">{{ t("By conversation") }}</div>
+          <div :class="PANEL">
+            <table :class="TABLE">
               <tbody>
                 <tr
                   v-for="row in conversationRows"
@@ -166,15 +170,15 @@ function barWidth(summary: UsageSummary): string {
                   @click="row.id && $emit('open-ticket', row.id)"
                 >
                   <td>
-                    <span class="conv-title">
-                      <span v-if="row.id" class="mono">{{ row.id }}</span>
+                    <span class="inline-flex max-w-full min-w-0 items-baseline gap-2 [&>.mono]:flex-none [&>.mono]:text-xs [&>.mono]:text-fg-subtle">
+                      <span v-if="row.id" class="mono">{{ displayId(row.id) }}</span>
                       <span class="ellipsis">{{ row.title }}</span>
                     </span>
                   </td>
-                  <td class="hide-sm bar-cell">
-                    <div class="inbar"><i :style="{ width: barWidth(row.summary) }" /></div>
+                  <td class="hide-sm w-[30%]">
+                    <div class="h-1 overflow-hidden rounded-[2px] bg-(--ev-tray)"><i class="block h-full rounded-[2px] bg-(--ev-primary)" :style="{ width: barWidth(row.summary) }" /></div>
                   </td>
-                  <td class="r cost-cell">{{ formatCost(row.summary.cost) }}</td>
+                  <td class="r w-24">{{ formatCost(row.summary.cost) }}</td>
                 </tr>
               </tbody>
             </table>

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { isFinalReport, type Report } from "@shared/contracts/index.ts";
 import { computed } from "vue";
-import { reportStage } from "../board.ts";
-import { t } from "../i18n.ts";
-import { REPORT_LABEL, reportNeed, reportSummary } from "../labels.ts";
-import { formatRelativeTime } from "../time.ts";
-import Icon from "./Icon.vue";
+import { reportStage } from "../../lib/board.ts";
+import { t } from "../../lib/i18n.ts";
+import { REPORT_LABEL, reportNeed, reportSummary } from "../../lib/labels.ts";
+import { formatRelativeTime } from "../../lib/time.ts";
+import Icon from "../../ui/Icon.vue";
 import StageGlyph from "./StageGlyph.vue";
+import { STEP_OUT } from "../conversation/steps.ts";
 
 const props = defineProps<{
   report: Report;
@@ -32,16 +33,16 @@ const hasDetails = computed(
     <Icon name="flag" size="xs" />
     <span>{{ t("Progress: {summary}", { summary }) }}</span>
   </div>
-  <div v-else class="report">
-    <div class="report-h">
+  <div v-else class="rounded-md border border-border bg-surface px-3.5 py-3 text-sm shadow-(--ev-shadow-card) [&_.proc]:mt-1.5">
+    <div class="flex items-center gap-1.5 text-xs text-fg-muted">
       <StageGlyph :stage="stage" />
       <span>{{ t("Report #{seq} · {status}", { seq: report.seq, status: REPORT_LABEL[report.status] }) }}</span>
       <span v-if="final && !report.handled">· {{ t("waiting for the Router") }}</span>
       <span class="spacer" />
       <span class="dim">{{ when }}</span>
     </div>
-    <div class="report-sum">{{ summary }}</div>
-    <dl v-if="hasDetails" class="kv">
+    <div class="mt-1.5 leading-[1.6] whitespace-pre-wrap">{{ summary }}</div>
+    <dl v-if="hasDetails" class="m-0 mt-2.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs leading-[1.55] [&>dd]:m-0 [&>dd]:wrap-anywhere [&>dt]:text-fg-subtle">
       <template v-if="need">
         <dt>{{ t("Needs") }}</dt>
         <dd>{{ need }}</dd>
@@ -68,7 +69,7 @@ const hasDetails = computed(
         <Icon name="chevR" size="xs" class="chev" />
         <span>{{ t("Details::full") }}</span>
       </summary>
-      <div class="step-out">{{ report.detail }}</div>
+      <div :class="STEP_OUT">{{ report.detail }}</div>
     </details>
   </div>
 </template>

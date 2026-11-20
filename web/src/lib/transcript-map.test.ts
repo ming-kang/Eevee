@@ -20,9 +20,9 @@ import type {
   Report,
   ReportStatus,
   TicketId,
-} from "../../src/contracts/index.ts";
-import { toSubmission } from "../../src/extensions/orchestration/deliver.ts";
-import { type Delivery, route } from "../../src/extensions/orchestration/delivery.ts";
+} from "../../../src/contracts/index.ts";
+import { toSubmission } from "../../../src/extensions/orchestration/deliver.ts";
+import { type Delivery, route } from "../../../src/extensions/orchestration/delivery.ts";
 import { mapTranscript, queuedMessages } from "./transcript-map.ts";
 
 const entry = (

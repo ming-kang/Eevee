@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { announceSashDragEnd } from "../dom.ts";
-import { SASH_STEP } from "../layout.ts";
+import { announceSashDragEnd } from "../composables/dom.ts";
+import { SASH_STEP } from "../lib/layout.ts";
 
 const props = defineProps<{
   /** Which edge of the main column the sash sits on; it decides which way a drag widens. */

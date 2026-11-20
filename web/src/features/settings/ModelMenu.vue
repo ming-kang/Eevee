@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { ModelSpecView } from "@shared/api/contract.ts";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { t } from "../i18n.ts";
-import { listStep } from "../keyboard.ts";
-import { groupModels, sameModel } from "../model-choice.ts";
-import Icon from "./Icon.vue";
+import { t } from "../../lib/i18n.ts";
+import { listStep } from "../../lib/keyboard.ts";
+import { groupModels, sameModel } from "../../lib/model-choice.ts";
+import Icon from "../../ui/Icon.vue";
+import { MENU_EMPTY, MENU_GROUP, menuPanel, menuRow } from "../../ui/menu.ts";
 
 /** The model list behind a picker: search on top, models by name under their provider, arrows and Enter to choose. */
 const props = defineProps<{
@@ -70,8 +71,8 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <div class="pop model-pop">
-    <div class="pop-search">
+  <div class="flex max-h-90 w-[min(calc(360px*var(--ev-scale)),calc(100vw_-_calc(40px*var(--ev-scale))))] flex-col [&.side]:w-70" :class="menuPanel()">
+    <div class="-mx-1 -mt-1 mb-1 flex h-9 items-center gap-2 px-3 text-fg-subtle shadow-[inset_0_-1px_0_var(--ev-separator)] [&_input]:h-full [&_input]:min-w-0 [&_input]:flex-1 [&_input]:border-0 [&_input]:bg-transparent [&_input]:text-base [&_input]:text-fg [&_input]:focus:shadow-none [&_input]:focus-visible:shadow-none">
       <Icon name="search" size="sm" />
       <input
         ref="input"
@@ -84,44 +85,44 @@ function onKeydown(event: KeyboardEvent): void {
         @keydown="onKeydown"
       />
     </div>
-    <div ref="list" class="pop-list" role="listbox" :aria-label="t('Models')">
+    <div ref="list" class="min-h-0 overflow-y-auto" role="listbox" :aria-label="t('Models')">
       <button
-        v-if="showFallback"
-        id="model-row-0"
-        type="button"
-        class="pop-row"
-        :class="{ sel: active === 0 }"
-        role="option"
-        :aria-selected="selected === undefined"
-        tabindex="-1"
-        @mouseenter="active = 0"
-        @click="emit('pick', null)"
-      >
+    v-if="showFallback"
+    id="model-row-0"
+    type="button"
+    
+    :class="[menuRow('sm'), { sel: active === 0 }]"
+    role="option"
+    :aria-selected="selected === undefined"
+    tabindex="-1"
+    @mouseenter="active = 0"
+    @click="emit('pick', null)"
+>
         <span class="spacer">{{ t("Default") }}</span>
         <span class="meta">{{ fallback }}</span>
         <Icon v-if="selected === undefined" name="check" size="sm" />
       </button>
       <template v-for="[provider, specs] in groups" :key="provider">
-        <div class="palette-g">{{ provider }}</div>
+        <div :class="MENU_GROUP">{{ provider }}</div>
         <button
-          v-for="spec in specs"
-          :id="`model-row-${rows.indexOf(spec)}`"
-          :key="`${spec.provider}/${spec.modelId}`"
-          type="button"
-          class="pop-row"
-          :class="{ sel: rows.indexOf(spec) === active }"
-          role="option"
-          :aria-selected="sameModel(spec, selected)"
-          tabindex="-1"
-          :title="`${spec.provider}/${spec.modelId}`"
-          @mouseenter="active = rows.indexOf(spec)"
-          @click="emit('pick', spec)"
-        >
+     v-for="spec in specs"
+     :id="`model-row-${rows.indexOf(spec)}`"
+     :key="`${spec.provider}/${spec.modelId}`"
+     type="button"
+     
+     :class="[menuRow('sm'), { sel: rows.indexOf(spec) === active }]"
+     role="option"
+     :aria-selected="sameModel(spec, selected)"
+     tabindex="-1"
+     :title="`${spec.provider}/${spec.modelId}`"
+     @mouseenter="active = rows.indexOf(spec)"
+     @click="emit('pick', spec)"
+>
           <span class="spacer ellipsis">{{ spec.name }}</span>
           <Icon v-if="sameModel(spec, selected)" name="check" size="sm" />
         </button>
       </template>
-      <div v-if="rows.length === 0" class="palette-empty">{{ t("No models match") }}</div>
+      <div v-if="rows.length === 0" :class="MENU_EMPTY">{{ t("No models match") }}</div>
     </div>
   </div>
 </template>

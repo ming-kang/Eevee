@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { activityLabel, countSteps, runningLabel } from "../activity.ts";
-import { t } from "../i18n.ts";
-import { formatDurationMs } from "../time.ts";
-import type { ToolStepItem } from "../transcript-map.ts";
-import Icon from "./Icon.vue";
+import { activityLabel, countSteps, runningLabel } from "../../lib/activity.ts";
+import { t } from "../../lib/i18n.ts";
+import { formatDurationMs } from "../../lib/time.ts";
+import type { ToolStepItem } from "../../lib/transcript-map.ts";
+import Icon from "../../ui/Icon.vue";
 import ToolSheet from "./ToolSheet.vue";
+import { STEP_ROW, STEPS } from "./steps.ts";
 
 const props = defineProps<{
   steps: readonly ToolStepItem[];
@@ -41,11 +42,11 @@ function toggle(step: ToolStepItem): void {
         <span v-if="hasError" class="minus">· {{ t("Failed") }}</span>
       </template>
     </summary>
-    <div class="steps">
+    <div :class="STEPS">
       <template v-for="step in steps" :key="step.id">
         <button
           type="button"
-          class="step-row"
+          :class="[STEP_ROW, 'w-full rounded-xs text-left transition-colors hover:bg-hover focus-visible:shadow-(--ev-ring-in)']"
           :aria-expanded="openStep === step.id"
           @click="toggle(step)"
         >

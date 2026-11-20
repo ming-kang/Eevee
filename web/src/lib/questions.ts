@@ -1,4 +1,4 @@
-import type { Question, QuestionItem } from "../../src/contracts/index.ts";
+import type { Question, QuestionItem } from "../../../src/contracts/index.ts";
 
 export type QuestionItemView = QuestionItem & { why?: string };
 

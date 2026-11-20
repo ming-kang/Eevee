@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { TicketView } from "@shared/api/contract.ts";
 import { computed } from "vue";
-import { effectiveStage } from "../board.ts";
-import { STAGE_LABEL } from "../labels.ts";
+import { effectiveStage } from "../../lib/board.ts";
+import { STAGE_LABEL } from "../../lib/labels.ts";
+import { displayId } from "../../lib/ids.ts";
 
 const props = defineProps<{
   ticketId: string;
@@ -24,10 +25,10 @@ const tooltip = computed(() => {
 <template>
   <button
     type="button"
-    class="tref"
+    class="mx-px inline rounded-xs bg-[color-mix(in_oklab,var(--fg)_7%,transparent)] px-1 py-px font-mono text-[0.88em] font-medium text-fg transition-colors [box-decoration-break:clone] hover:bg-[color-mix(in_oklab,var(--fg)_13%,transparent)]"
     :title="tooltip"
     @click.stop="$emit('open-ticket', ticketId)"
   >
-    {{ label ?? ticketId }}
+    {{ !label || label === ticketId ? displayId(ticketId) : label }}
   </button>
 </template>

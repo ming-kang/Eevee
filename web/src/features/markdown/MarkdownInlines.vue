@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inject } from "vue";
-import { type Inline, TICKET_LINKS } from "../markdown.ts";
-import TicketRef from "./TicketRef.vue";
+import { type Inline, TICKET_LINKS } from "../../composables/markdown.ts";
+import TicketRef from "../project/TicketRef.vue";
 
 defineProps<{ items: readonly Inline[] }>();
 

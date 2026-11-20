@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { t } from "../i18n.ts";
-import { showToast } from "../toasts.ts";
-import BrandLogo from "./BrandLogo.vue";
-import Icon from "./Icon.vue";
+import { t } from "../../lib/i18n.ts";
+import { showToast } from "../../composables/toasts.ts";
+import BrandLogo from "../../ui/BrandLogo.vue";
+import Icon from "../../ui/Icon.vue";
+import Button from "../../ui/Button.vue";
+import { banner, CODELINE } from "../../ui/surface.ts";
 
 defineProps<{
   reason?: string;
@@ -26,35 +28,30 @@ async function copy(text: string): Promise<void> {
 </script>
 
 <template>
-  <div class="connect">
-    <div class="connect-card">
-      <span class="brand"><BrandLogo /></span>
-      <h1>{{ t("Connect to the Engine") }}</h1>
-      <div v-if="networkError" class="banner bad" role="alert">
+  <div class="grid h-full place-items-center bg-(--ev-region) p-6">
+    <div class="flex w-[min(calc(400px*var(--ev-scale)),100%)] animate-[ev-pop_var(--ev-slow)_var(--ev-ease)] flex-col gap-4.5 rounded-lg border border-border bg-surface p-7 shadow-(--ev-shadow-modal)">
+      <span class="flex items-center [&_svg]:size-7"><BrandLogo /></span>
+      <h1 class="text-(length:--ev-title) font-semibold tracking-[-0.02em]">{{ t("Connect to the Engine") }}</h1>
+      <div v-if="networkError" :class="banner('danger')" role="alert">
         <Icon name="alert" size="sm" />
         <div>{{ networkError }}</div>
       </div>
-      <div v-else-if="reason" class="banner">
+      <div v-else-if="reason" :class="banner()">
         <Icon name="lock" size="sm" />
         <div>{{ reason }}</div>
       </div>
-      <div class="connect-steps">
-        <div class="codeline">
+      <div class="flex flex-col gap-2">
+        <div :class="CODELINE">
           <code>{{ COMMAND }}</code>
-          <button
-            type="button"
-            class="btn ghost sm icon"
-            :aria-label="t('Copy {command}', { command: COMMAND })"
-            @click="copy(COMMAND)"
-          >
+          <Button variant="ghost" size="sm" icon :aria-label="t('Copy {command}', { command: COMMAND })" @click="copy(COMMAND)">
             <Icon name="copy" size="xs" />
-          </button>
+          </Button>
         </div>
       </div>
-      <button v-if="networkError" type="button" class="btn" @click="$emit('retry')">
+      <Button v-if="networkError" @click="$emit('retry')">
         <Icon name="refresh" size="sm" />
         <span>{{ t("Retry") }}</span>
-      </button>
+      </Button>
     </div>
   </div>
 </template>

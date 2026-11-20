@@ -6,7 +6,7 @@ import {
   type RoleName,
   type RunFailureView,
   type TicketStage,
-} from "../../src/contracts/index.ts";
+} from "../../../src/contracts/index.ts";
 import { t } from "./i18n.ts";
 import type { McpExposure } from "./mcp-draft.ts";
 import type { DispatchActionKind } from "./transcript-map.ts";

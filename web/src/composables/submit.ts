@@ -1,5 +1,5 @@
 import { ref } from "vue";
-import { errorText } from "./errors.ts";
+import { errorText } from "../lib/errors.ts";
 
 export function useSubmit() {
   const busy = ref(false);
