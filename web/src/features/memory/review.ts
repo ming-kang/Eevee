@@ -1,8 +1,15 @@
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import type { MemoryProposal, ProposalId } from "../../../../src/domain/index.ts";
-import type { Client } from "../../../../src/protocol/client.ts";
+import { ApiRequestError, type Client } from "../../../../src/protocol/client.ts";
 import type { MemoryProposalView } from "../../../../src/protocol/views.ts";
 import { errorText } from "../../lib/errors.ts";
+import { t } from "../../lib/i18n.ts";
+
+function staleProposalText(): string {
+  return t(
+    "Memory changed since this proposal was made. It was not applied, and the Router was notified.",
+  );
+}
 
 export function createProposalReview(
   client: Client,
@@ -14,6 +21,12 @@ export function createProposalReview(
   const busy = ref(false);
   const error = ref<string>();
   const reason = ref("");
+  const decisionReason = computed(() =>
+    detail.value?.status === "stale" ? staleProposalText() : detail.value?.reason,
+  );
+  const previewConflict = computed(() =>
+    detail.value?.status === "stale" ? undefined : detail.value?.conflict,
+  );
   let project = "";
   let lists = 0;
   let selections = 0;
@@ -89,7 +102,13 @@ export function createProposalReview(
         });
       if (target === project) await changed();
     } catch (cause) {
-      failure = errorText(cause);
+      failure =
+        action === "approve" &&
+        cause instanceof ApiRequestError &&
+        cause.status === 409 &&
+        cause.problem.code === "memory_changed"
+          ? staleProposalText()
+          : errorText(cause);
     }
     try {
       if (target === project) {
@@ -108,6 +127,8 @@ export function createProposalReview(
     busy,
     error,
     reason,
+    decisionReason,
+    previewConflict,
     load,
     select,
     approve: () => decide("approve"),

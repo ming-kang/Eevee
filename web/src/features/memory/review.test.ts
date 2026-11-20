@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { MemoryProposal } from "../../../../src/domain/index.ts";
 import { createClient } from "../../../../src/protocol/client.ts";
+import { zhCN } from "../../lib/locales/zh-CN.ts";
 import { createProposalReview } from "./review.ts";
 
 function fixture(options: { stale?: boolean; empty?: boolean; fail?: boolean } = {}) {
@@ -27,6 +28,8 @@ function fixture(options: { stale?: boolean; empty?: boolean; fail?: boolean } =
         if (path.endsWith("/approve")) {
           if (options.stale) {
             proposal.status = "stale";
+            proposal.reason =
+              "Memory file MEMORY.md changed. Reload the latest content and try again.";
             return Response.json(
               { code: "memory_changed", file: "MEMORY.md", status: 409, title: "Changed" },
               { status: 409 },
@@ -47,6 +50,7 @@ function fixture(options: { stale?: boolean; empty?: boolean; fail?: boolean } =
             ? { proposals: options.empty ? [] : [proposal] }
             : {
                 ...proposal,
+                ...(proposal.status === "stale" ? { conflict: proposal.reason } : {}),
                 files: [
                   {
                     path: "MEMORY.md",
@@ -120,7 +124,29 @@ test("a stale approval reloads the decision and shows an error without reporting
   await f.review.load("p1");
   await f.review.approve();
   assert.equal(f.review.detail.value?.status, "stale");
-  assert.ok(f.review.error.value);
+  const message =
+    "Memory changed since this proposal was made. It was not applied, and the Router was notified.";
+  assert.equal(f.review.error.value, message);
+  assert.equal(f.review.decisionReason.value, message);
+  assert.equal(f.review.previewConflict.value, undefined);
+  assert.match(zhCN[message] ?? "", /\p{Script=Han}/u);
+  assert.equal(f.changed, 0);
+  assert.equal(f.review.busy.value, false);
+  await f.review.approve();
+  assert.equal(f.requests.filter((r) => r.path.endsWith("/approve")).length, 1);
+  await f.review.load("p1");
+  assert.equal(f.review.error.value, undefined);
+  assert.equal(f.review.decisionReason.value, message);
+  assert.equal(f.review.previewConflict.value, undefined);
+});
+
+test("other approval failures keep their original error message", async () => {
+  const options = { fail: false };
+  const f = fixture(options);
+  await f.review.load("p1");
+  options.fail = true;
+  await f.review.approve();
+  assert.equal(f.review.error.value, "offline");
   assert.equal(f.changed, 0);
   assert.equal(f.review.busy.value, false);
 });

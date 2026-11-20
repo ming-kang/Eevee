@@ -8,6 +8,8 @@ export const zhCN: Record<string, string> = {
   Approved: "已批准",
   Rejected: "已拒绝",
   Stale: "已失效",
+  "Memory changed since this proposal was made. It was not applied, and the Router was notified.":
+    "记忆在提案提出后发生了变化，因此未应用此提案，且已通知 Router。",
   Approve: "批准",
   Reject: "拒绝",
   "Reason (optional)": "原因（可选）",
