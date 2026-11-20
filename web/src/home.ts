@@ -1,6 +1,6 @@
 import type { BoardView, ProjectSummary, TicketView } from "../../src/api/contract.ts";
 import type { Question } from "../../src/contracts/index.ts";
-import { countPendingQuestions, effectiveStage } from "./board.ts";
+import { effectiveStage } from "./board.ts";
 import { failureText } from "./labels.ts";
 
 /** "Recently done" looks back one day and shows the newest few. */
@@ -29,7 +29,6 @@ export type HomeBoard = {
   running: RunningRow[];
   /** Closed inside `DONE_WINDOW_MS`, newest first, capped at `DONE_LIMIT`. */
   done: DoneRow[];
-  questionCount: number;
   runningCount: number;
   /** Every ticket closed inside the window; the section itself shows `done` only. */
   doneCount: number;
@@ -50,12 +49,10 @@ export function buildHomeBoard(input: {
   const tickets: Extract<RunningRow, { kind: "ticket" }>[] = [];
   const routers: RunningRow[] = [];
   const done: DoneRow[] = [];
-  let questionCount = 0;
 
   for (const project of input.projects) {
     const board = input.boards[project.id]?.board;
     if (!board) continue;
-    questionCount += countPendingQuestions(board);
 
     for (const question of board.openQuestions) {
       if (question.answer !== undefined) continue;
@@ -113,7 +110,6 @@ export function buildHomeBoard(input: {
     needsYou: [...questions, ...failures],
     running: [...tickets, ...routers],
     done: done.slice(0, DONE_LIMIT),
-    questionCount,
     runningCount: tickets.length + routers.length,
     doneCount: done.length,
   };

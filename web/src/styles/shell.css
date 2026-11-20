@@ -128,7 +128,6 @@
   gap: calc(6px * var(--ev-scale));
   height: var(--ev-header-h);
   padding: 0 var(--ev-ctrl-inset) 0 var(--ev-titlebar-left);
-  border-bottom: 1px solid var(--ev-separator);
 }
 
 .brand {
@@ -356,12 +355,26 @@
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ev-scale));
-  height: var(--ev-h-md);
-  padding: 0 calc(8px * var(--ev-scale)) 0 calc(9px * var(--ev-scale));
+  min-height: calc(40px * var(--ev-scale));
+  padding: calc(8px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(8px * var(--ev-scale)) calc(9px * var(--ev-scale));
   border-radius: var(--ev-r-sm);
   font-size: var(--ev-control);
   letter-spacing: var(--ev-tracking);
   color: var(--ev-side-ink);
+}
+
+.p-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.p-row > .p-lead {
+  align-self: flex-start;
+  margin-top: calc(2px * var(--ev-scale));
 }
 
 .p-item.on .p-row {
@@ -433,7 +446,7 @@
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ev-scale));
-  height: calc(28px * var(--ev-scale));
+  height: calc(32px * var(--ev-scale));
   padding: 0 calc(8px * var(--ev-scale)) 0 calc(7px * var(--ev-scale));
   border-radius: var(--ev-r-mini);
   font-size: var(--ev-footnote);

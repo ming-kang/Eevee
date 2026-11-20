@@ -40,6 +40,8 @@ defineEmits<{
         class="p-row"
         :href="href"
         :aria-label="project.title"
+        :aria-current="active ? 'page' : undefined"
+        :title="project.title"
         @click="$emit('select')"
       >
         <Icon
@@ -77,6 +79,8 @@ defineEmits<{
         class="p-ticket"
         :class="{ on: activeTicketId === view.ticket.id }"
         :href="formatRoute({ name: 'worker', pid: project.id, tid: view.ticket.id })"
+        :title="view.ticket.title"
+        :aria-current="activeTicketId === view.ticket.id ? 'page' : undefined"
         @click="$emit('select')"
       >
         <StageGlyph :stage="effectiveStage(view)" />
