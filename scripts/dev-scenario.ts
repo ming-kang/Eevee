@@ -577,11 +577,11 @@ const timer = setInterval(() => {
 `,
 );
 
-const p1 = await engine.createProject({
+const p1 = await engine.projects.create({
   title: "Optics paper “Metasurface Polarization Imaging”",
   workspace: ws1,
 });
-const host1 = engine.project(p1.id);
+const host1 = engine.projects.get(p1.id);
 if (!host1) throw new Error(`No project ${p1.id}`);
 
 const p1Repo = new MemoryRepo(paths.project(p1.id).memory);
@@ -599,21 +599,25 @@ await p1Repo.create(
 await p1Repo.commitRound("seed-p1-2", { kind: "router" });
 
 // Round 1 on p1: t1 created & accepted
-await host1.sendUserMessage("First build the paper template, then review and close the ticket.");
+await host1.conversations.send(
+  "router",
+  "First build the paper template, then review and close the ticket.",
+);
 await until(async () => {
   const board = await host1.board();
-  const conv = await host1.conversation();
+  const conv = await host1.conversations.view("router");
   return board.tickets.find((t) => t.ticket.id === "t1")?.ticket.status === "done" && !conv.running;
 }, "t1 accepted and closed");
 
 // Round 2 on p1: t2 (jobs), t3 (blocked), t4 (answer), t5 (review), t6 (working), t7 (failed) + q1
-await host1.sendUserMessage(
+await host1.conversations.send(
+  "router",
   "Please push the simulation scan, the comparison experiment data, the reference style, the figure redraw, the introduction draft and the vector figure export in parallel.",
 );
 await until(async () => {
   const board = await host1.board();
   const byId = new Map(board.tickets.map((t) => [t.ticket.id, t]));
-  const conv = await host1.conversation();
+  const conv = await host1.conversations.view("router");
   return (
     board.openQuestions.length >= 2 &&
     byId.get("t2")?.stage === "jobs" &&
@@ -636,28 +640,31 @@ await writeFile(
 // Project 2: Router failure state
 const ws2 = join(home, "workspaces", "eevee-demo");
 await mkdir(ws2, { recursive: true });
-const p2 = await engine.createProject({ title: "Eevee panel integration", workspace: ws2 });
-const host2 = engine.project(p2.id);
+const p2 = await engine.projects.create({ title: "Eevee panel integration", workspace: ws2 });
+const host2 = engine.projects.get(p2.id);
 if (!host2) throw new Error(`No project ${p2.id}`);
-await host2.sendUserMessage("Check the stream reconnection and the contract boundaries");
+await host2.conversations.send(
+  "router",
+  "Check the stream reconnection and the contract boundaries",
+);
 await until(async () => {
-  const conv = await host2.conversation();
+  const conv = await host2.conversations.view("router");
   return !conv.running && conv.failure !== undefined;
 }, "p2 reaches the Router failure state");
 
 // Project 3: Empty project
 const ws3 = join(home, "workspaces", "empty");
 await mkdir(ws3, { recursive: true });
-await engine.createProject({ title: "Blank experiment log", workspace: ws3 });
+await engine.projects.create({ title: "Blank experiment log", workspace: ws3 });
 
 seeded = true;
 
 if (checkOnly) {
   const board1 = await host1.board();
-  const conv2 = await host2.conversation();
-  const changes = await host1.memory("project").history();
+  const conv2 = await host2.conversations.view("router");
+  const changes = await host1.memory.history("project");
   console.log("Scenario self-check passed:", {
-    projects: engine.projects().map((p) => p.title),
+    projects: engine.projects.list().map((p) => p.title),
     p1Stages: board1.tickets.map((t) => `${t.ticket.id}:${t.stage}`),
     openQuestions: board1.openQuestions.map((q) => `${q.id}${q.ticketId ? `->${q.ticketId}` : ""}`),
     p2Failure: conv2.failure,
@@ -710,8 +717,8 @@ const codeVite = auth.issueCode();
 console.log("");
 console.log(`Eevee dev-scenario Engine started (port ${port}, EEVEE_HOME=${home})`);
 console.log(
-  `  Projects:  ${engine
-    .projects()
+  `  Projects:  ${engine.projects
+    .list()
     .map((p) => `${p.id} “${p.title}”`)
     .join(" / ")}`,
 );

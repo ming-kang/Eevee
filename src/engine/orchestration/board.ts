@@ -11,8 +11,8 @@ import {
   type Ticket,
   type TicketId,
   ticketId,
-} from "../../../domain/index.ts";
-import { Board, QuestionDoc, ReportLog, TicketBinding, TicketDoc } from "../../docs.ts";
+} from "../../domain/index.ts";
+import { Board, QuestionDoc, ReportLog, TicketBinding, TicketDoc } from "../docs.ts";
 
 export type DocReader = Pick<ToolExecutionApi, "snapshot">;
 

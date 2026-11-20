@@ -6,8 +6,8 @@ import {
   isDeliberateEnd,
   REPORT_SUMMARY_LIMIT,
   type Report,
-} from "../../../domain/index.ts";
-import { Board } from "../../docs.ts";
+} from "../../domain/index.ts";
+import { Board } from "../docs.ts";
 import { conversationOf, readTicket } from "./board.ts";
 import { type DeliveryContext, submitReport } from "./deliver.ts";
 

@@ -5,9 +5,9 @@ import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { InboxItem, InboxState } from "@earendil-works/pi-durable";
-import type { TicketId } from "../domain/index.ts";
-import type { BoardView } from "../protocol/contract.ts";
-import { eeveePaths } from "../shared/paths.ts";
+import type { TicketId } from "../../domain/index.ts";
+import type { BoardView } from "../../protocol/contract.ts";
+import { eeveePaths } from "../../shared/paths.ts";
 import {
   type Brain,
   call,
@@ -16,7 +16,7 @@ import {
   type TestProject,
   textOf,
   toolName,
-} from "./testing.ts";
+} from "../testing.ts";
 
 test("the Router creates a ticket, the Worker submits ready, the Router accepts and closes it", async () => {
   const brain: Brain = ({ role, last }) => {
@@ -52,7 +52,7 @@ test("the Router creates a ticket, the Worker submits ready, the Router accepts 
 
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("write a hello.txt for me");
+    await project.host.conversations.send("router", "write a hello.txt for me");
     const done = await project.until(async () => {
       const board = await project.host.board();
       const ticket = board.tickets[0]?.ticket;
@@ -84,7 +84,7 @@ test("when a Worker ends without submitting a report, the Engine files a waiting
 
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("start work");
+    await project.host.conversations.send("router", "start work");
     const report = await project.until(async () => {
       const board = await project.host.board();
       return board.tickets[0]?.reports[0];
@@ -148,7 +148,7 @@ test("an accepted result goes straight to the ticket in deliverTo", async () => 
 
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("open two tickets");
+    await project.host.conversations.send("router", "open two tickets");
     await project.until(async () =>
       project.calls.some(
         (c) => c.role === "worker" && textOf(c.last).includes("which this waits on"),
@@ -184,7 +184,7 @@ test("a long command moves to the background, and the Worker is woken when the j
 
   const project = await openTestProject(brain, { backgroundAfterMs: 200 });
   try {
-    await project.host.sendUserMessage("run simulation");
+    await project.host.conversations.send("router", "run simulation");
     const jobs = await project.until(async () => {
       const ticket = (await project.host.board()).tickets[0];
       return ticket?.stage === "jobs" && ticket;
@@ -239,7 +239,7 @@ test("accepting a ticket stops its background job, leaves its Worker alone, and 
 
   const project = await openTestProject(brain, { backgroundAfterMs: 100 });
   try {
-    await project.host.sendUserMessage("run simulation");
+    await project.host.conversations.send("router", "run simulation");
     const running = await project.until(async () => {
       const ticket = (await project.host.board()).tickets[0];
       const job = ticket?.jobs[0];
@@ -259,7 +259,7 @@ test("accepting a ticket stops its background job, leaves its Worker alone, and 
     assert.equal(closed.ticket.closeNote, "the scan keeps running in the background");
 
     const log = await project.until(async () => {
-      const found = await project.host.jobLog(jobId);
+      const found = await project.host.jobs.log(jobId);
       return found.job.status === "killed" ? found : false;
     });
     assert.match(log.content, /\[killed\]/);
@@ -306,7 +306,7 @@ test("when an Engine restart interrupts a background job, the Worker is told to 
 
   const project = await openTestProject(brain, { backgroundAfterMs: 100 });
   try {
-    await project.host.sendUserMessage("run a long job");
+    await project.host.conversations.send("router", "run a long job");
     await project.until(async () => (await project.host.board()).tickets[0]?.stage === "jobs");
     await project.reopen();
     const report = await project.until(
@@ -352,7 +352,7 @@ test("tickets beyond the concurrency limit queue, and the next one starts only a
 
   const project = await openTestProject(brain, { maxActiveWorkers: 1 });
   try {
-    await project.host.sendUserMessage("do two things for me");
+    await project.host.conversations.send("router", "do two things for me");
     const stages = await project.until(async () => {
       const board = await project.host.board();
       const ready = board.tickets.length === 2 && board.tickets[0]?.stage === "working";
@@ -393,7 +393,7 @@ test("when a closing report goes unhandled, the Engine reminds the Router once",
   };
   const project = await openTestProject(brain, { reminderAfterMs: 0 });
   try {
-    await project.host.sendUserMessage("start work");
+    await project.host.conversations.send("router", "start work");
     await project.until(async () =>
       project.calls.some(
         (c) => c.role === "router" && textOf(c.last).includes("Reports still unhandled"),
@@ -428,11 +428,11 @@ test("when a Worker's context passes the threshold, its closing report also rese
   };
   const project = await openTestProject(brain, { contextWindow: 200, handoffThreshold: 0.1 });
   try {
-    await project.host.sendUserMessage("start work");
+    await project.host.conversations.send("router", "start work");
     const lines = await project.until(async () => {
       const board = await project.host.board();
       if (board.tickets[0]?.reports.length !== 1) return undefined;
-      const { lines: transcript } = await project.host.ticketConversation("t1");
+      const { lines: transcript } = await project.host.conversations.view("t1");
       return transcript.some((l) => l.role === "reset") && transcript;
     });
     const reset = lines.find((l) => l.role === "reset");
@@ -457,19 +457,19 @@ test("a user steers a Worker from the panel, and the Router only records the int
   };
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("start work");
+    await project.host.conversations.send("router", "start work");
     await project.until(async () => (await project.host.board()).tickets[0]?.reports[0]);
     const routerCalls = project.calls.filter((c) => c.role === "router").length;
-    await project.host.messageWorker("t1", "try another approach", "steer");
+    await project.host.conversations.send("t1", "try another approach", "steer");
     const ready = await project.until(async () => {
       const reports = (await project.host.board()).tickets[0]?.reports ?? [];
       return reports.find((r) => r.status === "ready");
     });
     assert.equal(ready.summary, "finished with the new approach");
-    const { lines: transcript } = await project.host.ticketConversation("t1");
+    const { lines: transcript } = await project.host.conversations.view("t1");
     assert.ok(transcript.some((l) => l.role === "user" && l.text === "try another approach"));
     await project.until(async () =>
-      (await project.host.conversation()).lines.some((l) =>
+      (await project.host.conversations.view("router")).lines.some((l) =>
         l.text.includes("The user sent a message straight to t1"),
       ),
     );
@@ -487,18 +487,18 @@ test("a failed model call exposes the reason, and it can be retried once fixed",
   };
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("hello");
+    await project.host.conversations.send("router", "hello");
     const view = await project.until(async () => {
-      const current = await project.host.conversation();
+      const current = await project.host.conversations.view("router");
       return current.failure !== undefined && current;
     });
     assert.equal(view.running, false);
     broken = false;
-    await project.host.retry();
+    await project.host.conversations.retry("router");
     await project.until(async () =>
-      (await project.host.conversation()).lines.some((l) => l.text === "Recovered."),
+      (await project.host.conversations.view("router")).lines.some((l) => l.text === "Recovered."),
     );
-    assert.equal((await project.host.conversation()).failure, undefined);
+    assert.equal((await project.host.conversations.view("router")).failure, undefined);
   } finally {
     await project.close();
   }
@@ -523,9 +523,9 @@ test("read transcript:// pages by entry and gives the positions to page back and
   };
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("say something first");
+    await project.host.conversations.send("router", "say something first");
     await project.until(async () => project.calls.length >= 1);
-    await project.host.sendUserMessage("page the transcript");
+    await project.host.conversations.send("router", "page the transcript");
     await project.until(async () => pages.length === 2);
     const [fromStart, newest] = pages;
     assert.match(fromStart ?? "", /Newer entries: read\("transcript:\/\/1", offset: \d+\)/);
@@ -561,7 +561,7 @@ test("read the tail of a background job's log and kill the job while it runs", a
 
   const project = await openTestProject(brain, { backgroundAfterMs: 100 });
   try {
-    await project.host.sendUserMessage("run a long job");
+    await project.host.conversations.send("router", "run a long job");
     const jobsTicket = await project.until(async () => {
       const ticket = (await project.host.board()).tickets[0];
       return ticket?.stage === "jobs" && ticket;
@@ -570,32 +570,32 @@ test("read the tail of a background job's log and kill the job while it runs", a
     assert.ok(jobId);
 
     const runningLog = await project.until(async () => {
-      const log = await project.host.jobLog(jobId);
+      const log = await project.host.jobs.log(jobId);
       return log.content.includes("row-4") && log;
     });
     assert.equal(runningLog.job.status, "running");
     assert.equal(runningLog.truncated, false);
 
-    const tailed = await project.host.jobLog(jobId, 2);
+    const tailed = await project.host.jobs.log(jobId, 2);
     assert.equal(tailed.truncated, true);
     assert.deepEqual(tailed.content.trim().split(/\r?\n/), ["row-3", "row-4"]);
 
-    await project.host.killJob(jobId);
+    await project.host.jobs.kill(jobId);
 
-    const afterKill = await project.host.jobLog(jobId);
+    const afterKill = await project.host.jobs.log(jobId);
     assert.equal(afterKill.job.status, "killed");
     assert.match(afterKill.content, /\[killed\]/);
     assert.equal((await project.host.board()).tickets[0]?.jobs.length, 0);
     // The ticket is still open: its Worker hears about the kill instead of waiting forever.
     await project.until(async () => {
-      const worker = await project.host.ticketConversation(jobsTicket.ticket.id);
+      const worker = await project.host.conversations.view(jobsTicket.ticket.id);
       return worker.lines.some((line) => line.text.includes("The job was killed."));
     });
 
-    await assert.rejects(project.host.killJob(jobId), { problem: { code: "job_ended", jobId } });
+    await assert.rejects(project.host.jobs.kill(jobId), { problem: { code: "job_ended", jobId } });
     const noJob = { problem: { code: "no_job", jobId: "j99" } };
-    await assert.rejects(project.host.killJob("j99"), noJob);
-    await assert.rejects(project.host.jobLog("j99"), noJob);
+    await assert.rejects(project.host.jobs.kill("j99"), noJob);
+    await assert.rejects(project.host.jobs.log("j99"), noJob);
   } finally {
     await project.close();
   }
@@ -608,7 +608,7 @@ test("listFiles and memoryFile list and safely read project and global memory fi
     await mkdir(join(projectMemoryDir, "topics"), { recursive: true });
     await writeFile(join(projectMemoryDir, "topics", "sim.md"), "# simulation\n- dt = 0.01\n");
 
-    const files = await project.host.memory("project").listFiles();
+    const files = await project.host.memory.files("project");
     assert.equal(files[0]?.path, "MEMORY.md");
     assert.equal(
       files.some((f) => f.path === "topics/sim.md"),
@@ -619,15 +619,15 @@ test("listFiles and memoryFile list and safely read project and global memory fi
       false,
     );
 
-    const file = await project.host.memoryFile("project", "topics/sim.md");
+    const file = await project.host.memory.file("project", "topics/sim.md");
     assert.equal(file.path, "topics/sim.md");
     assert.match(file.content, /dt = 0\.01/);
 
-    const globalFiles = await project.host.memory("global").listFiles();
+    const globalFiles = await project.host.memory.files("global");
     assert.equal(globalFiles[0]?.path, "MEMORY.md");
 
     for (const file of ["missing.md", "../project.json", ".git/HEAD"]) {
-      await assert.rejects(project.host.memoryFile("project", file), {
+      await assert.rejects(project.host.memory.file("project", file), {
         problem: { code: "no_memory_file", file },
       });
     }
@@ -659,7 +659,7 @@ test("BoardView reflects the Router's run state and failure reason, and ProjectS
     assert.deepEqual((await project.host.board()).router, { running: false });
 
     await sleep(20);
-    await project.host.sendUserMessage("reply slowly");
+    await project.host.conversations.send("router", "reply slowly");
     const whileRunning = await project.until(async () => {
       if (!enteredGate) return false;
       const b = await project.host.board();
@@ -675,7 +675,7 @@ test("BoardView reflects the Router's run state and failure reason, and ProjectS
     assert.ok(initial.activeAt !== undefined && afterTurn > initial.activeAt);
 
     shouldFail = true;
-    await project.host.sendUserMessage("trigger a failure");
+    await project.host.conversations.send("router", "trigger a failure");
     const failedBoard = await project.until(async () => {
       const b = await project.host.board();
       return b.router.failure !== undefined && b;
@@ -711,24 +711,24 @@ test("the model and thinking level chosen for the Router are written to project.
   const lastTurn = (role: string) => project.calls.findLast((turn) => turn.role === role);
   try {
     const router = { provider: "faux", modelId: "deep", thinkingLevel: "high" } as const;
-    await project.host.setProjectModel("router", router);
+    await project.host.setModel("router", router);
     assert.deepEqual(project.host.summary().models, { router });
     const meta = eeveePaths(project.home).project(project.host.meta.id).meta;
     assert.deepEqual(JSON.parse(await readFile(meta, "utf8")).models, { router });
 
-    await project.host.sendUserMessage("hello");
+    await project.host.conversations.send("router", "hello");
     const first = await project.until(async () => lastTurn("router"));
     assert.deepEqual([first.model, first.thinking], ["deep", "high"]);
 
-    await project.host.sendUserMessage("create a ticket");
+    await project.host.conversations.send("router", "create a ticket");
     const worker = await project.until(async () => lastTurn("worker"));
     assert.deepEqual([worker.model, worker.thinking], ["deep", "low"]);
     await project.until(async () => !(await project.host.board()).router.running);
 
-    await project.host.setProjectModel("router", null);
+    await project.host.setModel("router", null);
     assert.equal(project.host.summary().models, undefined);
     const before = project.calls.length;
-    await project.host.sendUserMessage("switch back to default");
+    await project.host.conversations.send("router", "switch back to default");
     const after = await project.until(async () =>
       project.calls.slice(before).findLast((turn) => turn.role === "router"),
     );
@@ -750,11 +750,11 @@ test("when the same question is answered concurrently, only one takes effect", a
 
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("ask me a question");
+    await project.host.conversations.send("router", "ask me a question");
     const question = await project.until(async () => (await project.host.board()).openQuestions[0]);
     const results = await Promise.allSettled([
-      project.host.answerQuestion(question.id, "alpha"),
-      project.host.answerQuestion(question.id, "beta"),
+      project.host.questions.answer(question.id, "alpha"),
+      project.host.questions.answer(question.id, "beta"),
     ]);
     assert.deepEqual(
       results.map((result) => result.status),
@@ -803,7 +803,7 @@ test("cancelling a ticket removes its pending question and stops its worker conv
 
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("open a ticket");
+    await project.host.conversations.send("router", "open a ticket");
     const closed = await project.until(async () => {
       const ticket = (await project.host.board()).tickets[0]?.ticket;
       return ticket?.status === "cancelled" ? ticket : undefined;
@@ -816,7 +816,7 @@ test("cancelling a ticket removes its pending question and stops its worker conv
     assert.ok(stopped.stoppedAt !== undefined);
     assert.deepEqual((await project.host.board()).openQuestions, []);
     await assert.rejects(
-      project.host.answerQuestion("q1" as never, "yes"),
+      project.host.questions.answer("q1" as never, "yes"),
       (error: unknown) =>
         (error as { problem?: { code?: string } }).problem?.code === "no_question",
     );
@@ -840,9 +840,9 @@ test("the opening is written into the worker conversation when the ticket is cre
 
   const project = await openTestProject(brain, { maxActiveWorkers: 1 });
   try {
-    await project.host.sendUserMessage("open a ticket");
+    await project.host.conversations.send("router", "open a ticket");
     await project.until(async () => (await project.host.board()).tickets[0]?.ticket.id);
-    const entries = await project.host.entries("t1", {}, 50);
+    const entries = await project.host.conversations.entries("t1", {}, 50);
     const opening = entries.find(
       (entry) => (entry.data as { requestId?: string } | undefined)?.requestId === "opening:t1",
     );
@@ -862,7 +862,7 @@ test("a board watcher hears the current board, then its changes, without calling
   });
   try {
     await project.until(async () => views.length > 0, 1500);
-    await project.host.sendUserMessage("hello");
+    await project.host.conversations.send("router", "hello");
     await project.until(async () => views.some((board) => board.router.running), 1500);
     await project.until(async () => views.at(-1)?.router.running === false, 1500);
   } finally {
@@ -906,7 +906,7 @@ test("a board subscriber is notified when a background job starts and finishes, 
     failed: (error) => assert.fail(String(error)),
   });
   try {
-    await project.host.sendUserMessage("run simulation");
+    await project.host.conversations.send("router", "run simulation");
 
     const adopted = await project.until(async () => {
       const index = snapshots.findIndex((b) => b.tickets[0]?.jobs[0]?.status === "running");
@@ -943,7 +943,7 @@ const inboxItems = async (
   project: TestProject,
   ticketId: TicketId | undefined,
 ): Promise<readonly InboxItem[]> => {
-  const watch = await project.host.watch(ticketId, BACKGROUND_CONTEXT);
+  const watch = await project.host.conversations.watch(ticketId ?? "router", BACKGROUND_CONTEXT);
   try {
     const inbox = watch.value.docs["pi.inbox"] as InboxState | undefined;
     return inbox?.items ?? [];
@@ -971,35 +971,37 @@ test("interrupting the Router ends its run, keeps queued Engine notices, and dro
   };
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("ask me something");
+    await project.host.conversations.send("router", "ask me something");
     const question = await project.until(async () => (await project.host.board()).openQuestions[0]);
-    await project.host.sendUserMessage("keep working on it");
-    await project.until(async () => gating && (await project.host.conversation()).running);
+    await project.host.conversations.send("router", "keep working on it");
+    await project.until(
+      async () => gating && (await project.host.conversations.view("router")).running,
+    );
 
-    await project.host.answerQuestion(question.id, "alpha");
-    await project.host.sendUserMessage("a second thought");
+    await project.host.questions.answer(question.id, "alpha");
+    await project.host.conversations.send("router", "a second thought");
 
     // The answer is the Engine's queued notice; the user line is theirs to withdraw.
     const queued = await inboxItems(project, undefined);
     const notice = queued.find((item) => item.mode !== "write" && item.entry !== undefined);
     assert.ok(notice !== undefined);
     await assert.rejects(
-      () => project.host.withdrawQueued(undefined, String(notice.id)),
+      () => project.host.conversations.withdrawQueued("router", String(notice.id)),
       /not in the queue/,
     );
 
-    const interrupting = project.host.interruptRouter();
+    const interrupting = project.host.conversations.interrupt("router");
     await sleep(50);
     release();
     await interrupting;
 
     const view = await project.until(async () => {
-      const current = await project.host.conversation();
+      const current = await project.host.conversations.view("router");
       return current.failure?.reason === "aborted" ? current : false;
     });
     assert.equal(view.running, false);
 
-    await project.host.sendUserMessage("carry on");
+    await project.host.conversations.send("router", "carry on");
     await project.until(async () =>
       project.calls.some(
         (c) =>
@@ -1064,27 +1066,27 @@ test("interrupting a Worker keeps the Engine notice queued for it", async () => 
   };
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("start work");
+    await project.host.conversations.send("router", "start work");
     const question = await project.until(async () => (await project.host.board()).openQuestions[0]);
-    await project.host.messageWorker("t1", "keep going", "steer");
+    await project.host.conversations.send("t1", "keep going", "steer");
     await project.until(
       async () => gating && (await project.host.board()).tickets[0] !== undefined,
     );
 
-    await project.host.answerQuestion(question.id, "yes");
+    await project.host.questions.answer(question.id, "yes");
 
-    const interrupting = project.host.interruptWorker("t1");
+    const interrupting = project.host.conversations.interrupt("t1");
     await sleep(50);
     release();
     await interrupting;
 
     const view = await project.until(async () => {
-      const current = await project.host.ticketConversation("t1");
+      const current = await project.host.conversations.view("t1");
       return current.failure?.reason === "aborted" ? current : false;
     });
     assert.equal(view.running, false);
 
-    await project.host.messageWorker("t1", "carry on", "followUp");
+    await project.host.conversations.send("t1", "carry on", "followUp");
     await project.until(async () =>
       project.calls.some(
         (c) =>
@@ -1126,40 +1128,43 @@ test("a queued Worker message can be withdrawn or steered; the Router hears abou
   };
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("start work");
+    await project.host.conversations.send("router", "start work");
     await project.until(async () => gating);
 
-    await project.host.messageWorker("t1", "extra work", "followUp");
-    await project.host.messageWorker("t1", "steer me in", "followUp");
+    await project.host.conversations.send("t1", "extra work", "followUp");
+    await project.host.conversations.send("t1", "steer me in", "followUp");
     const queued = await inboxItems(project, "t1");
     const withdraw = queued.find((item) => item.mode === "followUp" && item.entry === undefined);
     const steer = queued.findLast((item) => item.mode === "followUp" && item.entry === undefined);
     assert.ok(withdraw !== undefined && steer !== undefined && withdraw.id !== steer.id);
 
-    await project.host.withdrawQueued("t1", String(withdraw.id));
+    await project.host.conversations.withdrawQueued("t1", String(withdraw.id));
     assert.equal(
       (await inboxItems(project, "t1")).some((item) => item.id === withdraw.id),
       false,
     );
 
     await project.until(async () =>
-      (await project.host.conversation()).lines.some((line) =>
+      (await project.host.conversations.view("router")).lines.some((line) =>
         line.text.includes("withdrew the message sent to t1"),
       ),
     );
 
     // Once settled or placed, the queue's answer changes: the row reports it already delivered.
     await assert.rejects(
-      () => project.host.withdrawQueued("t1", String(withdraw.id)),
+      () => project.host.conversations.withdrawQueued("t1", String(withdraw.id)),
       /already reached/,
     );
     await assert.rejects(
-      () => project.host.steerQueued("t1", String(withdraw.id)),
+      () => project.host.conversations.steerQueued("t1", String(withdraw.id)),
       /not in the queue/,
     );
-    await assert.rejects(() => project.host.withdrawQueued("t1", "98765"), /not in the queue/);
+    await assert.rejects(
+      () => project.host.conversations.withdrawQueued("t1", "98765"),
+      /not in the queue/,
+    );
 
-    await project.host.steerQueued("t1", String(steer.id));
+    await project.host.conversations.steerQueued("t1", String(steer.id));
     const after = await inboxItems(project, "t1");
     assert.equal(
       after.some((item) => item.mode === "steer" && item.entry === undefined),

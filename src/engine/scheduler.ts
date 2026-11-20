@@ -23,7 +23,7 @@ import {
   route,
   routerIdle,
   WorkerQueue,
-} from "./extensions/orchestration/index.ts";
+} from "./orchestration/index.ts";
 
 const UPKEEP_MS = 5_000;
 

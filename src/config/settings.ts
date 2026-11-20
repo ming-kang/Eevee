@@ -1,7 +1,7 @@
 import { arr, bool, int, num, obj, oneOf, opt, type Static, str } from "@earendil-works/pi-schema";
 import { type RoleName, THINKING_LEVELS } from "../domain/domain.ts";
-import { readJson, writeJsonAtomic } from "../shared/fs.ts";
-import { loadConfig, parseConfig } from "./load.ts";
+import { JsonFileStore } from "./json-file-store.ts";
+import { loadConfig } from "./load.ts";
 
 const ModelChoiceSchema = obj({
   provider: str({ minLength: 1 }),
@@ -54,8 +54,6 @@ export const StoredSettingsSchema = obj({
   handoffThreshold: opt(num({ exclusiveMinimum: 0, maximum: 1 })),
   reminderAfterMs: opt(int({ minimum: 0 })),
   dreaming: opt(DreamingSchema),
-  /** Deprecated: `0` meant Dreaming off and now resolves to `dreaming.enabled: false`; any other value is ignored. */
-  dreamIntervalMs: opt(int({ minimum: 0 })),
   models: opt(ModelDefaultsSchema),
   roles: opt(
     obj({
@@ -71,9 +69,9 @@ export const StoredSettingsSchema = obj({
 export type StoredSettings = Static<typeof StoredSettingsSchema>;
 export type RoleSettings = Static<typeof RoleSettingsSchema>;
 
-export type Settings = Required<
-  Omit<StoredSettings, "$comment" | "dreamIntervalMs" | "dreaming">
-> & { dreaming: DreamingSettings };
+export type Settings = Required<Omit<StoredSettings, "$comment" | "dreaming">> & {
+  dreaming: DreamingSettings;
+};
 
 export const DEFAULT_SETTINGS: Settings = {
   port: 19190,
@@ -91,7 +89,7 @@ export async function loadSettings(path: string): Promise<Settings> {
 }
 
 function resolveSettings(stored: StoredSettings): Settings {
-  const { $comment: _, dreamIntervalMs, dreaming, ...fields } = stored;
+  const { $comment: _, dreaming, ...fields } = stored;
   return {
     ...DEFAULT_SETTINGS,
     ...fields,
@@ -100,44 +98,29 @@ function resolveSettings(stored: StoredSettings): Settings {
     dreaming: {
       ...DEFAULT_DREAMING,
       ...dreaming,
-      ...(dreamIntervalMs === 0 ? { enabled: false } : {}),
     },
   };
 }
 
-/** The settings file's single writer: changes are queued, validated and written atomically. */
 export class SettingsStore {
-  readonly #path: string;
-  #current: Settings;
-  #queue: Promise<unknown> = Promise.resolve();
+  readonly #store: JsonFileStore<typeof StoredSettingsSchema>;
 
-  private constructor(path: string, current: Settings) {
-    this.#path = path;
-    this.#current = current;
+  private constructor(store: JsonFileStore<typeof StoredSettingsSchema>) {
+    this.#store = store;
   }
 
   static async open(path: string): Promise<SettingsStore> {
-    return new SettingsStore(path, await loadSettings(path));
+    return new SettingsStore(
+      await JsonFileStore.open(StoredSettingsSchema, path, {}, { mode: 0o600 }),
+    );
   }
 
   get current(): Settings {
-    return this.#current;
+    return resolveSettings(this.#store.current);
   }
 
-  update(change: (stored: StoredSettings) => StoredSettings): Promise<Settings> {
-    const next = this.#queue.then(async () => {
-      const raw = (await readJson<unknown>(this.#path)) ?? {};
-      const current = parseConfig(StoredSettingsSchema, raw, this.#path);
-      const changed = change(current);
-      // A write never puts the deprecated key back.
-      delete changed.dreamIntervalMs;
-      const stored = parseConfig(StoredSettingsSchema, changed, this.#path);
-      await writeJsonAtomic(this.#path, stored, { mode: 0o600 });
-      this.#current = resolveSettings(stored);
-      return this.#current;
-    });
-    this.#queue = next.catch(() => undefined);
-    return next;
+  async update(change: (stored: StoredSettings) => StoredSettings): Promise<Settings> {
+    return resolveSettings(await this.#store.update(change));
   }
 }
 

@@ -16,7 +16,7 @@ import {
   type TicketId,
 } from "../../domain/index.ts";
 import { Board, TicketDoc } from "../docs.ts";
-import type { DocReader, TicketConversations } from "../extensions/orchestration/index.ts";
+import type { DocReader, TicketConversations } from "../orchestration/index.ts";
 import { dreamerRole } from "./dreamer.ts";
 import { type MemorySnapshot, type Role, resolveCapability, roleChange } from "./role.ts";
 import { HANDOFF_TOOL, ROUTER_EXTENSION, type RouterSubject, routerRole } from "./router.ts";

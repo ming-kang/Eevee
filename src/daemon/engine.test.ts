@@ -33,12 +33,12 @@ test("the Engine collects the extensions that can be enabled; a role only gets w
   try {
     const workspace = join(home, "workspace");
     await mkdir(workspace);
-    await engine.createProject({ title: "Test", workspace });
+    await engine.projects.create({ title: "Test", workspace });
 
-    for (let i = 0; i < 100 && engine.capabilities().mcp[0]?.state !== "connected"; i++) {
+    for (let i = 0; i < 100 && engine.capabilities.view().mcp[0]?.state !== "connected"; i++) {
       await sleep(10);
     }
-    const view = engine.capabilities();
+    const view = engine.capabilities.view();
     assert.deepEqual(
       view.available.map((e) => e.name),
       ["tool-search", "codemode", "mcp.weather"],
@@ -50,10 +50,10 @@ test("the Engine collects the extensions that can be enabled; a role only gets w
       "eevee.report",
     ]);
 
-    await assert.rejects(engine.setRoleCapability("worker", { extensions: ["mcp.nope"] }), {
+    await assert.rejects(engine.capabilities.setRole("worker", { extensions: ["mcp.nope"] }), {
       problem: { code: "no_extension", names: ["mcp.nope"] },
     });
-    const updated = await engine.setRoleCapability("worker", {
+    const updated = await engine.capabilities.setRole("worker", {
       extensions: ["mcp.weather", "tool-search", "tool-search"],
       maxTurns: 30,
     });
@@ -66,8 +66,11 @@ test("the Engine collects the extensions that can be enabled; a role only gets w
       maxTurns: 30,
     });
 
-    await engine.setRoleCapability("worker", { maxTurns: null });
-    assert.equal(engine.capabilities().roles.find((r) => r.role === "worker")?.maxTurns, undefined);
+    await engine.capabilities.setRole("worker", { maxTurns: null });
+    assert.equal(
+      engine.capabilities.view().roles.find((r) => r.role === "worker")?.maxTurns,
+      undefined,
+    );
   } finally {
     await engine.close();
     await rm(home, { recursive: true, force: true, maxRetries: 5 });
@@ -88,18 +91,18 @@ test("an extension a role enabled and that was later uninstalled does not block 
     models: await createModelRuntime(paths),
     context: BACKGROUND_CONTEXT,
   });
-  const enabled = () => engine.capabilities().roles.find((r) => r.role === "worker")?.enabled;
+  const enabled = () => engine.capabilities.view().roles.find((r) => r.role === "worker")?.enabled;
   try {
-    await engine.setRoleCapability("worker", {
+    await engine.capabilities.setRole("worker", {
       extensions: ["mcp.gone", "mcp.left", "tool-search"],
     });
     assert.deepEqual(enabled(), ["mcp.gone", "mcp.left", "tool-search"]);
 
-    await engine.setRoleCapability("worker", { extensions: ["mcp.left", "tool-search"] });
+    await engine.capabilities.setRole("worker", { extensions: ["mcp.left", "tool-search"] });
     assert.deepEqual(enabled(), ["mcp.left", "tool-search"]);
 
     await assert.rejects(
-      engine.setRoleCapability("worker", { extensions: ["mcp.left", "mcp.gone"] }),
+      engine.capabilities.setRole("worker", { extensions: ["mcp.left", "mcp.gone"] }),
       { problem: { code: "no_extension", names: ["mcp.gone"] } },
     );
     assert.deepEqual(enabled(), ["mcp.left", "tool-search"]);
@@ -170,7 +173,7 @@ test("the HTTP API exposes structured models, project activeAt, Board.router and
     const status = await client.call("GET /api/status");
     assert.equal(status.projects[0]?.activeAt, created.createdAt);
 
-    const board = await engine.project(created.id)?.board();
+    const board = await engine.projects.get(created.id)?.board();
     assert.deepEqual(board?.router, { running: false });
 
     await mkdir(join(paths.project(created.id).memory, "topics"), { recursive: true });
@@ -488,11 +491,11 @@ test("the panel edits MCP servers over the local API: only the changed one recon
   try {
     const entry = { command: "weather-mcp", args: ["--stdio"], exposure: "direct" };
     await client.call("PUT /api/mcp/servers/:server", { server: "weather" }, { config: entry });
-    for (let i = 0; i < 100 && engine.capabilities().mcp[0]?.state !== "connected"; i++) {
+    for (let i = 0; i < 100 && engine.capabilities.view().mcp[0]?.state !== "connected"; i++) {
       await sleep(10);
     }
     assert.deepEqual(
-      engine.capabilities().mcp.map((m) => [m.name, m.state, m.exposure, m.tools]),
+      engine.capabilities.view().mcp.map((m) => [m.name, m.state, m.exposure, m.tools]),
       [["weather", "connected", "direct", 1]],
     );
     assert.deepEqual((await client.call("GET /api/mcp/config")).servers, { weather: entry });

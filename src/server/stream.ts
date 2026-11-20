@@ -9,7 +9,7 @@ import type {
   EntryRecord,
 } from "@earendil-works/pi-durable";
 import { type WebSocket, WebSocketServer } from "ws";
-import type { TicketId } from "../domain/index.ts";
+import type { ConversationRef } from "../domain/index.ts";
 import { ProblemError, problemOf } from "../domain/index.ts";
 import type { BoardListener } from "../engine/board-feed.ts";
 import {
@@ -26,20 +26,22 @@ import { type Auth, isLoopbackRequest } from "./auth.ts";
 /** What the stream reads: the Engine, or a stand-in in tests. */
 export type StreamSource = {
   readonly bootId: string;
-  project(id: string): ProjectStream | undefined;
+  projects: { get(id: string): ProjectStream | undefined };
 };
 
 export type ProjectStream = {
-  watch(
-    ticket: TicketId | undefined,
-    context: Context,
-    window?: ConversationWindow,
-  ): Promise<WatchHandle<ConversationView>>;
-  entries(
-    ticket: TicketId | undefined,
-    query: Omit<EntryQuery, "conversationId">,
-    limit: number,
-  ): Promise<EntryRecord[]>;
+  conversations: {
+    watch(
+      ref: ConversationRef,
+      context: Context,
+      window?: ConversationWindow,
+    ): Promise<WatchHandle<ConversationView>>;
+    entries(
+      ref: ConversationRef,
+      query: Omit<EntryQuery, "conversationId">,
+      limit: number,
+    ): Promise<EntryRecord[]>;
+  };
   watchBoard(listener: BoardListener): () => void;
 };
 
@@ -115,7 +117,7 @@ function serve(ws: WebSocket, options: StreamOptions): void {
     });
   };
   const project = (id: string): ProjectStream => {
-    const found = source.project(id);
+    const found = source.projects.get(id);
     if (found === undefined) throw new ProblemError({ code: "no_project", projectId: id });
     return found;
   };
@@ -160,7 +162,11 @@ function serve(ws: WebSocket, options: StreamOptions): void {
       case "entries": {
         const limit = Math.min(Math.max(1, Math.trunc(request.limit)), MAX_ENTRIES);
         const host = project(request.topic.project);
-        const items = await host.entries(request.topic.ticket, request.query, limit);
+        const items = await host.conversations.entries(
+          request.topic.ticket ?? "router",
+          request.query,
+          limit,
+        );
         return send({ type: "entries", id: request.id, items });
       }
       case "watch":
@@ -185,7 +191,11 @@ function serve(ws: WebSocket, options: StreamOptions): void {
     watches.set(id, abandon);
     let handle: WatchHandle<ConversationView>;
     try {
-      handle = await project(topic.project).watch(topic.ticket, context, window);
+      handle = await project(topic.project).conversations.watch(
+        topic.ticket ?? "router",
+        context,
+        window,
+      );
     } catch (error) {
       if (watches.get(id) !== abandon) return;
       watches.delete(id);

@@ -5,6 +5,11 @@ import type { Context } from "@earendil-works/chord/context";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
 import type { Job, JobId, JobOutcome, TicketId } from "../domain/index.ts";
 import { isNotFound } from "../shared/fs.ts";
+import type {
+  BackgroundJobs,
+  CommandResult,
+  RunningCommand,
+} from "./extensions/workspace/index.ts";
 import {
   type DeliveryContext,
   deliver,
@@ -15,12 +20,7 @@ import {
   route,
   runningJobs,
   settleJob,
-} from "./extensions/orchestration/index.ts";
-import type {
-  BackgroundJobs,
-  CommandResult,
-  RunningCommand,
-} from "./extensions/workspace/index.ts";
+} from "./orchestration/index.ts";
 
 const TAIL_CHARS = 2000;
 const JOB_LOG_MAX_BYTES = 64 * 1024;

@@ -9,8 +9,8 @@ import {
   type SubmissionDraft,
   type Tx,
 } from "@earendil-works/pi-durable";
-import type { NoticeData, Report, Ticket, TicketId } from "../../../domain/index.ts";
-import { Board, TicketDoc } from "../../docs.ts";
+import type { NoticeData, Report, Ticket, TicketId } from "../../domain/index.ts";
+import { Board, TicketDoc } from "../docs.ts";
 import {
   appendReport,
   conversationOf,

@@ -7,8 +7,8 @@ import {
   ROOT_CONVERSATION_ID,
   runEndTask,
 } from "@earendil-works/pi-durable";
-import { REPORT_SUMMARY_LIMIT } from "../../../domain/index.ts";
-import { TicketDoc } from "../../docs.ts";
+import { REPORT_SUMMARY_LIMIT } from "../../domain/index.ts";
+import { TicketDoc } from "../docs.ts";
 import { readBinding, readTicket } from "./board.ts";
 import { submitReport } from "./deliver.ts";
 import { runningJobs } from "./jobs.ts";

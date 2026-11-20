@@ -69,6 +69,15 @@ function violation(file: string, specifier: string): string | undefined {
       ? resolve(dirname(file), specifier)
       : undefined;
   if (!target) return undefined;
+  const enginePath = relative(join(root, "src/engine"), target).split(sep);
+  if (
+    path[0] === "src" &&
+    path[1] === "engine" &&
+    path[2] === "orchestration" &&
+    (enginePath[0] === "extensions" || enginePath[0] === "roles")
+  ) {
+    return `${relative(root, file)}: ${specifier} (orchestration -> ${enginePath[0]})`;
+  }
   const destination = relative(join(root, "src"), target).split(sep);
   if (destination[0] === "..") return undefined;
   const dependency = destination[0];
@@ -96,6 +105,24 @@ test("boundary detection covers allowed, external, and forbidden imports", () =>
     /web -> engine/,
   );
   assert.deepEqual(imports("", "empty.ts"), []);
+  for (const dependency of ["extensions", "roles"]) {
+    assert.match(
+      violation(join(root, "src/engine/orchestration/example.ts"), `../${dependency}/index.ts`) ??
+        "",
+      new RegExp(`orchestration -> ${dependency}`),
+    );
+    assert.match(
+      violation(
+        join(root, "src/engine/orchestration/nested/example.test.ts"),
+        `@shared/engine/${dependency}/index.ts`,
+      ) ?? "",
+      new RegExp(`orchestration -> ${dependency}`),
+    );
+  }
+  assert.equal(
+    violation(join(root, "src/engine/orchestration/example.ts"), "./board.ts"),
+    undefined,
+  );
   assert.deepEqual(
     imports('export * from "../engine/engine.ts"; import("../config/load.ts");', "example.ts"),
     ["../engine/engine.ts", "../config/load.ts"],

@@ -7,7 +7,7 @@ import {
   type Report,
   type Ticket,
   type TicketId,
-} from "../../../domain/index.ts";
+} from "../../domain/index.ts";
 
 export type Target = { kind: "router" } | { kind: "ticket"; id: TicketId };
 

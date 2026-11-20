@@ -1,6 +1,6 @@
 import type { Context } from "@earendil-works/chord/context";
 import type { RegistrySnapshot, Tx } from "@earendil-works/pi-durable";
-import type { Ticket } from "../../../domain/index.ts";
+import type { Ticket } from "../../domain/index.ts";
 import { WorkerAnchor } from "./anchor.ts";
 import { allocateTicketId, bindConversation, markHandled, saveTicket } from "./board.ts";
 import { enqueueStart, NOTICE_KIND } from "./deliver.ts";
