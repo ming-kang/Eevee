@@ -207,5 +207,11 @@ export type CapabilitiesView = {
   problems: readonly ConfigProblem[];
 };
 
-export type EngineInfo = { bootId: string; version: string; port: number; pid: number };
+export type EngineInfo = {
+  bootId: string;
+  version: string;
+  port: number;
+  pid: number;
+  startedAt: number;
+};
 export type EngineStatus = EngineInfo & EngineView;

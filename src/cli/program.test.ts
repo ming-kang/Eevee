@@ -8,7 +8,7 @@ async function run(args: string[]): Promise<string[]> {
     calls.push(name);
   };
   const program = createProgram({
-    start: record("start"),
+    start: async (options) => record(options?.foreground ? "foreground" : "start")(),
     stop: record("stop"),
     status: record("status"),
     web: record("web"),
@@ -27,6 +27,7 @@ test("a bare invocation starts the Engine, then opens the panel", async () => {
 
 test("each command does only its own thing", async () => {
   assert.deepEqual(await run(["start"]), ["start"]);
+  assert.deepEqual(await run(["start", "--foreground"]), ["foreground"]);
   assert.deepEqual(await run(["stop"]), ["stop"]);
   assert.deepEqual(await run(["status"]), ["status"]);
   assert.deepEqual(await run(["web"]), ["web"]);

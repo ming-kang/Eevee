@@ -1,11 +1,10 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
-import { readText, writeFileAtomic } from "../shared/fs.ts";
 
 export const CODE_TTL_MS = 90_000;
 
 export type AuthOptions = {
-  tokenPath: string;
+  token?: string;
   now?: () => number;
 };
 
@@ -14,26 +13,17 @@ export type AuthOptions = {
  * one-time code, so the token itself never travels in a URL.
  */
 export class Auth {
-  readonly #token: string;
+  readonly token: string;
   readonly #codes = new Map<string, number>();
   readonly #now: () => number;
 
-  private constructor(token: string, options: AuthOptions) {
-    this.#token = token;
+  constructor(options: AuthOptions = {}) {
+    this.token = options.token ?? randomToken();
     this.#now = options.now ?? Date.now;
   }
 
-  static async open(options: AuthOptions): Promise<Auth> {
-    let token = (await readText(options.tokenPath))?.trim();
-    if (!token) {
-      token = randomToken();
-      await writeFileAtomic(options.tokenPath, token, { mode: 0o600 });
-    }
-    return new Auth(token, options);
-  }
-
   verify(presented: string | undefined): boolean {
-    return presented !== undefined && safeEqual(presented, this.#token);
+    return presented !== undefined && safeEqual(presented, this.token);
   }
 
   issueCode(): string {
@@ -47,7 +37,7 @@ export class Auth {
     const expires = this.#codes.get(code);
     this.#codes.delete(code);
     if (expires === undefined || this.#now() > expires) return undefined;
-    return this.#token;
+    return this.token;
   }
 }
 

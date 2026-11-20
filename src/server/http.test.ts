@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { request, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -72,7 +72,7 @@ const call = (method: string, path: string, options?: Parameters<typeof send>[3]
 const errorCode = (reply: Reply) => (JSON.parse(reply.body) as { code: string }).code;
 
 async function start(uiDir: string | undefined): Promise<[Server, number]> {
-  const auth = await Auth.open({ tokenPath: join(dir, "token") });
+  const auth = new Auth({ token: "test-token" });
   const created = createHttpServer({ routes, auth, uiDir });
   await new Promise<void>((resolve) => created.listen(0, "127.0.0.1", resolve));
   return [created, (created.address() as AddressInfo).port];
@@ -85,7 +85,7 @@ before(async () => {
   await writeFile(join(dir, "ui", "assets", "app.js"), "console.log(1)");
   [server, port] = await start(undefined);
   [uiServer, uiPort] = await start(join(dir, "ui"));
-  token = (await readFile(join(dir, "token"), "utf8")).trim();
+  token = "test-token";
 });
 after(async () => {
   await new Promise((resolve) => server.close(resolve));

@@ -1,26 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { after, before, test } from "node:test";
+import { test } from "node:test";
 import { Auth, CODE_TTL_MS, isLoopbackRequest } from "./auth.ts";
 
-let dir: string;
 let now = 0;
-const tokenPath = () => join(dir, "token");
-const open = () => Auth.open({ tokenPath: tokenPath(), now: () => now });
+const open = () => new Auth({ now: () => now });
 
-before(async () => {
-  dir = await mkdtemp(join(tmpdir(), "eevee-auth-"));
-});
-after(() => rm(dir, { recursive: true, force: true }));
-
-test("the code exchanges for the token in the token file, unchanged across restarts", async () => {
+test("codes exchange for the runtime token; callers can supply it explicitly", async () => {
   const auth = await open();
-  const token = (await readFile(tokenPath(), "utf8")).trim();
+  const token = auth.token;
   assert.equal(auth.exchange(auth.issueCode()), token);
   assert.equal(auth.verify(token), true);
-  assert.equal((await open()).verify(token), true);
+  assert.equal(new Auth({ token }).verify(token), true);
+  assert.notEqual(open().token, token);
 });
 
 test("a code works once and expires when stale", async () => {
