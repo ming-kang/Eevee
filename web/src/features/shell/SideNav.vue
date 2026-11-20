@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ProjectSummary } from "@shared/protocol/contract.ts";
-import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, onUnmounted, ref } from "vue";
 import type { RunSummary } from "@shared/domain/index.ts";
 import type { BoardState } from "../../composables/engine-data.ts";
 import { countPendingQuestions } from "../../lib/board.ts";
@@ -9,7 +9,6 @@ import {
   deriveProjectState,
   filterSidebarProjects,
   type ProjectRowState,
-  type SidebarProjectEntry,
 } from "../../lib/projects.ts";
 import { formatRoute, type Route } from "../../lib/router.ts";
 import type { StreamState } from "../../lib/stream.ts";
@@ -22,6 +21,7 @@ import Button from "../../ui/Button.vue";
 const props = defineProps<{
   projects: readonly ProjectSummary[];
   boards: Record<string, BoardState | undefined>;
+  projectSeen: Readonly<Record<string, number>>;
   activeRouterPid?: string;
   activeRouterSummary?: RunSummary;
   route: Route;
@@ -40,48 +40,12 @@ const emit = defineEmits<{
   "hover-hide": [];
 }>();
 
-const EXPAND_KEY = "eevee.sideExpanded";
-
-function loadExpandedMap(): Record<string, boolean> {
-  try {
-    const raw = localStorage.getItem(EXPAND_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, boolean>) : {};
-  } catch {
-    return {};
-  }
-}
-
-const expandedOverrides = reactive<Record<string, boolean>>(loadExpandedMap());
-
-function saveExpandedMap(): void {
-  try {
-    localStorage.setItem(EXPAND_KEY, JSON.stringify(expandedOverrides));
-  } catch {}
-}
-
-function isProjectExpanded(entry: SidebarProjectEntry, state: ProjectRowState): boolean {
-  if (entry.forceExpand) return true;
-  const override = expandedOverrides[entry.project.id];
-  if (override !== undefined) return override;
-  return props.currentPid === entry.project.id || state.kind === "user";
-}
-
-function toggleProjectExpand(entry: SidebarProjectEntry, state: ProjectRowState): void {
-  const next = !isProjectExpanded(entry, state);
-  expandedOverrides[entry.project.id] = next;
-  saveExpandedMap();
-}
-
 const searchQuery = ref("");
 const searchInput = ref<HTMLInputElement>();
 
 const filteredEntries = computed(() =>
-  filterSidebarProjects(props.projects, props.boards, searchQuery.value),
+  filterSidebarProjects(props.projects, searchQuery.value),
 );
-
-const controlProject = computed(() => props.projects.find((p) => p.id === props.controlPid));
 
 const attentionTotal = computed(() =>
   props.projects.reduce((total, project) => {
@@ -90,20 +54,12 @@ const attentionTotal = computed(() =>
   }, 0),
 );
 
-const nowMs = ref(Date.now());
-let clockTimer: ReturnType<typeof setInterval> | undefined;
-
-onMounted(() => {
-  clockTimer = setInterval(() => {
-    nowMs.value = Date.now();
-  }, 60_000);
-});
-
 function stateOf(project: ProjectSummary): ProjectRowState {
   return deriveProjectState({
     board: props.boards[project.id]?.board,
     router: project.id === props.activeRouterPid ? props.activeRouterSummary : undefined,
     activeAt: project.activeAt,
+    lastSeenAt: props.projectSeen[project.id],
   });
 }
 
@@ -177,16 +133,12 @@ function hideHoverImmediate(): void {
 
 onUnmounted(() => {
   clearTimers();
-  if (clockTimer !== undefined) {
-    clearInterval(clockTimer);
-    clockTimer = undefined;
-  }
 });
 </script>
 
 <template>
   <div class="flex h-(--ev-header-h) flex-none items-center gap-1.5 pr-(--ev-ctrl-inset) pl-(--ev-titlebar-left)">
-    <a class="flex min-w-0 items-center gap-2 rounded-sm [&_svg]:size-5 [&_svg]:flex-none" :href="formatRoute({ name: 'home' })" @click="$emit('navigate')">
+    <a class="flex min-w-0 items-center gap-2 rounded-sm [&_svg]:size-5 [&_svg]:flex-none" :href="formatRoute({ name: 'overview' })" @click="$emit('navigate')">
       <BrandLogo />
       <span class="text-base font-semibold tracking-[-0.018em] text-fg">Eevee</span>
     </a>
@@ -207,8 +159,8 @@ onUnmounted(() => {
         v-model="searchQuery"
         type="search"
         class="h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-xs text-fg focus:shadow-none focus-visible:shadow-none [&::-webkit-search-cancel-button]:hidden"
-        :placeholder="t('Filter projects or tickets…')"
-        :aria-label="t('Filter projects or tickets…')"
+        :placeholder="t('Filter projects…')"
+        :aria-label="t('Filter projects…')"
         autocomplete="off"
         spellcheck="false"
         @keydown="onSearchKeydown"
@@ -240,17 +192,17 @@ onUnmounted(() => {
     <a
       v-if="searchQuery.trim() === ''"
       class="flex h-8 w-full flex-none items-center gap-2.25 rounded-sm pr-2 pl-2.25 text-left text-sm font-medium tracking-(--ev-tracking) text-fg transition-[background-color,box-shadow] focus-visible:shadow-(--ring-inset) pointer-coarse:h-9.5 [&_.ico]:inline-flex [&_.ico]:flex-none [&_.ico]:transition-colors"
-      :class="route.name === 'home' ? 'bg-selected [--ev-glyph-cut:var(--selected)] [&_.ico]:text-fg' : 'hover:bg-hover [&_.ico]:text-fg-subtle'"
-      :href="formatRoute({ name: 'home' })"
-      :aria-label="attentionTotal > 0 ? `${t('Home')} · ${attentionTotal}` : t('Home')"
-      :aria-current="route.name === 'home' ? 'page' : undefined"
+      :class="route.name === 'overview' ? 'bg-selected [--ev-glyph-cut:var(--selected)] [&_.ico]:text-fg' : 'hover:bg-hover [&_.ico]:text-fg-subtle'"
+      :href="formatRoute({ name: 'overview' })"
+      :aria-label="attentionTotal > 0 ? `${t('Overview')} · ${attentionTotal}` : t('Overview')"
+      :aria-current="route.name === 'overview' ? 'page' : undefined"
       @click="$emit('navigate')"
     >
       <span class="grid w-5 flex-none place-items-center" aria-hidden="true">
         <span v-if="attentionTotal > 0" class="count user">{{ attentionTotal > 99 ? "99+" : attentionTotal }}</span>
         <Icon v-else name="home" size="sm" />
       </span>
-      <span class="min-w-0 flex-1 truncate">{{ t("Home") }}</span>
+      <span class="min-w-0 flex-1 truncate">{{ t("Overview") }}</span>
     </a>
   </div>
 
@@ -271,25 +223,17 @@ onUnmounted(() => {
 
   <div class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pt-1 pb-3" @scroll="hideHoverImmediate">
     <ProjectRow
-      v-for="entry in filteredEntries"
-      :key="entry.project.id"
-      :project="entry.project"
-      :state="stateOf(entry.project)"
-      :tickets="entry.tickets"
-      :expanded="isProjectExpanded(entry, stateOf(entry.project))"
-      :now-ms="nowMs"
-      :active="route.name === 'chat' && currentPid === entry.project.id"
-      :current="'pid' in route && route.pid === entry.project.id"
-      :active-ticket-id="
-        route.name === 'worker' && route.pid === entry.project.id ? route.tid : undefined
-      "
-      :href="formatRoute({ name: 'chat', pid: entry.project.id })"
+      v-for="project in filteredEntries"
+      :key="project.id"
+      :project="project"
+      :state="stateOf(project)"
+      :active="currentPid === project.id"
+      :href="formatRoute({ name: 'chat', pid: project.id })"
       @select="
         hideHoverImmediate();
         $emit('navigate');
       "
-      @toggle-expand="toggleProjectExpand(entry, stateOf(entry.project))"
-      @hover-enter="onHoverEnter(entry.project.id, $event)"
+      @hover-enter="onHoverEnter(project.id, $event)"
       @hover-leave="onHoverLeave($event, $event.currentTarget)"
     />
     <p v-if="projects.length > 0 && filteredEntries.length === 0" class="hint px-2.5 py-1.5">
@@ -312,9 +256,6 @@ onUnmounted(() => {
 
   <ControlTiles
     :pending-proposals="controlPid ? boards[controlPid]?.board?.openProposals?.length : undefined"
-    :control-pid="controlPid"
-    :control-title="controlProject?.title"
-    :route-name="route.name"
     @navigate="$emit('navigate')"
   />
 </template>

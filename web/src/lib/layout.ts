@@ -8,6 +8,7 @@ export type ColumnSpec = { min: number; max: number; default: number };
  *  takes a `scale` (text size / 14) — geometry grows with the interface, stored widths stay px. */
 export const SIDE: ColumnSpec = { min: 212, max: 420, default: 264 };
 export const RAIL: ColumnSpec = { min: 280, max: 560, default: 340 };
+export const WORKER_RAIL: ColumnSpec = { min: 360, max: Number.POSITIVE_INFINITY, default: 540 };
 export const MAIN_MIN = 420;
 
 /** ArrowLeft/ArrowRight on a focused sash moves the boundary by this much. */
@@ -46,8 +47,14 @@ export function fitSidebar(proposed: number, viewport: number, railW: number, sc
 }
 
 /** The rail width for a proposed width; `sideW` is the sidebar's rendered width (0 when collapsed). */
-export function fitRail(proposed: number, viewport: number, sideW: number, scale = 1): number {
-  return fitColumn(proposed, scaledColumn(RAIL, scale), viewport, sideW, scale);
+export function fitRail(
+  proposed: number,
+  viewport: number,
+  sideW: number,
+  scale = 1,
+  spec = RAIL,
+): number {
+  return fitColumn(proposed, scaledColumn(spec, scale), viewport, sideW, scale);
 }
 
 /** A persisted width: garbage reads as the default, a number clamps into the scaled range. */

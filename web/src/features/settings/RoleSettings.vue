@@ -25,7 +25,7 @@ const emit = defineEmits<{
   "max-turns": [role: RoleName, value: number | null];
 }>();
 
-const MCP_HREF = formatRoute({ name: "settings", section: "mcp" });
+const MCP_HREF = formatRoute({ name: "control", section: "mcp" });
 
 const ROLE_DESC: Record<RoleName, string> = {
   router: t("Plans the work, dispatches tickets, reviews reports and keeps memory"),

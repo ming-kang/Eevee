@@ -6,24 +6,22 @@ import AppShell from "./features/shell/AppShell.vue";
 import BrandLogo from "./ui/BrandLogo.vue";
 import CommandPalette from "./features/shell/CommandPalette.vue";
 import ConnectPage from "./features/shell/ConnectPage.vue";
-import HomePage from "./features/home/HomePage.vue";
+import OverviewPage from "./features/overview/OverviewPage.vue";
 import Icon from "./ui/Icon.vue";
-import MemoryPage from "./features/memory/MemoryPage.vue";
+import ControlDialog from "./features/shell/ControlDialog.vue";
 import NewProjectDialog from "./features/shell/NewProjectDialog.vue";
 import ProjectHoverCard from "./features/shell/ProjectHoverCard.vue";
-import ProjectView from "./features/project/ProjectView.vue";
+import ChatPage from "./features/conversation/ChatPage.vue";
 import type { RailMark } from "./features/shell/RailToggle.vue";
 import RightRail from "./features/project/RightRail.vue";
-import SettingsPage from "./features/settings/SettingsPage.vue";
 import SideNav from "./features/shell/SideNav.vue";
 import Toasts from "./ui/Toasts.vue";
-import UsagePage from "./features/usage/UsagePage.vue";
 import { useConversationWatch, useEngineData } from "./composables/engine-data.ts";
 import { summarizeRun } from "@shared/domain/index.ts";
 import { errorText } from "./lib/errors.ts";
 import { t } from "./lib/i18n.ts";
-import { buildPaletteItems, deriveProjectState, type PaletteItem } from "./lib/projects.ts";
-import { formatRoute, type Route, resolveRoute } from "./lib/router.ts";
+import { buildPaletteItems, deriveProjectState, readProjectSeen, type PaletteItem } from "./lib/projects.ts";
+import { controlProjectId, formatRoute, type BackgroundRoute, type Route, resolveRoute, retainBackgroundRoute, routerProjectId } from "./lib/router.ts";
 import { type SessionInfo, Unauthorized, openSession } from "./lib/session.ts";
 import { useTheme } from "./composables/theme.ts";
 import { useNotifications } from "./composables/use-notifications.ts";
@@ -32,6 +30,7 @@ import Button from "./ui/Button.vue";
 const SIDE_KEY = "eevee.sideCollapsed";
 const RAIL_KEY = "eevee.railCollapsed";
 const PROJECT_KEY = "eevee.project";
+const SEEN_KEY = "eevee.projectSeen";
 
 const isMac =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform ?? "");
@@ -47,14 +46,20 @@ const authError = ref<string>();
 const networkError = ref<string>();
 const hash = ref("");
 const lastPid = ref(localStorage.getItem(PROJECT_KEY) ?? "");
+const projectSeen = ref(readProjectSeen(localStorage.getItem(SEEN_KEY)));
+const pageVisible = ref(document.visibilityState === "visible");
+
+function onVisibilityChange(): void {
+  pageVisible.value = document.visibilityState === "visible";
+}
 const sideCollapsed = ref(localStorage.getItem(SIDE_KEY) === "true");
 const railCollapsed = ref(localStorage.getItem(RAIL_KEY) === "true");
 const drawer = ref<"side" | "rail" | null>(null);
 const railTab = ref<RailTab>("tickets");
+const railMaximized = ref(false);
 const openJobId = ref<string | undefined>(undefined);
 const newProjectOpen = ref(false);
 const paletteOpen = ref(false);
-const memoryModalOpen = ref(false);
 
 const hoverState = ref<{ visible: boolean; pid?: string; top: number; left: number }>({
   visible: false,
@@ -76,14 +81,18 @@ function showHover(payload: { pid: string; top: number; left: number }): void {
 }
 
 function onHashChange(): void {
+  const previous = route.value;
   hash.value = location.hash;
   drawer.value = null;
   paletteOpen.value = false;
   newProjectOpen.value = false;
   hideHover();
+  const next = resolveRoute(hash.value);
+  if (next.name === "worker" || (previous.name === "worker" && next.name === "chat" && previous.pid === next.pid)) openRail();
 }
 
 function onGlobalKeydown(event: KeyboardEvent): void {
+  if (navigationRoute.value.name === "control") return;
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
     if (!session.value || route.value.name === "connect") return;
     event.preventDefault();
@@ -100,6 +109,7 @@ async function connect(): Promise<void> {
   networkError.value = undefined;
   try {
     const opened = await openSession();
+    if (location.hash === "") history.replaceState(null, "", formatRoute({ name: "overview" }));
     hash.value = location.hash;
     session.value = opened;
   } catch (error) {
@@ -114,6 +124,7 @@ onMounted(() => {
   window.addEventListener("hashchange", onHashChange);
   window.addEventListener("keydown", onGlobalKeydown);
   window.addEventListener("mousedown", hideHover);
+  document.addEventListener("visibilitychange", onVisibilityChange);
   void connect();
 });
 
@@ -121,6 +132,7 @@ onUnmounted(() => {
   window.removeEventListener("hashchange", onHashChange);
   window.removeEventListener("keydown", onGlobalKeydown);
   window.removeEventListener("mousedown", hideHover);
+  document.removeEventListener("visibilitychange", onVisibilityChange);
 });
 
 const projects = computed<ProjectSummary[]>(() => engine.projects.value);
@@ -130,14 +142,25 @@ const fallbackPid = computed(() => {
   return projects.value[0]?.id;
 });
 
-const route = computed<Route>(() => resolveRoute(hash.value, fallbackPid.value));
+const navigationRoute = computed<Route>(() => resolveRoute(hash.value, fallbackPid.value));
+const route = shallowRef<BackgroundRoute>({ name: "overview" });
+const controlContextPid = ref<string>();
+const controlRoute = computed(() => navigationRoute.value.name === "control" ? navigationRoute.value : undefined);
 
 watch(
-  route,
-  (next) => {
-    if ("pid" in next) {
+  navigationRoute,
+  (next, previous) => {
+    route.value = retainBackgroundRoute(next, route.value);
+    if (next.name === "control" && (next.pid !== undefined || previous?.name !== "control")) {
+      controlContextPid.value = controlProjectId(next, route.value, fallbackPid.value);
+    }
+    if ("pid" in next && next.pid !== undefined) {
       lastPid.value = next.pid;
       localStorage.setItem(PROJECT_KEY, next.pid);
+    }
+    if (next.name === "control" || (next.name === "overview" && hash.value === location.hash)) {
+      const canonical = formatRoute(next);
+      if (location.hash !== canonical) history.replaceState(null, "", canonical);
     }
   },
   { immediate: true },
@@ -158,8 +181,9 @@ watch(
 
 watch(drawer, hideHover);
 
+const routerPid = computed(() => currentProject.value ? routerProjectId(route.value) : undefined);
 const routerConversation = useConversationWatch(engine.stream, () =>
-  currentProject.value ? { kind: "conversation", project: currentProject.value.id } : undefined,
+  routerPid.value ? { kind: "conversation", project: routerPid.value } : undefined,
 );
 
 const activeRouterSummary = computed(() => summarizeRun(routerConversation.live.value));
@@ -168,7 +192,24 @@ const currentBoardState = computed(() =>
   currentProject.value ? engine.boardOf(currentProject.value.id) : undefined,
 );
 
-const controlPid = computed(() => ("pid" in route.value ? route.value.pid : fallbackPid.value));
+const viewedProject = computed(() =>
+  (navigationRoute.value.name === "chat" || navigationRoute.value.name === "worker") &&
+  pageVisible.value && !paletteOpen.value && !newProjectOpen.value && drawer.value === null &&
+  (!railMaximized.value || railCollapsed.value)
+    ? currentProject.value?.id : undefined,
+);
+
+watch([viewedProject, () => currentBoardState.value?.board], ([pid, board]) => {
+  if (!pid || !board) return;
+  const at = Date.now();
+  if ((projectSeen.value[pid] ?? 0) >= at) return;
+  projectSeen.value = { ...projectSeen.value, [pid]: at };
+  localStorage.setItem(SEEN_KEY, JSON.stringify(projectSeen.value));
+});
+
+const controlPid = computed(() => controlRoute.value ? controlContextPid.value ?? fallbackPid.value : controlProjectId(navigationRoute.value, route.value, fallbackPid.value));
+const controlProject = computed(() => projects.value.find((project) => project.id === controlPid.value));
+const controlBoard = computed(() => controlProject.value ? engine.boardOf(controlProject.value.id)?.board : undefined);
 const withRail = computed(
   () =>
     (route.value.name === "chat" || route.value.name === "worker") &&
@@ -204,6 +245,7 @@ const hoveredProjectState = computed(() =>
             ? activeRouterSummary.value
             : undefined,
         activeAt: hoveredProject.value.activeAt,
+        lastSeenAt: projectSeen.value[hoveredProject.value.id],
       })
     : undefined,
 );
@@ -222,7 +264,10 @@ function navigate(next: Route): void {
   const target = formatRoute(next);
   drawer.value = null;
   hideHover();
-  if (location.hash === target) return;
+  if (location.hash === target) {
+    if (next.name === "worker") openRail();
+    return;
+  }
   location.hash = target;
 }
 
@@ -248,14 +293,28 @@ function toggleRail(): void {
 }
 
 function openRail(tab?: RailTab, jobId?: string): void {
-  if (tab) railTab.value = tab;
+  if (tab) {
+    railTab.value = tab;
+    if (route.value.name === "worker") navigate({ name: "chat", pid: route.value.pid });
+  }
   if (jobId !== undefined) openJobId.value = jobId;
+  setRailCollapsed(false);
   if (window.innerWidth <= 1240) {
     drawer.value = "rail";
-  } else {
-    setRailCollapsed(false);
   }
 }
+
+const activeTicketId = computed(() => route.value.name === "worker" ? route.value.tid : undefined);
+watch(
+  [() => currentProject.value?.id, activeTicketId],
+  ([, ticket]) => {
+    if (ticket) openRail();
+    else {
+      railMaximized.value = false;
+    }
+  },
+  { immediate: true },
+);
 
 function openNewProject(): void {
   drawer.value = null;
@@ -285,7 +344,7 @@ function onPaletteSelect(item: PaletteItem): void {
 useNotifications({
   boards: engine.boards,
   projects: () => projects.value,
-  route: () => route.value,
+  route: () => navigationRoute.value,
   open: navigate,
 });
 
@@ -318,13 +377,15 @@ watch(
   <AppShell
     v-else
     :with-rail="withRail"
+    :worker-active="!!activeTicketId"
+    :rail-maximized="railMaximized && !!activeTicketId"
     :side-collapsed="sideCollapsed"
     :rail-collapsed="railCollapsed"
     :side-shortcut="sideShortcut"
     :rail-shortcut="railShortcut"
     :rail-marks="railMarks"
     :drawer="drawer"
-    :modal-open="paletteOpen || newProjectOpen || memoryModalOpen"
+    :modal-open="paletteOpen || newProjectOpen || !!controlRoute"
     @open-side-drawer="drawer = 'side'"
     @open-rail-drawer="drawer = 'rail'"
     @open-rail-tickets="openRail('tickets')"
@@ -336,6 +397,7 @@ watch(
       <SideNav
         :projects="projects"
         :boards="engine.boards.value"
+        :project-seen="projectSeen"
         :active-router-pid="currentProject?.id"
         :active-router-summary="activeRouterSummary"
         :route="route"
@@ -356,32 +418,28 @@ watch(
     </template>
 
     <template v-if="(route.name === 'chat' || route.name === 'worker') && currentProject">
-      <ProjectView
+      <ChatPage
         :key="currentProject.id"
         :client="session.client"
-        :stream="engine.stream"
         :project="currentProject"
         :board="currentBoardState?.board"
-        :router-conversation="routerConversation"
-        :ticket-id="route.name === 'worker' ? route.tid : undefined"
+        :conversation="routerConversation"
         :question-id="route.name === 'chat' ? route.qid : undefined"
         @question-route="navigate({ name: 'chat', pid: currentProject.id, qid: $event })"
-        @open-rail="openRail"
         @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
-        @close-ticket="navigate({ name: 'chat', pid: currentProject.id })"
         @project-changed="engine.refreshStatus()"
       />
     </template>
 
-    <template v-else-if="route.name === 'home' && projects.length > 0">
-      <HomePage
+    <template v-else-if="route.name === 'overview'">
+      <OverviewPage
         :projects="projects"
         :boards="engine.boards.value"
         @new-project="openNewProject"
       />
     </template>
 
-    <template v-else-if="route.name === 'chat' || route.name === 'worker' || route.name === 'home'">
+    <template v-else-if="route.name === 'chat' || route.name === 'worker'">
       <header class="header" />
       <div class="empty">
         <h3>{{ projects.length === 0 ? t("No projects yet") : t("Project not found") }}</h3>
@@ -392,61 +450,44 @@ watch(
       </div>
     </template>
 
-    <template v-else-if="route.name === 'memory' && currentProject">
-      <MemoryPage
-        :client="session.client"
-        :project="currentProject"
-        :board="currentBoardState?.board"
-        @modal-change="memoryModalOpen = $event"
-      />
-    </template>
-
-    <template v-else-if="route.name === 'usage' && currentProject">
-      <UsagePage
-        :client="session.client"
-        :project="currentProject"
-        @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
-      />
-    </template>
-
-    <template v-else-if="route.name === 'memory' || route.name === 'usage'">
-      <header class="header">
-        <h1>{{ route.name === "memory" ? t("Memory") : t("Usage") }}</h1>
-      </header>
-      <div class="empty">
-        <h3>{{ t("Project not found") }}</h3>
-      </div>
-    </template>
-
-    <template v-else-if="route.name === 'settings'">
-      <SettingsPage
-        :client="session.client"
-        :section="route.section"
-        :item="route.item"
-        :status="engine.status.value"
-        :stream-state="engine.streamState.value"
-        :refresh-status="engine.refreshStatus"
-      />
-    </template>
-
     <template #rail>
       <RightRail
         v-if="currentProject"
         :client="session.client"
+        :stream="engine.stream"
         :board="currentBoardState?.board"
         :project="currentProject"
         :error="currentBoardState?.error"
         :tab="railTab"
-        :has-detail="route.name === 'worker'"
-        :active-ticket-id="route.name === 'worker' ? route.tid : undefined"
+        :active-ticket-id="activeTicketId"
+        :question-id="route.name === 'worker' ? route.qid : undefined"
+        :maximized="railMaximized"
         :open-job-id="openJobId"
         @update:tab="railTab = $event"
         @update:open-job-id="openJobId = $event"
+        @close-ticket="navigate({ name: 'chat', pid: currentProject.id })"
+        @question-route="activeTicketId && navigate({ name: 'worker', pid: currentProject.id, tid: activeTicketId, qid: $event })"
+        @toggle-maximize="railMaximized = !railMaximized"
+        @open-rail="openRail"
         @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
       />
     </template>
 
     <template #overlay>
+      <ControlDialog
+        :open="!!controlRoute"
+        :section="controlRoute?.section ?? 'general'"
+        :item="controlRoute?.item"
+        :project="controlProject"
+        :board="controlBoard"
+        :client="session.client"
+        :status="engine.status.value"
+        :stream-state="engine.streamState.value"
+        :refresh-status="engine.refreshStatus"
+        @close="navigate(route)"
+        @navigate="navigate"
+        @open-ticket="controlProject && navigate({ name: 'worker', pid: controlProject.id, tid: $event })"
+      />
       <ProjectHoverCard
         :visible="hoverState.visible"
         :project="hoveredProject"

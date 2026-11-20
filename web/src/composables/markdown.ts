@@ -247,12 +247,12 @@ function toInline(node: ParsedNode, refs: boolean): Inline[] {
 
 const MARK = { strong: "strong", emphasis: "em", strikethrough: "del" } as const;
 const WEB = /^(?:https?:|mailto:)/i;
-const TICKET_HREF = /^ticket:\/\/(t[1-9]\d*)$/;
+const TICKET_HREF = /^ticket:\/\/(t[1-9]\d*)$/i;
 /** A ticket id standing on its own: not part of a word or of another address (`report://t2#1`). */
-const TICKET = /(?<![\w/#:.-])(?:ticket:\/\/)?(t[1-9]\d*)(?![\w#/-])/g;
+const TICKET = /(?<![\w/#:.-])(?:ticket:\/\/)?(t[1-9]\d*)(?![\w#/-])/gi;
 
 function link(node: LinkNode): Inline[] {
-  const ticketId = TICKET_HREF.exec(node.href)?.[1];
+  const ticketId = TICKET_HREF.exec(node.href)?.[1]?.toLowerCase();
   if (ticketId !== undefined) {
     const label = node.text !== "" && node.text !== node.href ? node.text : ticketId;
     return [{ type: "ticket", ticketId, label }];
@@ -268,7 +268,7 @@ function words(text: string, refs: boolean): Inline[] {
     if (index > 0) out.push({ type: "break" });
     let last = 0;
     for (const match of refs ? line.matchAll(TICKET) : []) {
-      const ticketId = match[1] ?? "";
+      const ticketId = match[1]?.toLowerCase() ?? "";
       push(out, [
         { type: "text", text: line.slice(last, match.index) },
         { type: "ticket", ticketId, label: ticketId },

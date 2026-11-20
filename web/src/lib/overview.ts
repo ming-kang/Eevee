@@ -1,15 +1,22 @@
 import type { Question } from "../../../src/domain/index.ts";
 import type { BoardView, ProjectSummary, TicketView } from "../../../src/protocol/contract.ts";
-import { effectiveStage } from "./board.ts";
+import { effectiveStage, ticketActivityAt } from "./board.ts";
 import { failureText } from "./labels.ts";
+import type { Route } from "./router.ts";
 
-/** "Recently done" looks back one day and shows the newest few. */
 export const DONE_WINDOW_MS = 24 * 60 * 60 * 1000;
-export const DONE_LIMIT = 8;
 
-export type NeedsYouRow =
+export type PendingRow =
   | { kind: "proposal"; pid: string; project: string; proposal: BoardView["openProposals"][number] }
-  | { kind: "question"; pid: string; project: string; question: Question; text: string }
+  | {
+      kind: "question";
+      pid: string;
+      project: string;
+      question: Question;
+      text: string;
+      view?: TicketView;
+    }
+  | { kind: "ticket"; pid: string; project: string; view: TicketView; at: number }
   | { kind: "router"; pid: string; project: string; failure: string };
 
 export type RunningRow =
@@ -25,47 +32,64 @@ export type RunningRow =
 
 export type DoneRow = { pid: string; project: string; view: TicketView; closedAt: number };
 
-export type HomeBoard = {
-  needsYou: NeedsYouRow[];
+export type OverviewBoard = {
+  pending: PendingRow[];
   running: RunningRow[];
-  /** Closed inside `DONE_WINDOW_MS`, newest first, capped at `DONE_LIMIT`. */
   done: DoneRow[];
+  pendingCount: number;
   runningCount: number;
-  /** Every ticket closed inside the window; the section itself shows `done` only. */
   doneCount: number;
 };
 
-/**
- * The Now page's cross-project view of every board: what needs the user, what is in flight, and
- * what finished lately. Questions outrank Router failures, which matches `deriveProjectState`'s
- * ordering; a running Router trails the tickets it drives, newest work first.
- */
-export function buildHomeBoard(input: {
+export function pendingRoute(row: PendingRow): Route {
+  if (row.kind === "proposal") return { name: "control", section: "memory", pid: row.pid };
+  if (row.kind === "ticket") return { name: "worker", pid: row.pid, tid: row.view.ticket.id };
+  if (row.kind === "question") {
+    return row.question.ticketId
+      ? { name: "worker", pid: row.pid, tid: row.question.ticketId, qid: row.question.id }
+      : { name: "chat", pid: row.pid, qid: row.question.id };
+  }
+  return { name: "chat", pid: row.pid };
+}
+
+export function overviewProjectId(
+  projects: readonly ProjectSummary[],
+  stored: string | null | undefined,
+): string {
+  return projects.some((project) => project.id === stored) ? (stored ?? "") : "";
+}
+
+export function buildOverviewBoard(input: {
   projects: readonly ProjectSummary[];
   boards: Record<string, { board?: BoardView } | undefined>;
   now: number;
-}): HomeBoard {
-  const questions: Extract<NeedsYouRow, { kind: "question" }>[] = [];
-  const failures: NeedsYouRow[] = [];
-  const proposals: NeedsYouRow[] = [];
+  projectId?: string;
+}): OverviewBoard {
+  const selected = overviewProjectId(input.projects, input.projectId);
+  const questions: Extract<PendingRow, { kind: "question" }>[] = [];
+  const failures: PendingRow[] = [];
+  const proposals: PendingRow[] = [];
+  const pendingTickets: Extract<PendingRow, { kind: "ticket" }>[] = [];
   const tickets: Extract<RunningRow, { kind: "ticket" }>[] = [];
   const routers: RunningRow[] = [];
   const done: DoneRow[] = [];
 
   for (const project of input.projects) {
+    if (selected && project.id !== selected) continue;
     const board = input.boards[project.id]?.board;
     if (!board) continue;
     for (const proposal of board.openProposals ?? [])
       proposals.push({ kind: "proposal", pid: project.id, project: project.title, proposal });
 
-    for (const question of board.openQuestions) {
-      if (question.answer !== undefined) continue;
+    const openQuestions = board.openQuestions.filter((question) => question.answer === undefined);
+    for (const question of openQuestions) {
       questions.push({
         kind: "question",
         pid: project.id,
         project: project.title,
         question,
         text: (question.items[0]?.text ?? "").replace(/\s+/g, " ").trim(),
+        view: board.tickets.find((view) => view.ticket.id === question.ticketId),
       });
     }
 
@@ -88,9 +112,21 @@ export function buildHomeBoard(input: {
         continue;
       }
       const stage = effectiveStage(view);
+      if (stage === "answer" || stage === "review" || stage === "blocked") {
+        if (!openQuestions.some((question) => question.ticketId === view.ticket.id)) {
+          pendingTickets.push({
+            kind: "ticket",
+            pid: project.id,
+            project: project.title,
+            view,
+            at: ticketActivityAt(view),
+          });
+        }
+        continue;
+      }
       if (stage !== "working" && stage !== "jobs") continue;
-      const runningJobs = view.jobs.filter((j) => j.status === "running");
-      const at = Math.max(view.ticket.createdAt, ...runningJobs.map((j) => j.startedAt));
+      const runningJobs = view.jobs.filter((job) => job.status === "running");
+      const at = Math.max(view.ticket.createdAt, ...runningJobs.map((job) => job.startedAt));
       tickets.push({
         kind: "ticket",
         pid: project.id,
@@ -107,13 +143,16 @@ export function buildHomeBoard(input: {
   }
 
   questions.sort((a, b) => b.question.askedAt - a.question.askedAt);
+  pendingTickets.sort((a, b) => b.at - a.at);
   tickets.sort((a, b) => b.at - a.at);
   done.sort((a, b) => b.closedAt - a.closedAt);
+  const pending = [...questions, ...proposals, ...pendingTickets, ...failures];
 
   return {
-    needsYou: [...questions, ...proposals, ...failures],
+    pending,
     running: [...tickets, ...routers],
-    done: done.slice(0, DONE_LIMIT),
+    done,
+    pendingCount: pending.length,
     runningCount: tickets.length + routers.length,
     doneCount: done.length,
   };

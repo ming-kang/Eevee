@@ -8,7 +8,7 @@ import type {
 } from "../../../src/domain/index.ts";
 import type { BoardView, TicketView } from "../../../src/protocol/contract.ts";
 
-export type RailTab = "tickets" | "jobs" | "detail";
+export type RailTab = "tickets" | "jobs";
 export type VisualStage = TicketStage | "done" | "cancelled" | "progress";
 
 const STAGE_ORDER: readonly (TicketStage | "done" | "cancelled")[] = [
@@ -131,10 +131,8 @@ export function countPendingQuestions(board: Pick<BoardView, "openQuestions"> | 
   return board.openQuestions.filter((q) => q.answer === undefined).length;
 }
 
-/** Fall back from `detail` to `tickets` when leaving the Worker view. */
-export function resolveRailTab(requested: RailTab, hasDetail: boolean): RailTab {
-  if (requested === "detail" && !hasDetail) return "tickets";
-  return requested;
+export function resolveRailView(list: RailTab, ticketId: string | undefined): RailTab | "detail" {
+  return ticketId ? "detail" : list;
 }
 
 const REPORT_GLYPH: Record<ReportStatus, VisualStage> = {

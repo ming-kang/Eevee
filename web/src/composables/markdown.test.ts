@@ -40,6 +40,15 @@ test("ticket ids become references, except in code and links", () => {
   );
 });
 
+test("display-case ticket IDs in messages resolve to canonical ticket references", () => {
+  assert.deepEqual(parseMarkdown("T4 and ticket://T2 [References](ticket://T3)"), [
+    {
+      type: "paragraph",
+      children: [ticket("t4"), text(" and "), ticket("t2"), text(" "), ticket("t3", "References")],
+    },
+  ]);
+});
+
 test("ids inside other addresses and words are left alone", () => {
   assert.deepEqual(
     parseMarkdown("Full report: report://t2#1, job job://j3, model gpt4, see t5 for details"),

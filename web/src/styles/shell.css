@@ -68,6 +68,16 @@
   grid-template-columns: var(--ev-side-col) minmax(0, 1fr) var(--ev-rail-col);
 }
 
+.frame.rail-maximized .main {
+  visibility: hidden;
+}
+
+@container vp (min-width: 1241px) {
+  .frame.with-rail.rail-maximized {
+    grid-template-columns: var(--ev-side-col) 0 minmax(0, 1fr);
+  }
+}
+
 .frame.side-collapsed {
   --ev-side-col: 0px;
 }
@@ -527,4 +537,3 @@
     display: inline-flex;
   }
 }
-

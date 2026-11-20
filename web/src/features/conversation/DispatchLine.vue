@@ -7,7 +7,6 @@ import { DISPATCH_LABEL } from "../../lib/labels.ts";
 import type { DispatchAction, DispatchActionKind } from "../../lib/transcript-map.ts";
 import Icon from "../../ui/Icon.vue";
 import TicketRef from "../project/TicketRef.vue";
-import { displayId } from "../../lib/ids.ts";
 import { STEP_NOTE, STEP_ROW, STEPS } from "./steps.ts";
 
 const props = defineProps<{
@@ -24,18 +23,19 @@ defineEmits<{
 const summary = computed(() => {
   const by = new Map<DispatchActionKind, string[]>();
   for (const act of props.actions) {
-    const id = act.ticketId ? displayId(act.ticketId) : (act.questionId ?? act.title);
+    const id = act.ticketId ? undefined : (act.questionId ?? act.title);
     const list = by.get(act.kind) ?? [];
-    if (!list.includes(id)) list.push(id);
+    if (id && !list.includes(id)) list.push(id);
     by.set(act.kind, list);
   }
   return [...by.entries()]
-    .map(([kind, ids]) => `${DISPATCH_LABEL[kind]} ${ids.join(t(", "))}`)
+    .map(([kind, ids]) => ids.length ? `${DISPATCH_LABEL[kind]} ${ids.join(t(", "))}` : DISPATCH_LABEL[kind])
     .join(" · ");
 });
 
 const hasError = computed(() => props.actions.some((a) => a.status === "err"));
 const hasRunning = computed(() => props.actions.some((a) => a.status === "run"));
+const ticketIds = computed(() => [...new Set(props.actions.flatMap((action) => action.ticketId ? [action.ticketId] : []))]);
 </script>
 
 <template>
@@ -43,6 +43,9 @@ const hasRunning = computed(() => props.actions.some((a) => a.status === "run"))
     <summary>
       <Icon name="chevR" size="xs" class="chev" />
       <span class="ellipsis" :class="{ shimmer: hasRunning }">{{ summary }}</span>
+      <span class="flex min-w-0 flex-wrap items-center gap-1">
+        <TicketRef v-for="ticketId in ticketIds" :key="ticketId" :ticket-id="ticketId" :tickets="tickets" @open-ticket="$emit('open-ticket', $event)" />
+      </span>
       <span v-if="hasError" class="minus">· {{ t("Failed") }}</span>
     </summary>
     <div :class="STEPS">
