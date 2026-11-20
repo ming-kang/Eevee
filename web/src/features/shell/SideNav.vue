@@ -140,7 +140,7 @@ onUnmounted(() => {
   <div class="flex h-(--ev-header-h) flex-none items-center gap-1.5 pr-(--ev-ctrl-inset) pl-(--ev-titlebar-left)">
     <a class="flex min-w-0 items-center gap-2 rounded-sm [&_svg]:size-5 [&_svg]:flex-none" :href="formatRoute({ name: 'overview' })" @click="$emit('navigate')">
       <BrandLogo />
-      <span class="text-base font-semibold tracking-[-0.018em] text-fg">Eevee</span>
+      <span class="text-base font-medium tracking-[-0.018em] text-fg">Eevee</span>
     </a>
     <span class="spacer" />
     <Button variant="ghost" size="sm" icon :title="t('New project')" :aria-label="t('New project')" @click="
@@ -151,9 +151,11 @@ onUnmounted(() => {
     </Button>
   </div>
 
-  <div class="flex flex-none flex-col gap-1.5 px-2.5 pt-2.5 pb-1">
-    <div class="flex h-7 items-center gap-1.5 rounded-sm border border-border bg-surface pr-1.25 pl-2 transition-[border-color,box-shadow] focus-within:border-accent focus-within:shadow-(--ring-field)">
+  <div class="flex flex-none flex-col gap-2 px-2.5 pt-2 pb-1">
+    <div class="flex h-8 items-center gap-2 rounded-md border border-border bg-surface pr-1.25 pl-2.5 transition-[border-color,box-shadow] focus-within:border-accent focus-within:shadow-(--ring-field)">
+      <span class="grid w-5 flex-none place-items-center">
       <Icon name="search" size="xs" class="flex-none text-fg-subtle" />
+      </span>
       <input
         ref="searchInput"
         v-model="searchQuery"
@@ -168,7 +170,7 @@ onUnmounted(() => {
       <button
         v-if="searchQuery !== ''"
         type="button"
-        class="inline-grid size-5 place-items-center rounded-[4px] text-fg-subtle hover:bg-hover hover:text-fg"
+        class="inline-grid size-5 place-items-center rounded-xs text-fg-subtle hover:bg-hover hover:text-fg"
         :aria-label="t('Clear filter')"
         @click="clearSearch"
       >
@@ -177,7 +179,7 @@ onUnmounted(() => {
       <button
         v-else
         type="button"
-        class="side-search-kbd h-4.5 flex-none rounded-[4px] bg-surface-2 px-1.25 text-2xs leading-none font-medium text-fg-subtle transition-colors hover:bg-hover hover:text-fg"
+        class="side-search-kbd h-4.5 flex-none rounded-xs bg-surface-2 px-1.25 text-2xs leading-none font-medium text-fg-subtle transition-colors hover:bg-hover hover:text-fg"
         :title="t('Search ({key})', { key: paletteShortcut })"
         :aria-label="t('Search ({key})', { key: paletteShortcut })"
         @click="
@@ -191,8 +193,8 @@ onUnmounted(() => {
 
     <a
       v-if="searchQuery.trim() === ''"
-      class="flex h-8 w-full flex-none items-center gap-2.25 rounded-sm pr-2 pl-2.25 text-left text-sm font-medium tracking-(--ev-tracking) text-fg transition-[background-color,box-shadow] focus-visible:shadow-(--ring-inset) pointer-coarse:h-9.5 [&_.ico]:inline-flex [&_.ico]:flex-none [&_.ico]:transition-colors"
-      :class="route.name === 'overview' ? 'bg-selected [--ev-glyph-cut:var(--selected)] [&_.ico]:text-fg' : 'hover:bg-hover [&_.ico]:text-fg-subtle'"
+      class="flex h-9 w-full flex-none items-center gap-2 rounded-md px-2.5 text-left text-sm tracking-(--ev-tracking) text-fg transition-[background-color,box-shadow] focus-visible:shadow-(--ring-inset) [&_.ico]:inline-flex [&_.ico]:flex-none [&_.ico]:transition-colors"
+      :class="route.name === 'overview' ? 'bg-selected font-medium [--ev-glyph-cut:var(--selected)] [&_.ico]:text-fg' : 'hover:bg-hover [&_.ico]:text-fg-subtle'"
       :href="formatRoute({ name: 'overview' })"
       :aria-label="attentionTotal > 0 ? `${t('Overview')} · ${attentionTotal}` : t('Overview')"
       :aria-current="route.name === 'overview' ? 'page' : undefined"
@@ -206,7 +208,7 @@ onUnmounted(() => {
     </a>
   </div>
 
-  <div v-if="projects.length > 0" class="group/ph flex h-7 flex-none items-center justify-between pr-2 pl-3.5 pt-1.5 text-2xs font-semibold tracking-[0.02em] text-fg-subtle uppercase">
+  <div v-if="projects.length > 0" class="group/ph mt-2 flex h-7 flex-none items-center justify-between pr-5 pl-5 text-xs font-medium text-fg-subtle">
     <span>{{ t("Projects") }}</span>
     <Button
       variant="ghost"

@@ -206,7 +206,7 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <form class="composer relative flex cursor-text flex-col gap-1.5 rounded-xl pt-3 pr-2.5 pb-2.5 pl-4" @submit.prevent="submit" @click.self="textarea?.focus()">
+  <form class="composer @container/composer relative flex cursor-text flex-col gap-2 rounded-panel pt-4 pr-3 pb-3 pl-4" @submit.prevent="submit" @click.self="textarea?.focus()">
     <textarea
       ref="textarea"
       class="block max-h-55 min-h-14 w-full resize-none border-0 bg-transparent py-0 pr-1.5 pl-0 text-base leading-[1.572] text-fg focus:shadow-none focus-visible:shadow-none disabled:opacity-60"
@@ -245,10 +245,10 @@ function onKeydown(event: KeyboardEvent): void {
         <span class="ellipsis min-w-0 flex-1 text-base text-fg">{{ view.ticket.title }}</span>
       </button>
     </div>
-    <div class="flex min-h-(--ev-h-sm) cursor-default items-center gap-1.5">
+    <div class="flex min-h-8 cursor-default items-center gap-2">
       <slot name="actions" />
       <span class="spacer" />
-      <span :id="`${listId}-hint`" class="text-(length:--ev-caption) whitespace-nowrap text-fg-subtle max-[600px]:hidden [@media(hover:none)]:hidden">{{ t("Shift+Enter for a new line") }}</span>
+      <span :id="`${listId}-hint`" class="text-(length:--ev-caption) whitespace-nowrap text-fg-subtle @max-[480px]/composer:hidden [@media(hover:none)]:hidden">{{ t("Shift+Enter for a new line") }}</span>
       <slot name="end" />
       <button
     :class="SEND"

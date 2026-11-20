@@ -19,13 +19,13 @@ const HC_LINE = "flex items-center gap-2 text-xs [&_.glyph]:size-(--ev-icon-xs)"
 
 <template>
   <div
-    class="pointer-events-none absolute left-[clamp(8px,var(--hc-left),calc(100cqw_-_var(--hc-width)_-_8px))] z-60 w-(--hc-width) rounded-lg border border-border bg-(--ev-glass-bg) px-3.5 py-3 shadow-(--ev-shadow-float) backdrop-blur-(--ev-glass-blur) backdrop-saturate-(--ev-glass-sat) [--ev-glyph-cut:var(--ev-raised)] [--hc-width:min(calc(272px*var(--ev-scale)),calc(100cqw_-_16px))]"
+    class="pointer-events-none absolute left-[clamp(8px,var(--hc-left),calc(100cqw_-_var(--hc-width)_-_8px))] z-60 w-(--hc-width) rounded-lg border-0 bg-(--ev-glass-bg) px-3.5 py-3 shadow-(--ev-shadow-float) backdrop-blur-(--ev-glass-blur) backdrop-saturate-(--ev-glass-sat) [--ev-glyph-cut:var(--ev-raised)] [--hc-width:min(calc(272px*var(--ev-scale)),calc(100cqw_-_16px))]"
     :class="visible && project !== undefined ? 'visible translate-y-0 opacity-100 [transition:opacity_var(--ev-regular)_var(--ev-ease),translate_var(--ev-regular)_var(--ev-ease)]' : 'invisible translate-y-1 opacity-0 [transition:opacity_var(--ev-regular)_var(--ev-ease),translate_var(--ev-regular)_var(--ev-ease),visibility_0s_linear_var(--ev-regular)]'"
     :style="{ top: `${top}px`, '--hc-left': `${left}px` }"
     aria-hidden="true"
   >
     <template v-if="project && state">
-      <div class="text-base font-semibold tracking-(--ev-tracking) wrap-anywhere">{{ project.title }}</div>
+      <div class="text-base font-medium tracking-(--ev-tracking) wrap-anywhere">{{ project.title }}</div>
       <div class="mono mt-0.5 truncate text-xs text-fg-subtle">{{ project.workspace }}</div>
       <div class="mt-2.5 flex flex-col gap-1.5">
         <div v-if="state.questionCount > 0" :class="[HC_LINE, 'text-(color:--ev-user-ink)']">

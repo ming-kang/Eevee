@@ -54,10 +54,10 @@ const glyph = computed<{ stage: VisualStage } | { icon: IconName }>(() => {
     </summary>
     <pre :class="STEP_OUT">{{ detail }}</pre>
   </details>
-  <div v-else class="note">
+  <div v-else class="note" :title="text">
     <StageGlyph v-if="'stage' in glyph" :stage="glyph.stage" />
     <Icon v-else :name="glyph.icon" size="xs" />
-    <span>
+    <span class="ellipsis">
       <template v-if="eventKind === 'report' && ticketId && status">
         <TicketRef
           :ticket-id="ticketId"
@@ -66,7 +66,7 @@ const glyph = computed<{ stage: VisualStage } | { icon: IconName }>(() => {
         />
         {{ t("reported back ({status}): {text}", { status: REPORT_LABEL[status], text }) }}
       </template>
-      <span v-else class="pre-wrap">{{ text }}</span>
+      <span v-else>{{ text }}</span>
     </span>
   </div>
 </template>

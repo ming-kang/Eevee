@@ -1,5 +1,37 @@
+.control-dialog .header {
+  padding-inline: calc(24px * var(--ev-scale));
+}
+
+.control-dialog .header h1,
+.control-dialog .settings-content h2 {
+  font-size: var(--ev-title);
+  font-weight: 500;
+}
+
+.control-dialog .rows>*+* {
+  position: relative;
+  border-top: 0;
+}
+
+.control-dialog .rows>*+*::before {
+  position: absolute;
+  inset: 0 calc(16px * var(--ev-scale)) auto;
+  height: var(--hairline);
+  background: var(--border);
+  content: "";
+  pointer-events: none;
+}
+
+.control-dialog .settings-content :has(>table) {
+  overflow-x: auto;
+}
+
+.control-dialog #set-font {
+  max-width: 60%;
+}
+
 /* Full-bleed workspace shell:
- * - Edge-to-edge layout divided by crisp 1px borders instead of floating islands.
+ * - Edge-to-edge layout divided by hairline separators.
  * - Stationary top-left sidebar trigger: stays at the exact same coordinate whether the sidebar is
  *   expanded or collapsed offcanvas, while the main titlebar smoothly glides out of its way.
  * - Offcanvas sidebar collapse (0px track) on desktop, slide-over drawers on narrow viewports.
@@ -98,12 +130,12 @@
 }
 
 .sidebar {
-  border-right: 1px solid var(--ev-border);
+  border-right: var(--hairline) solid var(--ev-border);
   transition: border-color var(--ev-regular) var(--ev-ease);
 }
 
 .rail {
-  border-left: 1px solid var(--ev-border);
+  border-left: var(--hairline) solid var(--ev-border);
   transition: border-color var(--ev-regular) var(--ev-ease);
 }
 
@@ -161,8 +193,10 @@
   transition: opacity var(--ev-regular) var(--ev-ease) 150ms;
 }
 
-.sash:hover::before {
-  opacity: 1;
+@media (hover: hover) {
+  .sash:hover::before {
+    opacity: 1;
+  }
 }
 
 .sash.active::before,
@@ -206,7 +240,7 @@
   gap: calc(8px * var(--ev-scale));
   padding: 0 calc(16px * var(--ev-scale)) 0 calc(20px * var(--ev-scale));
   min-width: 0;
-  border-bottom: 1px solid var(--ev-separator);
+  border-bottom: var(--hairline) solid var(--ev-separator);
   background: var(--ev-page);
   transition:
     padding-left var(--ev-regular) var(--ev-ease),
@@ -232,7 +266,7 @@
 .header h1 {
   min-width: 0;
   font-size: var(--ev-body);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: var(--ev-tracking);
 }
 
@@ -267,9 +301,11 @@
     color var(--ev-fast) var(--ev-ease);
 }
 
-.crumb-parent:hover {
-  color: var(--ev-label);
-  background: var(--ev-hover);
+@media (hover: hover) {
+  .crumb-parent:hover {
+    color: var(--ev-label);
+    background: var(--ev-hover);
+  }
 }
 
 .crumb-ico {
@@ -308,8 +344,9 @@
   height: calc(24px * var(--ev-scale));
   padding: 0 calc(7px * var(--ev-scale));
   border-radius: 999px;
+  corner-shape: round;
   font-size: var(--ev-caption);
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--ev-label-2);
   background: var(--ev-tray);
@@ -342,8 +379,10 @@
   background: var(--ev-ok-film);
 }
 
-.rt-pill:hover {
-  filter: brightness(0.96);
+@media (hover: hover) {
+  .rt-pill:hover {
+    filter: brightness(0.96);
+  }
 }
 
 /* ——— Rail ——— */
@@ -354,7 +393,11 @@
   gap: calc(6px * var(--ev-scale));
   height: var(--ev-header-h);
   padding: 0 var(--ev-titlebar-right) 0 calc(12px * var(--ev-scale));
-  border-bottom: 1px solid var(--ev-separator);
+  border-bottom: var(--hairline) solid var(--ev-separator);
+}
+
+.rail-tabs>.seg-pill {
+  display: none;
 }
 
 .rail-scroll {
@@ -424,6 +467,7 @@
     --ev-glyph-cut: var(--ev-raised);
     --ev-shimmer-bg: var(--ev-raised);
     background: var(--ev-raised);
+    border: 0;
     box-shadow: var(--ev-shadow-modal);
     transform: translateX(100%);
     visibility: hidden;
@@ -490,10 +534,11 @@
     top: env(safe-area-inset-top, 0px);
     left: env(safe-area-inset-left, 0px);
     bottom: env(safe-area-inset-bottom, 0px);
-    width: min(calc(284px * var(--ev-scale)), calc(100% - calc(40px * var(--ev-scale))));
+    width: min(var(--ev-sidebar-w), calc(100% - calc(40px * var(--ev-scale))));
     z-index: 25;
-    --ev-glyph-cut: var(--ev-raised);
-    background: var(--ev-raised);
+    --ev-glyph-cut: var(--bg-sidebar);
+    background: var(--bg-sidebar);
+    border: 0;
     box-shadow: var(--ev-shadow-modal);
     transform: translateX(-100%);
     visibility: hidden;

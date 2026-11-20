@@ -18,12 +18,13 @@ const props = withDefaults(
     mode?: "toggle" | "tabs";
     size?: "sm" | "md";
     stretch?: boolean;
+    appearance?: "segmented" | "rail";
     /** Gives each tab the id `${idPrefix}-${value}` so the panel can point back at it. */
     idPrefix?: string;
     /** The id of the tabpanel the tabs control. */
     controls?: string;
   }>(),
-  { mode: "toggle", size: "sm", stretch: false, idPrefix: undefined, controls: undefined },
+  { mode: "toggle", size: "sm", stretch: false, appearance: "segmented", idPrefix: undefined, controls: undefined },
 );
 const model = defineModel<K>({ required: true });
 
@@ -31,13 +32,14 @@ const tabs = computed(() => props.mode === "tabs");
 const keys = computed(() => props.options.map((option) => option.value));
 
 const root = computed(() => [
-  "seg relative isolate flex-none items-stretch bg-surface-2 p-0.5 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--border)_60%,transparent)]",
+  props.appearance === "rail" ? "rail-tabs relative flex-none items-stretch gap-1" : "seg relative isolate flex-none items-stretch rounded-md bg-surface-2",
   props.stretch ? "flex w-full" : "inline-flex",
-  props.size === "sm" ? "sm h-7 rounded-sm" : "h-8 rounded-md",
+  props.appearance === "rail" ? "h-7" : props.size === "sm" ? "sm h-7 p-0.5" : "h-9 p-1",
 ]);
 const item = computed(() => [
   "relative z-1 inline-flex min-w-0 items-center justify-center gap-1.25 whitespace-nowrap text-sm font-medium tracking-(--ev-tracking) text-fg-muted transition-colors hover:text-fg",
-  props.size === "sm" ? "rounded-[5px] px-2.25" : "rounded-sm px-3",
+  "rounded-sm",
+  props.size === "sm" ? "px-2.25" : "px-3",
   props.stretch && "flex-1",
 ]);
 
@@ -60,7 +62,7 @@ function onKeydown(event: KeyboardEvent): void {
       :aria-selected="tabs ? model === option.value : undefined"
       :aria-pressed="tabs ? undefined : model === option.value"
       :tabindex="tabs ? (model === option.value ? 0 : -1) : undefined"
-      :class="[item, model === option.value && 'on text-fg']"
+      :class="[item, model === option.value ? ['on text-fg', appearance === 'rail' && 'bg-selected'] : appearance === 'rail' && 'hover:bg-hover']"
       @click="model = option.value"
     >
       <slot :option="option" :index="index" :selected="model === option.value">{{ option.label }}</slot>

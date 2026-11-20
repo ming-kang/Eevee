@@ -310,7 +310,7 @@ async function performUndo(): Promise<void> {
 
 function commitClass(on: boolean): string {
   return [
-    "grid w-full grid-cols-[calc(22px*var(--ev-scale))_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0.5 rounded-sm px-2.5 py-2 text-left transition-colors focus-visible:shadow-(--ev-ring-in)",
+    "grid w-full grid-cols-[calc(22px*var(--ev-scale))_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0.5 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:shadow-(--ev-ring-in)",
     on ? "bg-selected" : "hover:bg-hover",
   ].join(" ");
 }
@@ -330,7 +330,7 @@ const COMMIT_META =
 const MEASURE = "mx-auto w-full max-w-[calc(760px*var(--ev-scale))]";
 const DETAIL_INNER =
   "flex animate-[ev-fade_var(--ev-regular)_var(--ev-ease)] flex-col gap-4 px-(--ev-gutter) pt-4.5 pb-12 @max-[54.2857em]/vp:px-4 @max-[54.2857em]/vp:pt-1 @max-[54.2857em]/vp:pb-10 [&>.hint]:mx-auto [&>.hint]:w-full [&>.hint]:max-w-[calc(760px*var(--ev-scale))]";
-const DETAIL_HEAD = `flex items-start gap-3 ${MEASURE} [&_h2]:text-(length:--ev-headline) [&_h2]:font-semibold [&_h2]:tracking-[-0.015em] [&_h2]:wrap-anywhere [&_h2.mono]:text-base`;
+const DETAIL_HEAD = `flex items-start gap-3 ${MEASURE} [&_h2]:text-(length:--ev-headline) [&_h2]:font-medium [&_h2]:tracking-[-0.015em] [&_h2]:wrap-anywhere [&_h2.mono]:text-base`;
 </script>
 
 <template>
@@ -341,8 +341,8 @@ const DETAIL_HEAD = `flex items-start gap-3 ${MEASURE} [&_h2]:text-(length:--ev-
       <span class="sub ellipsis hide-sm">{{ project.title }}</span>
     </header>
     <div class="flex flex-wrap gap-2 border-b border-separator px-3 py-2">
-      <Segmented v-model="tab" mode="tabs" :options="MEMORY_TABS.map((value) => ({ value, label: value === 'proposals' ? t('Proposals') + (board?.openProposals.length ? ' · ' + board.openProposals.length : '') : value === 'history' ? t('History') : t('Files') }))" :label="t('Memory view')" />
-      <Segmented v-if="tab !== 'proposals'" v-model="scope" :options="[{ value: 'project', label: t('This project') }, { value: 'global', label: t('Global') }]" :label="t('Memory scope')" />
+      <Segmented v-model="tab" mode="tabs" appearance="rail" :options="MEMORY_TABS.map((value) => ({ value, label: value === 'proposals' ? t('Proposals') + (board?.openProposals.length ? ' · ' + board.openProposals.length : '') : value === 'history' ? t('History') : t('Files') }))" :label="t('Memory view')" />
+      <Segmented v-if="tab !== 'proposals'" v-model="scope" appearance="rail" :options="[{ value: 'project', label: t('This project') }, { value: 'global', label: t('Global') }]" :label="t('Memory scope')" />
     </div>
     <ProposalReview v-if="tab === 'proposals'" :review="review" />
     <div v-else class="grid min-h-0 flex-1 grid-cols-[clamp(calc(250px*var(--ev-scale)),26%,calc(360px*var(--ev-scale)))_minmax(0,1fr)] @max-[54.2857em]/vp:grid-cols-1">
@@ -362,7 +362,7 @@ const DETAIL_HEAD = `flex items-start gap-3 ${MEASURE} [&_h2]:text-(length:--ev-
               <span :class="whoClass(sourceOf(change.source).badgeClass)">
                 <Icon :name="sourceOf(change.source).icon" size="xs" />
               </span>
-              <span class="ellipsis text-base tracking-(--ev-tracking)">{{ change.summary }}</span>
+              <span class="ellipsis text-sm tracking-(--ev-tracking)">{{ change.summary }}</span>
               <span :class="COMMIT_META">
                 <span>{{ sourceLabel(change.source) }}</span>
                 <span>·</span>

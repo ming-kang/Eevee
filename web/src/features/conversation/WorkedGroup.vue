@@ -81,8 +81,8 @@ async function reveal(key: string): Promise<void> {
   <div ref="root" class="worked group/worked">
     <button
       type="button"
-      class="group/wh -ml-1.5 flex min-h-6.5 w-fit max-w-full items-center gap-1.75 rounded-sm px-1.5 py-0.75 text-left text-sm leading-[1.385] transition-colors hover:text-fg focus-visible:shadow-(--ring-inset)"
-      :class="open ? 'text-fg' : 'text-fg-muted'"
+      class="group/wh flex min-h-6 w-fit max-w-full items-center gap-1.5 rounded-sm py-0 text-left text-sm leading-6 transition-colors hover:text-fg-muted focus-visible:shadow-(--ring-inset)"
+      :class="open ? 'text-fg-muted' : 'text-fg-subtle'"
       :aria-expanded="open"
       @click="open = !open"
     >
@@ -91,7 +91,7 @@ async function reveal(key: string): Promise<void> {
       <Icon
         name="chevR"
         size="xs"
-        class="text-fg-subtle transition-[opacity,transform]"
+        class="order-first size-4 text-fg-subtle transition-[opacity,transform]"
         :class="open ? 'rotate-90' : 'opacity-0 group-hover/worked:opacity-100 group-focus-visible/wh:opacity-100 [@media(hover:none)]:opacity-100'"
       />
     </button>
@@ -128,7 +128,7 @@ async function reveal(key: string): Promise<void> {
           v-for="p in summary.paths"
           :key="p.key"
           type="button"
-          class="flex min-h-5.5 max-w-full items-center gap-2 rounded-xs px-1.5 py-0.5 text-left text-xs text-fg-muted transition-colors hover:bg-hover hover:text-fg focus-visible:bg-hover focus-visible:text-fg"
+          class="flex min-h-5.5 max-w-full items-center gap-2 rounded-sm px-1.5 py-0.5 text-left text-xs text-fg-muted transition-colors hover:bg-hover hover:text-fg focus-visible:bg-hover focus-visible:text-fg"
           @click="reveal(p.key)"
         >
           <span class="mono ellipsis">{{ p.path }}</span>

@@ -1,5 +1,7 @@
 /** Chinese for every English string the interface shows (`t()` in `i18n.ts`). */
 export const zhCN: Record<string, string> = {
+  "Tell the Router what to do to get started.": "告诉 Router 要做什么，即可开始。",
+  "Worker commands appear here.": "Worker 的命令会显示在这里。",
   "No memory proposal {proposalId}": "没有记忆提案 {proposalId}",
   "Memory proposal {proposalId} has already been decided": "记忆提案 {proposalId} 已处理",
   "Pending approval": "待批准",

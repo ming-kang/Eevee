@@ -20,7 +20,7 @@ const reference = computed(() => resolveTicketRef(props.ticketId, props.tickets,
 <template>
   <button
     type="button"
-    class="mx-px inline-flex items-center gap-1 rounded-xs bg-[color-mix(in_oklab,var(--fg)_7%,transparent)] px-1 py-px align-baseline font-mono text-[0.88em] font-medium text-fg transition-colors hover:bg-[color-mix(in_oklab,var(--fg)_13%,transparent)] [&_.glyph]:size-[1em]"
+    class="mx-px inline-flex h-5 items-center gap-1 rounded-xs bg-[color-mix(in_oklab,var(--fg)_5%,transparent)] px-1 align-middle font-mono text-xs leading-none font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg [&_.glyph]:size-3"
     :title="reference.tooltip"
     :aria-label="`${reference.label} · ${reference.tooltip}`"
     :data-ticket-id="reference.ticketId"

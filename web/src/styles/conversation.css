@@ -29,6 +29,21 @@
   gap: calc(8px * var(--ev-scale));
 }
 
+.worked {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: calc(8px * var(--ev-scale));
+}
+
+.chat-inner>.worked {
+  margin-block: calc(8px * var(--ev-scale));
+}
+
+.chat-page.landing .dock {
+  margin-bottom: auto;
+}
+
 /* ——— Landing: an empty conversation centers its title over the composer ——— */
 .chat-page.landing .header {
   border-bottom-color: transparent;
@@ -101,7 +116,6 @@
   height: calc(14px * var(--ev-scale));
   border: 1px solid var(--ev-label-3);
   border-radius: 4px;
-  corner-shape: squircle;
 }
 
 .msg-ai .check.on {
@@ -132,8 +146,10 @@
   transition: text-decoration-color var(--ev-fast) var(--ev-ease);
 }
 
-.msg-ai a:hover {
-  text-decoration-color: currentColor;
+@media (hover: hover) {
+  .msg-ai a:hover {
+    text-decoration-color: currentColor;
+  }
 }
 
 .msg-ai blockquote {
@@ -145,7 +161,7 @@
 .msg-ai>hr {
   margin-block: calc(18px * var(--ev-scale));
   border: 0;
-  border-top: 1px solid var(--ev-separator);
+  border-top: var(--hairline) solid var(--ev-separator);
 }
 
 .msg-ai .table-scroll {
@@ -162,7 +178,7 @@
 .msg-ai th,
 .msg-ai td {
   padding: calc(6px * var(--ev-scale)) calc(16px * var(--ev-scale)) calc(6px * var(--ev-scale)) 0;
-  border-bottom: 1px solid var(--ev-separator);
+  border-bottom: var(--hairline) solid var(--ev-separator);
   text-align: left;
   vertical-align: top;
 }
@@ -197,9 +213,14 @@
   transition: opacity var(--ev-fast) var(--ev-ease);
 }
 
-.msg-ai .code:hover .copy,
 .msg-ai .code .copy:focus-visible {
   opacity: 1;
+}
+
+@media (hover: hover) {
+  .msg-ai .code:hover .copy {
+    opacity: 1;
+  }
 }
 
 @media (hover: none) {
@@ -221,8 +242,8 @@
 .panel-b pre {
   margin: 0;
   padding: calc(12px * var(--ev-scale)) calc(14px * var(--ev-scale));
-  border: 1px solid var(--ev-border);
-  border-radius: var(--ev-r-md);
+  border: var(--hairline) solid var(--ev-border);
+  border-radius: var(--ev-r-lg);
   overflow-x: auto;
   font-size: var(--ev-footnote);
   line-height: 1.65;
@@ -241,21 +262,19 @@
 .note {
   font-size: var(--ev-control);
   line-height: 1.385;
-  color: var(--ev-label-2);
+  color: var(--ev-label-3);
 }
 
 .proc>summary,
 .note {
   display: flex;
   align-items: center;
-  gap: calc(7px * var(--ev-scale));
-  min-height: calc(26px * var(--ev-scale));
-  width: fit-content;
+  gap: calc(6px * var(--ev-scale));
+  min-height: calc(24px * var(--ev-scale));
+  width: 100%;
   max-width: 100%;
-  padding: calc(3px * var(--ev-scale)) calc(6px * var(--ev-scale));
-  margin-left: calc(-6px * var(--ev-scale));
+  padding: 0;
   border-radius: var(--ev-r-sm);
-  corner-shape: squircle;
 }
 
 .proc>summary {
@@ -269,9 +288,14 @@
   display: none;
 }
 
-.proc>summary:hover,
 .proc[open]>summary {
   color: var(--ev-label);
+}
+
+@media (hover: hover) {
+  .proc>summary:hover {
+    color: var(--ev-label-2);
+  }
 }
 
 .proc>summary:focus-visible {
@@ -281,6 +305,34 @@
 .proc .chev {
   color: var(--ev-label-3);
   transition: transform var(--ev-fast) var(--ev-ease);
+}
+
+.proc>summary>:first-child,
+.note>:first-child:is(.ico, .glyph) {
+  width: calc(16px * var(--ev-scale));
+  height: calc(16px * var(--ev-scale));
+  flex: none;
+}
+
+.proc>summary>:first-child.chev {
+  opacity: 0.5;
+}
+
+.proc>summary:focus-visible .chev,
+.proc[open]>summary .chev {
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .proc>summary:hover .chev {
+    opacity: 1;
+  }
+}
+
+.note>.ellipsis,
+.proc>summary>.ellipsis {
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .proc[open]>summary .chev {
@@ -320,12 +372,6 @@
   }
 }
 
-.note .glyph,
-.proc summary .glyph {
-  width: var(--ev-icon-xs);
-  height: var(--ev-icon-xs);
-}
-
 .note>.ico,
 .note>.glyph {
   color: var(--ev-label-3);
@@ -337,8 +383,10 @@
   transition: color var(--ev-fast) var(--ev-ease);
 }
 
-.note.link:hover {
-  color: var(--ev-label);
+@media (hover: hover) {
+  .note.link:hover {
+    color: var(--ev-label-2);
+  }
 }
 
 /* Consecutive gray lines read as one block. */
@@ -347,7 +395,7 @@
 }
 
 .proc>.tsheet {
-  margin-left: calc(13px * var(--ev-scale));
+  margin-left: calc(22px * var(--ev-scale));
 }
 
 /* ——— Report ——— */
@@ -362,7 +410,6 @@
 .proc.flash {
   animation: ev-flash 1.2s var(--ev-ease);
   border-radius: var(--ev-r-sm);
-  corner-shape: squircle;
 }
 
 @keyframes ev-flash {

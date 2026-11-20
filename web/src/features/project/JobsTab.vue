@@ -12,6 +12,7 @@ import { useSubmit } from "../../composables/submit.ts";
 import { formatElapsedSeconds } from "../../lib/time.ts";
 import { showToast } from "../../composables/toasts.ts";
 import Skeleton from "../../ui/Skeleton.vue";
+import Icon from "../../ui/Icon.vue";
 import StageGlyph from "./StageGlyph.vue";
 import Button from "../../ui/Button.vue";
 import { displayId } from "../../lib/ids.ts";
@@ -155,10 +156,10 @@ async function killJob(jobId: JobId): Promise<void> {
 
 <template>
   <div v-if="openJobId && !openInRunning" class="flex flex-col gap-1">
-    <div class="rounded-sm transition-[background-color,box-shadow] duration-(--ev-regular) ease-(--ev-ease) border border-border bg-surface shadow-(--ev-shadow-card)">
+    <div class="rounded-lg transition-[background-color,box-shadow] duration-(--ev-regular) ease-(--ev-ease) border border-border bg-surface shadow-(--ev-shadow-card)">
       <button
         type="button"
-        class="job-row grid w-full grid-cols-[var(--ev-icon-sm)_minmax(0,1fr)] items-center gap-x-2.25 gap-y-px rounded-sm px-2.5 py-1.5 text-left transition-colors pointer-coarse:min-h-10 focus-visible:shadow-(--ring-inset)"
+        class="job-row grid w-full grid-cols-[var(--ev-icon-sm)_minmax(0,1fr)] items-center gap-x-2.25 gap-y-px rounded-md px-2.5 py-1.5 text-left transition-colors pointer-coarse:min-h-10 focus-visible:shadow-(--ring-inset)"
         :title="logView?.job.command ?? openJobId"
         :aria-expanded="true"
         @click="$emit('update:openJobId', undefined)"
@@ -176,7 +177,7 @@ async function killJob(jobId: JobId): Promise<void> {
       <p v-if="logError" class="error px-3 pb-1.5 text-xs">{{ logError }}</p>
       <div v-else-if="logLoading && !logView" class="px-3 pb-1.5 text-xs text-fg-subtle"><Skeleton /></div>
       <template v-else-if="logView">
-        <pre v-tail class="mx-2.5 mb-2 max-h-60 overflow-auto rounded-sm border border-border bg-(--ev-code) px-3 py-2.5 font-mono text-xs leading-[1.6] break-words whitespace-pre-wrap text-fg animate-[ev-fade_var(--ev-regular)_var(--ev-ease)]">{{ logView.content || t("(no output yet)") }}</pre>
+        <pre v-tail class="mx-2.5 mb-2 max-h-60 overflow-auto rounded-lg border border-border bg-(--ev-code) px-3 py-2.5 font-mono text-xs leading-[1.6] break-words whitespace-pre-wrap text-fg animate-[ev-fade_var(--ev-regular)_var(--ev-ease)]">{{ logView.content || t("(no output yet)") }}</pre>
         <p v-if="logView.truncated" class="px-3 pb-1.5 text-xs text-fg-subtle">{{ t("Last 200 lines only") }}</p>
       </template>
 
@@ -192,19 +193,23 @@ async function killJob(jobId: JobId): Promise<void> {
     </div>
   </div>
 
-  <p v-if="jobs.length === 0 && (!openJobId || openInRunning)" class="px-3 py-10 text-center text-sm text-fg-subtle">{{ t("No background jobs") }}</p>
+  <div v-if="jobs.length === 0 && (!openJobId || openInRunning)" class="flex flex-col items-center gap-2 px-6 py-12 text-center">
+    <Icon name="term" size="lg" class="mb-1 text-fg-subtle" />
+    <h3 class="text-sm font-medium text-fg-muted">{{ t("No background jobs") }}</h3>
+    <p class="max-w-64 text-xs leading-5 text-fg-subtle">{{ t("Worker commands appear here.") }}</p>
+  </div>
 
   <template v-else-if="jobs.length > 0">
     <div class="flex flex-col gap-1">
       <div
         v-for="item in jobs"
         :key="item.job.id"
-        class="rounded-sm transition-[background-color,box-shadow] duration-(--ev-regular) ease-(--ev-ease)"
+        class="rounded-lg transition-[background-color,box-shadow] duration-(--ev-regular) ease-(--ev-ease)"
         :class="openJobId === item.job.id ? 'border border-border bg-surface shadow-(--ev-shadow-card)' : '[&>.job-row:hover]:bg-hover'"
       >
         <button
           type="button"
-          class="job-row grid w-full grid-cols-[var(--ev-icon-sm)_minmax(0,1fr)] items-center gap-x-2.25 gap-y-px rounded-sm px-2.5 py-1.5 text-left transition-colors pointer-coarse:min-h-10 focus-visible:shadow-(--ring-inset)"
+          class="job-row grid w-full grid-cols-[var(--ev-icon-sm)_minmax(0,1fr)] items-center gap-x-2.25 gap-y-px rounded-md px-2.5 py-1.5 text-left transition-colors pointer-coarse:min-h-10 focus-visible:shadow-(--ring-inset)"
           :title="item.job.command"
           :aria-expanded="openJobId === item.job.id"
           @click="toggle(item.job.id)"
@@ -222,7 +227,7 @@ async function killJob(jobId: JobId): Promise<void> {
           <p v-if="logError" class="error px-3 pb-1.5 text-xs">{{ logError }}</p>
           <div v-else-if="logLoading && !logView" class="px-3 pb-1.5 text-xs text-fg-subtle"><Skeleton /></div>
           <template v-else-if="logView">
-            <pre v-tail class="mx-2.5 mb-2 max-h-60 overflow-auto rounded-sm border border-border bg-(--ev-code) px-3 py-2.5 font-mono text-xs leading-[1.6] break-words whitespace-pre-wrap text-fg animate-[ev-fade_var(--ev-regular)_var(--ev-ease)]">{{ logView.content || t("(no output yet)") }}</pre>
+            <pre v-tail class="mx-2.5 mb-2 max-h-60 overflow-auto rounded-lg border border-border bg-(--ev-code) px-3 py-2.5 font-mono text-xs leading-[1.6] break-words whitespace-pre-wrap text-fg animate-[ev-fade_var(--ev-regular)_var(--ev-ease)]">{{ logView.content || t("(no output yet)") }}</pre>
             <p v-if="logView.truncated" class="px-3 pb-1.5 text-xs text-fg-subtle">{{ t("Last 200 lines only") }}</p>
           </template>
           <p v-if="killing.error.value" class="error px-3 pb-1.5 text-xs">{{ killing.error.value }}</p>

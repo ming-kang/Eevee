@@ -48,15 +48,15 @@ function sectionRoute(section: ControlSection): Route {
 <template>
   <DialogRoot :open="open" @update:open="(next) => next || emit('close')">
     <DialogPortal>
-      <DialogOverlay class="fixed inset-0 z-50 bg-overlay backdrop-blur-[4px]" />
+      <DialogOverlay class="fixed inset-0 z-50 bg-overlay" />
       <DialogContent
         ref="content"
         :aria-describedby="undefined"
-        class="fixed top-1/2 left-1/2 z-50 flex h-[min(88dvh,960px)] w-[min(94vw,1280px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-surface text-fg shadow-lg max-sm:h-dvh max-sm:w-screen max-sm:rounded-none max-sm:border-0"
+        class="control-dialog fixed top-1/2 left-1/2 z-50 flex h-[min(720px,calc(100dvh-64px))] w-[min(920px,calc(100vw-64px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-panel border-0 bg-surface text-fg shadow-prominent max-sm:h-dvh max-sm:w-screen max-sm:rounded-none max-sm:border-0"
         @close-auto-focus="(event) => event.preventDefault()"
       >
         <header class="flex h-13 shrink-0 items-center gap-3 border-b border-separator px-4">
-          <DialogTitle class="text-lg font-semibold">{{ t("Control") }}</DialogTitle>
+          <DialogTitle class="text-lg font-medium">{{ t("Control") }}</DialogTitle>
           <span class="spacer" />
           <span v-if="project && (section === 'memory' || section === 'usage')" class="truncate text-sm text-fg-muted">{{ project.title }}</span>
           <Button variant="ghost" size="sm" icon :aria-label="t('Close')" @click="emit('close')">
@@ -64,14 +64,14 @@ function sectionRoute(section: ControlSection): Route {
           </Button>
         </header>
         <div class="flex min-h-0 flex-1 max-sm:flex-col">
-          <nav class="flex w-48 shrink-0 flex-col gap-1 overflow-y-auto border-r border-separator p-2.5 max-sm:w-full max-sm:flex-row max-sm:overflow-x-auto max-sm:border-r-0 max-sm:border-b" :aria-label="t('Control sections')">
+          <nav class="flex w-48 shrink-0 flex-col gap-1 overflow-y-auto border-r border-separator bg-sidebar p-2.5 max-sm:w-full max-sm:flex-row max-sm:overflow-x-auto max-sm:border-r-0 max-sm:border-b" :aria-label="t('Control sections')">
             <a
               v-for="entry in sections"
               :key="entry.key"
               :href="formatRoute(sectionRoute(entry.key))"
               :aria-current="section === entry.key ? 'page' : undefined"
-              class="flex h-9 shrink-0 items-center gap-2 rounded-sm px-2.5 text-sm transition-colors hover:bg-hover"
-              :class="section === entry.key ? 'bg-selected text-fg' : 'text-fg-muted'"
+              class="flex h-9 shrink-0 items-center gap-2 rounded-md px-2.5 text-sm transition-colors hover:bg-hover"
+              :class="section === entry.key ? 'bg-selected font-medium text-fg' : 'text-fg-muted'"
               @click.prevent="emit('navigate', sectionRoute(entry.key))"
             >
               <Icon :name="entry.icon" size="sm" />

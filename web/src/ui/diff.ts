@@ -10,7 +10,7 @@ export function diff(options: { single?: boolean; framed?: boolean } = {}): stri
     "[&_.mk]:text-center [&_.mk]:text-fg-subtle [&_.mk]:select-none [&_.add]:bg-(--ev-add) [&_.add_.mk]:text-success [&_.del]:bg-(--ev-del) [&_.del_.mk]:text-danger",
     "[&_.hunk]:bg-[color-mix(in_oklab,var(--fg)_3%,transparent)] [&_.hunk]:px-3.5 [&_.hunk]:py-1 [&_.hunk]:text-fg-subtle",
     options.framed
-      ? "mt-0.5 mb-1.5 ml-3.25 max-h-80 overflow-auto rounded-sm border border-border bg-(--ev-code)"
+      ? "mt-0.5 mb-1.5 ml-3.25 max-h-80 overflow-auto rounded-lg border border-border bg-(--ev-code)"
       : "",
   ].join(" ");
 }

@@ -30,10 +30,10 @@ function toggle() {
 </script>
 
 <template>
-  <div class="thinking-line text-sm leading-[1.385] text-fg-muted">
+  <div class="thinking-line text-sm leading-[1.385] text-fg-subtle">
     <button
       type="button"
-      class="-ml-1.5 flex min-h-6.5 w-fit max-w-full items-center gap-1.75 rounded-sm px-1.5 py-0.75 text-left transition-colors focus-visible:shadow-(--ring-inset) enabled:hover:text-fg [&_.chev]:text-fg-subtle [&_.chev]:transition-transform"
+      class="flex min-h-6 w-fit max-w-full items-center gap-1.5 rounded-sm py-0 text-left transition-colors focus-visible:shadow-(--ring-inset) enabled:hover:text-fg-muted [&_.chev]:size-4 [&_.chev]:text-fg-subtle [&_.chev]:transition-transform"
       :class="open ? 'text-fg [&_.chev]:rotate-90' : 'text-inherit'"
       :disabled="redacted"
       :aria-expanded="redacted ? undefined : open"

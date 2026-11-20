@@ -114,11 +114,11 @@ function barWidth(summary: UsageSummary): string {
       </Button>
     </header>
     <div class="min-h-0 flex-1 overflow-y-auto">
-      <div class="mx-auto max-w-[calc(780px*var(--ev-scale))] px-(--ev-gutter) pt-4.5 pb-12 @max-[54.2857em]/vp:px-4 @max-[54.2857em]/vp:pt-2 @max-[54.2857em]/vp:pb-10">
+      <div class="w-full px-8 pt-6 pb-12 @max-[44.2857em]/vp:px-4 @max-[44.2857em]/vp:pt-4 @max-[44.2857em]/vp:pb-10">
         <p v-if="error" class="error hint">{{ error }}</p>
         <Skeleton v-else-if="loading && !usage" />
         <template v-else-if="usage">
-          <div class="grid grid-cols-4 @max-[54.2857em]/vp:grid-cols-2 [&>div]:flex [&>div]:flex-col [&>div]:gap-1 [&>div]:px-4.5 [&>div]:py-4 [&>div+div]:shadow-[inset_1px_0_0_var(--ev-separator)] @max-[54.2857em]/vp:[&>div:nth-child(3)]:shadow-[inset_0_1px_0_var(--ev-separator)] @max-[54.2857em]/vp:[&>div:nth-child(4)]:shadow-[inset_1px_0_0_var(--ev-separator),inset_0_1px_0_var(--ev-separator)] [&_.k]:text-xs [&_.k]:text-fg-muted [&_.v]:text-(length:--ev-display) [&_.v]:font-semibold [&_.v]:tracking-[-0.02em] [&_.v]:tabular-nums" :class="PANEL">
+          <div class="grid grid-cols-4 @max-[54.2857em]/vp:grid-cols-2 [&>div]:flex [&>div]:flex-col [&>div]:gap-1 [&>div]:px-4.5 [&>div]:py-4 [&>div+div]:shadow-[inset_1px_0_0_var(--ev-separator)] @max-[54.2857em]/vp:[&>div:nth-child(3)]:shadow-[inset_0_1px_0_var(--ev-separator)] @max-[54.2857em]/vp:[&>div:nth-child(4)]:shadow-[inset_1px_0_0_var(--ev-separator),inset_0_1px_0_var(--ev-separator)] [&_.k]:text-xs [&_.k]:text-fg-muted [&_.v]:text-(length:--ev-display) [&_.v]:font-medium [&_.v]:tracking-[-0.02em] [&_.v]:tabular-nums" :class="PANEL">
             <div :title="t('From provider bills; estimated from list prices when missing')">
               <span class="k">{{ t("Cost") }}</span>
               <span class="v">{{ formatCost(usage.total.cost) }}</span>

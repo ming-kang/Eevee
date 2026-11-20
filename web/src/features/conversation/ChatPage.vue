@@ -173,7 +173,7 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
     </header>
     <a
       v-if="board?.openProposals.length"
-      class="mx-(--ev-gutter) my-2 flex items-center gap-2 rounded-sm border border-border px-3 py-2 text-sm text-fg hover:bg-hover"
+      class="mx-(--ev-gutter) my-2 flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-fg hover:bg-hover"
       :href="formatRoute({ name: 'control', section: 'memory', pid: project.id })"
     >
       <span class="count user">{{ board.openProposals.length }}</span>
@@ -182,8 +182,8 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
     </a>
 
     <div v-if="empty" class="mt-auto flex animate-[ev-rise_var(--ev-slow)_var(--ev-ease)] flex-col items-center gap-1.5 px-(--ev-gutter) pb-5.5 text-center">
-      <BrandLogo class="mb-1 size-8" />
-      <h2 class="text-(length:--ev-display) leading-[1.3] font-semibold tracking-[-0.02em]" :title="project.workspace">{{ project.title }}</h2>
+      <BrandLogo class="mb-2 size-6 text-fg-muted" />
+      <h2 class="text-xl leading-[1.4] font-medium tracking-[-0.02em]" :title="project.workspace">{{ project.title }}</h2>
       <p class="mono ellipsis max-w-[min(100%,calc(480px*var(--ev-scale)))] text-xs text-fg-subtle">{{ project.workspace }}</p>
     </div>
     <div v-else-if="displayItems.length === 0" class="chat">

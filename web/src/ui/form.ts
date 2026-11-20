@@ -23,7 +23,7 @@ export const FIELD_NOTE =
 
 /** A section title above a group of rows; a form tightens the gap above its `.section-t`. */
 export const SECTION_T =
-  "section-t mt-5 flex min-h-(--ev-h-sm) items-center gap-2 [&_.count]:font-medium [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:tracking-(--ev-tracking)";
+  "section-t mt-5 flex min-h-(--ev-h-sm) items-center gap-2 [&_.count]:font-medium [&_h3]:text-xs [&_h3]:font-medium [&_h3]:text-fg-subtle [&_h3]:tracking-(--ev-tracking)";
 export const FORM = "flex flex-col gap-3 [&>.section-t]:mt-2";
 /** A stacked field: a small label over its control. */
 export const FIELD =
@@ -31,7 +31,7 @@ export const FIELD =
 export const TOGGLE = "toggle inline-flex cursor-pointer items-center gap-2 text-sm text-fg";
 /** A `details` whose summary leads with a chevron that turns down when open. */
 export const DISCLOSURE =
-  "[&>summary]:inline-flex [&>summary]:cursor-pointer [&>summary]:list-none [&>summary]:items-center [&>summary]:gap-1.5 [&>summary]:py-1 [&>summary]:text-sm [&>summary]:font-semibold [&>summary::-webkit-details-marker]:hidden [&>summary]:before:size-1.5 [&>summary]:before:-rotate-45 [&>summary]:before:border-r-[1.5px] [&>summary]:before:border-b-[1.5px] [&>summary]:before:border-current [&>summary]:before:transition-transform [&>summary]:before:duration-(--ev-fast) [&>summary]:before:content-[''] open:[&>summary]:before:rotate-45";
+  "[&>summary]:inline-flex [&>summary]:cursor-pointer [&>summary]:list-none [&>summary]:items-center [&>summary]:gap-1.5 [&>summary]:py-1 [&>summary]:text-sm [&>summary]:font-medium [&>summary::-webkit-details-marker]:hidden [&>summary]:before:size-1.5 [&>summary]:before:-rotate-45 [&>summary]:before:border-r-[1.5px] [&>summary]:before:border-b-[1.5px] [&>summary]:before:border-current [&>summary]:before:transition-transform [&>summary]:before:duration-(--ev-fast) [&>summary]:before:content-[''] open:[&>summary]:before:rotate-45";
 /** The form's actions, kept in reach at the bottom of the page while it scrolls. */
 export const FORM_FOOT =
-  "sticky bottom-0 z-2 mt-1 flex items-center gap-2 bg-(--ev-page) py-3 shadow-[0_-1px_0_var(--ev-separator)] [&_.error]:text-xs [&_.error]:whitespace-pre-wrap";
+  "sticky bottom-0 z-2 mt-1 flex items-center gap-2 bg-(--ev-page) py-3 shadow-[0_-0.5px_0_var(--ev-separator)] [&_.error]:text-xs [&_.error]:whitespace-pre-wrap";

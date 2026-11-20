@@ -9,7 +9,7 @@ export function uWrap(pending = false): string {
 
 export function msgUser(pending = false): string {
   return [
-    "msg-user max-w-[min(80%,calc(560px*var(--ev-scale)))] rounded-lg border border-[color-mix(in_oklab,var(--border)_65%,transparent)] bg-(--ev-msg-user) px-3.75 py-2.5 text-base leading-[1.572] whitespace-pre-wrap wrap-anywhere @max-[54.2857em]/vp:max-w-[88%]",
+    "msg-user max-w-[min(80%,calc(560px*var(--ev-scale)))] rounded-xl bg-(--ev-msg-user) px-3.75 py-2.5 text-base leading-[1.572] whitespace-pre-wrap wrap-anywhere @max-[54.2857em]/vp:max-w-[88%]",
     pending ? "text-fg-muted" : "text-(color:--ev-prose)",
   ].join(" ");
 }

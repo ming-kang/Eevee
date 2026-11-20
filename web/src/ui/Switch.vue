@@ -13,7 +13,7 @@ defineEmits<{ "update:modelValue": [value: boolean] }>();
     @update:model-value="$emit('update:modelValue', $event)"
   >
     <SwitchThumb
-      class="block size-3 translate-x-0.5 rounded-full bg-white shadow-[0_1px_2px_rgb(0_0_0/0.2)] transition-transform duration-200 data-[state=checked]:translate-x-3.5"
+      class="block size-3 translate-x-0.5 rounded-full bg-(--switch-thumb) shadow-[0_1px_2px_rgb(0_0_0/0.2)] transition-transform duration-200 data-[state=checked]:translate-x-3.5"
     />
   </SwitchRoot>
 </template>

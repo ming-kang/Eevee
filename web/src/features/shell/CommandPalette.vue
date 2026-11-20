@@ -86,10 +86,10 @@ function onKeydown(event: KeyboardEvent): void {
 <template>
   <DialogRoot :open="open" @update:open="(next) => next || emit('close')">
     <DialogPortal>
-      <DialogOverlay class="fixed inset-0 z-50 bg-overlay backdrop-blur-[4px] animate-[ev-fade_var(--ev-regular)_var(--ev-ease)]" />
+      <DialogOverlay class="fixed inset-0 z-50 bg-overlay animate-[ev-fade_var(--ev-regular)_var(--ev-ease)]" />
       <div v-if="open" class="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[13vh] pb-4">
     <DialogContent
-      class="flex w-[min(calc(600px*var(--ev-scale)),100%)] animate-[ev-pop_var(--ev-regular)_var(--ev-ease)] flex-col overflow-hidden rounded-lg border border-border bg-(--ev-glass-bg) shadow-(--ev-shadow-modal) backdrop-blur-(--ev-glass-blur) backdrop-saturate-(--ev-glass-sat)"
+      class="flex w-[min(calc(600px*var(--ev-scale)),100%)] animate-[ev-pop_var(--ev-regular)_var(--ev-ease)] flex-col overflow-hidden rounded-panel border-0 bg-(--ev-glass-bg) shadow-(--ev-shadow-modal) backdrop-blur-(--ev-glass-blur) backdrop-saturate-(--ev-glass-sat)"
       :aria-describedby="undefined"
       @keydown="onKeydown"
       @open-auto-focus="focusInput"

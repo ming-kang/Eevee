@@ -7,7 +7,7 @@ export type ColumnSpec = { min: number; max: number; default: number };
 /** Base-pixel column limits: the numbers at the default interface size. Every public function
  *  takes a `scale` (text size / 14) — geometry grows with the interface, stored widths stay px. */
 export const SIDE: ColumnSpec = { min: 212, max: 420, default: 264 };
-export const RAIL: ColumnSpec = { min: 280, max: 560, default: 340 };
+export const RAIL: ColumnSpec = { min: 280, max: 560, default: 480 };
 export const WORKER_RAIL: ColumnSpec = { min: 360, max: Number.POSITIVE_INFINITY, default: 540 };
 export const MAIN_MIN = 420;
 

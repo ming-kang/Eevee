@@ -30,7 +30,7 @@ defineEmits<{
 
 <template>
   <a
-    class="flex min-h-8 items-center gap-2.25 rounded-sm px-2 text-sm tracking-(--ev-tracking) text-fg transition-colors focus-visible:shadow-(--ring-inset) pointer-coarse:min-h-9.5"
+    class="flex h-9 flex-none items-center gap-2 rounded-md px-2.5 text-sm tracking-(--ev-tracking) text-fg transition-colors focus-visible:shadow-(--ring-inset)"
     :class="active ? 'bg-selected font-medium [--ev-glyph-cut:var(--selected)]' : 'hover:bg-hover'"
     :href="href"
     :aria-label="`${project.title} · ${statusLabel}`"

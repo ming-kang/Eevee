@@ -16,6 +16,8 @@ import {
 const VP = 1600;
 
 test("Worker rail uses a wider default and only caps at the remaining center minimum", () => {
+  assert.equal(RAIL.default, 480);
+  assert.equal(readWidth(null, RAIL), 480);
   assert.equal(WORKER_RAIL.default, 540);
   assert.equal(fitRail(0, VP, SIDE.default, 1, WORKER_RAIL), 360);
   assert.equal(fitRail(540, VP, SIDE.default, 1, WORKER_RAIL), 540);

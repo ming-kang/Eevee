@@ -197,14 +197,14 @@ function commitTurns(): void {
 </script>
 
 <template>
-  <Segmented v-model="selected" mode="tabs" size="md" class="self-start [&_.n]:text-(length:--ev-caption) [&_.n]:text-fg-subtle [&_.n]:tabular-nums" id-prefix="role-tab" controls="role-panel" :options="roles.map((item) => ({ value: item.role, label: ROLE_LABEL[item.role] }))" :label="t('Roles')">
+  <Segmented v-model="selected" mode="tabs" appearance="rail" class="self-start [&_.n]:text-(length:--ev-caption) [&_.n]:text-fg-subtle [&_.n]:tabular-nums" id-prefix="role-tab" controls="role-panel" :options="roles.map((item) => ({ value: item.role, label: ROLE_LABEL[item.role] }))" :label="t('Roles')">
     <template #default="{ option, index }">
       <span>{{ option.label }}</span>
       <span v-if="(roles[index]?.enabled.length ?? 0) > 0" class="n">{{ roles[index]?.enabled.length }}</span>
     </template>
   </Segmented>
 
-  <div v-if="role" id="role-panel" class="[&>*+*]:border-t [&>*+*]:border-separator" :class="PANEL" role="tabpanel" :aria-labelledby="`role-tab-${role.role}`">
+  <div v-if="role" id="role-panel" class="rows [&>*+*]:border-t [&>*+*]:border-separator" :class="PANEL" role="tabpanel" :aria-labelledby="`role-tab-${role.role}`">
     <div :class="rowClass()">
       <div :class="rowMain()">
         <span :class="ROW_DESC">{{ ROLE_DESC[role.role] }}</span>
