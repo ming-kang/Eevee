@@ -52,7 +52,7 @@ function sectionRoute(section: ControlSection): Route {
       <DialogContent
         ref="content"
         :aria-describedby="undefined"
-        class="control-dialog fixed top-1/2 left-1/2 z-50 flex h-[min(88dvh,960px)] w-[min(94vw,1280px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-panel border-0 bg-surface text-fg shadow-prominent max-sm:h-dvh max-sm:w-screen max-sm:rounded-none max-sm:border-0"
+        class="control-dialog fixed top-1/2 left-1/2 z-50 flex h-[min(720px,calc(100dvh-64px))] w-[min(920px,calc(100vw-64px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-panel border-0 bg-surface text-fg shadow-prominent max-sm:h-dvh max-sm:w-screen max-sm:rounded-none max-sm:border-0"
         @close-auto-focus="(event) => event.preventDefault()"
       >
         <header class="flex h-13 shrink-0 items-center gap-3 border-b border-separator px-4">

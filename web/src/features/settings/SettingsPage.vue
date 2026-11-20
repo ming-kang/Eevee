@@ -391,7 +391,7 @@ const VALUE_TEXT = "text-right font-mono text-xs leading-[1.4] wrap-anywhere tex
 
 <template>
   <section class="page-wrap overflow-y-auto">
-        <div class="settings-content flex w-full max-w-[calc(704px*var(--ev-scale))] flex-col gap-4 px-8 pt-6 pb-14 @max-[44.2857em]/vp:px-4 @max-[44.2857em]/vp:pt-4 @max-[44.2857em]/vp:pb-12">
+        <div class="settings-content flex w-full flex-col gap-4 px-8 pt-6 pb-14 @max-[44.2857em]/vp:px-4 @max-[44.2857em]/vp:pt-4 @max-[44.2857em]/vp:pb-12">
           <template v-if="section === 'general'">
             <SectionHeader :title="t('General')" />
             <div :class="rows()">

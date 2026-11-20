@@ -114,7 +114,7 @@ function barWidth(summary: UsageSummary): string {
       </Button>
     </header>
     <div class="min-h-0 flex-1 overflow-y-auto">
-      <div class="w-full max-w-[calc(704px*var(--ev-scale))] px-8 pt-6 pb-12 @max-[44.2857em]/vp:px-4 @max-[44.2857em]/vp:pt-4 @max-[44.2857em]/vp:pb-10">
+      <div class="w-full px-8 pt-6 pb-12 @max-[44.2857em]/vp:px-4 @max-[44.2857em]/vp:pt-4 @max-[44.2857em]/vp:pb-10">
         <p v-if="error" class="error hint">{{ error }}</p>
         <Skeleton v-else-if="loading && !usage" />
         <template v-else-if="usage">
