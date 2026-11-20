@@ -8,6 +8,7 @@ import Icon from "../../ui/Icon.vue";
 const props = defineProps<{
   controlPid?: string;
   controlTitle?: string;
+  pendingProposals?: number;
   routeName: Route["name"];
 }>();
 
@@ -48,7 +49,7 @@ const backHref = computed(() =>
     <div class="inline-flex items-center gap-0.5">
       <component
         :is="controlPid ? 'a' : 'span'"
-        class="inline-grid size-(--ev-h-sm) place-items-center rounded-sm transition-[background-color,color,box-shadow] pointer-coarse:size-9"
+        class="relative inline-grid size-(--ev-h-sm) place-items-center rounded-sm transition-[background-color,color,box-shadow] pointer-coarse:size-9"
         :class="[routeName === 'memory' ? 'bg-selected text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg', { 'pointer-events-none opacity-40': !controlPid }]"
         :href="controlPid ? formatRoute({ name: 'memory', pid: controlPid }) : undefined"
         :title="controlTitle ? `${t('Memory')} · ${controlTitle}` : t('Memory')"
@@ -56,6 +57,7 @@ const backHref = computed(() =>
         @click="$emit('navigate')"
       >
         <Icon name="book" size="sm" />
+        <span v-if="pendingProposals" class="count user absolute -right-1 -top-1">{{ pendingProposals }}</span>
       </component>
       <component
         :is="controlPid ? 'a' : 'span'"

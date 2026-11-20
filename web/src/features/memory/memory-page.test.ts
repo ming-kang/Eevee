@@ -3,6 +3,17 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { parse } from "vue/compiler-sfc";
 
+test("proposal review is reachable, renders file diffs and wires both decisions", async () => {
+  const page = await readFile(new URL("./MemoryPage.vue", import.meta.url), "utf8");
+  const review = await readFile(new URL("./ProposalReview.vue", import.meta.url), "utf8");
+  assert.deepEqual(parse(review).errors, []);
+  assert.match(page, /<ProposalReview v-if="tab === 'proposals'"/);
+  assert.match(review, /:diffs="review.detail.value.files"/);
+  assert.match(review, /@click="review.approve\(\)"/);
+  assert.match(review, /@click="review.reject\(\)"/);
+  assert.match(review, /v-model="review.reason.value"/);
+});
+
 test("global memory hides create, rename and delete while keeping editing available", async () => {
   const { descriptor, errors } = parse(
     await readFile(new URL("./MemoryPage.vue", import.meta.url), "utf8"),

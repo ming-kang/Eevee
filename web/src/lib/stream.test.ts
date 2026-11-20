@@ -135,7 +135,7 @@ test("subprotocol auth, hello replays the subscriptions, events are dispatched b
   ws.receive({
     type: "board",
     id: "b1",
-    board: { tickets: [], openQuestions: [], router: { running: false } },
+    board: { tickets: [], openProposals: [], openQuestions: [], router: { running: false } },
   });
   ws.receive({
     type: "value",

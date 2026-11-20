@@ -1,4 +1,5 @@
 import type { Job, JobId, QuestionId, Report, TicketId } from "./domain.ts";
+import type { MemoryProposal } from "./memory.ts";
 
 export type JobOutcome = Pick<Job, "status" | "exitCode" | "error">;
 
@@ -7,6 +8,15 @@ export type JobOutcome = Pick<Job, "status" | "exitCode" | "error">;
  * its reader from the same facts, so neither has to read the other's prose.
  */
 export type Notice =
+  | {
+      type: "proposal-decided";
+      proposalId: string;
+      scope: MemoryProposal["scope"];
+      status: MemoryProposal["status"];
+      summary: string;
+      reason?: string;
+      file?: string;
+    }
   | { type: "report"; ticketId: TicketId; title: string; report: Report }
   /** A ticket this one waits on was accepted; `report` is the one that closed it. */
   | { type: "accepted"; ticketId: TicketId; title: string; report?: Report }

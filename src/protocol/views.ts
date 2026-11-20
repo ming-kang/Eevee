@@ -4,6 +4,8 @@ import type {
   ConfigProblem,
   Job,
   MemoryChange,
+  MemoryChangeDetail,
+  MemoryProposal,
   ModelChoice,
   ModelDefaults,
   Problem,
@@ -48,7 +50,12 @@ export type BoardRouterView = RunSummary;
 export type BoardView = {
   tickets: TicketView[];
   openQuestions: Question[];
+  openProposals: Pick<MemoryProposal, "id" | "scope" | "summary" | "source">[];
   router: BoardRouterView;
+};
+export type MemoryProposalView = MemoryProposal & {
+  files: MemoryChangeDetail["files"];
+  conflict?: string;
 };
 
 export type ChatLine = {

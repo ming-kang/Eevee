@@ -9,6 +9,7 @@ import type { Route } from "./router.ts";
 export type ProjectRowState = {
   kind: "user" | "bad" | "run" | "rest";
   questionCount: number;
+  proposalCount: number;
   openCount: number;
   runningTickets: number;
   jobCount: number;
@@ -29,6 +30,7 @@ export function deriveProjectState(input: {
   const board = input.board;
   const openTickets = (board?.tickets ?? []).filter((t) => t.ticket.status === "open");
   const questionCount = countPendingQuestions(board);
+  const proposalCount = board?.openProposals?.length ?? 0;
   const runningTickets = openTickets.filter(
     (t) => t.stage === "working" || t.stage === "jobs",
   ).length;
@@ -41,13 +43,14 @@ export function deriveProjectState(input: {
   const routerFailed = router?.failure && failureText(router.failure);
 
   let kind: ProjectRowState["kind"] = "rest";
-  if (questionCount > 0) kind = "user";
+  if (questionCount + proposalCount > 0) kind = "user";
   else if (routerFailed !== undefined) kind = "bad";
   else if (runningTickets > 0 || routerRunning) kind = "run";
 
   return {
     kind,
     questionCount,
+    proposalCount,
     openCount: openTickets.length,
     runningTickets,
     jobCount,

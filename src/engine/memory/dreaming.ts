@@ -11,7 +11,7 @@ import {
   UserEntry,
 } from "@earendil-works/pi-durable";
 import { formatAddress, type Ticket, type TicketId } from "../../domain/index.ts";
-import { Board, ReportLog, TicketDoc } from "../docs.ts";
+import { Board, ProposalDoc, ReportLog, TicketDoc } from "../docs.ts";
 
 /** Dreaming's trigger policy; the settings' resolved `dreaming` object carries it. */
 export type DreamPolicy = {
@@ -75,6 +75,10 @@ export async function dreamIfDue(
 ): Promise<TicketId | undefined> {
   const policy = port.policy();
   if (policy === undefined) return undefined;
+  for (const id of (await host.snapshot(Board, context))?.openProposals ?? []) {
+    const proposal = await host.snapshot(ProposalDoc, id, context);
+    if (proposal?.status === "pending" && proposal.source.kind === "dreaming") return undefined;
+  }
   const log = (await host.snapshot(DreamLog, context)) ?? emptyLog();
   if (log.ticket !== null && (await dreaming(host, log.ticket, context))) return undefined;
   if (log.lastAt !== null && now - log.lastAt < policy.minGapMs) return undefined;
@@ -92,6 +96,10 @@ export async function dreamIfDue(
   const records = await newRecords(host, log, (id) => port.contextOf(id, context), context);
   if (records.inputs.length === 0) return undefined;
   return host.commit(async (tx) => {
+    for (const id of (await tx.doc(Board)).openProposals) {
+      const proposal = await tx.doc(ProposalDoc, id, null);
+      if (proposal.status === "pending" && proposal.source.kind === "dreaming") return undefined;
+    }
     const id = await port.open(tx, draft(records.inputs), now, context);
     const doc = await tx.doc(DreamLog);
     doc.lastAt = now;
@@ -173,12 +181,12 @@ async function newRecords(
 function draft(inputs: string[]): DreamDraft {
   return {
     title: "Tidy up the memory store",
-    goal: "Review the new records and reports listed in the inputs, especially the lessons and the actual execution results. Keep the project's memory store in order.",
+    goal: "Review the new records and reports listed in the inputs, especially lessons and actual execution results. Propose lasting improvements to memory for user approval; do not claim pending edits are saved.",
     inputs,
     acceptance: [
-      "Overlapping notes are merged. Temporary details and stale entries are removed.",
-      "Old notes that execution results override are corrected in place, with the source noted.",
-      "The MEMORY.md index matches the topic files and stays within 200 lines.",
+      "The proposal merges overlapping notes and removes temporary details and stale entries.",
+      "The proposal corrects old notes that execution results override, with the source noted.",
+      "The proposed MEMORY.md index matches the proposed topic files and stays within 200 lines.",
     ],
   };
 }

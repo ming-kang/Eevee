@@ -128,10 +128,18 @@ test("the dreamer's automatic acceptance withdraws the question that was waiting
   }
 });
 
-test("once the project is idle with finished work, a tidying ticket lists the new records; tidying closes it and commits the memory", async () => {
+test("a closed dreaming ticket leaves proposals; approval commits and rejection wakes the Router", async () => {
+  let dreamerEdits = 0;
   const brain: Brain = ({ role, last }) => {
     if (role === "dreamer") {
       if (toolName(last) === "memory") {
+        if (dreamerEdits++ === 0)
+          return call("memory", {
+            action: "write",
+            scope: "global",
+            file: "MEMORY.md",
+            content: "Proposed global advice\n",
+          });
         return call("report", { status: "ready", summary: "tidied up", artifacts: [] });
       }
       if (last?.role === "user") {
@@ -169,21 +177,34 @@ test("once the project is idle with finished work, a tidying ticket lists the ne
     });
     assert.equal(done.ticket.title, "Tidy up the memory store");
     assert.ok(done.ticket.inputs.some((input) => input.startsWith("transcript://")));
-    // The round is saved as a change once the run has ended, which may be just after the ticket closed.
-    await project.until(async () =>
-      (await project.host.memory.history("project")).some(
-        (c) =>
-          c.source.kind === "dreaming" &&
-          c.source.ticketId === done.ticket.id &&
-          c.summary === "create dream.md",
-      ),
+    const proposals = await project.until(async () => {
+      const pending = (await project.host.proposals.list()).filter((p) => p.status === "pending");
+      return pending.length === 2 && pending;
+    });
+    assert.equal(
+      (await project.host.memory.files("project")).some((f) => f.path === "dream.md"),
+      false,
     );
-    // Nothing new happened since, so the next check opens no ticket.
     await sleep(700);
     const dreamers = (await project.host.board()).tickets.filter(
       (t) => t.ticket.role === "dreamer",
     );
     assert.equal(dreamers.length, 1);
+    const local = proposals.find((p) => p.scope === "project");
+    const global = proposals.find((p) => p.scope === "global");
+    assert.ok(local && global);
+    const change = await project.host.proposals.approve(local.id);
+    assert.deepEqual(change.source, { kind: "dreaming", ticketId: done.ticket.id });
+    assert.equal((await project.host.memory.file("project", "dream.md")).content, "- tidied\n");
+    await project.host.proposals.reject(global.id, "Keep global advice unchanged");
+    await project.until(async () =>
+      project.calls.some(
+        (turn) =>
+          turn.role === "router" &&
+          /Memory proposal .*rejected/.test(textOf(turn.last)) &&
+          textOf(turn.last).includes("Keep global advice unchanged"),
+      ),
+    );
   } finally {
     await project.close();
   }

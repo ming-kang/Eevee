@@ -24,7 +24,7 @@ import type {
   UsageSummary,
   UsageView,
 } from "../protocol/contract.ts";
-import { Board, QuestionDoc, ReportLog, TicketDoc } from "./docs.ts";
+import { Board, ProposalDoc, QuestionDoc, ReportLog, TicketDoc } from "./docs.ts";
 import { conversationOf, type DocReader, queuedTickets } from "./orchestration/index.ts";
 import { recentLines } from "./transcript.ts";
 
@@ -59,7 +59,18 @@ export async function boardView(
     tickets.push({ ticket, stage, reports, jobs });
   }
   const router = summarizeRun(await reader.snapshot(LiveDoc, ROOT_CONVERSATION_ID, context));
-  return { tickets, openQuestions, router };
+  const openProposals: BoardView["openProposals"] = [];
+  for (const id of state?.openProposals ?? []) {
+    const proposal = await reader.snapshot(ProposalDoc, id, context);
+    if (proposal?.status === "pending")
+      openProposals.push({
+        id,
+        scope: proposal.scope,
+        summary: proposal.summary,
+        source: proposal.source,
+      });
+  }
+  return { tickets, openQuestions, openProposals, router };
 }
 
 export async function conversationView(

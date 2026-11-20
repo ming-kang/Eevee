@@ -396,6 +396,7 @@ watch(
       <MemoryPage
         :client="session.client"
         :project="currentProject"
+        :board="currentBoardState?.board"
         @modal-change="memoryModalOpen = $event"
       />
     </template>

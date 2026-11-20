@@ -2,6 +2,7 @@ import {
   formatAddress,
   type JobId,
   type JobOutcome,
+  type MemoryProposal,
   type Notice,
   type Question,
   type Report,
@@ -24,6 +25,7 @@ export type Delivery = {
 type TicketRef = Pick<Ticket, "id" | "role" | "title" | "deliverTo">;
 
 export type EngineEvent =
+  | { type: "proposal-decided"; proposal: MemoryProposal; file?: string }
   | { type: "user-message"; id: string; text: string }
   | { type: "report"; ticket: TicketRef; report: Report }
   | { type: "ticket-accepted"; ticket: TicketRef; report: Report | undefined }
@@ -55,6 +57,23 @@ const ticketTarget = (id: TicketId): Target => ({ kind: "ticket", id });
 
 export function route(event: EngineEvent): Delivery[] {
   switch (event.type) {
+    case "proposal-decided": {
+      const { proposal, file } = event;
+      const notice: Notice = {
+        type: "proposal-decided",
+        proposalId: proposal.id,
+        scope: proposal.scope,
+        status: proposal.status,
+        summary: proposal.summary,
+        ...(proposal.reason ? { reason: proposal.reason } : {}),
+        ...(file ? { file } : {}),
+      };
+      return [
+        proposal.status === "approved"
+          ? record(ROUTER, notice, `proposal:${proposal.id}`)
+          : tell(ROUTER, "followUp", notice, `proposal:${proposal.id}`),
+      ];
+    }
     case "user-message":
       return [wake(ROUTER, "steer", event.text, `user:${event.id}`)];
 
@@ -215,6 +234,8 @@ type WordedNotice = Exclude<Notice, { type: "opening" | "router-message" }>;
 
 function speak(notice: WordedNotice): string {
   switch (notice.type) {
+    case "proposal-decided":
+      return `Memory proposal ${notice.proposalId} (${notice.scope}) ${notice.status}: ${notice.summary}.${notice.reason ? ` Reason: ${notice.reason}` : ""}${notice.file ? ` Conflicting file: ${notice.file}.` : ""} Re-read current memory before proposing adjustments.`;
     case "report":
       return renderReport({ id: notice.ticketId, title: notice.title }, notice.report);
     case "accepted": {
@@ -246,7 +267,7 @@ function speak(notice: WordedNotice): string {
     case "panel-withdrawn":
       return `The user withdrew the message sent to ${notice.ticketId} before it was read:\n${notice.text}`;
     case "handoff-nudge":
-      return "Your context has grown very long. First record the decisions with long-term value in memory, then write a handoff summary with handoff and continue from a fresh context.";
+      return "Your context has grown very long. First propose the decisions with long-term value for memory (they need user approval), then write a handoff summary with handoff, including pending proposals, and continue from a fresh context.";
     case "reminder": {
       const list = notice.reports
         .map(

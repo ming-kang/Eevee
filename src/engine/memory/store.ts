@@ -2,24 +2,24 @@ import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { lstat, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import { applyPatch, reversePatch, structuredPatch } from "diff";
 import {
+  isMemoryUndo,
+  type MemoryActions,
   type MemoryChange,
   type MemoryChangeDetail,
+  type MemoryOp,
   type MemorySource,
+  type MemoryUndo,
   ProblemError,
   type TicketId,
 } from "../../domain/index.ts";
 import { isNotFound, readText, writeFileAtomic } from "../../shared/fs.ts";
 import { resolveInside } from "../../shared/paths.ts";
 import { type GitChange, GitStore } from "./git.ts";
+import { previewFiles } from "./preview.ts";
 
-export type MemoryOp = (
-  | { action: "create"; file: string; content: string }
-  | { action: "edit"; file: string; oldText: string; newText: string }
-  | { action: "write"; file: string; content: string }
-  | { action: "delete"; file: string }
-  | { action: "rename"; from: string; to: string }
-) & { version?: string };
+export type { MemoryOp } from "../../domain/index.ts";
 
 export function memoryVersion(content: string | undefined): string {
   return content === undefined ? "" : createHash("sha256").update(content).digest("hex");
@@ -144,12 +144,98 @@ export class MemoryStore {
     });
   }
 
+  extend(ops: readonly MemoryOp[], op: MemoryOp): Promise<MemoryOp[]> {
+    return this.#serial(async () => {
+      const prepared = await this.#prepare(ops);
+      const current = async (file: string) => {
+        const path = await this.#path(file, true);
+        return prepared.after.has(path) ? prepared.after.get(path) : this.#read(file);
+      };
+      const next: MemoryOp = {
+        ...op,
+        version: memoryVersion(await current(op.action === "rename" ? op.from : op.file)),
+      };
+      if (next.action === "rename") next.toVersion = memoryVersion(await current(next.to));
+      const actions = [...ops, next];
+      await this.#prepare(actions);
+      return actions;
+    });
+  }
+
+  preview(actions: MemoryActions) {
+    return this.#serial(async () => {
+      const ops = isMemoryUndo(actions)
+        ? await this.#undoOps(actions[0].change)
+        : actions.map((op) => ({
+            ...op,
+            version: undefined,
+            ...(op.action === "rename" ? { toVersion: undefined } : {}),
+          }));
+      const prepared = await this.#prepare(ops);
+      return previewFiles(prepared.before, prepared.after);
+    });
+  }
+
+  proposeUndo(id: number): Promise<MemoryUndo> {
+    return this.#serial(async () => {
+      const ops = await this.#undoOps(id);
+      const versions: Record<string, string> = {};
+      for (const op of ops) if (op.action !== "rename") versions[op.file] = op.version ?? "";
+      return { action: "undo", change: id, versions };
+    });
+  }
+
+  async #undoOps(id: number): Promise<MemoryOp[]> {
+    const version = await this.#find(id);
+    if (id === 1) throw new ProblemError({ code: "undo_failed", change: id });
+    const ops: MemoryOp[] = [];
+    for (const { path } of await this.#git.fileChanges(version.hash)) {
+      await this.#path(path, true);
+      const current = await this.#read(path);
+      const before = await this.#git.content(version.hash, path, true);
+      const after = await this.#git.content(version.hash, path);
+      const fail = () =>
+        new MemoryConflict(path, "Later edits conflict with this undo.", current ?? "");
+      if (before === undefined) {
+        if (current !== after) throw fail();
+        ops.push({ action: "delete", file: path, version: memoryVersion(current) });
+      } else if (after === undefined) {
+        if (current !== undefined) throw fail();
+        ops.push({ action: "create", file: path, content: before, version: "" });
+      } else {
+        if (current === undefined) throw fail();
+        const content = applyPatch(
+          current,
+          reversePatch(structuredPatch(path, path, before, after)),
+        );
+        if (content === false) throw fail();
+        ops.push({ action: "write", file: path, content, version: memoryVersion(current) });
+      }
+    }
+    await this.#prepare(ops);
+    return ops;
+  }
+
+  requestChange(request: string): Promise<MemoryChange | undefined> {
+    return this.#serial(() => this.#requested(request));
+  }
+
+  async #requested(request: string): Promise<MemoryChange | undefined> {
+    const version = (await this.#versions()).find((v) => v.trailers["Eevee-Request"] === request);
+    return version === undefined ? undefined : this.#change(version);
+  }
+
   apply(
     ops: readonly MemoryOp[],
     source: MemorySource,
     summary?: string,
+    request?: string,
   ): Promise<MemoryChange | undefined> {
     return this.#serial(async () => {
+      if (request) {
+        const change = await this.#requested(request);
+        if (change) return change;
+      }
       if (ops.length === 0) return undefined;
       const prepared = await this.#prepare(ops);
       await this.#captureUserEdits();
@@ -172,12 +258,22 @@ export class MemoryStore {
               `${prepared.before.get(file) === undefined ? "create" : prepared.after.get(file) === undefined ? "delete" : "edit"} ${file}`,
           )
           .join("; ");
-      return this.#save(changed, source, subject);
+      return this.#save(changed, source, subject, request);
     });
   }
 
-  undo(id: number, source: MemorySource): Promise<MemoryChange> {
+  undo(
+    id: number,
+    source: MemorySource,
+    options?: { versions?: Record<string, string>; request?: string },
+  ): Promise<MemoryChange> {
     return this.#serial(async () => {
+      if (options?.request) {
+        const change = await this.#requested(options.request);
+        if (change) return change;
+      }
+      for (const [file, version] of Object.entries(options?.versions ?? {}))
+        this.#checkVersion(file, await this.#read(file), version);
       const version = await this.#find(id);
       if (id === 1) throw new ProblemError({ code: "undo_failed", change: id });
       const files = await this.#git.fileChanges(version.hash);
@@ -189,6 +285,7 @@ export class MemoryStore {
         files.map((file) => file.path),
         source,
         `Undo change #${id}`,
+        options?.request,
       );
     });
   }
@@ -243,6 +340,7 @@ export class MemoryStore {
         const from = await get(op.from);
         this.#checkVersion(op.from, from.current, op.version);
         const to = await get(op.to);
+        this.#checkVersion(op.to, to.current, op.toVersion);
         if (from.current === undefined)
           throw new MemoryConflict(op.from, `${op.from} does not exist.`, "");
         if (from.path === to.path) throw new ProblemError({ code: "invalid", field: "to" });
@@ -368,10 +466,14 @@ export class MemoryStore {
     paths: readonly string[] | "all",
     source: MemorySource,
     subject: string,
+    request?: string,
   ): Promise<MemoryChange> {
     const versions = await this.#versions();
     const id = Math.max(0, ...versions.map((version) => version.id)) + 1;
-    const hash = await this.#git.commit(paths, { subject, trailers: this.#trailers(id, source) });
+    const hash = await this.#git.commit(paths, {
+      subject,
+      trailers: { ...this.#trailers(id, source), ...(request ? { "Eevee-Request": request } : {}) },
+    });
     const version = (await this.#versions()).find((version) => version.hash === hash);
     if (!version) throw new Error("The saved memory change is missing");
     return this.#change(version);

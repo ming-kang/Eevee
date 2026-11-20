@@ -6,6 +6,7 @@ import { BoardFeed, type BoardListener } from "./board-feed.ts";
 
 const board = (marker: number): BoardView => ({
   tickets: [],
+  openProposals: [],
   openQuestions: [
     {
       id: `q${marker}` as never,

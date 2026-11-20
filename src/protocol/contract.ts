@@ -15,8 +15,10 @@ import {
   type JobId,
   type MemoryChange,
   type MemoryChangeDetail,
+  type MemoryProposal,
   type MemoryScope,
   ProblemError,
+  type ProposalId,
   parseConversationRef,
   type Question,
   type QuestionId,
@@ -34,6 +36,7 @@ import type {
   MemoryFileEntry,
   MemoryFileView,
   MemoryMutationView,
+  MemoryProposalView,
   ModelsView,
   ProbedModelView,
   ProjectSummary,
@@ -53,6 +56,7 @@ const param = <T extends string>(schema: Schema<T>): Param<T> => ({
 export const PARAMS = {
   project: param(str({ pattern: "^p[a-zA-Z0-9_-]+$" })),
   ticket: param(unsafe<TicketId>({ type: "string", pattern: "^t[1-9][0-9]*$" })),
+  proposal: param(unsafe<ProposalId>({ type: "string", pattern: "^m[1-9][0-9]*$" })),
   conversation: {
     schema: str({ pattern: "^(router|t[1-9][0-9]*)$" }),
     parse: parseConversationRef,
@@ -238,6 +242,27 @@ export const ROUTES = [
     "GET /api/projects/:project/memory/files",
     project,
     undefined,
+  ),
+  route<{ proposals: MemoryProposal[] }>()(
+    "GET /api/projects/:project/memory/proposals",
+    project,
+    undefined,
+  ),
+  route<MemoryProposalView>()(
+    "GET /api/projects/:project/memory/proposals/:proposal",
+    { ...project, proposal: PARAMS.proposal },
+    undefined,
+  ),
+  route<MemoryChange>()(
+    "POST /api/projects/:project/memory/proposals/:proposal/approve",
+    { ...project, proposal: PARAMS.proposal },
+    undefined,
+  ),
+  route<void>()(
+    "POST /api/projects/:project/memory/proposals/:proposal/reject",
+    { ...project, proposal: PARAMS.proposal },
+    body({ reason: opt(str()) }),
+    204,
   ),
   route<MemoryFileView>()(
     "GET /api/projects/:project/memory/files/:file",

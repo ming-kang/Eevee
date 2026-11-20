@@ -33,6 +33,7 @@ import { Dreaming } from "./dreaming.ts";
 import { Jobs } from "./jobs.ts";
 import { INITIAL_GLOBAL_MEMORY, Memory } from "./memory.ts";
 import { Project } from "./project.ts";
+import { Proposals } from "./proposals.ts";
 import { Questions } from "./questions.ts";
 import { installShared, ProjectSettings } from "./settings.ts";
 import { type ProjectMeta, ProjectStore } from "./store.ts";
@@ -224,6 +225,7 @@ export async function openProject(options: ProjectOptions): Promise<Project> {
     },
   });
   const dispatch = createDispatcher(harness, root, context);
+  const proposals = new Proposals({ project: meta.id, harness, context, dispatch, stores: repos });
   const project = new Project({
     changed: options.changed,
     store,
@@ -231,11 +233,13 @@ export async function openProject(options: ProjectOptions): Promise<Project> {
     feed,
     conversations: new Conversations({ harness, root, context, dispatch }),
     questions: new Questions({ harness, context, dispatch }),
+    proposals,
     jobs: new Jobs({ harness, context, jobs, jobLogPath: jobLog }),
     memory: new Memory(repos),
     activeAt: () => currentActiveAt,
     usage: () => usageView(harness, context),
     close: async () => {
+      await proposals.close();
       watcher.detach();
       await Promise.all([scheduler?.close(), feed.close()]);
       await jobs.close();
