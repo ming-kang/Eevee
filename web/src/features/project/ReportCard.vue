@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isFinalReport, type Report } from "@shared/contracts/index.ts";
+import { isFinalReport, type Report } from "@shared/domain/index.ts";
 import { computed } from "vue";
 import { reportStage } from "../../lib/board.ts";
 import { t } from "../../lib/i18n.ts";

@@ -18,6 +18,7 @@ export default defineConfig({
   // reload the page, which can swallow a one-time sign-in code.
   optimizeDeps: { include: ["@earendil-works/pi-schema"] },
   build: {
+    chunkSizeWarningLimit: 1000,
     outDir: fileURLToPath(new URL("../dist/ui", import.meta.url)),
     emptyOutDir: true,
   },

@@ -9,7 +9,7 @@ export const version: string = JSON.parse(
 
 const extension = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
 
-export const engineEntry = fileURLToPath(new URL(`../engine/main${extension}`, import.meta.url));
+export const engineEntry = fileURLToPath(new URL(`../daemon/main${extension}`, import.meta.url));
 
 export function uiDir(): string | undefined {
   const dir = new URL("dist/ui/", root);

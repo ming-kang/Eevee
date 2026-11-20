@@ -1,4 +1,3 @@
-import type { BoardView, TicketView } from "../../../src/api/contract.ts";
 import type {
   Job,
   Question,
@@ -6,7 +5,8 @@ import type {
   Ticket,
   TicketId,
   TicketStage,
-} from "../../../src/contracts/index.ts";
+} from "../../../src/domain/index.ts";
+import type { BoardView, TicketView } from "../../../src/protocol/contract.ts";
 
 export type RailTab = "tickets" | "jobs" | "detail";
 export type VisualStage = TicketStage | "done" | "cancelled" | "progress";

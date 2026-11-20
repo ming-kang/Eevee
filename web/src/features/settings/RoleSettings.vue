@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { CapabilitiesView } from "@shared/api/contract.ts";
-import type { RoleName } from "@shared/contracts/index.ts";
+import type { CapabilitiesView } from "@shared/protocol/contract.ts";
+import type { RoleName } from "@shared/domain/index.ts";
 import { computed, ref, watch } from "vue";
 import type { IconName } from "../../composables/icons.ts";
 import { t } from "../../lib/i18n.ts";

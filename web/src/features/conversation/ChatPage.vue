@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
-import type { BoardView, ProjectSummary } from "@shared/api/contract.ts";
-import type { QuestionId } from "@shared/contracts/index.ts";
+import type { Client } from "@shared/protocol/client.ts";
+import type { BoardView, ProjectSummary } from "@shared/protocol/contract.ts";
+import type { QuestionId } from "@shared/domain/index.ts";
 import { computed, ref, watch } from "vue";
 import { provideComposerInsert } from "../../composables/composer-bridge.ts";
 import type { ConversationWatch } from "../../composables/engine-data.ts";
@@ -39,7 +39,7 @@ const emit = defineEmits<{
   "project-changed": [];
 }>();
 
-const params = computed(() => ({ project: props.project.id }));
+const params = computed(() => ({ project: props.project.id, conversation: "router" }));
 const conversation = props.conversation;
 const bridge = provideComposerInsert();
 
@@ -73,17 +73,17 @@ watch(
 );
 
 async function retry(): Promise<void> {
-  await props.client.call("POST /api/projects/:project/conversation/retry", params.value);
+  await props.client.call("POST /api/projects/:project/conversations/:conversation/retry", params.value);
 }
 
 async function send(text: string): Promise<void> {
-  await props.client.call("POST /api/projects/:project/messages", params.value, { text });
+  await props.client.call("POST /api/projects/:project/conversations/:conversation/messages", params.value, { text });
 }
 
 /** Interrupting withdraws queued inputs too; their text comes back into the composer, oldest first. */
 async function interrupt(): Promise<void> {
   const pending = queued.value;
-  await props.client.call("POST /api/projects/:project/interrupt", params.value);
+  await props.client.call("POST /api/projects/:project/conversations/:conversation/interrupt", params.value);
   if (pending.length > 0) {
     bridge.insert(
       pending.map((message) => message.text).join("\n\n"),
@@ -142,7 +142,7 @@ function queueEdit(message: QueuedMessage): Promise<void> {
   return queueAction(
     message,
     async () => {
-      await props.client.call("POST /api/projects/:project/queue/:submission/withdraw", {
+      await props.client.call("DELETE /api/projects/:project/conversations/:conversation/queue/:submission", {
         ...params.value,
         submission: message.id,
       });
@@ -153,7 +153,7 @@ function queueEdit(message: QueuedMessage): Promise<void> {
 
 function queueWithdraw(message: QueuedMessage): Promise<void> {
   return queueAction(message, async () => {
-    await props.client.call("POST /api/projects/:project/queue/:submission/withdraw", {
+    await props.client.call("DELETE /api/projects/:project/conversations/:conversation/queue/:submission", {
       ...params.value,
       submission: message.id,
     });

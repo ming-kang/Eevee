@@ -9,14 +9,6 @@ import {
   UsageDoc,
   type UsageState,
 } from "@earendil-works/pi-durable";
-import type {
-  BoardView,
-  ConversationView,
-  TicketView,
-  UsageSummary,
-  UsageView,
-} from "../api/contract.ts";
-import { Board, QuestionDoc, ReportLog, TicketDoc } from "../contracts/docs.ts";
 import {
   deriveStage,
   failureView,
@@ -24,12 +16,16 @@ import {
   type Question,
   summarizeRun,
   type TicketId,
-} from "../contracts/index.ts";
-import {
-  conversationOf,
-  type DocReader,
-  queuedTickets,
-} from "../extensions/orchestration/index.ts";
+} from "../domain/index.ts";
+import type {
+  BoardView,
+  ConversationView,
+  TicketView,
+  UsageSummary,
+  UsageView,
+} from "../protocol/contract.ts";
+import { Board, QuestionDoc, ReportLog, TicketDoc } from "./docs.ts";
+import { conversationOf, type DocReader, queuedTickets } from "./orchestration/index.ts";
 import { recentLines } from "./transcript.ts";
 
 type Reader = DocReader;

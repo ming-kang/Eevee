@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
-import type { BoardView, ProjectSummary } from "@shared/api/contract.ts";
-import type { QuestionId } from "@shared/contracts/index.ts";
+import type { Client } from "@shared/protocol/client.ts";
+import type { BoardView, ProjectSummary } from "@shared/protocol/contract.ts";
+import type { QuestionId } from "@shared/domain/index.ts";
 import { computed, type ShallowRef } from "vue";
 import type { RailTab } from "../../lib/board.ts";
 import type { ConversationWatch } from "../../composables/engine-data.ts";

@@ -9,6 +9,10 @@ import type {
   EntryRecord,
 } from "@earendil-works/pi-durable";
 import { type WebSocket, WebSocketServer } from "ws";
+import type { ConversationRef } from "../domain/index.ts";
+import { ProblemError } from "../domain/index.ts";
+import type { BoardListener } from "../engine/board-feed.ts";
+import type { ProjectSummary } from "../protocol/contract.ts";
 import {
   type ConversationTopic,
   parseStreamRequest,
@@ -17,35 +21,39 @@ import {
   type StreamEvent,
   type StreamRequest,
   TOKEN_PROTOCOL_PREFIX,
-} from "../api/stream.ts";
-import type { TicketId } from "../contracts/index.ts";
-import { ProblemError, problemOf } from "../contracts/index.ts";
-import type { BoardListener } from "../engine/board-feed.ts";
+} from "../protocol/stream.ts";
 import { type Auth, isLoopbackRequest } from "./auth.ts";
+import { problemDetails } from "./http.ts";
 
 /** What the stream reads: the Engine, or a stand-in in tests. */
 export type StreamSource = {
   readonly bootId: string;
-  project(id: string): ProjectStream | undefined;
+  projects: {
+    get(id: string): ProjectStream | undefined;
+    watch(listener: (projects: ProjectSummary[]) => void): () => void;
+  };
 };
 
 export type ProjectStream = {
-  watch(
-    ticket: TicketId | undefined,
-    context: Context,
-    window?: ConversationWindow,
-  ): Promise<WatchHandle<ConversationView>>;
-  entries(
-    ticket: TicketId | undefined,
-    query: Omit<EntryQuery, "conversationId">,
-    limit: number,
-  ): Promise<EntryRecord[]>;
+  conversations: {
+    watch(
+      ref: ConversationRef,
+      context: Context,
+      window?: ConversationWindow,
+    ): Promise<WatchHandle<ConversationView>>;
+    entries(
+      ref: ConversationRef,
+      query: Omit<EntryQuery, "conversationId">,
+      limit: number,
+    ): Promise<EntryRecord[]>;
+  };
   watchBoard(listener: BoardListener): () => void;
 };
 
 export type StreamOptions = {
   source: StreamSource;
   auth: Auth;
+  version: string;
 };
 
 const PING_MS = 30_000;
@@ -107,15 +115,14 @@ function serve(ws: WebSocket, options: StreamOptions): void {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event));
   };
   const fail = (id: string | undefined, error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
     send({
       type: "error",
       ...(id === undefined ? {} : { id }),
-      error: { ...problemOf(error), message },
+      error: problemDetails(error),
     });
   };
   const project = (id: string): ProjectStream => {
-    const found = source.project(id);
+    const found = source.projects.get(id);
     if (found === undefined) throw new ProblemError({ code: "no_project", projectId: id });
     return found;
   };
@@ -160,11 +167,29 @@ function serve(ws: WebSocket, options: StreamOptions): void {
       case "entries": {
         const limit = Math.min(Math.max(1, Math.trunc(request.limit)), MAX_ENTRIES);
         const host = project(request.topic.project);
-        const items = await host.entries(request.topic.ticket, request.query, limit);
+        const items = await host.conversations.entries(
+          request.topic.ticket ?? "router",
+          request.query,
+          limit,
+        );
         return send({ type: "entries", id: request.id, items });
       }
       case "watch":
         if (watches.has(request.id)) throw new ProblemError({ code: "invalid", field: "id" });
+        if (request.topic.kind === "engine") {
+          const id = request.id;
+          watches.set(
+            id,
+            source.projects.watch((projects) =>
+              send({
+                type: "engine",
+                id,
+                engine: { bootId: source.bootId, version: options.version, projects },
+              }),
+            ),
+          );
+          return;
+        }
         if (request.topic.kind === "board")
           return watchBoard(request.id, project(request.topic.project));
         return watchConversation(
@@ -185,7 +210,11 @@ function serve(ws: WebSocket, options: StreamOptions): void {
     watches.set(id, abandon);
     let handle: WatchHandle<ConversationView>;
     try {
-      handle = await project(topic.project).watch(topic.ticket, context, window);
+      handle = await project(topic.project).conversations.watch(
+        topic.ticket ?? "router",
+        context,
+        window,
+      );
     } catch (error) {
       if (watches.get(id) !== abandon) return;
       watches.delete(id);

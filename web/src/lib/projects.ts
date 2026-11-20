@@ -1,5 +1,5 @@
-import type { BoardView, ProjectSummary, TicketView } from "../../../src/api/contract.ts";
-import type { RunSummary } from "../../../src/contracts/index.ts";
+import type { RunSummary } from "../../../src/domain/index.ts";
+import type { BoardView, ProjectSummary, TicketView } from "../../../src/protocol/contract.ts";
 import { countPendingQuestions, effectiveStage, groupTickets, type VisualStage } from "./board.ts";
 import { t } from "./i18n.ts";
 import { displayId } from "./ids.ts";

@@ -1,6 +1,10 @@
-import { type Client, createClient } from "../api/client.ts";
-import { isAlive, type RuntimeRecord, readRuntimeRecord } from "../engine/instance.ts";
-import { readText } from "../shared/fs.ts";
+import {
+  isAlive,
+  type RuntimeRecord,
+  readRuntimeRecord,
+  removeRuntimeRecord,
+} from "../daemon/instance.ts";
+import { type Client, createClient } from "../protocol/client.ts";
 import type { EeveePaths } from "../shared/paths.ts";
 
 export type Connection = {
@@ -18,12 +22,22 @@ export class NotRunning extends Error {
 
 export async function findEngine(paths: EeveePaths): Promise<Connection | undefined> {
   const record = await readRuntimeRecord(paths.runtime.record);
-  if (record === undefined || !isAlive(record.pid)) return undefined;
-  const token = (await readText(paths.runtime.token))?.trim();
+  if (record === undefined) return undefined;
+  if (!isAlive(record.pid)) {
+    await removeRuntimeRecord(paths.runtime.record, record);
+    return undefined;
+  }
   const baseUrl = `http://127.0.0.1:${record.port}`;
-  const client = createClient({ baseUrl, ...(token ? { token } : {}) });
+  const client = createClient({ baseUrl, token: record.token });
   try {
-    await client.call("GET /api/health");
+    const health = await createClient({
+      baseUrl,
+      fetch: (url, options) => fetch(url, { ...options, signal: AbortSignal.timeout(1000) }),
+    }).call("GET /api/health");
+    if (health.bootId !== record.bootId) {
+      await removeRuntimeRecord(paths.runtime.record, record);
+      return undefined;
+    }
   } catch {
     return undefined;
   }

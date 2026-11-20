@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setImmediate as nextTurn } from "node:timers/promises";
-import type { BoardView } from "../api/contract.ts";
+import type { BoardView } from "../protocol/contract.ts";
 import { BoardFeed, type BoardListener } from "./board-feed.ts";
 
 const board = (marker: number): BoardView => ({

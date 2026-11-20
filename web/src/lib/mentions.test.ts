@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { TicketView } from "@shared/api/contract.ts";
+import type { TicketView } from "@shared/protocol/contract.ts";
 import { mentionQuery, rankTickets, splitTicketRefs } from "./mentions.ts";
 
 const ticket = (id: string, title: string, status: "open" | "done" = "open"): TicketView => ({

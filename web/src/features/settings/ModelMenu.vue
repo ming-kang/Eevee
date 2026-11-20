@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ModelSpecView } from "@shared/api/contract.ts";
+import type { ModelSpecView } from "@shared/protocol/contract.ts";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { t } from "../../lib/i18n.ts";
 import { listStep } from "../../lib/keyboard.ts";

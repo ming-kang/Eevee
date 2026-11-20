@@ -5,16 +5,17 @@ import { compile, type Schema, type Validator } from "@earendil-works/pi-schema"
 import { getRequestListener, type HttpBindings } from "@hono/node-server";
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { ROUTE_BODIES } from "../api/bodies.ts";
+import { describeProblem, type ProblemCode, ProblemError, problemOf } from "../domain/index.ts";
 import {
   type ApiError,
+  type Param,
+  ROUTES,
   type RouteBody,
   type RouteKey,
   type RouteParams,
   type RouteResponse,
   TOKEN_HEADER,
-} from "../api/contract.ts";
-import { type ProblemCode, ProblemError, problemOf } from "../contracts/index.ts";
+} from "../protocol/contract.ts";
 import { resolveInside } from "../shared/paths.ts";
 import { type Auth, isLoopbackRequest } from "./auth.ts";
 
@@ -24,7 +25,6 @@ export type RouteContext<K extends RouteKey> = {
 };
 
 export type RouteDefinition<K extends RouteKey> = {
-  public?: boolean;
   handle(context: RouteContext<K>): Promise<RouteResponse<K>>;
 };
 
@@ -48,9 +48,6 @@ type Env = { Bindings: HttpBindings };
 
 /** The HTTP interface: loopback only, token-guarded routes with schema-checked bodies, and the built panel. */
 export function createApp(options: ServerOptions): Hono<Env> {
-  const bodies = new Map<string, BodyCheck>(
-    Object.entries(ROUTE_BODIES).map(([key, schema]) => [key, { schema, check: compile(schema) }]),
-  );
   const app = new Hono<Env>();
   app.onError((error) => problemResponse(error));
   app.notFound((c) =>
@@ -74,20 +71,46 @@ export function createApp(options: ServerOptions): Hono<Env> {
     },
   });
   for (const [key, definition] of Object.entries(options.routes)) {
-    const [method, path] = key.split(" ") as [string, string];
+    const definitionSchema = ROUTES.find((route) => route.key === key);
+    if (definitionSchema === undefined) throw new Error(`Unknown route ${key}`);
+    const { method, path } = definitionSchema;
     const route = definition as RouteDefinition<RouteKey>;
-    const body = bodies.get(key);
+    const body =
+      definitionSchema.body === undefined
+        ? undefined
+        : { schema: definitionSchema.body, check: compile(definitionSchema.body) };
+    const params = Object.entries(definitionSchema.params).map(([name, parameter]) => ({
+      name,
+      parameter: parameter as Param,
+      check: compile((parameter as Param).schema),
+    }));
     const guard: MiddlewareHandler<Env> = async (c, next) => {
-      if (!route.public && !options.auth.verify(c.req.header(TOKEN_HEADER))) {
+      if (!definitionSchema.public && !options.auth.verify(c.req.header(TOKEN_HEADER))) {
         throw new ProblemError({ code: "unauthorized" });
       }
       await next();
     };
     app.on(method, path, guard, limit, async (c) => {
+      const parsedParams: Record<string, unknown> = {};
+      for (const { name, parameter, check } of params) {
+        const raw = c.req.param(name);
+        if (raw === undefined || !check.validate(raw).ok) {
+          const allowed = allowedAt(parameter.schema, "");
+          throw new ProblemError({
+            code: "invalid",
+            field: name,
+            ...(allowed === undefined ? {} : { allowed }),
+          });
+        }
+        parsedParams[name] = parameter.parse(raw);
+      }
       const value = parseBody(body, await readBody(c));
       // The route's own schema has checked the body; only the erased route type is left to cast.
-      const context = { params: c.req.param(), body: value } as RouteContext<RouteKey>;
-      return json(200, await route.handle(context));
+      const context = { params: parsedParams, body: value } as RouteContext<RouteKey>;
+      const result = await route.handle(context);
+      return definitionSchema.status === 204
+        ? new Response(null, { status: 204, headers: { "cache-control": "no-store" } })
+        : json(definitionSchema.status, result);
     });
   }
   return app;
@@ -96,9 +119,17 @@ export function createApp(options: ServerOptions): Hono<Env> {
 function problemResponse(error: unknown): Response {
   const problem = problemOf(error);
   if (problem.code === "internal") console.error(error);
-  const message = error instanceof Error ? error.message : String(error);
-  const payload: ApiError = { error: { ...problem, message } };
-  return json(STATUS[problem.code], payload);
+  const payload = problemDetails(error);
+  const { status } = payload;
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "content-type": "application/problem+json", "cache-control": "no-store" },
+  });
+}
+
+export function problemDetails(error: unknown): ApiError {
+  const problem = problemOf(error);
+  return { status: STATUS[problem.code], title: describeProblem(problem), ...problem };
 }
 
 /** The status each problem answers with; a new code has to pick one here. */

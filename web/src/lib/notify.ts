@@ -1,4 +1,4 @@
-import type { BoardView, ProjectSummary } from "../../../src/api/contract.ts";
+import type { BoardView, ProjectSummary } from "../../../src/protocol/contract.ts";
 import { effectiveStage } from "./board.ts";
 import { t } from "./i18n.ts";
 import { failureText } from "./labels.ts";

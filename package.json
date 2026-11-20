@@ -16,7 +16,7 @@
   "scripts": {
     "dev": "node src/cli/index.ts",
     "dev:scenario": "node scripts/dev-scenario.ts",
-    "engine": "node src/engine/main.ts",
+    "engine": "node src/daemon/main.ts",
     "web:dev": "vite --config web/vite.config.ts",
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit && vue-tsc -p web/tsconfig.json && tsc -p web/tsconfig.test.json",

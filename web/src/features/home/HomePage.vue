@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ProjectSummary } from "@shared/api/contract.ts";
+import type { ProjectSummary } from "@shared/protocol/contract.ts";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { effectiveStage } from "../../lib/board.ts";
 import type { BoardState } from "../../composables/engine-data.ts";

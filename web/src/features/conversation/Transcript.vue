@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { QuestionId } from "@shared/contracts/index.ts";
-import type { TicketView } from "@shared/api/contract.ts";
+import type { QuestionId } from "@shared/domain/index.ts";
+import type { TicketView } from "@shared/protocol/contract.ts";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useComposerInsert } from "../../composables/composer-bridge.ts";
 import type { GapItem } from "../../lib/conversation.ts";

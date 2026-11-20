@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BoardView, TicketView } from "@shared/api/contract.ts";
+import type { BoardView, TicketView } from "@shared/protocol/contract.ts";
 import { computed, ref } from "vue";
 import { effectiveStage, type TicketGroups, ticketQuestionSummary } from "../../lib/board.ts";
 import { t } from "../../lib/i18n.ts";

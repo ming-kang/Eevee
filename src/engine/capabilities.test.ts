@@ -34,9 +34,11 @@ test("settings-enabled extensions take effect for a role, and deferred tools are
     roles: { router: { extensions: ["research"] } },
   });
   try {
-    await project.host.sendUserMessage("look up optics");
+    await project.host.conversations.send("router", "look up optics");
     await project.until(async () =>
-      (await project.host.conversation()).lines.some((l) => l.text === "result: found optics"),
+      (await project.host.conversations.view("router")).lines.some(
+        (l) => l.text === "result: found optics",
+      ),
     );
     const turns = project.calls.filter((c) => c.role === "router");
     assert.ok(turns[0]?.tools.includes("tool_search"));
@@ -54,13 +56,13 @@ test("after disabling extensions and reapplying a role, its tools are gone; unin
     roles: { router: { extensions: ["research", "mcp.gone"] } },
   });
   try {
-    await project.host.sendUserMessage("first line");
+    await project.host.conversations.send("router", "first line");
     await project.until(async () => project.calls.length >= 1);
     assert.ok(project.calls[0]?.tools.includes("tool_search"));
 
     project.settings.roles = {};
     await project.host.refreshExtensions();
-    await project.host.sendUserMessage("second line");
+    await project.host.conversations.send("router", "second line");
     await project.until(async () => project.calls.length >= 2);
     assert.ok(!project.calls[1]?.tools.includes("tool_search"));
   } finally {
@@ -108,7 +110,7 @@ test("the Router switches a ticket's model midway with ticket model, effective f
   };
   const project = await openTestProject(brain, { extraModels: ["brain-pro"] });
   try {
-    await project.host.sendUserMessage("start work");
+    await project.host.conversations.send("router", "start work");
     const ticket = await project.until(async () => {
       const board = await project.host.board();
       const found = board.tickets[0];

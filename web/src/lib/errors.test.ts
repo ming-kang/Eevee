@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApiRequestError } from "../../../src/api/client.ts";
+import { ApiRequestError } from "../../../src/protocol/client.ts";
 import { configIssueText, configProblemText, errorText, problemText } from "./errors.ts";
 import { StreamError } from "./stream.ts";
 
@@ -8,11 +8,19 @@ test("a refusal is worded by code and parameters, not by the Engine's own words"
   const refused = new ApiRequestError(409, {
     code: "ticket_closed",
     ticketId: "t3",
-    message: "the Engine's own words",
+    title: "the Engine's own words",
+    status: 409,
   });
   assert.equal(errorText(refused), "t3 is already closed");
   assert.equal(
-    errorText(new StreamError({ code: "no_job", jobId: "j2", message: "the Engine's own words" })),
+    errorText(
+      new StreamError({
+        code: "no_job",
+        jobId: "j2",
+        title: "the Engine's own words",
+        status: 404,
+      }),
+    ),
     "No job j2",
   );
   assert.equal(

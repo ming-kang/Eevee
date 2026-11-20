@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { effectScope, nextTick, ref } from "vue";
-import type { QuestionId } from "../../../src/contracts/index.ts";
+import type { QuestionId } from "../../../src/domain/index.ts";
 import { useQuestionNavigation } from "./question-navigation.ts";
 
 function setup(id: QuestionId | undefined = "q2", loaded = true) {

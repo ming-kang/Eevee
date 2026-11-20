@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
+import type { Client } from "@shared/protocol/client.ts";
 import type {
   CapabilitiesView,
   EngineStatus,
   McpServerView,
   ModelSpecView,
-} from "@shared/api/contract.ts";
+} from "@shared/protocol/contract.ts";
 import {
   type ModelChoice,
   type ModelDefaults,
   pickModel,
   type RoleName,
   type ThinkingLevel,
-} from "@shared/contracts/index.ts";
+} from "@shared/domain/index.ts";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { configIssueText, configProblemText, errorText } from "../../lib/errors.ts";
 import { ROLE_LABEL } from "../../lib/labels.ts";
@@ -304,10 +304,7 @@ const routerDiffers = computed(() => {
 
 async function saveRoleModel(roleKey: "default" | RoleName, choice: ModelChoice): Promise<boolean> {
   const ok = await savingModel.run(async () => {
-    await props.client.call("POST /api/settings/models", {
-      ...(roleKey === "default" ? {} : { role: roleKey }),
-      ...choice,
-    });
+    await props.client.call("PUT /api/models/defaults/:role", { role: roleKey }, choice);
   });
   if (ok) {
     pop.value = undefined;
@@ -345,7 +342,7 @@ async function toggleExtension(role: RoleName, extName: string): Promise<void> {
     : [...currentRole.enabled, extName];
   await savingRole.run(async () => {
     capabilities.value = await props.client.call(
-      "POST /api/capabilities/roles/:role",
+      "PATCH /api/capabilities/roles/:role",
       { role },
       { extensions: next },
     );
@@ -358,7 +355,7 @@ async function commitMaxTurns(role: RoleName, nextValue: number | null): Promise
   if ((currentRole.maxTurns ?? null) === nextValue) return;
   const ok = await savingRole.run(async () => {
     capabilities.value = await props.client.call(
-      "POST /api/capabilities/roles/:role",
+      "PATCH /api/capabilities/roles/:role",
       { role },
       { maxTurns: nextValue },
     );
@@ -482,7 +479,7 @@ const VALUE_TEXT = "text-right font-mono text-xs leading-[1.4] wrap-anywhere tex
               </div>
               <p v-if="savingModel.error.value" class="error hint">{{ savingModel.error.value }}</p>
               <div :class="rows()">
-                <div v-for="roleRow in MODEL_ROLES" :key="roleRow.key" class="relative [&>.pop]:top-[calc(100%_-_calc(6px*var(--ev-scale)))] [&>.pop]:right-3" :class="row()">
+                <div v-for="roleRow in MODEL_ROLES" :key="roleRow.key" class="model-row-ctrl relative [&>.pop]:top-[calc(100%_-_calc(6px*var(--ev-scale)))] [&>.pop]:right-3" :class="row()">
                   <div :class="rowMain()">
                     <span :class="rowTitle()">
                       {{ roleRow.label }}

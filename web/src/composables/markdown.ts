@@ -1,4 +1,4 @@
-import type { TicketView } from "@shared/api/contract.ts";
+import type { TicketView } from "@shared/protocol/contract.ts";
 import {
   type BlockquoteNode,
   type CheckboxInputNode,

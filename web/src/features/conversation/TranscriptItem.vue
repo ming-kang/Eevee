@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { TicketView } from "@shared/api/contract.ts";
-import type { QuestionId } from "@shared/contracts/index.ts";
+import type { TicketView } from "@shared/protocol/contract.ts";
+import type { QuestionId } from "@shared/domain/index.ts";
 import { computed } from "vue";
 import type { GapItem } from "../../lib/conversation.ts";
 import { t } from "../../lib/i18n.ts";
