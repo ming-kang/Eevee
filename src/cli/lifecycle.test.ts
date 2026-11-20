@@ -1,16 +1,21 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
-import { type RuntimeRecord, readRuntimeRecord, writeRuntimeRecord } from "../daemon/instance.ts";
+import {
+  acquireLock,
+  type RuntimeRecord,
+  readRuntimeRecord,
+  writeRuntimeRecord,
+} from "../daemon/instance.ts";
 import { eeveePaths } from "../shared/paths.ts";
 import { findEngine } from "./connection.ts";
-import { stopEngine, waitForExit } from "./lifecycle.ts";
+import { startEngine, stopEngine, waitForExit } from "./lifecycle.ts";
 
 const recordFor = (pid: number, port = 19190): RuntimeRecord => ({
   pid,
@@ -19,6 +24,59 @@ const recordFor = (pid: number, port = 19190): RuntimeRecord => ({
   version: "test",
   token: "test-token",
   startedAt: Date.now(),
+});
+
+test("a losing detached start waits for the live lock owner's runtime record", {
+  timeout: 10_000,
+}, async () => {
+  const home = await mkdtemp(join(tmpdir(), "eevee-overlapping-start-"));
+  const paths = eeveePaths(home);
+  const release = await acquireLock(paths.runtime.lock);
+  const server = createServer((_req, res) => {
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ bootId: "boot", version: "test" }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  let settled = false;
+  const starting = startEngine(paths).finally(() => {
+    settled = true;
+  });
+  void starting.catch(() => undefined);
+  try {
+    let log = "";
+    for (let i = 0; i < 500 && !log.includes("already running"); i++) {
+      await sleep(10);
+      log = await readFile(join(paths.runtime.dir, "engine.log"), "utf8").catch(() => "");
+    }
+    assert.match(log, /already running/);
+    await sleep(350);
+    assert.equal(settled, false, "the losing CLI must wait while another instance owns the lock");
+    await writeRuntimeRecord(paths.runtime.record, recordFor(process.pid, address.port));
+    const result = await starting;
+    assert.equal(result?.connection.record.pid, process.pid);
+    assert.equal(result?.started, false);
+  } finally {
+    await release();
+    await starting.catch(() => undefined);
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(home, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
+
+test("a detached child startup failure without a live lock still fails fast", {
+  timeout: 10_000,
+}, async () => {
+  const home = await mkdtemp(join(tmpdir(), "eevee-detached-failure-"));
+  const paths = eeveePaths(home);
+  try {
+    await writeFile(paths.settings, "{");
+    await assert.rejects(startEngine(paths), /exited before becoming ready/);
+    await assert.rejects(readFile(paths.runtime.lock), { code: "ENOENT" });
+  } finally {
+    await rm(home, { recursive: true, force: true, maxRetries: 5 });
+  }
 });
 
 test("discovery cleans dead and boot-mismatched records without a separate token file", async () => {
