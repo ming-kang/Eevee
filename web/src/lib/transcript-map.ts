@@ -20,7 +20,7 @@ import {
   type ReportStatus,
   type TicketDetails,
   type TicketId,
-} from "../../../src/contracts/index.ts";
+} from "../../../src/domain/index.ts";
 import { type ActivityCount, formatToolLabel } from "./activity.ts";
 import type { GapItem } from "./conversation.ts";
 import { t } from "./i18n.ts";
@@ -155,7 +155,7 @@ type EventFields = Partial<
   Pick<EventItem, "ticketId" | "questionId" | "jobId" | "status" | "detail">
 >;
 
-/** A tool result's `details`, for the fields a tool documents in `src/contracts/details.ts`. */
+/** A tool result's `details`, for the fields a tool documents in `src/domain/details.ts`. */
 const detailsOf = <T>(result: ToolResultMessage | undefined): Partial<T> =>
   (result?.details ?? {}) as Partial<T>;
 

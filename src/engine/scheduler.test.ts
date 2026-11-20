@@ -10,11 +10,11 @@ import {
   LiveDoc,
   MemoryStorage,
 } from "@earendil-works/pi-durable";
-import { TicketDoc } from "../contracts/docs.ts";
-import type { Ticket, TicketId } from "../contracts/index.ts";
-import { allocateTicketId, saveTicket } from "../extensions/orchestration/board.ts";
-import { conversationOf, WorkerQueue } from "../extensions/orchestration/index.ts";
-import { DEFAULT_SETTINGS } from "../shared/settings.ts";
+import { DEFAULT_SETTINGS } from "../config/settings.ts";
+import type { Ticket, TicketId } from "../domain/index.ts";
+import { TicketDoc } from "./docs.ts";
+import { allocateTicketId, saveTicket } from "./extensions/orchestration/board.ts";
+import { conversationOf, WorkerQueue } from "./extensions/orchestration/index.ts";
 import { Scheduler, type SchedulerDeps } from "./scheduler.ts";
 
 const context = BACKGROUND_CONTEXT;

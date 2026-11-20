@@ -5,7 +5,8 @@ import { compile, type Schema, type Validator } from "@earendil-works/pi-schema"
 import { getRequestListener, type HttpBindings } from "@hono/node-server";
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { ROUTE_BODIES } from "../api/bodies.ts";
+import { type ProblemCode, ProblemError, problemOf } from "../domain/index.ts";
+import { ROUTE_BODIES } from "../protocol/bodies.ts";
 import {
   type ApiError,
   type RouteBody,
@@ -13,8 +14,7 @@ import {
   type RouteParams,
   type RouteResponse,
   TOKEN_HEADER,
-} from "../api/contract.ts";
-import { type ProblemCode, ProblemError, problemOf } from "../contracts/index.ts";
+} from "../protocol/contract.ts";
 import { resolveInside } from "../shared/paths.ts";
 import { type Auth, isLoopbackRequest } from "./auth.ts";
 

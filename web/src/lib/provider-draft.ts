@@ -8,7 +8,7 @@ import type {
   ProbedModelView,
   ProviderConfigView,
   ProviderModelConfig,
-} from "@shared/api/contract.ts";
+} from "@shared/protocol/contract.ts";
 import { fromRows, type KeyValueRow, parseAmount, parseTokenCount, toRows } from "./fields.ts";
 
 /**

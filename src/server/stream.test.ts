@@ -7,15 +7,15 @@ import { after, before, test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { WatchCall, WatchEnd, WatchHandle } from "@earendil-works/chord/watch";
 import type { ConversationView } from "@earendil-works/pi-durable";
-import type { BoardView } from "../api/contract.ts";
+import { BoardFeed, type BoardListener } from "../engine/board-feed.ts";
+import type { BoardView } from "../protocol/contract.ts";
 import {
   STREAM_PATH,
   STREAM_PROTOCOL,
   type StreamEvent,
   type StreamRequest,
   TOKEN_PROTOCOL_PREFIX,
-} from "../api/stream.ts";
-import { BoardFeed, type BoardListener } from "../engine/board-feed.ts";
+} from "../protocol/stream.ts";
 import { Auth } from "./auth.ts";
 import { attachStream, type ProjectStream } from "./stream.ts";
 

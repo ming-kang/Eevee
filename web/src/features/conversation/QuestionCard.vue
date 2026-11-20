@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { TicketView } from "@shared/api/contract.ts";
-import type { Question, QuestionId } from "@shared/contracts/index.ts";
+import type { TicketView } from "@shared/protocol/contract.ts";
+import type { Question, QuestionId } from "@shared/domain/index.ts";
 import { computed, nextTick, ref, watch } from "vue";
 import { onRovingKeydown } from "../../composables/focus.ts";
 import { t } from "../../lib/i18n.ts";

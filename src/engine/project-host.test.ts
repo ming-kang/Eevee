@@ -5,8 +5,8 @@ import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { InboxItem, InboxState } from "@earendil-works/pi-durable";
-import type { BoardView } from "../api/contract.ts";
-import type { TicketId } from "../contracts/index.ts";
+import type { TicketId } from "../domain/index.ts";
+import type { BoardView } from "../protocol/contract.ts";
 import { eeveePaths } from "../shared/paths.ts";
 import {
   type Brain,

@@ -2,10 +2,10 @@ import { CodemodeSandbox } from "@earendil-works/pi-codemode";
 import type { Extension } from "@earendil-works/pi-durable";
 import { createCodemodeExtension } from "@earendil-works/pi-durable/codemode";
 import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search";
-import type { McpServerView } from "../api/contract.ts";
-import type { ConfigProblem } from "../contracts/index.ts";
-import { McpHub, type McpHubOptions } from "../extensions/mcp/index.ts";
+import type { ConfigProblem } from "../domain/index.ts";
+import type { McpServerView } from "../protocol/contract.ts";
 import type { EeveePaths } from "../shared/paths.ts";
+import { McpHub, type McpHubOptions } from "./extensions/mcp/index.ts";
 
 export type SharedExtensionsOptions = {
   paths: EeveePaths;

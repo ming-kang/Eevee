@@ -1,4 +1,3 @@
-import { MEMORY_SCOPES } from "../api/contract.ts";
 import {
   type JobId,
   type MemoryScope,
@@ -8,8 +7,9 @@ import {
   ROLE_NAMES,
   type RoleName,
   type TicketId,
-} from "../contracts/index.ts";
+} from "../domain/index.ts";
 import type { Engine } from "../engine/engine.ts";
+import { MEMORY_SCOPES } from "../protocol/contract.ts";
 import type { Auth } from "./auth.ts";
 import type { RouteTable } from "./http.ts";
 

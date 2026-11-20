@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ApiRequestError, type Client } from "@shared/api/client.ts";
-import type { TicketView } from "@shared/api/contract.ts";
-import type { Question, QuestionId } from "@shared/contracts/index.ts";
+import { ApiRequestError, type Client } from "@shared/protocol/client.ts";
+import type { TicketView } from "@shared/protocol/contract.ts";
+import type { Question, QuestionId } from "@shared/domain/index.ts";
 import { computed, ref, watch } from "vue";
 import { errorText } from "../../lib/errors.ts";
 import { t } from "../../lib/i18n.ts";

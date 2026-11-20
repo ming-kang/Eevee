@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TicketView } from "@shared/api/contract.ts";
+import type { TicketView } from "@shared/protocol/contract.ts";
 import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from "vue";
 import { effectiveStage } from "../../lib/board.ts";
 import { type InsertAt, useComposerInsert } from "../../composables/composer-bridge.ts";

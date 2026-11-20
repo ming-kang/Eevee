@@ -7,7 +7,7 @@ import {
   type TranscriptItem,
   type TranscriptView,
 } from "@earendil-works/pi-durable";
-import type { ConversationTopic } from "../../../src/api/stream.ts";
+import type { ConversationTopic } from "../../../src/protocol/stream.ts";
 import { errorText, problemText } from "./errors.ts";
 import type { StreamClient } from "./stream.ts";
 

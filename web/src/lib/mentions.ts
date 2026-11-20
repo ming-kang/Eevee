@@ -1,4 +1,4 @@
-import type { TicketView } from "@shared/api/contract.ts";
+import type { TicketView } from "@shared/protocol/contract.ts";
 
 export type MentionQuery = {
   start: number;

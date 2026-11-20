@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TicketView } from "@shared/api/contract.ts";
+import type { TicketView } from "@shared/protocol/contract.ts";
 import { computed } from "vue";
 import { t } from "../../lib/i18n.ts";
 import { splitTicketRefs } from "../../lib/mentions.ts";

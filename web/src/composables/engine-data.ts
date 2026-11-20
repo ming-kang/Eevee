@@ -9,8 +9,8 @@ import {
   shallowRef,
   watch,
 } from "vue";
-import type { BoardView, EngineStatus, ProjectSummary } from "../../../src/api/contract.ts";
-import type { ConversationTopic } from "../../../src/api/stream.ts";
+import type { BoardView, EngineStatus, ProjectSummary } from "../../../src/protocol/contract.ts";
+import type { ConversationTopic } from "../../../src/protocol/stream.ts";
 import { createConversationWatcher, type GapItem } from "../lib/conversation.ts";
 import { errorText, problemText } from "../lib/errors.ts";
 import type { SessionInfo } from "../lib/session.ts";

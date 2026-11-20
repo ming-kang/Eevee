@@ -6,7 +6,7 @@ import type {
   EntryId,
   EntryRecord,
 } from "@earendil-works/pi-durable";
-import type { StreamEvent } from "../../../src/api/stream.ts";
+import type { StreamEvent } from "../../../src/protocol/stream.ts";
 import { type ConversationSnapshot, createConversationWatcher } from "./conversation.ts";
 import { createStreamClient, type SocketLike } from "./stream.ts";
 

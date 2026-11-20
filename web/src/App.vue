@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ProjectSummary } from "@shared/api/contract.ts";
+import type { ProjectSummary } from "@shared/protocol/contract.ts";
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import { countPendingQuestions, groupTickets, type RailTab } from "./lib/board.ts";
 import AppShell from "./features/shell/AppShell.vue";
@@ -19,7 +19,7 @@ import SideNav from "./features/shell/SideNav.vue";
 import Toasts from "./ui/Toasts.vue";
 import UsagePage from "./features/usage/UsagePage.vue";
 import { useConversationWatch, useEngineData } from "./composables/engine-data.ts";
-import { summarizeRun } from "@shared/contracts/index.ts";
+import { summarizeRun } from "@shared/domain/index.ts";
 import { errorText } from "./lib/errors.ts";
 import { t } from "./lib/i18n.ts";
 import { buildPaletteItems, deriveProjectState, type PaletteItem } from "./lib/projects.ts";

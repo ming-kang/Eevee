@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ProjectSummary } from "@shared/api/contract.ts";
+import type { ProjectSummary } from "@shared/protocol/contract.ts";
 import { t } from "../../lib/i18n.ts";
 import type { ProjectRowState } from "../../lib/projects.ts";
 import { formatRelativeTime } from "../../lib/time.ts";

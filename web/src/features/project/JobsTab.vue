@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
-import type { JobLogView } from "@shared/api/contract.ts";
-import type { JobId } from "@shared/contracts/index.ts";
+import type { Client } from "@shared/protocol/client.ts";
+import type { JobLogView } from "@shared/protocol/contract.ts";
+import type { JobId } from "@shared/domain/index.ts";
 import { computed, onUnmounted, ref, watch } from "vue";
 import type { RunningJobItem } from "../../lib/board.ts";
 import { vTail } from "../../composables/dom.ts";

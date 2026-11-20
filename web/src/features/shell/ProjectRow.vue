@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ProjectSummary, TicketView } from "@shared/api/contract.ts";
+import type { ProjectSummary, TicketView } from "@shared/protocol/contract.ts";
 import { computed, ref } from "vue";
 import { effectiveStage, ticketActivityAt } from "../../lib/board.ts";
 import { t } from "../../lib/i18n.ts";

@@ -1,11 +1,11 @@
-import { ApiRequestError } from "../../../src/api/client.ts";
 import {
   type ConfigIssue,
   type ConfigProblem,
   describeConfigIssue,
   describeProblem,
   type Problem,
-} from "../../../src/contracts/index.ts";
+} from "../../../src/domain/index.ts";
+import { ApiRequestError } from "../../../src/protocol/client.ts";
 import { t } from "./i18n.ts";
 import { StreamError } from "./stream.ts";
 

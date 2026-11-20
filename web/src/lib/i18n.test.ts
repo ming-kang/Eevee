@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import test from "node:test";
-import { fill } from "../../../src/contracts/text.ts";
+import { fill } from "../../../src/domain/text.ts";
 import { pickForm, pickLocale, t } from "./i18n.ts";
 import { zhCN } from "./locales/zh-CN.ts";
 
@@ -39,8 +39,8 @@ const CJK = /[　-〿一-鿿＀-￯]/;
 
 /** Files outside web/src whose `t()` calls are interface text too. */
 const CONTRACT_TEXT = [
-  join(root, "../../src/contracts/problem.ts"),
-  join(root, "../../src/contracts/failure.ts"),
+  join(root, "../../src/domain/problem.ts"),
+  join(root, "../../src/domain/failure.ts"),
 ];
 
 function sources(dir: string): string[] {

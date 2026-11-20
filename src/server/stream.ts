@@ -9,6 +9,9 @@ import type {
   EntryRecord,
 } from "@earendil-works/pi-durable";
 import { type WebSocket, WebSocketServer } from "ws";
+import type { TicketId } from "../domain/index.ts";
+import { ProblemError, problemOf } from "../domain/index.ts";
+import type { BoardListener } from "../engine/board-feed.ts";
 import {
   type ConversationTopic,
   parseStreamRequest,
@@ -17,10 +20,7 @@ import {
   type StreamEvent,
   type StreamRequest,
   TOKEN_PROTOCOL_PREFIX,
-} from "../api/stream.ts";
-import type { TicketId } from "../contracts/index.ts";
-import { ProblemError, problemOf } from "../contracts/index.ts";
-import type { BoardListener } from "../engine/board-feed.ts";
+} from "../protocol/stream.ts";
 import { type Auth, isLoopbackRequest } from "./auth.ts";
 
 /** What the stream reads: the Engine, or a stand-in in tests. */

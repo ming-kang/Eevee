@@ -1,5 +1,5 @@
-import { ApiRequestError, type Client, createClient } from "../../../src/api/client.ts";
-import type { EngineStatus } from "../../../src/api/contract.ts";
+import { ApiRequestError, type Client, createClient } from "../../../src/protocol/client.ts";
+import type { EngineStatus } from "../../../src/protocol/contract.ts";
 import { errorText } from "./errors.ts";
 import { t } from "./i18n.ts";
 import { extractAuthCode } from "./router.ts";
