@@ -109,16 +109,18 @@ const tabs = computed(() => {
         <h2 class="ellipsis min-w-0 text-sm font-medium" :title="activeTicket?.ticket.title">{{ activeTicket ? activeTicket.ticket.title : board ? t('Ticket {id} not found', { id: activeTicketId }) : '' }}</h2>
         <StageGlyph v-if="stage" :stage="stage" :title="STAGE_LABEL[stage]" />
       </div>
-      <Segmented v-model="workerPanel" :options="[{ value: 'conversation', label: t('Conversation') }, { value: 'details', label: t('Details') }]" :label="t('Worker view')" />
       <Button variant="ghost" size="sm" icon :aria-label="maximized ? t('Restore Worker panel') : t('Maximize Worker panel')" :title="maximized ? t('Restore Worker panel') : t('Maximize Worker panel')" @click="emit('toggle-maximize')"><Icon :name="maximized ? 'minimize' : 'maximize'" size="sm" /></Button>
     </template>
-    <Segmented v-else :model-value="tab" mode="tabs" class="min-w-0" id-prefix="rail-tab" controls="rail-panel" :options="tabs.map((item) => ({ value: item.key, label: item.label }))" :label="t('Ticket rail tabs')" @update:model-value="emit('update:tab', $event)">
+    <Segmented v-else :model-value="tab" mode="tabs" appearance="rail" class="min-w-0" id-prefix="rail-tab" controls="rail-panel" :options="tabs.map((item) => ({ value: item.key, label: item.label }))" :label="t('Ticket rail tabs')" @update:model-value="emit('update:tab', $event)">
       <template #default="{ option, index }">
         <span>{{ option.label }}</span>
         <span v-if="tabs[index]?.dot" class="size-1.5 flex-none rounded-full bg-(--ev-user)" aria-hidden="true" />
         <span v-if="tabs[index]?.dot" class="sr">{{ t("(questions waiting)") }}</span>
       </template>
     </Segmented>
+  </div>
+  <div v-if="activeTicketId" class="flex h-10 flex-none items-center border-b border-separator px-3">
+    <Segmented v-model="workerPanel" appearance="rail" :options="[{ value: 'conversation', label: t('Conversation') }, { value: 'details', label: t('Details') }]" :label="t('Worker view')" />
   </div>
   <div
     id="rail-panel"

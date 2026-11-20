@@ -22,9 +22,9 @@ defineEmits<{
 const showClosed = ref(false);
 
 const openGroups = computed(() => [
-  { key: "answer", label: t("Needs answer"), cls: "text-warning-fg", stage: false, items: props.groups.answer },
+  { key: "answer", label: t("Needs answer"), cls: "text-fg-subtle", stage: false, items: props.groups.answer },
   { key: "review", label: t("Needs review"), cls: "text-fg-subtle", stage: false, items: props.groups.review },
-  { key: "blocked", label: t("Blocked"), cls: "text-danger", stage: false, items: props.groups.blocked },
+  { key: "blocked", label: t("Blocked"), cls: "text-fg-subtle", stage: false, items: props.groups.blocked },
   // Mixed stages: the per-row stage word stays so the reader can tell them apart.
   { key: "active", label: t("In progress"), cls: "text-fg-subtle", stage: true, items: props.groups.active },
 ]);
@@ -81,13 +81,13 @@ function contextLine(view: TicketView): string | undefined {
           v-for="view in group.items"
           :key="view.ticket.id"
           type="button"
-          class="grid min-h-8 w-full grid-cols-[var(--ev-icon-sm)_minmax(0,1fr)_auto] items-start gap-x-2.25 gap-y-1 rounded-md px-2.5 py-2.25 text-left text-base tracking-(--ev-tracking) transition-colors pointer-coarse:min-h-10 focus-visible:shadow-(--ring-inset) [&>.glyph]:mt-0.75 [&>.t-id]:mt-0.75"
+          class="grid min-h-8 w-full grid-cols-[var(--ev-icon-sm)_minmax(0,1fr)_auto] items-baseline gap-x-2.25 gap-y-1 rounded-md px-2.5 py-2.25 text-left text-sm tracking-(--ev-tracking) transition-colors pointer-coarse:min-h-10 focus-visible:shadow-(--ring-inset) [&>.glyph]:mt-0.5 [&>.glyph]:self-start"
           :class="activeTicketId === view.ticket.id ? 'bg-selected [--ev-glyph-cut:var(--selected)]' : 'hover:bg-hover'"
           :title="rowTooltip(view)"
           @click="$emit('open-ticket', view.ticket.id)"
         >
           <StageGlyph :stage="effectiveStage(view)" />
-          <span class="line-clamp-2 leading-[1.45] wrap-anywhere">{{ view.ticket.title }}</span>
+          <span class="line-clamp-2 leading-5 wrap-anywhere">{{ view.ticket.title }}</span>
           <span :class="ID_TEXT">{{ displayId(view.ticket.id) }}</span>
           <span v-if="group.stage || contextLine(view)" class="col-span-2 col-start-2 truncate text-xs text-fg-subtle">
             <span v-if="group.stage" :class="stageText(view.stage)">{{ STAGE_LABEL[view.stage] }}</span>
@@ -113,13 +113,13 @@ function contextLine(view: TicketView): string | undefined {
           v-for="view in groups.closed"
           :key="view.ticket.id"
           type="button"
-          class="grid min-h-8 w-full grid-cols-[var(--ev-icon-sm)_minmax(0,1fr)_auto] items-start gap-x-2.25 gap-y-1 rounded-md px-2.5 py-2.25 text-left text-base tracking-(--ev-tracking) transition-colors pointer-coarse:min-h-10 focus-visible:shadow-(--ring-inset) [&>.glyph]:mt-0.75 [&>.t-id]:mt-0.75 text-fg-muted"
+          class="grid min-h-8 w-full grid-cols-[var(--ev-icon-sm)_minmax(0,1fr)_auto] items-baseline gap-x-2.25 gap-y-1 rounded-md px-2.5 py-2.25 text-left text-sm tracking-(--ev-tracking) transition-colors pointer-coarse:min-h-10 focus-visible:shadow-(--ring-inset) [&>.glyph]:mt-0.5 [&>.glyph]:self-start text-fg-muted"
           :class="activeTicketId === view.ticket.id ? 'bg-selected [--ev-glyph-cut:var(--selected)]' : 'hover:bg-hover'"
           :title="rowTooltip(view)"
           @click="$emit('open-ticket', view.ticket.id)"
         >
           <StageGlyph :stage="effectiveStage(view)" />
-          <span class="ellipsis">{{ view.ticket.title }}</span>
+          <span class="ellipsis leading-5">{{ view.ticket.title }}</span>
           <span :class="ID_TEXT">{{ displayId(view.ticket.id) }}</span>
         </button>
       </template>

@@ -139,8 +139,8 @@
   --ev-h-md: calc(32px * var(--ev-scale));
   --ev-h-lg: calc(36px * var(--ev-scale));
 
-  --ev-sidebar-w: calc(248px * var(--ev-scale));
-  --ev-rail-w: calc(340px * var(--ev-scale));
+  --ev-sidebar-w: calc(264px * var(--ev-scale));
+  --ev-rail-w: calc(480px * var(--ev-scale));
   --ev-header-h: calc(48px * var(--ev-scale));
   --ev-ctrl-inset: calc(12px * var(--ev-scale));
   /* Horizontal room reserved at the outer edges of a header for the stationary panel triggers. */

@@ -233,7 +233,7 @@
 
 .header h1 {
   min-width: 0;
-  font-size: var(--ev-headline);
+  font-size: var(--ev-body);
   font-weight: 500;
   letter-spacing: var(--ev-tracking);
 }
@@ -362,6 +362,10 @@
   height: var(--ev-header-h);
   padding: 0 var(--ev-titlebar-right) 0 calc(12px * var(--ev-scale));
   border-bottom: var(--hairline) solid var(--ev-separator);
+}
+
+.rail-tabs>.seg-pill {
+  display: none;
 }
 
 .rail-scroll {
@@ -498,10 +502,10 @@
     top: env(safe-area-inset-top, 0px);
     left: env(safe-area-inset-left, 0px);
     bottom: env(safe-area-inset-bottom, 0px);
-    width: min(calc(284px * var(--ev-scale)), calc(100% - calc(40px * var(--ev-scale))));
+    width: min(var(--ev-sidebar-w), calc(100% - calc(40px * var(--ev-scale))));
     z-index: 25;
-    --ev-glyph-cut: var(--ev-raised);
-    background: var(--ev-raised);
+    --ev-glyph-cut: var(--bg-sidebar);
+    background: var(--bg-sidebar);
     border: 0;
     box-shadow: var(--ev-shadow-modal);
     transform: translateX(-100%);
