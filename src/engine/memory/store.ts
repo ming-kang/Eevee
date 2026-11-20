@@ -243,22 +243,25 @@ export class MemoryStore {
         (file) => prepared.after.get(file) !== prepared.before.get(file),
       );
       if (changed.length === 0) return undefined;
+      const subject =
+        summary ??
+        [...changed]
+          .sort()
+          .map(
+            (file) =>
+              `${prepared.before.get(file) === undefined ? "create" : prepared.after.get(file) === undefined ? "delete" : "edit"} ${file}`,
+          )
+          .join("; ");
+      let id: number;
       try {
         await this.#write(prepared.after, changed);
-        const subject =
-          summary ??
-          [...changed]
-            .sort()
-            .map(
-              (file) =>
-                `${prepared.before.get(file) === undefined ? "create" : prepared.after.get(file) === undefined ? "delete" : "edit"} ${file}`,
-            )
-            .join("; ");
-        return await this.#save(changed, source, subject, request);
+        id = await this.#commit(changed, source, subject, request);
       } catch (error) {
         await this.#write(prepared.before, changed);
+        await this.#git.resetIndex(changed);
         throw error;
       }
+      return this.#change(await this.#find(id));
     });
   }
 
@@ -468,15 +471,22 @@ export class MemoryStore {
     subject: string,
     request?: string,
   ): Promise<MemoryChange> {
+    return this.#change(await this.#find(await this.#commit(paths, source, subject, request)));
+  }
+
+  async #commit(
+    paths: readonly string[] | "all",
+    source: MemorySource,
+    subject: string,
+    request?: string,
+  ): Promise<number> {
     const versions = await this.#versions();
     const id = Math.max(0, ...versions.map((version) => version.id)) + 1;
-    const hash = await this.#git.commit(paths, {
+    await this.#git.writeCommit(paths, {
       subject,
       trailers: { ...this.#trailers(id, source), ...(request ? { "Eevee-Request": request } : {}) },
     });
-    const version = (await this.#versions()).find((version) => version.hash === hash);
-    if (!version) throw new Error("The saved memory change is missing");
-    return this.#change(version);
+    return id;
   }
 
   async #change(version: Version): Promise<MemoryChange> {

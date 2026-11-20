@@ -454,12 +454,15 @@ test("apply rolls back every file when committing fails, preserves hand edits an
   ] satisfies MemoryOp[])
     actions = await store.extend(actions, op);
   const failure = new Error("Cannot commit memory");
-  const original = GitStore.prototype.commit;
+  const original = GitStore.prototype.writeCommit;
   const commit = t.mock.method(
     GitStore.prototype,
-    "commit",
-    async function (this: GitStore, ...args: Parameters<GitStore["commit"]>) {
-      if (args[1].trailers["Eevee-Source"] === "router") throw failure;
+    "writeCommit",
+    async function (this: GitStore, ...args: Parameters<GitStore["writeCommit"]>) {
+      if (args[1].trailers["Eevee-Source"] === "router") {
+        execFileSync("git", ["add", "--all"], { cwd: dir });
+        throw failure;
+      }
       return original.apply(this, args);
     },
   );
@@ -493,6 +496,44 @@ test("apply rolls back every file when committing fails, preserves hand edits an
   assert.equal(await store.read("rename.md"), undefined);
   assert.equal(await store.read("moved.md"), "original name");
 });
+
+for (const read of ["log", "diff"] as const) {
+  test(`apply preserves committed files when a post-commit ${read} read fails`, async (t) => {
+    const { store, versions } = await isolated(t);
+    const actions = await store.extend([], {
+      action: "write",
+      file: "MEMORY.md",
+      content: "approved advice",
+    });
+    const failure = new Error("Cannot read committed metadata");
+    const originalLog = GitStore.prototype.log;
+    const failedRead =
+      read === "log"
+        ? t.mock.method(GitStore.prototype, "log", async function (this: GitStore) {
+            const records = await originalLog.call(this);
+            if (records.some((record) => record.trailers["Eevee-Request"] === "p1:m1"))
+              throw failure;
+            return records;
+          })
+        : t.mock.method(GitStore.prototype, "diff", async () => {
+            throw failure;
+          });
+    await assert.rejects(
+      store.apply(actions, { kind: "router" }, "Advice", "p1:m1"),
+      (error) => error === failure,
+    );
+    assert.equal(await store.read("MEMORY.md"), "approved advice");
+    failedRead.mock.restore();
+    assert.equal((await versions.log()).length, 2);
+    assert.equal(await store.captureUserEdits(), undefined);
+    const retried = await store.apply(actions, { kind: "router" }, "Advice", "p1:m1");
+    assert.ok(retried);
+    assert.equal(retried.id, 2);
+    assert.deepEqual(retried.source, { kind: "router" });
+    assert.equal(await store.read("MEMORY.md"), "approved advice");
+    assert.equal((await versions.log()).length, 2);
+  });
+}
 
 test("create, edit, write, delete and rename compose and can be undone", async (t) => {
   const { store } = await isolated(t);

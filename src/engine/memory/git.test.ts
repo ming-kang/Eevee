@@ -101,6 +101,27 @@ test("literal pathspecs prevent one selected file from matching another", async 
   assert.deepEqual(await git.changedFiles(), [{ path: "x.md", status: "added" }]);
 });
 
+test("resetIndex only unstages selected paths without changing working files or other staged edits", async (t) => {
+  const { dir, git } = await setup(t);
+  await git.init();
+  await writeFile(join(dir, "MEMORY.md"), "original");
+  await writeFile(join(dir, "other.md"), "other original");
+  await git.commit("all", message(1));
+  await writeFile(join(dir, "MEMORY.md"), "edited");
+  await writeFile(join(dir, "other.md"), "other edit");
+  await writeFile(join(dir, "[new].md"), "new file");
+  execFileSync("git", ["add", "--all"], { cwd: dir });
+  await git.resetIndex(["MEMORY.md", "[new].md"]);
+  await git.resetIndex([]);
+  assert.equal(
+    execFileSync("git", ["diff", "--cached", "--name-only"], { cwd: dir, encoding: "utf8" }).trim(),
+    "other.md",
+  );
+  assert.equal(await readFile(join(dir, "MEMORY.md"), "utf8"), "edited");
+  assert.equal(await readFile(join(dir, "[new].md"), "utf8"), "new file");
+  assert.equal((await git.log()).length, 1);
+});
+
 test("revert produces an uncommitted inverse for a new ordinary commit", async (t) => {
   const { dir, git } = await setup(t);
   await git.init();
