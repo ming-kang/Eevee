@@ -186,6 +186,19 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
         files: await project(params.project).memory.files("project"),
       }),
     },
+    "GET /api/projects/:project/memory/proposals": {
+      handle: async ({ params }) => ({ proposals: await project(params.project).proposals.list() }),
+    },
+    "GET /api/projects/:project/memory/proposals/:proposal": {
+      handle: async ({ params }) => project(params.project).proposals.get(params.proposal),
+    },
+    "POST /api/projects/:project/memory/proposals/:proposal/approve": {
+      handle: async ({ params }) => project(params.project).proposals.approve(params.proposal),
+    },
+    "POST /api/projects/:project/memory/proposals/:proposal/reject": {
+      handle: async ({ params, body }) =>
+        project(params.project).proposals.reject(params.proposal, body.reason),
+    },
     "GET /api/projects/:project/memory/files/:file": {
       handle: async ({ params }) => project(params.project).memory.file("project", params.file),
     },

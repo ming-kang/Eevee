@@ -114,6 +114,13 @@ export class GitStore {
     );
   }
 
+  async content(hash: string, file: string, parent = false): Promise<string | undefined> {
+    if (!/^[0-9a-f]{40,64}$/.test(hash)) throw new Error("Invalid revision");
+    const revision = hash + (parent ? "^" : "");
+    if (!(await this.#git("ls-tree", "-z", revision, "--", file))) return undefined;
+    return this.#git("show", `${revision}:${file}`);
+  }
+
   async fileChanges(hash: string): Promise<ChangedFile[]> {
     if (!/^[0-9a-f]{40,64}$/.test(hash)) throw new Error("Invalid revision");
     const fields = (

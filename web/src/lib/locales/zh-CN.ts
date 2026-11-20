@@ -1,5 +1,24 @@
 /** Chinese for every English string the interface shows (`t()` in `i18n.ts`). */
 export const zhCN: Record<string, string> = {
+  "No memory proposal {proposalId}": "没有记忆提案 {proposalId}",
+  "Memory proposal {proposalId} has already been decided": "记忆提案 {proposalId} 已处理",
+  "Pending approval": "待批准",
+  "Decided proposals": "已处理的提案",
+  "No memory proposals": "没有记忆提案",
+  Approved: "已批准",
+  Rejected: "已拒绝",
+  Stale: "已失效",
+  Approve: "批准",
+  Reject: "拒绝",
+  "Reason (optional)": "原因（可选）",
+  "No preview available": "无法生成预览",
+  Proposals: "提案",
+  "Memory proposal": "记忆提案",
+  "Memory proposal {id}: {status}": "记忆提案 {id}：{status}",
+  "{n} memory proposal needs approval": "{n} 条记忆提案待批准",
+  "{n} memory proposals need approval": "{n} 条记忆提案待批准",
+  Project: "项目",
+  Dreaming: "梦境整理",
   "Memory file {file} changed. Reload the latest content and try again.":
     "记忆文件 {file} 已更改。请重新加载最新内容后重试。",
   "Global memory only supports editing the existing MEMORY.md file":

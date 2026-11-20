@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Report, ReportStatus, TicketId } from "../../domain/index.ts";
+import type { MemoryProposal, Report, ReportStatus, TicketId } from "../../domain/index.ts";
 import { route } from "./delivery.ts";
 
 const ticket = {
@@ -18,6 +18,34 @@ const report = (status: ReportStatus, seq = 1): Report => ({
   handled: false,
   reminded: false,
   at: 0,
+});
+
+test("all proposal decisions go to the Router; only rejected and stale decisions wake it", () => {
+  for (const kind of ["router", "dreaming"] as const) {
+    for (const status of ["approved", "rejected", "stale"] as const) {
+      const proposal: MemoryProposal = {
+        id: "m1",
+        scope: "global",
+        conversationId: 42,
+        source: { kind, ticketId: "t9" },
+        summary: "edit MEMORY.md",
+        actions: [],
+        status,
+        createdAt: 0,
+        reason: "Keep the old advice",
+      };
+      const [delivery] = route({
+        type: "proposal-decided",
+        proposal,
+        ...(status === "stale" ? { file: "MEMORY.md" } : {}),
+      });
+      assert.deepEqual(delivery?.target, { kind: "router" });
+      assert.equal(delivery?.mode, status === "approved" ? "record" : "wake");
+      assert.match(delivery?.text ?? "", /m1.*global/);
+      assert.match(delivery?.text ?? "", /Keep the old advice/);
+      if (status === "stale") assert.match(delivery?.text ?? "", /Conflicting file: MEMORY.md/);
+    }
+  }
 });
 
 test("A closing report wakes the Router, an interim one is only recorded", () => {

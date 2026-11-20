@@ -7,6 +7,7 @@ import { provideComposerInsert } from "../../composables/composer-bridge.ts";
 import type { ConversationWatch } from "../../composables/engine-data.ts";
 import { errorText } from "../../lib/errors.ts";
 import { t } from "../../lib/i18n.ts";
+import { formatRoute } from "../../lib/router.ts";
 import { useQuestionNavigation } from "../../composables/question-navigation.ts";
 import { useSubmit } from "../../composables/submit.ts";
 import { showToast } from "../../composables/toasts.ts";
@@ -170,6 +171,15 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
       </div>
       <span class="spacer" />
     </header>
+    <a
+      v-if="board?.openProposals.length"
+      class="mx-(--ev-gutter) my-2 flex items-center gap-2 rounded-sm border border-border px-3 py-2 text-sm text-fg hover:bg-hover"
+      :href="formatRoute({ name: 'memory', pid: project.id })"
+    >
+      <span class="count user">{{ board.openProposals.length }}</span>
+      {{ t("{n} memory proposal needs approval|{n} memory proposals need approval", { n: board.openProposals.length }) }}
+      <Icon name="chevR" size="sm" />
+    </a>
 
     <div v-if="empty" class="mt-auto flex animate-[ev-rise_var(--ev-slow)_var(--ev-ease)] flex-col items-center gap-1.5 px-(--ev-gutter) pb-5.5 text-center">
       <BrandLogo class="mb-1 size-8" />

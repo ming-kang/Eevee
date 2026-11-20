@@ -4,6 +4,7 @@ import type { BoardFeed, BoardListener } from "../board-feed.ts";
 import type { Conversations } from "./conversations.ts";
 import type { Jobs } from "./jobs.ts";
 import type { Memory } from "./memory.ts";
+import type { Proposals } from "./proposals.ts";
 import type { Questions } from "./questions.ts";
 import type { ProjectSettings } from "./settings.ts";
 import type { ProjectMeta, ProjectStore } from "./store.ts";
@@ -13,6 +14,7 @@ type Parts = {
   settings: ProjectSettings;
   conversations: Conversations;
   questions: Questions;
+  proposals: Proposals;
   jobs: Jobs;
   memory: Memory;
   feed: BoardFeed;
@@ -25,6 +27,7 @@ type Parts = {
 export class Project {
   readonly conversations: Conversations;
   readonly questions: Questions;
+  readonly proposals: Proposals;
   readonly jobs: Jobs;
   readonly memory: Memory;
   readonly #parts: Parts;
@@ -33,6 +36,7 @@ export class Project {
     this.#parts = parts;
     this.conversations = parts.conversations;
     this.questions = parts.questions;
+    this.proposals = parts.proposals;
     this.jobs = parts.jobs;
     this.memory = parts.memory;
   }

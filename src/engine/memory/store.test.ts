@@ -4,15 +4,62 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, type TestContext, test } from "node:test";
-import type { MemorySource } from "../../domain/index.ts";
+import type { MemoryOp, MemorySource } from "../../domain/index.ts";
 import { GitStore } from "./git.ts";
-import { MemoryRound } from "./round.ts";
 import { MemoryConflict, type MemoryPolicy, MemoryStore, memoryVersion } from "./store.ts";
+
+class MemoryRound {
+  readonly #store: MemoryStore;
+  #ops: MemoryOp[] = [];
+  #pending: Promise<void> = Promise.resolve();
+  constructor(store: MemoryStore) {
+    this.#store = store;
+  }
+  add(op: MemoryOp): Promise<void> {
+    const next = this.#pending.then(async () => {
+      await this.#store.validate([...this.#ops, op]);
+      this.#ops.push(op);
+    });
+    this.#pending = next.catch(() => {});
+    return next;
+  }
+  async flush(source: MemorySource) {
+    await this.#pending;
+    const ops = this.#ops;
+    this.#ops = [];
+    return this.#store.apply(ops, source);
+  }
+}
 
 let dir: string;
 let repo: MemoryStore;
 const subjects = () =>
   execFileSync("git", ["log", "--format=%s"], { cwd: dir, encoding: "utf8" }).trim().split("\n");
+
+test("proposal requests are retryable across store instances without reapplying changes", async (t) => {
+  const path = await mkdtemp(join(tmpdir(), "eevee-memory-request-"));
+  t.after(() => rm(path, { recursive: true, force: true }));
+  const store = new MemoryStore(path);
+  await store.ensure("original\n");
+  const ops = await store.extend([], { action: "write", file: "MEMORY.md", content: "approved\n" });
+  const first = await store.apply(ops, { kind: "dreaming", ticketId: "t1" }, "Advice", "p1:m1");
+  assert.ok(first);
+  const reopened = new MemoryStore(path);
+  assert.deepEqual(await reopened.requestChange("p1:m1"), first);
+  assert.deepEqual(
+    await reopened.apply(ops, { kind: "dreaming", ticketId: "t1" }, "Advice", "p1:m1"),
+    first,
+  );
+  assert.equal((await reopened.history()).length, 2);
+  const undo = await reopened.proposeUndo(first.id);
+  await writeFile(join(path, "MEMORY.md"), "hand edit\n");
+  await assert.rejects(
+    reopened.undo(first.id, { kind: "router" }, { versions: undo.versions, request: "p1:m2" }),
+    { problem: { code: "memory_changed", file: "MEMORY.md" } },
+  );
+  assert.equal(await reopened.read("MEMORY.md"), "hand edit\n");
+  assert.equal((await reopened.history()).length, 2);
+});
 const rounds = new Map<string, MemoryRound>();
 function pending(id: string): MemoryRound {
   let round = rounds.get(id);

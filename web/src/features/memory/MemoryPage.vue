@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Client } from "@shared/protocol/client.ts";
-import type { MemoryFileEntry, ProjectSummary } from "@shared/protocol/contract.ts";
+import type { MemoryFileEntry, ProjectSummary, BoardView } from "@shared/protocol/contract.ts";
 import type {
   MemoryChange,
   MemoryChangeDetail,
@@ -15,6 +15,8 @@ import { formatRelativeTime } from "../../lib/time.ts";
 import { showToast } from "../../composables/toasts.ts";
 import FileDiffs from "./FileDiffs.vue";
 import MemoryEditor from "./MemoryEditor.vue";
+import ProposalReview from "./ProposalReview.vue";
+import { createProposalReview } from "./review.ts";
 import { createMemoryEditor } from "./editor.ts";
 import Icon from "../../ui/Icon.vue";
 import Skeleton from "../../ui/Skeleton.vue";
@@ -27,6 +29,7 @@ import { diff } from "../../ui/diff.ts";
 const props = defineProps<{
   client: Client;
   project: ProjectSummary;
+  board?: BoardView;
 }>();
 
 const emit = defineEmits<{
@@ -34,8 +37,8 @@ const emit = defineEmits<{
 }>();
 
 const scope = ref<MemoryScope>("project");
-const MEMORY_TABS = ["history", "files"] as const;
-const tab = ref<(typeof MEMORY_TABS)[number]>("history");
+const MEMORY_TABS = ["proposals", "history", "files"] as const;
+const tab = ref<(typeof MEMORY_TABS)[number]>(props.board?.openProposals.length ? "proposals" : "history");
 const changes = ref<MemoryChange[]>([]);
 const changeDetails = ref<Record<string, MemoryChangeDetail>>({});
 const selected = ref<number>();
@@ -53,6 +56,15 @@ const filesError = ref<string>();
 const fileError = ref<string>();
 const confirmChange = ref<MemoryChange>();
 const undoing = useSubmit();
+const review = createProposalReview(props.client, async () => {
+  changeDetails.value = {};
+  fileContents.value = {};
+  await loadScope();
+  files.value = [];
+});
+watch([() => props.project.id, () => props.board?.openProposals.map(p => p.id).join(",")], () => {
+  void review.load(props.project.id);
+}, { immediate: true });
 const editor = createMemoryEditor(props.client, () => props.project.id, async (draft) => {
   if (draft.project !== props.project.id || draft.scope !== scope.value) return;
   fileContents.value = {};
@@ -243,6 +255,7 @@ watch(
 );
 
 watch(tab, (next) => {
+  if (next === "proposals") void review.load(props.project.id);
   mobileDetail.value = false;
   if (next === "files" && files.value.length === 0 && !loadingFiles.value) {
     void loadFiles();
@@ -327,12 +340,13 @@ const DETAIL_HEAD = `flex items-start gap-3 ${MEASURE} [&_h2]:text-(length:--ev-
       <span class="crumb-sep hide-sm" aria-hidden="true">/</span>
       <span class="sub ellipsis hide-sm">{{ project.title }}</span>
     </header>
-    <div class="grid min-h-0 flex-1 grid-cols-[clamp(calc(250px*var(--ev-scale)),26%,calc(360px*var(--ev-scale)))_minmax(0,1fr)] @max-[54.2857em]/vp:grid-cols-1">
+    <div class="flex flex-wrap gap-2 border-b border-separator px-3 py-2">
+      <Segmented v-model="tab" mode="tabs" :options="MEMORY_TABS.map((value) => ({ value, label: value === 'proposals' ? t('Proposals') + (board?.openProposals.length ? ' · ' + board.openProposals.length : '') : value === 'history' ? t('History') : t('Files') }))" :label="t('Memory view')" />
+      <Segmented v-if="tab !== 'proposals'" v-model="scope" :options="[{ value: 'project', label: t('This project') }, { value: 'global', label: t('Global') }]" :label="t('Memory scope')" />
+    </div>
+    <ProposalReview v-if="tab === 'proposals'" :review="review" />
+    <div v-else class="grid min-h-0 flex-1 grid-cols-[clamp(calc(250px*var(--ev-scale)),26%,calc(360px*var(--ev-scale)))_minmax(0,1fr)] @max-[54.2857em]/vp:grid-cols-1">
       <div class="flex min-h-0 flex-col overflow-y-auto border-r border-separator px-2.5 pt-2 pb-4 @max-[54.2857em]/vp:border-r-0" :class="{ '@max-[54.2857em]/vp:hidden': mobileDetail }">
-        <div class="sticky top-0 z-1 flex flex-col gap-1.5 bg-(--ev-page) pt-1 pb-2.5">
-          <Segmented v-model="scope" stretch :options="[{ value: 'project', label: t('This project') }, { value: 'global', label: t('Global') }]" :label="t('Memory scope')" />
-          <Segmented v-model="tab" mode="tabs" stretch :options="MEMORY_TABS.map((value) => ({ value, label: value === 'history' ? t('History') : t('Files') }))" :label="t('Memory view')" />
-        </div>
 
         <template v-if="tab === 'history'">
           <p v-if="listError" class="error hint">{{ listError }}</p>

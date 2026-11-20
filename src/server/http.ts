@@ -164,6 +164,8 @@ const STATUS: Record<ProblemCode, number> = {
   no_memory_file: 404,
   memory_changed: 409,
   memory_restricted: 403,
+  no_proposal: 404,
+  proposal_decided: 409,
   no_change: 404,
   no_submission: 404,
   no_model: 404,

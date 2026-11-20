@@ -39,13 +39,19 @@ function makeTicket(id: TicketId, stage: TicketStage, jobs = 0, closed = false):
 test("deriveProjectState ranks unanswered > Router failure > running > idle", () => {
   const runningBoard: BoardView = {
     tickets: [makeTicket("t1", "working"), makeTicket("t2", "jobs", 1), makeTicket("t3", "idle")],
+    openProposals: [],
     openQuestions: [],
     router: { running: false },
   };
 
   // 4. idle / at rest
   const idle = deriveProjectState({
-    board: { tickets: [makeTicket("t1", "idle")], openQuestions: [], router: { running: false } },
+    board: {
+      tickets: [makeTicket("t1", "idle")],
+      openProposals: [],
+      openQuestions: [],
+      router: { running: false },
+    },
     activeAt: 12345,
   });
   assert.equal(idle.kind, "rest");
@@ -60,7 +66,7 @@ test("deriveProjectState ranks unanswered > Router failure > running > idle", ()
 
   // 3b. the Router is running
   const runRouter = deriveProjectState({
-    board: { tickets: [], openQuestions: [], router: { running: false } },
+    board: { tickets: [], openProposals: [], openQuestions: [], router: { running: false } },
     router: { running: true },
   });
   assert.equal(runRouter.kind, "run");
@@ -68,7 +74,7 @@ test("deriveProjectState ranks unanswered > Router failure > running > idle", ()
 
   // 3c. without a live value, fall back to BoardView.router status and failure
   const boardRouterRun = deriveProjectState({
-    board: { tickets: [], openQuestions: [], router: { running: true } },
+    board: { tickets: [], openProposals: [], openQuestions: [], router: { running: true } },
   });
   assert.equal(boardRouterRun.kind, "run");
   assert.equal(boardRouterRun.routerRunning, true);
@@ -76,6 +82,7 @@ test("deriveProjectState ranks unanswered > Router failure > running > idle", ()
   const boardRouterFailed = deriveProjectState({
     board: {
       tickets: [],
+      openProposals: [],
       openQuestions: [],
       router: { running: false, failure: { reason: "model_error", detail: "401" } },
     },
@@ -94,6 +101,7 @@ test("deriveProjectState ranks unanswered > Router failure > running > idle", ()
   const answer = deriveProjectState({
     board: {
       ...runningBoard,
+      openProposals: [],
       openQuestions: [
         { id: "q1", items: [{ text: "Q1", options: ["A"] }], answer: "A", askedAt: 1 },
         { id: "q2", items: [{ text: "Q2", options: ["A"] }], askedAt: 2 },
@@ -105,6 +113,27 @@ test("deriveProjectState ranks unanswered > Router failure > running > idle", ()
   assert.equal(answer.questionCount, 1);
 });
 
+test("pending memory proposals demand project attention even without open questions", () => {
+  const state = deriveProjectState({
+    board: {
+      tickets: [],
+      openQuestions: [],
+      openProposals: [
+        {
+          id: "m1",
+          scope: "global",
+          source: { kind: "dreaming", ticketId: "t1" },
+          summary: "Advice",
+        },
+      ],
+      router: { running: false },
+    },
+  });
+  assert.equal(state.kind, "user");
+  assert.equal(state.proposalCount, 1);
+  assert.equal(state.questionCount, 0);
+});
+
 test("buildPaletteItems and filterPaletteItems build and filter pages, tickets, projects and actions", () => {
   const projects: ProjectSummary[] = [
     { id: "p1", title: "Optics paper", workspace: "D:/papers/optics", createdAt: 1 },
@@ -114,11 +143,14 @@ test("buildPaletteItems and filterPaletteItems build and filter pages, tickets, 
     p1: {
       board: {
         tickets: [makeTicket("t4", "answer")],
+        openProposals: [],
         openQuestions: [],
         router: { running: false },
       },
     },
-    p2: { board: { tickets: [], openQuestions: [], router: { running: false } } },
+    p2: {
+      board: { tickets: [], openProposals: [], openQuestions: [], router: { running: false } },
+    },
   };
 
   const items = buildPaletteItems({
@@ -171,6 +203,7 @@ test("openSidebarTickets orders urgent open tickets first and omits closed ones"
       makeTicket("t3", "answer"),
       makeTicket("t4", "idle", 0, true),
     ],
+    openProposals: [],
     openQuestions: [],
     router: { running: false },
   };
@@ -189,6 +222,7 @@ test("filterSidebarProjects filters by project or ticket and auto-expands ticket
     p1: {
       board: {
         tickets: [makeTicket("t1", "working"), makeTicket("t9", "idle", 0, true)],
+        openProposals: [],
         openQuestions: [],
         router: { running: false },
       },
@@ -196,6 +230,7 @@ test("filterSidebarProjects filters by project or ticket and auto-expands ticket
     p2: {
       board: {
         tickets: [makeTicket("t12", "answer")],
+        openProposals: [],
         openQuestions: [],
         router: { running: false },
       },

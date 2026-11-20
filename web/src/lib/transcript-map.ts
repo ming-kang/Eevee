@@ -524,6 +524,20 @@ function mapNotice(
   const list = (ids: readonly string[]) => ids.map(displayId).join(t(", "));
 
   switch (notice?.type) {
+    case "proposal-decided":
+      return event(
+        "notice",
+        t("Memory proposal {id}: {status}", {
+          id: notice.proposalId,
+          status:
+            notice.status === "approved"
+              ? t("Approved")
+              : notice.status === "rejected"
+                ? t("Rejected")
+                : t("Stale"),
+        }),
+        { detail: notice.reason ?? notice.summary },
+      );
     case undefined:
       return text === "" ? undefined : event("notice", text);
     case "opening":

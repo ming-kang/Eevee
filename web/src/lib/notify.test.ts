@@ -29,13 +29,20 @@ function question(id: `q${number}`, text = `Question ${id}`): Question {
 }
 
 function board(partial: Partial<BoardView>): BoardView {
-  return { tickets: [], openQuestions: [], router: { running: false }, ...partial };
+  return {
+    tickets: [],
+    openProposals: [],
+    openQuestions: [],
+    router: { running: false },
+    ...partial,
+  };
 }
 
 const PROJECT = { id: "p1", title: "Optics" };
 
 test("the first snapshot seeds and emits nothing", () => {
   const next = board({
+    openProposals: [],
     openQuestions: [question("q1")],
     tickets: [ticket("t1", "blocked")],
     router: { running: false, failure: { reason: "model_error" } },
@@ -44,8 +51,11 @@ test("the first snapshot seeds and emits nothing", () => {
 });
 
 test("a new open question notifies; an answered or already-present one does not", () => {
-  const prev = board({ openQuestions: [question("q1")] });
-  const next = board({ openQuestions: [question("q1"), question("q2", "  Which\n template?  ")] });
+  const prev = board({ openProposals: [], openQuestions: [question("q1")] });
+  const next = board({
+    openProposals: [],
+    openQuestions: [question("q1"), question("q2", "  Which\n template?  ")],
+  });
   const events = boardEvents(prev, next, PROJECT);
   assert.equal(events.length, 1);
   assert.equal(events[0]?.tag, "p1:q:q2");
@@ -54,6 +64,7 @@ test("a new open question notifies; an answered or already-present one does not"
   assert.deepEqual(events[0]?.route, { name: "chat", pid: "p1" });
 
   const answered = board({
+    openProposals: [],
     openQuestions: [question("q1"), { ...question("q3"), answer: "x" }],
   });
   assert.deepEqual(boardEvents(prev, answered, PROJECT), []);

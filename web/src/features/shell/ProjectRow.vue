@@ -26,6 +26,7 @@ const props = defineProps<{
 const projectAt = computed(() => props.state.activeAt ?? props.project.createdAt);
 const statusLabel = computed(() => {
   if (props.state.kind === "user") {
+    if (props.state.proposalCount > 0) return t("{n} memory proposal needs approval|{n} memory proposals need approval", { n: props.state.proposalCount });
     return t("{n} question needs an answer|{n} questions need an answer", { n: props.state.questionCount });
   }
   if (props.state.kind === "bad") return props.state.routerFailed ?? t("Blocked");
@@ -94,7 +95,8 @@ defineEmits<{
           <StageGlyph v-else stage="idle" />
         </span>
         <span class="col-start-3 min-w-0 truncate leading-5" :class="{ 'font-medium': current && !activeTicketId }">{{ project.title }}</span>
-        <span v-if="state.kind === 'user'" class="ml-2 size-1.5 flex-none rounded-full bg-(--ev-user)" aria-hidden="true" />
+        <span v-if="state.proposalCount > 0" class="count user ml-2">{{ state.proposalCount }}</span>
+        <span v-else-if="state.kind === 'user'" class="ml-2 size-1.5 flex-none rounded-full bg-(--ev-user)" aria-hidden="true" />
         <time
           v-else
           class="ml-2 flex-none text-2xs text-fg-subtle tabular-nums opacity-0 transition-opacity group-hover/prow:opacity-100 [@media(hover:none)]:opacity-100"

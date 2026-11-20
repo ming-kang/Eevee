@@ -38,11 +38,13 @@ const home = computed(() =>
 );
 
 function needsYouTitle(row: NeedsYouRow): string {
+  if (row.kind === "proposal") return row.proposal.summary;
   return row.kind === "question" ? row.text || row.question.id : row.failure;
 }
 
 /** The text after the project name in a Needs-you row's detail. */
 function needsYouRest(row: NeedsYouRow): string | undefined {
+  if (row.kind === "proposal") return t("Memory proposal");
   if (row.kind === "router") return t("The Router's last run failed");
   return row.question.ticketId === undefined ? undefined : displayId(row.question.ticketId);
 }
@@ -77,11 +79,11 @@ function runningRest(row: Extract<RunningRow, { kind: "ticket" }>): string {
           <div :class="rows({ spaced: true })">
             <a
               v-for="row in home.needsYou"
-              :key="row.kind === 'question' ? row.question.id : `r:${row.pid}`"
+              :key="`${row.pid}:${row.kind === 'question' ? row.question.id : row.kind === 'proposal' ? row.proposal.id : 'router'}`"
               class="border border-border bg-surface [&>.glyph]:mt-0.5 [&>.glyph]:self-start" :class="rowClass({ size: 'home', link: true })"
-              :href="formatRoute({ name: 'chat', pid: row.pid, ...(row.kind === 'question' ? { qid: row.question.id } : {}) })"
+              :href="formatRoute(row.kind === 'proposal' ? { name: 'memory', pid: row.pid } : { name: 'chat', pid: row.pid, ...(row.kind === 'question' ? { qid: row.question.id } : {}) })"
             >
-              <StageGlyph :stage="row.kind === 'question' ? 'answer' : 'blocked'" />
+              <StageGlyph :stage="row.kind === 'router' ? 'blocked' : 'answer'" />
               <span :class="rowMain({ loose: true })">
                 <span :class="rowTitle({ clamp: true })">{{ needsYouTitle(row) }}</span>
                 <span class="ellipsis" :class="ROW_DESC"
