@@ -6,6 +6,7 @@ import { computed, ref, type ShallowRef, watch } from "vue";
 import { effectiveStage, type RailTab } from "../../lib/board.ts";
 import { provideComposerInsert } from "../../composables/composer-bridge.ts";
 import { useConversationWatch } from "../../composables/engine-data.ts";
+import { useQuestionNavigation } from "../../composables/question-navigation.ts";
 import { errorText } from "../../lib/errors.ts";
 import { t } from "../../lib/i18n.ts";
 import { STAGE_LABEL } from "../../lib/labels.ts";
@@ -38,12 +39,14 @@ const props = defineProps<{
   openQuestions?: readonly Question[];
   boardLoaded?: boolean;
   ticketId: string;
+  questionId?: QuestionId;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   "open-details": [];
   "open-rail": [tab?: RailTab, jobId?: string];
   "open-ticket": [ticketId: string];
+  "question-route": [questionId: QuestionId | undefined];
 }>();
 
 const params = computed(() => ({ project: props.project, conversation: props.ticketId }));
@@ -92,10 +95,13 @@ const later = ref(false);
 const interrupting = useSubmit();
 const queued = computed(() => queuedMessages(conversation.inbox.value));
 const queuedBusy = ref(new Set<string>());
-/** An answered or withdrawn question opened from the transcript. */
-const reviewId = ref<QuestionId>();
-/** The open question the card should jump to. */
-const focusId = ref<QuestionId>();
+const { reviewId, focusId, open: navigateQuestion, close: closeQuestion, answered } = useQuestionNavigation(
+  () => props.questionId,
+  () => props.boardLoaded ? ticketQuestions.value : undefined,
+  (id) => emit("question-route", id),
+);
+
+watch(() => props.questionId, (id) => { if (id !== undefined) later.value = false; });
 
 watch(
   [() => props.ticketId, () => ticketQuestions.value.length],
@@ -140,16 +146,12 @@ async function answer(id: QuestionId, text: string, answers: readonly string[]):
     { project: props.project, question: id },
     { answer: text, answers: [...answers] },
   );
+  answered(id);
 }
 
 function openQuestion(id: QuestionId): void {
-  if (ticketQuestions.value.some((q) => q.id === id)) {
-    later.value = false;
-    reviewId.value = undefined;
-    focusId.value = id;
-    return;
-  }
-  reviewId.value = id;
+  later.value = false;
+  navigateQuestion(id);
 }
 
 async function queueAction(
@@ -274,7 +276,7 @@ function queueSteer(message: QueuedMessage): Promise<void> {
             :project="project"
             :question="reviewId"
             :tickets="tickets"
-            @close="reviewId = undefined"
+            @close="closeQuestion"
             @open-ticket="$emit('open-ticket', $event)"
           />
           <QuestionCard
@@ -283,7 +285,8 @@ function queueSteer(message: QueuedMessage): Promise<void> {
             :tickets="tickets"
             :focus-id="focusId"
             :answer="answer"
-            @later="later = true"
+            @later="closeQuestion(); later = true"
+            @select-question="openQuestion"
             @open-ticket="$emit('open-ticket', $event)"
           />
           <div

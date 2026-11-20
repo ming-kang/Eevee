@@ -81,3 +81,15 @@ test("paging updates the route and a late answer cannot replace the new target",
   assert.equal(s.panel.focusId.value, "q1");
   assert.equal(s.panel.reviewId.value, undefined);
 });
+
+test("Worker question routes select either question on the same ticket after its board loads", async (t) => {
+  const s = setup("q2", false);
+  t.after(() => s.scope.stop());
+  s.questions.value = [{ id: "q1" }, { id: "q2" }];
+  await nextTick();
+  assert.equal(s.panel.focusId.value, "q2");
+  s.target.value = "q1";
+  await nextTick();
+  assert.equal(s.panel.focusId.value, "q1");
+  assert.equal(s.panel.reviewId.value, undefined);
+});

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Client } from "@shared/protocol/client.ts";
+import type { QuestionId } from "@shared/domain/index.ts";
 import type { BoardView, ProjectSummary } from "@shared/protocol/contract.ts";
 import { computed, ref, type ShallowRef, watch } from "vue";
 import type { StreamClient } from "../../lib/stream.ts";
@@ -29,6 +30,7 @@ const props = defineProps<{
   tab: RailTab;
   maximized: boolean;
   activeTicketId?: string;
+  questionId?: QuestionId;
   openJobId?: string;
 }>();
 
@@ -37,6 +39,7 @@ const emit = defineEmits<{
   "update:openJobId": [jobId: string | undefined];
   "open-ticket": [ticketId: string];
   "close-ticket": [];
+  "question-route": [questionId: QuestionId | undefined];
   "toggle-maximize": [];
   "open-rail": [tab?: RailTab, jobId?: string];
 }>();
@@ -44,6 +47,7 @@ const emit = defineEmits<{
 const effectiveTab = computed(() => resolveRailTab(props.tab, !!props.activeTicketId));
 const workerPanel = ref<"conversation" | "details">("conversation");
 watch(() => props.activeTicketId, () => { workerPanel.value = "conversation"; });
+watch(() => props.questionId, (id) => { if (id !== undefined) workerPanel.value = "conversation"; });
 const groups = computed(() => groupTickets(props.board?.tickets ?? []));
 const jobs = computed(() => collectRunningJobs(props.board?.tickets ?? []));
 const pendingQuestions = computed(() => countPendingQuestions(props.board));
@@ -122,11 +126,13 @@ const tabs = computed(() => {
         :stream="stream"
         :project="project.id"
         :ticket-id="activeTicketId"
+        :question-id="questionId"
         :view="activeTicket"
         :tickets="board?.tickets"
         :open-questions="board?.openQuestions"
         :board-loaded="board !== undefined"
         @open-details="workerPanel = 'details'"
+        @question-route="emit('question-route', $event)"
         @open-rail="(tab, jobId) => emit('open-rail', tab, jobId)"
         @open-ticket="emit('open-ticket', $event)"
       />

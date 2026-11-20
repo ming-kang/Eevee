@@ -46,7 +46,7 @@ export function pendingRoute(row: PendingRow): Route {
   if (row.kind === "ticket") return { name: "worker", pid: row.pid, tid: row.view.ticket.id };
   if (row.kind === "question") {
     return row.question.ticketId
-      ? { name: "worker", pid: row.pid, tid: row.question.ticketId }
+      ? { name: "worker", pid: row.pid, tid: row.question.ticketId, qid: row.question.id }
       : { name: "chat", pid: row.pid, qid: row.question.id };
   }
   return { name: "chat", pid: row.pid };

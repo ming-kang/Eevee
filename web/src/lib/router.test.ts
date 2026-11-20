@@ -37,6 +37,7 @@ test("every route parses and formats and round-trips", () => {
     { name: "chat", pid: "optics" },
     { name: "chat", pid: "optics", qid: "q4" },
     { name: "worker", pid: "optics", tid: "t5" },
+    { name: "worker", pid: "optics", tid: "t5", qid: "q2" },
     { name: "control", section: "memory" },
     { name: "control", section: "usage", pid: "optics a/b" },
     { name: "control", section: "general" },
@@ -60,6 +61,22 @@ test("encoded project and ticket ids are supported", () => {
   const hash = formatRoute(route);
   assert.equal(hash, "#/p/proj%20a%2Fb/t/t12");
   assert.deepEqual(parseRoute(hash), route);
+});
+
+test("Worker question deep links preserve the selected question and reject malformed targets", () => {
+  const route: Route = { name: "worker", pid: "proj a/b", tid: "t4", qid: "q2" };
+  assert.equal(formatRoute(route), "#/p/proj%20a%2Fb/t/t4/q/q2");
+  assert.deepEqual(parseRoute("#/p/proj%20a%2Fb/t/t4/q/%712"), route);
+  assert.deepEqual(resolveRoute(formatRoute(route), "other"), route);
+  for (const hash of [
+    "#/p/p1/t/t4/q",
+    "#/p/p1/t/t4/q/nope",
+    "#/p/p1/t/t4/q/%E0%A4",
+    "#/p/p1/t/t4/q/q2/extra",
+    "#/p/p1/t/t4/nope/q2",
+  ]) {
+    assert.equal(parseRoute(hash), undefined);
+  }
 });
 
 test("an Overview question link preserves its target when opening or reloading a project", () => {

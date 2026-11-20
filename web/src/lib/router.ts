@@ -10,7 +10,7 @@ const ITEM_SECTIONS: readonly SettingsSection[] = ["models", "mcp"];
 
 export type Route =
   | { name: "chat"; pid: string; qid?: QuestionId }
-  | { name: "worker"; pid: string; tid: string }
+  | { name: "worker"; pid: string; tid: string; qid?: QuestionId }
   | { name: "control"; section: ControlSection; item?: string; pid?: string }
   | { name: "connect" }
   | { name: "overview" };
@@ -89,9 +89,17 @@ export function parseRoute(hash: string): Route | undefined {
       const qid = decode(parts[3]);
       return qid && /^q\d+$/.test(qid) ? { name: "chat", pid, qid: qid as QuestionId } : undefined;
     }
-    if (parts[2] === "t" && parts[3] && parts.length === 4) {
+    if (parts[2] === "t" && parts[3]) {
       const tid = decode(parts[3]);
-      return tid ? { name: "worker", pid, tid } : undefined;
+      if (!tid) return undefined;
+      if (parts.length === 4) return { name: "worker", pid, tid };
+      if (parts[4] === "q" && parts[5] && parts.length === 6) {
+        const qid = decode(parts[5]);
+        return qid && /^q\d+$/.test(qid)
+          ? { name: "worker", pid, tid, qid: qid as QuestionId }
+          : undefined;
+      }
+      return undefined;
     }
     if ((parts[2] === "memory" || parts[2] === "usage") && parts.length === 3) {
       return { name: "control", section: parts[2], pid };
@@ -113,7 +121,7 @@ export function formatRoute(route: Route): string {
     case "chat":
       return `#/p/${encodeURIComponent(route.pid)}${route.qid === undefined ? "" : `/q/${encodeURIComponent(route.qid)}`}`;
     case "worker":
-      return `#/p/${encodeURIComponent(route.pid)}/t/${encodeURIComponent(route.tid)}`;
+      return `#/p/${encodeURIComponent(route.pid)}/t/${encodeURIComponent(route.tid)}${route.qid === undefined ? "" : `/q/${encodeURIComponent(route.qid)}`}`;
     case "control":
       return `#/control/${route.section}${route.item === undefined ? "" : `/${encodeURIComponent(route.item)}`}${route.pid === undefined ? "" : `?project=${encodeURIComponent(route.pid)}`}`;
     case "connect":

@@ -250,7 +250,12 @@ test("Pending includes reviews and blocked/failed tickets without duplicating Wo
   const workerQuestion = overview.pending[0];
   assert.ok(workerQuestion?.kind === "question");
   assert.equal(workerQuestion.view?.ticket.title, "Ticket t4");
-  assert.deepEqual(pendingRoute(workerQuestion), { name: "worker", pid: "p1", tid: "t4" });
+  assert.deepEqual(pendingRoute(workerQuestion), {
+    name: "worker",
+    pid: "p1",
+    tid: "t4",
+    qid: "q1",
+  });
   const review = overview.pending.find(
     (row) => row.kind === "ticket" && row.view.ticket.id === "t1",
   );
@@ -313,5 +318,24 @@ test("Router questions and failures still navigate to the Router chat", () => {
   assert.deepEqual(overview.pending.map(pendingRoute), [
     { name: "chat", pid: "p1", qid: "q1" },
     { name: "chat", pid: "p1" },
+  ]);
+});
+
+test("two Pending questions on one Worker retain distinct question targets", () => {
+  const overview = buildOverviewBoard({
+    projects: [project("p1")],
+    now: NOW,
+    boards: {
+      p1: {
+        board: board({
+          tickets: [ticket("t4", "answer")],
+          openQuestions: [question("q1", 1, "t4"), question("q2", 2, "t4")],
+        }),
+      },
+    },
+  });
+  assert.deepEqual(overview.pending.map(pendingRoute), [
+    { name: "worker", pid: "p1", tid: "t4", qid: "q2" },
+    { name: "worker", pid: "p1", tid: "t4", qid: "q1" },
   ]);
 });
