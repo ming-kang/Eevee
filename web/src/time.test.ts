@@ -33,6 +33,19 @@ test("clock time, milliseconds and seconds formatting", () => {
   assert.equal(formatElapsedSeconds(3661), "1:01:01");
 });
 
+test("fixed timestamps render compact minute, hour, day and week units", () => {
+  const now = Date.UTC(2026, 10, 20, 12);
+  const minute = 60_000;
+  for (const [age, expected] of [
+    [8 * minute, "8m"],
+    [8 * 60 * minute, "8h"],
+    [3 * 24 * 60 * minute, "3d"],
+    [8 * 7 * 24 * 60 * minute, "8w"],
+  ] as const) {
+    assert.equal(formatRelativeTime(now - age, now, "short"), expected);
+  }
+});
+
 test("the working clock reads m:ss, h:mm:ss past an hour, never below 0:01", () => {
   assert.equal(formatWorkingClock(0), "0:01");
   assert.equal(formatWorkingClock(0.4), "0:01");

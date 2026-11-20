@@ -5,6 +5,7 @@ import { extractAuthCode, formatRoute, parseRoute, type Route, resolveRoute } fr
 test("every route parses and formats and round-trips", () => {
   const routes: Route[] = [
     { name: "chat", pid: "optics" },
+    { name: "chat", pid: "optics", qid: "q4" },
     { name: "worker", pid: "optics", tid: "t5" },
     { name: "memory", pid: "optics" },
     { name: "usage", pid: "optics" },
@@ -28,6 +29,17 @@ test("encoded project and ticket ids are supported", () => {
   const hash = formatRoute(route);
   assert.equal(hash, "#/p/proj%20a%2Fb/t/t12");
   assert.deepEqual(parseRoute(hash), route);
+});
+
+test("a Home question link preserves its target when opening or reloading a project", () => {
+  const route: Route = { name: "chat", pid: "proj a/b", qid: "q2" };
+  const hash = "#/p/proj%20a%2Fb/q/q2";
+  assert.equal(formatRoute(route), hash);
+  assert.deepEqual(parseRoute(hash), route);
+  assert.deepEqual(resolveRoute(hash, "another-project"), route);
+  for (const invalid of ["#/p/optics/q/nope", "#/p/optics/q/%E0%A4", "#/p/optics/q/q2/extra"]) {
+    assert.equal(parseRoute(invalid), undefined);
+  }
 });
 
 test("settings defaults to general when the sub-page is missing or unknown", () => {

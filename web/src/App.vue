@@ -366,6 +366,7 @@ watch(
         :board="currentBoardState?.board"
         :router-conversation="routerConversation"
         :ticket-id="route.name === 'worker' ? route.tid : undefined"
+        :question-id="route.name === 'chat' ? route.qid : undefined"
         @open-rail="openRail"
         @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
         @close-ticket="navigate({ name: 'chat', pid: currentProject.id })"

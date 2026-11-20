@@ -76,7 +76,7 @@ function runningRest(row: Extract<RunningRow, { kind: "ticket" }>): string {
               v-for="row in home.needsYou"
               :key="row.kind === 'question' ? row.question.id : `r:${row.pid}`"
               class="row home-attention"
-              :href="formatRoute({ name: 'chat', pid: row.pid })"
+              :href="formatRoute({ name: 'chat', pid: row.pid, ...(row.kind === 'question' ? { qid: row.question.id } : {}) })"
             >
               <StageGlyph :stage="row.kind === 'question' ? 'answer' : 'blocked'" />
               <span class="r-main">

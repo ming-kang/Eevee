@@ -62,6 +62,7 @@ watch(
     const at = props.questions.findIndex((q) => q.id === id);
     if (at !== -1) index.value = at;
   },
+  { immediate: true },
 );
 
 const current = computed<Question | undefined>(() => props.questions[index.value]);

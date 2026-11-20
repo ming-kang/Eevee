@@ -26,6 +26,7 @@ const props = defineProps<{
   project: ProjectSummary;
   board: BoardView | undefined;
   conversation: ConversationWatch;
+  questionId?: QuestionId;
 }>();
 
 defineEmits<{
@@ -103,6 +104,17 @@ function openQuestion(id: QuestionId): void {
   reviewId.value = id;
 }
 
+// Wait for the board before deciding whether a deep link opens the answer card or its history.
+watch(
+  [() => props.questionId, () => props.board !== undefined],
+  ([id, loaded]) => {
+    reviewId.value = undefined;
+    focusId.value = undefined;
+    if (loaded && id !== undefined) openQuestion(id);
+  },
+  { immediate: true },
+);
+
 async function queueAction(
   message: QueuedMessage,
   fn: () => Promise<void>,
@@ -150,7 +162,7 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
   <section class="chat-page" :class="{ landing: empty }">
     <header class="header">
       <div v-if="!empty" class="header-title">
-        <Icon name="folderOpen" size="sm" class="dim" />
+        <Icon name="folderOpen" size="sm" class="dim hide-sm" />
         <h1 class="ellipsis" :title="project.workspace">{{ project.title }}</h1>
       </div>
       <span class="spacer" />

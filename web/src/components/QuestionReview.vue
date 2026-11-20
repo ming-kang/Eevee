@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
+import { ApiRequestError, type Client } from "@shared/api/client.ts";
 import type { TicketView } from "@shared/api/contract.ts";
 import type { Question, QuestionId } from "@shared/contracts/index.ts";
 import { computed, ref, watch } from "vue";
@@ -25,19 +25,30 @@ defineEmits<{
 const data = ref<Question>();
 const error = ref<string>();
 const loading = ref(true);
+const missing = ref(false);
+let loadVersion = 0;
 
 async function load(): Promise<void> {
+  const version = ++loadVersion;
   loading.value = true;
   error.value = undefined;
+  data.value = undefined;
+  missing.value = false;
   try {
-    data.value = await props.client.call(
+    const question = await props.client.call(
       "GET /api/projects/:project/questions/:question",
       { project: props.project, question: props.question },
     );
+    if (version === loadVersion) data.value = question;
   } catch (cause) {
+    if (version !== loadVersion) return;
+    if (cause instanceof ApiRequestError && cause.status === 404) {
+      missing.value = true;
+      return;
+    }
     error.value = errorText(cause);
   } finally {
-    loading.value = false;
+    if (version === loadVersion) loading.value = false;
   }
 }
 
@@ -87,6 +98,10 @@ const status = computed(() => {
       </button>
     </div>
     <div v-if="loading" class="qbody"><Skeleton :lines="2" /></div>
+    <div v-else-if="missing" class="qbody">
+      <p class="dim" role="status">{{ t("This question is no longer available.") }}</p>
+      <button type="button" class="btn ghost sm" @click="$emit('close')">{{ t("Back to conversation") }}</button>
+    </div>
     <div v-else-if="error !== undefined" class="qbody">
       <p class="composer-error" role="alert">{{ error }}</p>
       <button type="button" class="btn ghost sm" @click="load">{{ t("Retry") }}</button>
