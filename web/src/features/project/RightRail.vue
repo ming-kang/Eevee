@@ -24,6 +24,7 @@ import Segmented from "../../ui/Segmented.vue";
 import Button from "../../ui/Button.vue";
 import Icon from "../../ui/Icon.vue";
 import WorkerView from "./WorkerView.vue";
+import { shouldCloseTicketOnEscape } from "./rail-navigation.ts";
 
 const props = defineProps<{
   client: Client;
@@ -68,7 +69,14 @@ const activeTicket = computed(() =>
 const stage = computed(() => activeTicket.value ? effectiveStage(activeTicket.value) : undefined);
 
 function onEscape(event: KeyboardEvent): void {
-  if (event.defaultPrevented || !props.activeTicketId) return;
+  const target = event.target instanceof Element ? event.target : undefined;
+  const inEditor = !!target?.closest('.composer, textarea, input, [contenteditable]:not([contenteditable="false"])');
+  if (inEditor || event.defaultPrevented) event.stopPropagation();
+  if (!shouldCloseTicketOnEscape({
+    defaultPrevented: event.defaultPrevented,
+    hasTicket: !!props.activeTicketId,
+    inEditor,
+  })) return;
   event.preventDefault();
   event.stopPropagation();
   emit("close-ticket");
