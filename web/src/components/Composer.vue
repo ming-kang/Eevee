@@ -3,6 +3,7 @@ import type { TicketView } from "@shared/api/contract.ts";
 import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from "vue";
 import { effectiveStage } from "../board.ts";
 import { type InsertAt, useComposerInsert } from "../composer-bridge.ts";
+import { readDraft, saveDraft } from "../composer-draft.ts";
 import { t } from "../i18n.ts";
 import { doublePressed } from "../keyboard.ts";
 import { mentionQuery, rankTickets } from "../mentions.ts";
@@ -33,8 +34,7 @@ const props = withDefaults(
 /** When the previous Escape landed, for the double-press stop. */
 const lastEsc = ref<number>();
 
-const draftStore = new Map<string, string>();
-const text = ref(props.draftKey ? (draftStore.get(props.draftKey) ?? "") : "");
+const text = ref(readDraft(props.draftKey));
 const textarea = ref<HTMLTextAreaElement>();
 const { busy, error, run } = useSubmit();
 const listId = useId();
@@ -127,7 +127,7 @@ function insertSnippet(snippet: string, at: InsertAt = "caret"): void {
 watch(
   () => props.draftKey,
   async (nextKey) => {
-    text.value = nextKey ? (draftStore.get(nextKey) ?? "") : "";
+    text.value = readDraft(nextKey);
     lastCaret.value = undefined;
     dismissed.value = undefined;
     await nextTick();
@@ -136,7 +136,7 @@ watch(
 );
 
 watch(text, (val) => {
-  if (props.draftKey) draftStore.set(props.draftKey, val);
+  saveDraft(props.draftKey, val);
   void nextTick(autosize);
 });
 
@@ -152,7 +152,7 @@ async function submit(): Promise<void> {
   if (value === "" || props.disabled) return;
   if (await run(() => props.send(value))) {
     text.value = "";
-    if (props.draftKey) draftStore.delete(props.draftKey);
+    saveDraft(props.draftKey, "");
     lastCaret.value = undefined;
     await nextTick();
     autosize();
@@ -213,6 +213,7 @@ function onKeydown(event: KeyboardEvent): void {
       rows="1"
       :placeholder="placeholder"
       :aria-label="placeholder"
+      :aria-describedby="`${listId}-hint`"
       :disabled="busy || disabled"
       aria-autocomplete="list"
       :aria-controls="mentionOpen ? listId : undefined"
@@ -246,6 +247,7 @@ function onKeydown(event: KeyboardEvent): void {
     <div class="c-actions">
       <slot name="actions" />
       <span class="spacer" />
+      <span :id="`${listId}-hint`" class="composer-hint">{{ t("Shift+Enter for a new line") }}</span>
       <slot name="end" />
       <button
         class="send"

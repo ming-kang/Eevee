@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Client } from "@shared/api/client.ts";
 import type { BoardView, ProjectSummary } from "@shared/api/contract.ts";
+import type { QuestionId } from "@shared/contracts/index.ts";
 import { computed, type ShallowRef } from "vue";
 import type { RailTab } from "../board.ts";
 import type { ConversationWatch } from "../engine-data.ts";
@@ -15,12 +16,14 @@ const props = defineProps<{
   board: BoardView | undefined;
   routerConversation: ConversationWatch;
   ticketId?: string;
+  questionId?: QuestionId;
 }>();
 
 defineEmits<{
   "open-rail": [tab?: RailTab, jobId?: string];
   "open-ticket": [ticketId: string];
   "close-ticket": [];
+  "question-route": [questionId: QuestionId | undefined];
   "project-changed": [];
 }>();
 
@@ -52,6 +55,8 @@ const selectedView = computed(() =>
     :project="project"
     :board="board"
     :conversation="routerConversation"
+    :question-id="questionId"
+    @question-route="$emit('question-route', $event)"
     @open-ticket="$emit('open-ticket', $event)"
     @project-changed="$emit('project-changed')"
   />

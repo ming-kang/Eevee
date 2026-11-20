@@ -82,11 +82,11 @@ const filteredEntries = computed(() =>
 
 const controlProject = computed(() => props.projects.find((p) => p.id === props.controlPid));
 
-const questionTotal = computed(() =>
-  props.projects.reduce(
-    (total, project) => total + countPendingQuestions(props.boards[project.id]?.board),
-    0,
-  ),
+const attentionTotal = computed(() =>
+  props.projects.reduce((total, project) => {
+    const board = props.boards[project.id]?.board;
+    return total + countPendingQuestions(board) + (board?.router.failure ? 1 : 0);
+  }, 0),
 );
 
 const nowMs = ref(Date.now());
@@ -247,11 +247,15 @@ onUnmounted(() => {
       class="nav-row"
       :class="{ on: route.name === 'home' }"
       :href="formatRoute({ name: 'home' })"
+      :aria-label="attentionTotal > 0 ? `${t('Home')} · ${attentionTotal}` : t('Home')"
+      :aria-current="route.name === 'home' ? 'page' : undefined"
       @click="$emit('navigate')"
     >
-      <Icon name="home" size="sm" />
+      <span class="nav-status" aria-hidden="true">
+        <span v-if="attentionTotal > 0" class="count user">{{ attentionTotal > 99 ? "99+" : attentionTotal }}</span>
+        <Icon v-else name="home" size="sm" />
+      </span>
       <span class="label">{{ t("Home") }}</span>
-      <span v-if="questionTotal > 0" class="count user">{{ questionTotal }}</span>
     </a>
   </div>
 

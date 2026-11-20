@@ -60,7 +60,6 @@ test("an empty set of projects or boards gives an empty home board", () => {
     needsYou: [],
     running: [],
     done: [],
-    questionCount: 0,
     runningCount: 0,
     doneCount: 0,
   });
@@ -95,7 +94,7 @@ test("Pending lists open questions newest first, then failed Routers", () => {
   };
 
   const home = buildHomeBoard({ projects, boards, now: NOW });
-  assert.equal(home.questionCount, 3);
+  assert.equal(home.needsYou.length, 4);
   assert.deepEqual(
     home.needsYou.map((row) => (row.kind === "question" ? row.question.id : row.kind)),
     ["q3", "q1", "q9", "router"],

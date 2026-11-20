@@ -366,6 +366,8 @@ watch(
         :board="currentBoardState?.board"
         :router-conversation="routerConversation"
         :ticket-id="route.name === 'worker' ? route.tid : undefined"
+        :question-id="route.name === 'chat' ? route.qid : undefined"
+        @question-route="navigate({ name: 'chat', pid: currentProject.id, qid: $event })"
         @open-rail="openRail"
         @open-ticket="navigate({ name: 'worker', pid: currentProject.id, tid: $event })"
         @close-ticket="navigate({ name: 'chat', pid: currentProject.id })"
@@ -377,6 +379,7 @@ watch(
       <HomePage
         :projects="projects"
         :boards="engine.boards.value"
+        @new-project="openNewProject"
       />
     </template>
 

@@ -241,9 +241,11 @@
 
 /* ——— Hover card ——— */
 .hovercard {
+  --hc-width: min(calc(272px * var(--ev-scale)), calc(100cqw - 16px));
   position: absolute;
   z-index: 60;
-  width: calc(272px * var(--ev-scale));
+  width: var(--hc-width);
+  left: clamp(8px, var(--hc-left), calc(100cqw - var(--hc-width) - 8px));
   padding: calc(12px * var(--ev-scale)) calc(14px * var(--ev-scale));
   border: 1px solid var(--ev-border);
   border-radius: var(--ev-r-lg);
@@ -269,6 +271,7 @@
 }
 
 .hc-title {
+  overflow-wrap: anywhere;
   font-size: var(--ev-body);
   font-weight: 600;
   letter-spacing: var(--ev-tracking);
