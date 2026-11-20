@@ -18,7 +18,7 @@ test("when a Worker run fails, the Engine files a failed report for it and wakes
   };
   const project = await openTestProject(brain);
   try {
-    await project.host.sendUserMessage("start work");
+    await project.host.conversations.send("router", "start work");
     const report = await project.until(
       async () => (await project.host.board()).tickets[0]?.reports[0],
     );
@@ -78,12 +78,12 @@ test("the dreamer's automatic acceptance withdraws the question that was waiting
 
   const project = await openTestProject(brain, { dreaming: DREAMING });
   try {
-    await project.host.sendUserMessage("start work");
+    await project.host.conversations.send("router", "start work");
     const dreaming = await project.until(async () => {
       const ticket = (await project.host.board()).tickets.find((t) => t.ticket.role === "dreamer");
       return ticket?.ticket.status === "open" ? ticket : false;
     });
-    await project.host.sendUserMessage("ask about the tidying ticket");
+    await project.host.conversations.send("router", "ask about the tidying ticket");
     const question = await project.until(async () => (await project.host.board()).openQuestions[0]);
     assert.equal(question.ticketId, dreaming.ticket.id);
 
@@ -95,7 +95,7 @@ test("the dreamer's automatic acceptance withdraws the question that was waiting
     assert.equal(closed.ticket.role, "dreamer");
     assert.deepEqual((await project.host.board()).openQuestions, []);
     await assert.rejects(
-      project.host.answerQuestion(question.id, "alpha"),
+      project.host.questions.answer(question.id, "alpha"),
       (error: unknown) =>
         (error as { problem?: { code?: string } }).problem?.code === "no_question",
     );
@@ -139,7 +139,7 @@ test("once the project is idle with finished work, a tidying ticket lists the ne
   };
   const project = await openTestProject(brain, { dreaming: DREAMING });
   try {
-    await project.host.sendUserMessage("start work");
+    await project.host.conversations.send("router", "start work");
     const done = await project.until(async () => {
       const ticket = (await project.host.board()).tickets.find((t) => t.ticket.role === "dreamer");
       return ticket?.ticket.status === "done" && ticket;
@@ -148,7 +148,7 @@ test("once the project is idle with finished work, a tidying ticket lists the ne
     assert.ok(done.ticket.inputs.some((input) => input.startsWith("transcript://")));
     // The round is saved as a change once the run has ended, which may be just after the ticket closed.
     await project.until(async () =>
-      (await project.host.memory("project").history()).some(
+      (await project.host.memory.history("project")).some(
         (c) =>
           c.source.kind === "dreaming" &&
           c.source.ticketId === done.ticket.id &&

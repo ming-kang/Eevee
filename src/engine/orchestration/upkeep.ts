@@ -6,8 +6,8 @@ import {
   ROOT_CONVERSATION_ID,
   type Tx,
 } from "@earendil-works/pi-durable";
-import type { Report } from "../../../domain/index.ts";
-import { Board, ReportLog } from "../../docs.ts";
+import type { Report } from "../../domain/index.ts";
+import { Board, ReportLog } from "../docs.ts";
 import { pendingReports, readReports, readTicket } from "./board.ts";
 import { type DeliveryContext, deliver } from "./deliver.ts";
 import { route } from "./delivery.ts";

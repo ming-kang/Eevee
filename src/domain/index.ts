@@ -1,4 +1,5 @@
 export * from "./address.ts";
+export * from "./conversation.ts";
 export * from "./details.ts";
 export * from "./domain.ts";
 export * from "./failure.ts";

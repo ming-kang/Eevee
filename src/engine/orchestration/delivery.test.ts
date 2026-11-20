@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Report, ReportStatus, TicketId } from "../../../domain/index.ts";
+import type { Report, ReportStatus, TicketId } from "../../domain/index.ts";
 import { route } from "./delivery.ts";
 
 const ticket = {

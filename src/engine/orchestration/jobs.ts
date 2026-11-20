@@ -1,7 +1,7 @@
 import type { Context } from "@earendil-works/chord/context";
 import type { Tx } from "@earendil-works/pi-durable";
-import { type Job, jobId, type TicketId } from "../../../domain/index.ts";
-import { JobBoard, JobDoc } from "../../docs.ts";
+import { type Job, jobId, type TicketId } from "../../domain/index.ts";
+import { JobBoard, JobDoc } from "../docs.ts";
 import type { DocReader } from "./board.ts";
 
 export async function registerJob(

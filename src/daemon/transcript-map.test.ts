@@ -3,8 +3,8 @@ import { test } from "node:test";
 import type { EntryId, EntryRecord, TranscriptItem } from "@earendil-works/pi-durable";
 import { mapTranscript } from "../../web/src/lib/transcript-map.ts";
 import type { JobId, Question, QuestionId, Report, TicketId } from "../domain/index.ts";
-import { toSubmission } from "../engine/extensions/orchestration/deliver.ts";
-import { type Delivery, route } from "../engine/extensions/orchestration/delivery.ts";
+import { toSubmission } from "../engine/orchestration/deliver.ts";
+import { type Delivery, route } from "../engine/orchestration/delivery.ts";
 
 const entry = (
   id: number,

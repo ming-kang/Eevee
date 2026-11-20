@@ -1,11 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { num, obj, opt, str } from "@earendil-works/pi-schema";
-import { parseConfig } from "../config/load.ts";
-import { ModelDefaultsSchema } from "../config/settings.ts";
-import type { ProjectSummary } from "../protocol/contract.ts";
-import { readJson, writeJsonAtomic } from "../shared/fs.ts";
-import type { EeveePaths } from "../shared/paths.ts";
+import { JsonFileStore } from "../../config/json-file-store.ts";
+import { ModelDefaultsSchema } from "../../config/settings.ts";
+import type { ProjectSummary } from "../../protocol/contract.ts";
+import { readJson, writeJsonAtomic } from "../../shared/fs.ts";
+import type { EeveePaths } from "../../shared/paths.ts";
 
 export type ProjectMeta = ProjectSummary;
 
@@ -47,15 +47,11 @@ export async function saveProjectMeta(paths: EeveePaths, meta: ProjectMeta): Pro
   await writeJsonAtomic(paths.project(meta.id).meta, meta);
 }
 
-/** `project.json`'s single writer after `saveProjectMeta`: changes are queued, validated and written atomically. */
 export class ProjectStore {
-  readonly #path: string;
-  #current: ProjectMeta;
-  #queue: Promise<unknown> = Promise.resolve();
+  readonly #store: JsonFileStore<typeof ProjectMetaSchema>;
 
   private constructor(path: string, current: ProjectMeta) {
-    this.#path = path;
-    this.#current = current;
+    this.#store = new JsonFileStore(ProjectMetaSchema, path, current);
   }
 
   static open(paths: EeveePaths, meta: ProjectMeta): ProjectStore {
@@ -63,19 +59,10 @@ export class ProjectStore {
   }
 
   get current(): ProjectMeta {
-    return this.#current;
+    return this.#store.current;
   }
 
   update(change: (meta: ProjectMeta) => ProjectMeta): Promise<ProjectMeta> {
-    const next = this.#queue.then(async () => {
-      const raw = (await readJson<unknown>(this.#path)) ?? this.#current;
-      const current = parseConfig(ProjectMetaSchema, raw, this.#path);
-      const meta = parseConfig(ProjectMetaSchema, change(current), this.#path);
-      await writeJsonAtomic(this.#path, meta);
-      this.#current = meta;
-      return meta;
-    });
-    this.#queue = next.catch(() => undefined);
-    return next;
+    return this.#store.update(change);
   }
 }

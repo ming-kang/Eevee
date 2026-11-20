@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai";
 import { createRegistry, Harness, MemoryStorage } from "@earendil-works/pi-durable";
-import type { Ticket } from "../../../domain/index.ts";
-import { Board, QuestionDoc, TicketDoc } from "../../docs.ts";
+import type { Ticket } from "../../domain/index.ts";
+import { Board, QuestionDoc, TicketDoc } from "../docs.ts";
 import { addQuestion, allocateTicketId, readTicket, saveTicket } from "./board.ts";
 import { settle } from "./settle.ts";
 

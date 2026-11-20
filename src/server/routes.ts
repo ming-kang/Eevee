@@ -22,11 +22,7 @@ export type RouteDeps = {
 };
 
 export function createRoutes({ engine, auth, port, version, shutdown }: RouteDeps): RouteTable {
-  const project = (id: string) => {
-    const host = engine.project(id);
-    if (host === undefined) throw new ProblemError({ code: "no_project", projectId: id });
-    return host;
-  };
+  const project = (id: string) => engine.projects.require(id);
   const text = (value: string, field: string) => {
     if (value.trim() === "") {
       throw new ProblemError({ code: "required", field });
@@ -74,7 +70,7 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
         bootId: engine.bootId,
         version,
         port: port(),
-        projects: engine.projects(),
+        projects: engine.projects.list(),
       }),
     },
     "POST /api/shutdown": {
@@ -92,43 +88,43 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
       },
     },
     "POST /api/session/code": { handle: async () => ({ code: auth.issueCode() }) },
-    "GET /api/models": { handle: async () => engine.catalog() },
+    "GET /api/models": { handle: async () => engine.models.catalog() },
     "POST /api/settings/models": {
       handle: async ({ body }) => {
-        await engine.setDefaultModel(modelRole(body.role), model(body));
+        await engine.models.setDefault(modelRole(body.role), model(body));
         return { ok: true };
       },
     },
     "POST /api/auth/:provider": {
       handle: async ({ params, body }) => {
-        await engine.login(params.provider, text(body.key, "key"));
+        await engine.models.login(params.provider, text(body.key, "key"));
         return { ok: true };
       },
     },
     "DELETE /api/auth/:provider": {
       handle: async ({ params }) => {
-        await engine.logout(params.provider);
+        await engine.models.logout(params.provider);
         return { ok: true };
       },
     },
     "GET /api/models/config": {
-      handle: async () => ({ providers: await engine.modelsConfig() }),
+      handle: async () => ({ providers: await engine.models.providers() }),
     },
     "PUT /api/models/providers/:provider": {
       // The Engine checks the entry against the models.json schema before writing it.
-      handle: async ({ params, body }) => engine.saveProvider(params.provider, body.config),
+      handle: async ({ params, body }) => engine.models.saveProvider(params.provider, body.config),
     },
     "DELETE /api/models/providers/:provider": {
-      handle: async ({ params }) => engine.saveProvider(params.provider, undefined),
+      handle: async ({ params }) => engine.models.saveProvider(params.provider, undefined),
     },
     "POST /api/models/builtin": {
       handle: async ({ body }) => ({
-        models: engine.builtinModels(text(body.query, "query"), optionalText(body.api)),
+        models: engine.models.builtin(text(body.query, "query"), optionalText(body.api)),
       }),
     },
     "POST /api/models/probe": {
       handle: async ({ body }) =>
-        engine.probeModels({
+        engine.models.probe({
           ...(body.provider === undefined ? {} : { provider: optionalText(body.provider) }),
           baseUrl: text(body.baseUrl, "baseUrl"),
           ...(body.api === undefined ? {} : { api: optionalText(body.api) }),
@@ -136,36 +132,37 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
           ...(body.headers === undefined ? {} : { headers: body.headers }),
         }),
     },
-    "GET /api/capabilities": { handle: async () => engine.capabilities() },
+    "GET /api/capabilities": { handle: async () => engine.capabilities.view() },
     "POST /api/capabilities/roles/:role": {
       handle: async ({ params, body }) =>
-        engine.setRoleCapability(role(params.role), {
+        engine.capabilities.setRole(role(params.role), {
           ...(body.extensions === undefined ? {} : { extensions: body.extensions }),
           ...(body.maxTurns === undefined ? {} : { maxTurns: body.maxTurns }),
         }),
     },
-    "POST /api/mcp/reload": { handle: async () => engine.reloadMcp() },
+    "POST /api/mcp/reload": { handle: async () => engine.capabilities.reloadMcp() },
     "GET /api/mcp/config": {
       handle: async () => ({
-        servers: (await engine.mcpConfig()) as Record<string, Record<string, unknown>>,
+        servers: (await engine.capabilities.mcpConfig()) as Record<string, Record<string, unknown>>,
       }),
     },
     "PUT /api/mcp/servers/:server": {
-      handle: async ({ params, body }) => engine.saveMcpServer(params.server, body.config),
+      handle: async ({ params, body }) =>
+        engine.capabilities.saveMcpServer(params.server, body.config),
     },
     "DELETE /api/mcp/servers/:server": {
-      handle: async ({ params }) => engine.saveMcpServer(params.server, undefined),
+      handle: async ({ params }) => engine.capabilities.saveMcpServer(params.server, undefined),
     },
     "POST /api/projects": {
       handle: async ({ body }) =>
-        engine.createProject({
+        engine.projects.create({
           title: text(body.title, "title"),
           workspace: text(body.workspace, "workspace"),
         }),
     },
     "POST /api/projects/:project/models": {
       handle: async ({ params, body }) =>
-        engine.setProjectModel(
+        engine.models.setProjectModel(
           project(params.project),
           modelRole(body.role),
           body.model === null ? null : model(body.model),
@@ -176,58 +173,56 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     },
     "GET /api/projects/:project/memory/:scope/changes": {
       handle: async ({ params }) => ({
-        changes: await project(params.project).memory(scope(params.scope)).history(),
+        changes: await project(params.project).memory.history(scope(params.scope)),
       }),
     },
     "GET /api/projects/:project/memory/:scope/changes/:change": {
       handle: async ({ params }) =>
-        project(params.project).memory(scope(params.scope)).show(changeId(params.change)),
+        project(params.project).memory.show(scope(params.scope), changeId(params.change)),
     },
     "POST /api/projects/:project/memory/:scope/changes/:change/undo": {
       handle: async ({ params }) =>
-        project(params.project)
-          .memory(scope(params.scope))
-          .undo(changeId(params.change), { kind: "user" }),
+        project(params.project).memory.undo(scope(params.scope), changeId(params.change)),
     },
     "GET /api/projects/:project/memory/:scope/files": {
       handle: async ({ params }) => ({
-        files: await project(params.project).memory(scope(params.scope)).listFiles(),
+        files: await project(params.project).memory.files(scope(params.scope)),
       }),
     },
     "GET /api/projects/:project/memory/:scope/files/:file": {
       handle: async ({ params }) =>
-        project(params.project).memoryFile(scope(params.scope), params.file),
+        project(params.project).memory.file(scope(params.scope), params.file),
     },
     "GET /api/projects/:project/jobs/:job/log": {
-      handle: async ({ params }) => project(params.project).jobLog(params.job as JobId),
+      handle: async ({ params }) => project(params.project).jobs.log(params.job as JobId),
     },
     "POST /api/projects/:project/jobs/:job/kill": {
       handle: async ({ params }) => {
-        await project(params.project).killJob(params.job as JobId);
+        await project(params.project).jobs.kill(params.job as JobId);
         return { ok: true };
       },
     },
     "POST /api/projects/:project/conversation/retry": {
       handle: async ({ params }) => {
-        await project(params.project).retry();
+        await project(params.project).conversations.retry("router");
         return { ok: true };
       },
     },
     "POST /api/projects/:project/messages": {
       handle: async ({ params, body }) => {
-        await project(params.project).sendUserMessage(text(body.text, "text"));
+        await project(params.project).conversations.send("router", text(body.text, "text"));
         return { ok: true };
       },
     },
     "POST /api/projects/:project/tickets/:ticket/retry": {
       handle: async ({ params }) => {
-        await project(params.project).retry(params.ticket as TicketId);
+        await project(params.project).conversations.retry(params.ticket as TicketId);
         return { ok: true };
       },
     },
     "POST /api/projects/:project/tickets/:ticket/messages": {
       handle: async ({ params, body }) => {
-        await project(params.project).messageWorker(
+        await project(params.project).conversations.send(
           params.ticket as TicketId,
           text(body.text, "text"),
           body.mode ?? "steer",
@@ -237,40 +232,47 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     },
     "POST /api/projects/:project/tickets/:ticket/interrupt": {
       handle: async ({ params }) => {
-        await project(params.project).interruptWorker(params.ticket as TicketId);
+        await project(params.project).conversations.interrupt(params.ticket as TicketId);
         return { ok: true };
       },
     },
     "POST /api/projects/:project/interrupt": {
       handle: async ({ params }) => {
-        await project(params.project).interruptRouter();
+        await project(params.project).conversations.interrupt("router");
         return { ok: true };
       },
     },
     "POST /api/projects/:project/queue/:submission/withdraw": {
       handle: async ({ params }) => {
-        await project(params.project).withdrawQueued(undefined, params.submission);
+        await project(params.project).conversations.withdrawQueued("router", params.submission);
         return { ok: true };
       },
     },
     "POST /api/projects/:project/tickets/:ticket/queue/:submission/withdraw": {
       handle: async ({ params }) => {
-        await project(params.project).withdrawQueued(params.ticket as TicketId, params.submission);
+        await project(params.project).conversations.withdrawQueued(
+          params.ticket as TicketId,
+          params.submission,
+        );
         return { ok: true };
       },
     },
     "POST /api/projects/:project/tickets/:ticket/queue/:submission/steer": {
       handle: async ({ params }) => {
-        await project(params.project).steerQueued(params.ticket as TicketId, params.submission);
+        await project(params.project).conversations.steerQueued(
+          params.ticket as TicketId,
+          params.submission,
+        );
         return { ok: true };
       },
     },
     "GET /api/projects/:project/questions/:question": {
-      handle: async ({ params }) => project(params.project).question(params.question as QuestionId),
+      handle: async ({ params }) =>
+        project(params.project).questions.get(params.question as QuestionId),
     },
     "POST /api/projects/:project/questions/:question/answer": {
       handle: async ({ params, body }) => {
-        await project(params.project).answerQuestion(
+        await project(params.project).questions.answer(
           params.question as QuestionId,
           text(body.answer, "answer"),
           body.answers,

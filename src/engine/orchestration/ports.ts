@@ -1,6 +1,6 @@
 import type { Context } from "@earendil-works/chord/context";
 import type { ConversationId, RegistrySnapshot, Tx } from "@earendil-works/pi-durable";
-import type { Report, Ticket } from "../../../domain/index.ts";
+import type { Report, Ticket } from "../../domain/index.ts";
 
 /** How a ticket's conversation is set up; the roles module implements it. */
 export type TicketConversations = {

@@ -84,7 +84,7 @@ export function createFoldStore(storage: Storage | undefined, cap = CAP): FoldSt
 
 const storage = ((): Storage | undefined => {
   try {
-    return typeof localStorage === "undefined" ? undefined : localStorage;
+    return "window" in globalThis ? localStorage : undefined;
   } catch {
     return undefined;
   }

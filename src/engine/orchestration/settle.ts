@@ -4,8 +4,8 @@ import {
   ProblemError,
   type QuestionId,
   type TicketId,
-} from "../../../domain/index.ts";
-import { Board, QuestionDoc, ReportLog, TicketDoc } from "../../docs.ts";
+} from "../../domain/index.ts";
+import { Board, QuestionDoc, ReportLog, TicketDoc } from "../docs.ts";
 import { purgeDeliveries } from "./deliver.ts";
 
 export type TicketClose = {

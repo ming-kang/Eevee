@@ -63,11 +63,13 @@ const project: ProjectStream = {
     listener.view(board);
     return () => boardListeners.delete(listener);
   },
-  watch: async (ticket, _context, window) => {
-    watched.push({ ticket, window });
-    return watch.handle;
+  conversations: {
+    watch: async (ticket, _context, window) => {
+      watched.push({ ticket, window });
+      return watch.handle;
+    },
+    entries: async (_ticket, query, limit) => [{ id: query.minEntryId ?? 0, limit } as never],
   },
-  entries: async (_ticket, query, limit) => [{ id: query.minEntryId ?? 0, limit } as never],
 };
 
 /** A real board feed whose builds the test finishes one at a time; each returns the board as it was when it began. */
@@ -105,7 +107,7 @@ before(async () => {
   stream = attachStream(server, {
     source: {
       bootId: "boot-1",
-      project: (id) => (id === "p1" ? project : id === "p2" ? slowProject : undefined),
+      projects: { get: (id) => (id === "p1" ? project : id === "p2" ? slowProject : undefined) },
     },
     auth,
   });

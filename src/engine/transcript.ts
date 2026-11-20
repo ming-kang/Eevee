@@ -10,8 +10,8 @@ import {
   UserEntry,
 } from "@earendil-works/pi-durable";
 import type { ChatLine } from "../protocol/contract.ts";
-import { NOTICE_KIND } from "./extensions/orchestration/index.ts";
 import type { TranscriptPage, TranscriptSource } from "./extensions/resources/index.ts";
+import { NOTICE_KIND } from "./orchestration/index.ts";
 
 type OpenConversation = (id: ConversationId, context: Context) => Promise<Conversation | undefined>;
 

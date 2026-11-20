@@ -1,6 +1,21 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { createFoldStore, parseFolds } from "./folds.ts";
+
+test("loading the fold store without a browser does not access Node web storage", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `await import(${JSON.stringify(new URL("./folds.ts", import.meta.url).href)})`,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stderr, "");
+});
 
 const memoryStorage = () => {
   const data = new Map<string, string>();

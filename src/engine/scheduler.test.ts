@@ -13,8 +13,8 @@ import {
 import { DEFAULT_SETTINGS } from "../config/settings.ts";
 import type { Ticket, TicketId } from "../domain/index.ts";
 import { TicketDoc } from "./docs.ts";
-import { allocateTicketId, saveTicket } from "./extensions/orchestration/board.ts";
-import { conversationOf, WorkerQueue } from "./extensions/orchestration/index.ts";
+import { allocateTicketId, saveTicket } from "./orchestration/board.ts";
+import { conversationOf, WorkerQueue } from "./orchestration/index.ts";
 import { Scheduler, type SchedulerDeps } from "./scheduler.ts";
 
 const context = BACKGROUND_CONTEXT;
