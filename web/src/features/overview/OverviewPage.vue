@@ -118,36 +118,34 @@ const columns = computed(() => [
     <header class="header">
       <h1>{{ t("Overview") }}</h1>
       <span class="spacer" />
+      <label for="overview-project" class="sr">{{ t("Filter projects") }}</label>
+      <select id="overview-project" v-model="projectFilter" :class="fieldClass({ inline: true, size: 'sm' })" class="max-w-[min(35vw,240px)] min-w-0 truncate pr-7">
+        <option value="">{{ t("All projects") }}</option>
+        <option v-for="project in projects" :key="project.id" :value="project.id">{{ project.title }}</option>
+      </select>
       <Button size="sm" @click="$emit('new-project')">
         <Icon name="plus" size="sm" />
         <span>{{ t("New project") }}</span>
       </Button>
     </header>
-    <div class="flex shrink-0 items-center gap-2 border-b border-separator px-5 py-3">
-      <label for="overview-project" class="sr">{{ t("Filter projects") }}</label>
-      <select id="overview-project" v-model="projectFilter" :class="fieldClass({ inline: true })" class="max-w-full min-w-40 truncate pr-7">
-        <option value="">{{ t("All projects") }}</option>
-        <option v-for="project in projects" :key="project.id" :value="project.id">{{ project.title }}</option>
-      </select>
-    </div>
     <div v-if="projects.length === 0" class="empty"><h3>{{ t("No projects yet") }}</h3></div>
-    <div v-else class="grid min-h-0 flex-1 grid-cols-3 gap-4 overflow-hidden p-5 @max-[960px]/overview:grid-cols-1 @max-[960px]/overview:auto-rows-[minmax(220px,1fr)] @max-[960px]/overview:overflow-y-auto @max-[960px]/overview:p-3">
-      <section v-for="column in columns" :key="column.key" :aria-labelledby="`overview-${column.key}`" class="flex min-h-0 min-w-0 flex-col overflow-hidden">
-        <header class="flex h-11 shrink-0 items-center gap-2 border-b border-separator px-3.5">
+    <div v-else class="grid min-h-0 flex-1 grid-cols-3 gap-5 overflow-hidden p-5 @max-[960px]/overview:grid-cols-1 @max-[960px]/overview:auto-rows-max @max-[960px]/overview:gap-6 @max-[960px]/overview:overflow-y-auto @max-[960px]/overview:p-3">
+      <section v-for="column in columns" :key="column.key" :aria-labelledby="`overview-${column.key}`" class="flex min-h-0 min-w-0 flex-col overflow-hidden @max-[960px]/overview:overflow-visible">
+        <header class="flex h-10 shrink-0 items-center gap-2 px-px">
           <h2 :id="`overview-${column.key}`" class="text-sm font-medium">{{ column.label }}</h2>
-          <span class="count" :class="{ user: column.key === 'pending' && column.count > 0 }">{{ column.count }}</span>
+          <span class="text-xs text-fg-subtle tabular-nums">{{ column.count }}</span>
         </header>
-        <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2.5">
-          <a v-for="card in column.cards" :key="card.key" :href="formatRoute(card.route)" class="flex shrink-0 flex-col gap-2 rounded-xl border border-border bg-surface p-3 text-fg transition-colors hover:bg-hover focus-visible:shadow-(--ring)">
-            <div class="flex min-w-0 items-center gap-2 text-xs text-fg-muted">
-              <StageGlyph :stage="card.stage" class="shrink-0" />
+        <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-px @max-[960px]/overview:overflow-visible">
+          <a v-for="card in column.cards" :key="card.key" :href="formatRoute(card.route)" class="flex shrink-0 flex-col gap-2 rounded-xl border border-border bg-surface p-4 text-fg transition-colors hover:bg-hover focus-visible:shadow-(--ring)">
+            <div class="flex min-w-0 items-center gap-2 text-xs text-fg-subtle">
               <span class="min-w-0 flex-1 truncate">{{ card.project }}</span>
             </div>
-            <div class="line-clamp-2 text-sm leading-normal font-medium">
+            <div class="line-clamp-2 text-base leading-5 font-medium">
               <span v-if="card.ticket" class="mr-1.5 font-mono text-xs text-fg-muted">{{ card.ticket }}</span>{{ card.title }}
             </div>
-            <p v-if="card.context" class="line-clamp-3 text-xs leading-normal text-fg-muted">{{ card.context }}</p>
-            <div class="flex items-center gap-2 text-2xs text-fg-subtle">
+            <p v-if="card.context" class="line-clamp-2 text-sm leading-5 text-fg-muted">{{ card.context }}</p>
+            <div class="flex items-center gap-2 text-xs text-fg-subtle">
+              <StageGlyph :stage="card.stage" class="size-3 shrink-0" />
               <span>{{ card.label }}</span>
               <span class="spacer" />
               <time v-if="card.at !== undefined" :datetime="new Date(card.at).toISOString()">{{ formatRelativeTime(card.at, nowMs, "short") }}</time>

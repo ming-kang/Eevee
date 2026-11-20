@@ -6,7 +6,7 @@ const SEPARATED = "[&>*+*]:border-t [&>*+*]:border-separator";
 export function rows(options: { plain?: boolean; spaced?: boolean } = {}): string {
   if (options.spaced) return "flex flex-col gap-2";
   if (options.plain) return `flex flex-col ${SEPARATED}`;
-  return `flex flex-col rounded-xl border border-border bg-surface [--ev-glyph-cut:var(--surface)] ${SEPARATED}`;
+  return `rows flex flex-col rounded-xl border border-border bg-surface [--ev-glyph-cut:var(--surface)] ${SEPARATED}`;
 }
 
 const ROW_SIZE = {

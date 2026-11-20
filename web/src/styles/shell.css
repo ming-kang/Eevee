@@ -1,3 +1,35 @@
+.control-dialog .header {
+  padding-inline: calc(24px * var(--ev-scale));
+}
+
+.control-dialog .header h1,
+.control-dialog .settings-content h2 {
+  font-size: var(--ev-title);
+  font-weight: 500;
+}
+
+.control-dialog .rows>*+* {
+  position: relative;
+  border-top: 0;
+}
+
+.control-dialog .rows>*+*::before {
+  position: absolute;
+  inset: 0 calc(16px * var(--ev-scale)) auto;
+  height: var(--hairline);
+  background: var(--border);
+  content: "";
+  pointer-events: none;
+}
+
+.control-dialog .settings-content :has(>table) {
+  overflow-x: auto;
+}
+
+.control-dialog #set-font {
+  max-width: 60%;
+}
+
 /* Full-bleed workspace shell:
  * - Edge-to-edge layout divided by hairline separators.
  * - Stationary top-left sidebar trigger: stays at the exact same coordinate whether the sidebar is

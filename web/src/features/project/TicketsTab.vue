@@ -68,7 +68,11 @@ function contextLine(view: TicketView): string | undefined {
 
 <template>
   <template v-if="board && board.tickets.length === 0">
-    <p class="px-3 py-10 text-center text-sm text-fg-subtle">{{ t("No tickets") }}</p>
+    <div class="flex flex-col items-center gap-2 px-6 py-12 text-center">
+      <Icon name="layers" size="lg" class="mb-1 text-fg-subtle" />
+      <h3 class="text-sm font-medium text-fg-muted">{{ t("No tickets") }}</h3>
+      <p class="max-w-64 text-xs leading-5 text-fg-subtle">{{ t("Tell the Router what to do to get started.") }}</p>
+    </div>
   </template>
   <template v-else-if="board">
     <template v-for="group in openGroups" :key="group.key">

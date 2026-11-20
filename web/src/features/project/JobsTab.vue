@@ -12,6 +12,7 @@ import { useSubmit } from "../../composables/submit.ts";
 import { formatElapsedSeconds } from "../../lib/time.ts";
 import { showToast } from "../../composables/toasts.ts";
 import Skeleton from "../../ui/Skeleton.vue";
+import Icon from "../../ui/Icon.vue";
 import StageGlyph from "./StageGlyph.vue";
 import Button from "../../ui/Button.vue";
 import { displayId } from "../../lib/ids.ts";
@@ -192,7 +193,11 @@ async function killJob(jobId: JobId): Promise<void> {
     </div>
   </div>
 
-  <p v-if="jobs.length === 0 && (!openJobId || openInRunning)" class="px-3 py-10 text-center text-sm text-fg-subtle">{{ t("No background jobs") }}</p>
+  <div v-if="jobs.length === 0 && (!openJobId || openInRunning)" class="flex flex-col items-center gap-2 px-6 py-12 text-center">
+    <Icon name="term" size="lg" class="mb-1 text-fg-subtle" />
+    <h3 class="text-sm font-medium text-fg-muted">{{ t("No background jobs") }}</h3>
+    <p class="max-w-64 text-xs leading-5 text-fg-subtle">{{ t("Worker commands appear here.") }}</p>
+  </div>
 
   <template v-else-if="jobs.length > 0">
     <div class="flex flex-col gap-1">

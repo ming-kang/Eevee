@@ -341,8 +341,8 @@ const DETAIL_HEAD = `flex items-start gap-3 ${MEASURE} [&_h2]:text-(length:--ev-
       <span class="sub ellipsis hide-sm">{{ project.title }}</span>
     </header>
     <div class="flex flex-wrap gap-2 border-b border-separator px-3 py-2">
-      <Segmented v-model="tab" mode="tabs" :options="MEMORY_TABS.map((value) => ({ value, label: value === 'proposals' ? t('Proposals') + (board?.openProposals.length ? ' · ' + board.openProposals.length : '') : value === 'history' ? t('History') : t('Files') }))" :label="t('Memory view')" />
-      <Segmented v-if="tab !== 'proposals'" v-model="scope" :options="[{ value: 'project', label: t('This project') }, { value: 'global', label: t('Global') }]" :label="t('Memory scope')" />
+      <Segmented v-model="tab" mode="tabs" appearance="rail" :options="MEMORY_TABS.map((value) => ({ value, label: value === 'proposals' ? t('Proposals') + (board?.openProposals.length ? ' · ' + board.openProposals.length : '') : value === 'history' ? t('History') : t('Files') }))" :label="t('Memory view')" />
+      <Segmented v-if="tab !== 'proposals'" v-model="scope" appearance="rail" :options="[{ value: 'project', label: t('This project') }, { value: 'global', label: t('Global') }]" :label="t('Memory scope')" />
     </div>
     <ProposalReview v-if="tab === 'proposals'" :review="review" />
     <div v-else class="grid min-h-0 flex-1 grid-cols-[clamp(calc(250px*var(--ev-scale)),26%,calc(360px*var(--ev-scale)))_minmax(0,1fr)] @max-[54.2857em]/vp:grid-cols-1">
@@ -362,7 +362,7 @@ const DETAIL_HEAD = `flex items-start gap-3 ${MEASURE} [&_h2]:text-(length:--ev-
               <span :class="whoClass(sourceOf(change.source).badgeClass)">
                 <Icon :name="sourceOf(change.source).icon" size="xs" />
               </span>
-              <span class="ellipsis text-base tracking-(--ev-tracking)">{{ change.summary }}</span>
+              <span class="ellipsis text-sm tracking-(--ev-tracking)">{{ change.summary }}</span>
               <span :class="COMMIT_META">
                 <span>{{ sourceLabel(change.source) }}</span>
                 <span>·</span>
