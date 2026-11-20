@@ -17,7 +17,6 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { configIssueText, configProblemText, errorText } from "../../lib/errors.ts";
 import { ROLE_LABEL } from "../../lib/labels.ts";
 import { LOCALE_NAME, LOCALES, locale, setLocale, t } from "../../lib/i18n.ts";
-import type { IconName } from "../../composables/icons.ts";
 import { levelsOf, switchModel, levelLabel } from "../../lib/model-choice.ts";
 import { useModelsView } from "../../composables/models-view.ts";
 import { formatRoute, NEW_ITEM, type SettingsSection } from "../../lib/router.ts";
@@ -129,10 +128,10 @@ const THEME_OPTIONS: { key: ThemePreference; label: string }[] = [
 
 const RESTART = "eevee stop && eevee start";
 
-const NEW_PROVIDER = formatRoute({ name: "settings", section: "models", item: NEW_ITEM });
-const NEW_SERVER = formatRoute({ name: "settings", section: "mcp", item: NEW_ITEM });
-const providerHref = (id: string) => formatRoute({ name: "settings", section: "models", item: id });
-const serverHref = (name: string) => formatRoute({ name: "settings", section: "mcp", item: name });
+const NEW_PROVIDER = formatRoute({ name: "control", section: "models", item: NEW_ITEM });
+const NEW_SERVER = formatRoute({ name: "control", section: "mcp", item: NEW_ITEM });
+const providerHref = (id: string) => formatRoute({ name: "control", section: "models", item: id });
+const serverHref = (name: string) => formatRoute({ name: "control", section: "mcp", item: name });
 
 const MCP_STATE_LABEL: Record<McpServerView["state"], { dot: string; label: string }> = {
   connected: { dot: "ok", label: t("Connected") },
@@ -140,14 +139,6 @@ const MCP_STATE_LABEL: Record<McpServerView["state"], { dot: string; label: stri
   failed: { dot: "bad", label: t("Failed") },
   disabled: { dot: "", label: t("Disabled") },
 };
-
-const SECTIONS: { key: SettingsSection; label: string; icon: IconName }[] = [
-  { key: "general", label: t("General"), icon: "sliders" },
-  { key: "models", label: t("Models"), icon: "cpu" },
-  { key: "roles", label: t("Roles"), icon: "puzzle" },
-  { key: "mcp", label: t("MCP & extensions"), icon: "plug" },
-  { key: "engine", label: "Engine", icon: "server" },
-];
 
 async function loadCapabilities(quiet = false): Promise<void> {
   loadingCap.value = !quiet;
@@ -399,34 +390,7 @@ const VALUE_TEXT = "text-right font-mono text-xs leading-[1.4] wrap-anywhere tex
 </script>
 
 <template>
-  <section class="page-wrap">
-    <header class="header">
-      <h1>{{ t("Settings") }}</h1>
-    </header>
-    <div class="grid min-h-0 flex-1 grid-cols-[clamp(calc(220px*var(--ev-scale)),22%,calc(300px*var(--ev-scale)))_minmax(0,1fr)] @max-[64.2857em]/vp:grid-cols-1 @max-[64.2857em]/vp:grid-rows-[auto_minmax(0,1fr)]">
-      <nav class="flex flex-col gap-0.5 border-r border-separator px-2.5 py-3 @max-[64.2857em]/vp:flex-row @max-[64.2857em]/vp:overflow-x-auto @max-[64.2857em]/vp:border-r-0 @max-[64.2857em]/vp:border-b @max-[64.2857em]/vp:px-3 @max-[64.2857em]/vp:py-2" :aria-label="t('Settings sections')">
-        <a
-          v-for="item in SECTIONS"
-          :key="item.key"
-          class="flex h-8 items-center gap-2.25 rounded-sm px-2.5 text-base tracking-(--ev-tracking) text-fg transition-colors focus-visible:shadow-(--ring-inset) @max-[64.2857em]/vp:flex-none [&_.ico]:text-fg-muted"
-          :class="section === item.key ? 'bg-selected' : 'hover:bg-hover'"
-          :aria-current="section === item.key ? 'page' : undefined"
-          :href="`#/settings/${item.key}`"
-        >
-          <Icon :name="item.icon" size="sm" />
-          <span class="spacer">{{ item.label }}</span>
-          <span
-            v-if="item.key === 'mcp' && (capabilities?.problems.length ?? 0) > 0"
-            class="dot bad"
-            :title="t('Some servers or extensions failed to load')"
-          />
-          <span v-if="item.key === 'mcp' && (capabilities?.problems.length ?? 0) > 0" class="sr">
-            {{ t("(some servers or extensions failed to load)") }}
-          </span>
-        </a>
-      </nav>
-
-      <div class="min-h-0 overflow-y-auto">
+  <section class="page-wrap overflow-y-auto">
         <div class="mx-auto flex max-w-[calc(780px*var(--ev-scale))] flex-col gap-3.5 px-(--ev-gutter) pt-4.5 pb-14 @max-[64.2857em]/vp:px-4 @max-[64.2857em]/vp:pt-1 @max-[64.2857em]/vp:pb-12">
           <template v-if="section === 'general'">
             <SectionHeader :title="t('General')" />
@@ -733,7 +697,5 @@ const VALUE_TEXT = "text-right font-mono text-xs leading-[1.4] wrap-anywhere tex
             <p class="hint">{{ t("Stops any running background jobs") }}</p>
           </template>
         </div>
-      </div>
-    </div>
   </section>
 </template>

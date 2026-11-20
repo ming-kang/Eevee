@@ -174,7 +174,7 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
     <a
       v-if="board?.openProposals.length"
       class="mx-(--ev-gutter) my-2 flex items-center gap-2 rounded-sm border border-border px-3 py-2 text-sm text-fg hover:bg-hover"
-      :href="formatRoute({ name: 'memory', pid: project.id })"
+      :href="formatRoute({ name: 'control', section: 'memory', pid: project.id })"
     >
       <span class="count user">{{ board.openProposals.length }}</span>
       {{ t("{n} memory proposal needs approval|{n} memory proposals need approval", { n: board.openProposals.length }) }}

@@ -10,6 +10,8 @@ import {
   RAIL,
   readWidth,
   SIDE,
+  MAIN_MIN,
+  WORKER_RAIL,
   scaledColumn,
 } from "../../lib/layout.ts";
 import { useTypography } from "../../composables/theme.ts";
@@ -29,11 +31,15 @@ const props = withDefaults(
     railMarks?: readonly RailMark[];
     drawer: "side" | "rail" | null;
     modalOpen?: boolean;
+    workerActive?: boolean;
+    railMaximized?: boolean;
   }>(),
   {
     railShortcut: "",
     railMarks: () => [],
     modalOpen: false,
+    workerActive: false,
+    railMaximized: false,
   },
 );
 
@@ -54,6 +60,7 @@ const SIDE_DRAWER_PX = 760;
 
 const SIDE_W_KEY = "eevee.sideW";
 const RAIL_W_KEY = "eevee.railW";
+const WORKER_W_KEY = "eevee.workerRailW";
 
 const viewport = ref<HTMLElement>();
 const frame = ref<HTMLElement>();
@@ -68,10 +75,17 @@ const vpWidth = ref(typeof window !== "undefined" ? window.innerWidth : 1280);
 const { size: textSize } = useTypography();
 const scale = computed(() => textSize.value / TEXT_SIZE.default);
 const sideSpec = computed(() => scaledColumn(SIDE, scale.value));
-const railSpec = computed(() => scaledColumn(RAIL, scale.value));
+const railBaseSpec = computed(() => props.workerActive ? WORKER_RAIL : RAIL);
+const railSpec = computed(() => scaledColumn(railBaseSpec.value, scale.value));
+const railWidthKey = computed(() => props.workerActive ? WORKER_W_KEY : RAIL_W_KEY);
 
 const sideW = ref(readWidth(localStorage.getItem(SIDE_W_KEY), SIDE, scale.value));
-const railW = ref(readWidth(localStorage.getItem(RAIL_W_KEY), RAIL, scale.value));
+const listW = ref(readWidth(localStorage.getItem(RAIL_W_KEY), RAIL, scale.value));
+const workerW = ref(readWidth(localStorage.getItem(WORKER_W_KEY), WORKER_RAIL, scale.value));
+const railW = computed({
+  get: () => props.workerActive ? workerW.value : listW.value,
+  set: (value: number) => { if (props.workerActive) workerW.value = value; else listW.value = value; },
+});
 
 const isSideDrawerMode = computed(() => vpWidth.value <= SIDE_DRAWER_PX);
 const isRailDrawerMode = computed(() => vpWidth.value <= RAIL_DRAWER_PX);
@@ -93,10 +107,11 @@ const sideVisiblyOpen = computed(() =>
 const railVisiblyOpen = computed(() =>
   isRailDrawerMode.value ? props.drawer === "rail" : !props.railCollapsed,
 );
+const maximized = computed(() => props.railMaximized && !props.railCollapsed && (!isRailDrawerMode.value || props.drawer === "rail"));
 
 const frameStyle = computed(() => ({
   "--ev-sidebar-w": `${sideW.value}px`,
-  "--ev-rail-w": `${railW.value}px`,
+  "--ev-rail-w": `${maximized.value ? vpWidth.value - sideColW.value : railW.value}px`,
   "--ev-rail-pills": String(railVisiblyOpen.value ? 0 : props.railMarks.length),
 }));
 
@@ -166,13 +181,14 @@ function applyDrag(): void {
   const el = frame.value;
   if (!el) return;
   const side = dragSide ?? sideColW.value;
-  const tracks = [`${side}px`, "minmax(0, 1fr)"];
+  const tracks = [`${side}px`, maximized.value ? "0px" : "minmax(0, 1fr)"];
   if (railColW.value > 0 || dragRail !== undefined) {
-    tracks.push(`${dragRail ?? railW.value}px`);
+    tracks.push(maximized.value ? "minmax(0, 1fr)" : `${dragRail ?? railW.value}px`);
   }
   el.style.gridTemplateColumns = tracks.join(" ");
   if (dragSide !== undefined) {
     el.style.setProperty("--ev-sidebar-w", `${side}px`);
+    if (maximized.value) el.style.setProperty("--ev-rail-w", `${vpWidth.value - side}px`);
     sashNode("side")?.style.setProperty("--ev-side-col", `${side}px`);
   }
   if (dragRail !== undefined) {
@@ -194,29 +210,29 @@ function commitDrag(): void {
   }
   if (dragRail !== undefined) {
     railW.value = dragRail;
-    persist(RAIL_W_KEY, dragRail);
+    persist(railWidthKey.value, dragRail);
   }
   dragSide = undefined;
   dragRail = undefined;
 }
 
 function onSideResize(proposed: number): void {
-  dragSide = fitSidebar(proposed, vpWidth.value, railColW.value, scale.value);
+  dragSide = fitSidebar(proposed, vpWidth.value, maximized.value ? 0 : railColW.value, scale.value);
   applyDrag();
 }
 
 function onRailResize(proposed: number): void {
-  dragRail = fitRail(proposed, vpWidth.value, sideColW.value, scale.value);
+  dragRail = fitRail(proposed, vpWidth.value, sideColW.value, scale.value, railBaseSpec.value);
   applyDrag();
 }
 
 function onRailStep(proposed: number): void {
-  railW.value = fitRail(proposed, vpWidth.value, sideColW.value, scale.value);
-  persist(RAIL_W_KEY, railW.value);
+  railW.value = fitRail(proposed, vpWidth.value, sideColW.value, scale.value, railBaseSpec.value);
+  persist(railWidthKey.value, railW.value);
 }
 
 function onSideStep(proposed: number): void {
-  sideW.value = fitSidebar(proposed, vpWidth.value, railColW.value, scale.value);
+  sideW.value = fitSidebar(proposed, vpWidth.value, maximized.value ? 0 : railColW.value, scale.value);
   persist(SIDE_W_KEY, sideW.value);
 }
 
@@ -224,37 +240,37 @@ function onSideReset(): void {
   sideW.value = fitSidebar(
     sideSpec.value.default,
     vpWidth.value,
-    railColW.value,
+    maximized.value ? 0 : railColW.value,
     scale.value,
   );
   persist(SIDE_W_KEY, sideW.value);
 }
 
 function onRailReset(): void {
-  railW.value = fitRail(railSpec.value.default, vpWidth.value, sideColW.value, scale.value);
-  persist(RAIL_W_KEY, railW.value);
+  railW.value = fitRail(railSpec.value.default, vpWidth.value, sideColW.value, scale.value, railBaseSpec.value);
+  persist(railWidthKey.value, railW.value);
 }
 
 function reclamp(): void {
   const w = vpWidth.value;
   if (w <= 0) return;
   if (w > SIDE_DRAWER_PX && !props.sideCollapsed) {
-    const fit = fitSidebar(sideW.value, w, railColW.value, scale.value);
+    const fit = fitSidebar(sideW.value, w, 0, scale.value);
     if (fit !== sideW.value) {
       sideW.value = fit;
       persist(SIDE_W_KEY, fit);
     }
   }
   if (w > RAIL_DRAWER_PX && props.withRail) {
-    const fit = fitRail(railW.value, w, sideColW.value, scale.value);
+    const fit = fitRail(railW.value, w, sideColW.value, scale.value, railBaseSpec.value);
     if (fit !== railW.value) {
       railW.value = fit;
-      persist(RAIL_W_KEY, fit);
+      persist(railWidthKey.value, fit);
     }
   }
 }
 
-watch([() => props.withRail, () => props.sideCollapsed, scale], reclamp);
+watch([() => props.withRail, () => props.sideCollapsed, () => props.workerActive, scale], reclamp);
 
 type DrawerDrag = {
   pointerId: number;
@@ -438,6 +454,7 @@ onUnmounted(() => {
         'with-rail': withRail,
         'side-collapsed': sideCollapsed,
         'rail-collapsed': railCollapsed,
+        'rail-maximized': maximized,
       }"
       :style="frameStyle"
     >
@@ -456,7 +473,7 @@ onUnmounted(() => {
           <slot name="sidebar" />
         </div>
       </nav>
-      <main class="main" :inert="drawer !== null">
+      <main class="main" :inert="drawer !== null || maximized">
         <slot />
       </main>
       <aside
@@ -488,11 +505,11 @@ onUnmounted(() => {
         @reset="onSideReset"
       />
       <Sash
-        v-if="withRail && !railCollapsed"
+        v-if="withRail && !railCollapsed && !maximized"
         side="right"
         :label="t('Resize the tickets panel')"
         :min="railSpec.min"
-        :max="railSpec.max"
+        :max="Math.min(railSpec.max, vpWidth - sideColW - MAIN_MIN * scale)"
         :now="railW"
         @resize="onRailResize"
         @dragend="commitDrag"

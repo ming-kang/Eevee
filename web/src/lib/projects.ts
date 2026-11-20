@@ -1,15 +1,18 @@
 import type { RunSummary } from "../../../src/domain/index.ts";
-import type { BoardView, ProjectSummary, TicketView } from "../../../src/protocol/contract.ts";
-import { countPendingQuestions, effectiveStage, groupTickets, type VisualStage } from "./board.ts";
+import type { BoardView, ProjectSummary } from "../../../src/protocol/contract.ts";
+import { countPendingQuestions, effectiveStage, type VisualStage } from "./board.ts";
 import { t } from "./i18n.ts";
 import { displayId } from "./ids.ts";
 import { failureText, STAGE_LABEL } from "./labels.ts";
 import type { Route } from "./router.ts";
 
 export type ProjectRowState = {
-  kind: "user" | "bad" | "run" | "rest";
+  kind: "user" | "bad" | "unread" | "run" | "rest";
   questionCount: number;
   proposalCount: number;
+  reviewCount: number;
+  blockedCount: number;
+  unreadCount: number;
   openCount: number;
   runningTickets: number;
   jobCount: number;
@@ -18,19 +21,37 @@ export type ProjectRowState = {
   activeAt?: number;
 };
 
-/**
- * Derive single-slot status badge state for a project row with priority:
- * unanswered questions > Router failure > running Worker/job/Router > idle.
- */
+export function readProjectSeen(raw: string | null): Record<string, number> {
+  try {
+    const value: unknown = JSON.parse(raw ?? "{}");
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(
+      Object.entries(value).filter(
+        ([, at]) => typeof at === "number" && Number.isFinite(at) && at >= 0,
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
 export function deriveProjectState(input: {
   board?: BoardView;
   router?: RunSummary;
   activeAt?: number;
+  lastSeenAt?: number;
 }): ProjectRowState {
   const board = input.board;
   const openTickets = (board?.tickets ?? []).filter((t) => t.ticket.status === "open");
   const questionCount = countPendingQuestions(board);
   const proposalCount = board?.openProposals?.length ?? 0;
+  const reviewCount = openTickets.filter((view) => view.stage === "review").length;
+  const blockedCount = openTickets.filter((view) => view.stage === "blocked").length;
+  const unansweredTickets = openTickets.some((view) => view.stage === "answer");
+  const unreadCount = (board?.tickets ?? []).filter(
+    (view) =>
+      view.ticket.status === "done" && (view.ticket.closedAt ?? 0) > (input.lastSeenAt ?? 0),
+  ).length;
   const runningTickets = openTickets.filter(
     (t) => t.stage === "working" || t.stage === "jobs",
   ).length;
@@ -43,14 +64,18 @@ export function deriveProjectState(input: {
   const routerFailed = router?.failure && failureText(router.failure);
 
   let kind: ProjectRowState["kind"] = "rest";
-  if (questionCount + proposalCount > 0) kind = "user";
-  else if (routerFailed !== undefined) kind = "bad";
+  if (questionCount + proposalCount + reviewCount > 0 || unansweredTickets) kind = "user";
+  else if (routerFailed !== undefined || blockedCount > 0) kind = "bad";
+  else if (unreadCount > 0) kind = "unread";
   else if (runningTickets > 0 || routerRunning) kind = "run";
 
   return {
     kind,
     questionCount,
     proposalCount,
+    reviewCount,
+    blockedCount,
+    unreadCount,
     openCount: openTickets.length,
     runningTickets,
     jobCount,
@@ -60,65 +85,14 @@ export function deriveProjectState(input: {
   };
 }
 
-/** Open tickets ordered for the sidebar sub-tree: urgent items (answer/blocked) first. */
-export function openSidebarTickets(board: BoardView | undefined): TicketView[] {
-  if (!board) return [];
-  const g = groupTickets(board.tickets);
-  return [...g.answer, ...g.blocked, ...g.review, ...g.active];
-}
-
-export type SidebarProjectEntry = {
-  project: ProjectSummary;
-  tickets: TicketView[];
-  /** Set when an inline filter matched specific tickets inside this project. */
-  forceExpand: boolean;
-};
-
-/**
- * Filter projects and their tickets for the sidebar's inline search box.
- * An empty query returns every project with its open tickets; a query matches against project
- * title/id/workspace as well as ticket id/title/stage, auto-expanding projects with ticket hits.
- */
 export function filterSidebarProjects(
   projects: readonly ProjectSummary[],
-  boards: Record<string, { board?: BoardView } | undefined>,
   query: string,
-): SidebarProjectEntry[] {
+): ProjectSummary[] {
   const q = query.trim().toLowerCase();
-  if (q === "") {
-    return projects.map((project) => ({
-      project,
-      tickets: openSidebarTickets(boards[project.id]?.board),
-      forceExpand: false,
-    }));
-  }
-
-  const out: SidebarProjectEntry[] = [];
-  for (const project of projects) {
-    const board = boards[project.id]?.board;
-    const projectHit =
-      project.title.toLowerCase().includes(q) ||
-      project.id.toLowerCase().includes(q) ||
-      project.workspace.toLowerCase().includes(q);
-
-    const g = groupTickets(board?.tickets ?? []);
-    const ordered = [...g.answer, ...g.blocked, ...g.review, ...g.active, ...g.closed];
-    const matchedTickets = ordered.filter((view) => {
-      const stageLabel = STAGE_LABEL[effectiveStage(view)].toLowerCase();
-      return (
-        view.ticket.id.toLowerCase().includes(q) ||
-        view.ticket.title.toLowerCase().includes(q) ||
-        stageLabel.includes(q)
-      );
-    });
-
-    if (matchedTickets.length > 0) {
-      out.push({ project, tickets: matchedTickets, forceExpand: true });
-    } else if (projectHit) {
-      out.push({ project, tickets: openSidebarTickets(board), forceExpand: false });
-    }
-  }
-  return out;
+  return projects.filter((project) =>
+    [project.title, project.id, project.workspace].some((value) => value.toLowerCase().includes(q)),
+  );
 }
 
 type PaletteIcon =
@@ -177,50 +151,64 @@ export function buildPaletteItems(input: {
       icon,
     }) as const;
 
-  items.push(go("nav:home", t("Home"), "home now dashboard", { name: "home" }, "home"));
+  items.push(
+    go("nav:overview", t("Overview"), "overview home now dashboard", { name: "overview" }, "home"),
+  );
 
   if (pid) {
     items.push(
       go(`nav:chat:${pid}`, t("Router conversation"), "chat", { name: "chat", pid }, "radio"),
-      go(`nav:memory:${pid}`, t("Memory"), "memory", { name: "memory", pid }, "book"),
-      go(`nav:usage:${pid}`, t("Usage"), "usage cost", { name: "usage", pid }, "chart"),
     );
   }
 
   items.push(
     go(
-      "nav:settings:general",
-      t("Settings · General"),
+      "nav:control:memory",
+      t("Memory"),
+      "control memory",
+      { name: "control", section: "memory" },
+      "book",
+    ),
+    go(
+      "nav:control:usage",
+      t("Usage"),
+      "control usage cost",
+      { name: "control", section: "usage" },
+      "chart",
+    ),
+    go(
+      "nav:control:general",
+      t("Control · General"),
       "settings general theme palette font size language",
-      { name: "settings", section: "general" },
+      { name: "control", section: "general" },
       "sliders",
     ),
     go(
-      "nav:settings:models",
-      t("Settings · Models"),
+      "nav:control:models",
+      t("Control · Models"),
       "settings models thinking",
-      { name: "settings", section: "models" },
+      { name: "control", section: "models" },
       "cpu",
     ),
     go(
-      "nav:settings:roles",
-      t("Settings · Roles"),
+      "nav:control:roles",
+      t("Control · Roles"),
       "settings roles",
-      { name: "settings", section: "roles" },
+      { name: "control", section: "roles" },
       "puzzle",
     ),
     go(
-      "nav:settings:mcp",
-      t("Settings · MCP & extensions"),
+      "nav:control:mcp",
+      t("Control · MCP & extensions"),
       "settings mcp extensions",
-      { name: "settings", section: "mcp" },
+      { name: "control", section: "mcp" },
       "plug",
     ),
     go(
-      "nav:settings:engine",
-      t("Settings · Engine"),
+      "nav:control:engine",
+      t("Control · Engine"),
       "settings engine",
-      { name: "settings", section: "engine" },
+      { name: "control", section: "engine" },
       "server",
     ),
   );

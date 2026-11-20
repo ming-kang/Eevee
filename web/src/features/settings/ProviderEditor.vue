@@ -51,7 +51,7 @@ const props = defineProps<{
   reloadView: () => Promise<void>;
 }>();
 
-const LIST = formatRoute({ name: "settings", section: "models" });
+const LIST = formatRoute({ name: "control", section: "models" });
 
 const configs = ref<Record<string, ProviderConfigView>>();
 const loadError = ref<string>();
@@ -194,7 +194,7 @@ async function save(): Promise<void> {
   showToast(t("Saved {provider}", { provider: id }));
   await props.reloadView();
   if (isNew.value) {
-    location.hash = formatRoute({ name: "settings", section: "models", item: id });
+    location.hash = formatRoute({ name: "control", section: "models", item: id });
     return;
   }
   await loadConfigs();

@@ -33,7 +33,6 @@ const props = defineProps<{
   client: Client;
   stream: ShallowRef<StreamClient | undefined>;
   project: string;
-  projectTitle?: string;
   view: TicketView | undefined;
   tickets?: readonly TicketView[];
   openQuestions?: readonly Question[];
@@ -42,7 +41,7 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  close: [];
+  "open-details": [];
   "open-rail": [tab?: RailTab, jobId?: string];
   "open-ticket": [ticketId: string];
 }>();
@@ -208,24 +207,12 @@ function queueSteer(message: QueuedMessage): Promise<void> {
 <template>
   <section class="worker">
     <header class="header">
-      <nav class="crumb" :aria-label="t('Breadcrumb')">
-        <button
-          type="button"
-          class="crumb-parent"
-          :title="t('Back to the Router')"
-          :aria-label="t('Back to the Router conversation')"
-          @click="$emit('close')"
-        >
-          <Icon name="folder" size="xs" class="crumb-ico hide-sm" />
-          <span class="ellipsis hide-sm">{{ projectTitle ?? t("Router") }}</span>
-          <Icon name="chevL" size="xs" class="show-sm" />
-        </button>
-        <span class="crumb-sep hide-sm" aria-hidden="true">/</span>
+      <div class="flex min-w-0 flex-1 items-center gap-2">
         <span :class="ID_TEXT">{{ displayId(ticketId) }}</span>
         <h1 class="ellipsis">
           {{ view ? view.ticket.title : boardLoaded ? t("Ticket {id} not found", { id: ticketId }) : "" }}
         </h1>
-      </nav>
+      </div>
       <span
         v-if="view && stage"
         :class="stagePill(stage)"
@@ -270,7 +257,7 @@ function queueSteer(message: QueuedMessage): Promise<void> {
       :load-earlier="conversation.loadEarlier"
       :fill-gap="conversation.fillGap"
       @open-ticket="$emit('open-ticket', $event)"
-      @open-detail="$emit('open-rail', 'detail')"
+      @open-detail="$emit('open-details')"
       @open-job="(jobId) => $emit('open-rail', 'jobs', jobId)"
       @open-question="openQuestion"
     />

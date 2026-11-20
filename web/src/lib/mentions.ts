@@ -48,8 +48,8 @@ export type TextPart = { kind: "text"; text: string } | { kind: "ticket"; ticket
 export function splitTicketRefs(text: string, ids: ReadonlySet<string>): TextPart[] {
   const parts: TextPart[] = [];
   let last = 0;
-  for (const match of text.matchAll(/\bt\d+\b/g)) {
-    const ticketId = match[0];
+  for (const match of text.matchAll(/\bt\d+\b/gi)) {
+    const ticketId = match[0].toLowerCase();
     if (!ids.has(ticketId)) continue;
     if (match.index > last) parts.push({ kind: "text", text: text.slice(last, match.index) });
     parts.push({ kind: "ticket", ticketId });

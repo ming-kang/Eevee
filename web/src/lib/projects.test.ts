@@ -7,7 +7,7 @@ import {
   deriveProjectState,
   filterPaletteItems,
   filterSidebarProjects,
-  openSidebarTickets,
+  readProjectSeen,
 } from "./projects.ts";
 
 function makeTicket(id: TicketId, stage: TicketStage, jobs = 0, closed = false): TicketView {
@@ -134,6 +134,83 @@ test("pending memory proposals demand project attention even without open questi
   assert.equal(state.questionCount, 0);
 });
 
+test("project status priority is Pending > Failed/blocked > unread completion > Running > idle", () => {
+  for (const pending of ["none", "question", "answer", "review", "proposal"]) {
+    for (const failure of ["none", "router", "blocked"]) {
+      for (const unread of [false, true]) {
+        for (const running of ["none", "worker", "router", "jobs"]) {
+          const closed = makeTicket("t9", "idle", 0, true);
+          closed.ticket.closedAt = 200;
+          const board: BoardView = {
+            tickets: [closed],
+            openQuestions: [],
+            openProposals: [],
+            router: {
+              running: running === "router",
+              ...(failure === "router"
+                ? { failure: { reason: "model_error", detail: "401" } as const }
+                : {}),
+            },
+          };
+          if (pending === "question") board.openQuestions.push({ id: "q1", items: [], askedAt: 1 });
+          if (pending === "answer" || pending === "review")
+            board.tickets.push(makeTicket("t1", pending));
+          if (pending === "proposal")
+            board.openProposals.push({
+              id: "m1",
+              scope: "project",
+              source: { kind: "dreaming", ticketId: "t1" },
+              summary: "Advice",
+            });
+          if (failure === "blocked") board.tickets.push(makeTicket("t2", "blocked"));
+          if (running === "worker") board.tickets.push(makeTicket("t3", "working"));
+          if (running === "jobs") board.tickets.push(makeTicket("t4", "jobs", 1));
+          const state = deriveProjectState({ board, lastSeenAt: unread ? 199 : 200 });
+          const expected =
+            pending !== "none"
+              ? "user"
+              : failure !== "none"
+                ? "bad"
+                : unread
+                  ? "unread"
+                  : running !== "none"
+                    ? "run"
+                    : "rest";
+          assert.equal(state.kind, expected, JSON.stringify({ pending, failure, unread, running }));
+          assert.equal(state.unreadCount, unread ? 1 : 0);
+          assert.equal(state.reviewCount, pending === "review" ? 1 : 0);
+          assert.equal(state.blockedCount, failure === "blocked" ? 1 : 0);
+        }
+      }
+    }
+  }
+});
+
+test("unread completions respect per-project persisted watermarks and ignore cancelled/undated tickets", () => {
+  const closed = makeTicket("t1", "idle", 0, true);
+  closed.ticket.closedAt = 200;
+  const cancelled = makeTicket("t2", "idle", 0, true);
+  cancelled.ticket.status = "cancelled";
+  cancelled.ticket.closedAt = 300;
+  const board: BoardView = {
+    tickets: [closed, cancelled, makeTicket("t3", "idle", 0, true)],
+    router: { running: false },
+    openQuestions: [],
+    openProposals: [],
+  };
+  const seen = readProjectSeen('{"p1":200,"p2":100}');
+  assert.equal(deriveProjectState({ board, lastSeenAt: seen.p1 }).kind, "rest");
+  assert.equal(deriveProjectState({ board, lastSeenAt: seen.p2 }).kind, "unread");
+  assert.equal(deriveProjectState({ board }).unreadCount, 1);
+  assert.equal(deriveProjectState({}).kind, "rest");
+  for (const raw of [null, "", "oops", "[]", "null", "42"])
+    assert.deepEqual(readProjectSeen(raw), {});
+  assert.deepEqual(
+    readProjectSeen('{"good":10,"zero":0,"bad":"20","negative":-1,"infinite":1e999}'),
+    { good: 10, zero: 0 },
+  );
+});
+
 test("buildPaletteItems and filterPaletteItems build and filter pages, tickets, projects and actions", () => {
   const projects: ProjectSummary[] = [
     { id: "p1", title: "Optics paper", workspace: "D:/papers/optics", createdAt: 1 },
@@ -169,14 +246,14 @@ test("buildPaletteItems and filterPaletteItems build and filter pages, tickets, 
     true,
   );
   assert.deepEqual(
-    items.find((i) => i.id === "nav:home"),
+    items.find((i) => i.id === "nav:overview"),
     {
-      id: "nav:home",
+      id: "nav:overview",
       group: "Go to",
-      label: "Home",
-      search: "Home home now dashboard",
+      label: "Overview",
+      search: "Overview overview home now dashboard",
       kind: "route",
-      route: { name: "home" },
+      route: { name: "overview" },
       icon: "home",
     },
   );
@@ -188,78 +265,36 @@ test("a palette page is found by plain English keywords, never a translated keyw
   const items = buildPaletteItems({ projects: [], boards: {} });
   const search = (id: string): string => items.find((i) => i.id === id)?.search ?? "";
   assert.equal(
-    search("nav:settings:general"),
-    "Settings · General settings general theme palette font size language",
+    search("nav:control:general"),
+    "Control · General settings general theme palette font size language",
   );
-  assert.equal(search("nav:settings:models"), "Settings · Models settings models thinking");
-  assert.equal(search("nav:settings:roles"), "Settings · Roles settings roles");
+  assert.equal(search("nav:control:models"), "Control · Models settings models thinking");
+  assert.equal(search("nav:control:roles"), "Control · Roles settings roles");
 });
 
-test("openSidebarTickets orders urgent open tickets first and omits closed ones", () => {
-  const board: BoardView = {
-    tickets: [
-      makeTicket("t1", "working"),
-      makeTicket("t2", "blocked"),
-      makeTicket("t3", "answer"),
-      makeTicket("t4", "idle", 0, true),
-    ],
-    openProposals: [],
-    openQuestions: [],
-    router: { running: false },
-  };
-  assert.deepEqual(
-    openSidebarTickets(board).map((v) => v.ticket.id),
-    ["t3", "t2", "t1"],
+test("palette offers every Control section without requiring projects", () => {
+  const items = buildPaletteItems({ projects: [], boards: {} });
+  for (const section of ["memory", "usage", "general", "models", "roles", "mcp", "engine"]) {
+    const item = items.find((entry) => entry.id === `nav:control:${section}`);
+    assert.ok(item?.kind === "route");
+    assert.deepEqual(item.route, { name: "control", section });
+  }
+  assert.equal(
+    items.some((item) => item.id.startsWith("nav:settings:")),
+    false,
   );
 });
 
-test("filterSidebarProjects filters by project or ticket and auto-expands ticket matches", () => {
+test("sidebar search filters projects by title, id and workspace, not tickets", () => {
   const projects: ProjectSummary[] = [
     { id: "p1", title: "Optics paper", workspace: "D:/papers/optics", createdAt: 1 },
     { id: "p2", title: "Backend rewrite", workspace: "D:/work/eevee", createdAt: 2 },
   ];
-  const boards = {
-    p1: {
-      board: {
-        tickets: [makeTicket("t1", "working"), makeTicket("t9", "idle", 0, true)],
-        openProposals: [],
-        openQuestions: [],
-        router: { running: false },
-      },
-    },
-    p2: {
-      board: {
-        tickets: [makeTicket("t12", "answer")],
-        openProposals: [],
-        openQuestions: [],
-        router: { running: false },
-      },
-    },
-  };
-
-  const all = filterSidebarProjects(projects, boards, "  ");
-  assert.equal(all.length, 2);
-  assert.equal(all[0]?.forceExpand, false);
-  assert.deepEqual(
-    all[0]?.tickets.map((v) => v.ticket.id),
-    ["t1"],
-  );
-
-  const byTicket = filterSidebarProjects(projects, boards, "t9");
-  assert.equal(byTicket.length, 1);
-  assert.equal(byTicket[0]?.project.id, "p1");
-  assert.equal(byTicket[0]?.forceExpand, true);
-  assert.deepEqual(
-    byTicket[0]?.tickets.map((v) => v.ticket.id),
-    ["t9"],
-  );
-
-  const byProj = filterSidebarProjects(projects, boards, "backend");
-  assert.equal(byProj.length, 1);
-  assert.equal(byProj[0]?.project.id, "p2");
-  assert.equal(byProj[0]?.forceExpand, false);
-  assert.deepEqual(
-    byProj[0]?.tickets.map((v) => v.ticket.id),
-    ["t12"],
-  );
+  assert.deepEqual(filterSidebarProjects(projects, "  "), projects);
+  assert.deepEqual(filterSidebarProjects(projects, " BACKEND "), [projects[1]]);
+  assert.deepEqual(filterSidebarProjects(projects, "p1"), [projects[0]]);
+  assert.deepEqual(filterSidebarProjects(projects, "WORK/EEVEE"), [projects[1]]);
+  assert.deepEqual(filterSidebarProjects(projects, "t9"), []);
+  assert.deepEqual(filterSidebarProjects(projects, "working"), []);
+  assert.deepEqual(filterSidebarProjects([], ""), []);
 });

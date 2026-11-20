@@ -10,9 +10,25 @@ import {
   readWidth,
   SIDE,
   scaledColumn,
+  WORKER_RAIL,
 } from "./layout.ts";
 
 const VP = 1600;
+
+test("Worker rail uses a wider default and only caps at the remaining center minimum", () => {
+  assert.equal(WORKER_RAIL.default, 540);
+  assert.equal(fitRail(0, VP, SIDE.default, 1, WORKER_RAIL), 360);
+  assert.equal(fitRail(540, VP, SIDE.default, 1, WORKER_RAIL), 540);
+  assert.equal(fitRail(9999, VP, SIDE.default, 1, WORKER_RAIL), VP - SIDE.default - MAIN_MIN);
+  assert.equal(fitRail(9999, VP, 0, 1, WORKER_RAIL), VP - MAIN_MIN);
+  assert.equal(fitRail(9999, 700, SIDE.default, 1, WORKER_RAIL), 700 - SIDE.default - MAIN_MIN);
+  assert.equal(readWidth(null, WORKER_RAIL), 540);
+  assert.equal(readWidth("invalid", WORKER_RAIL), 540);
+  assert.equal(readWidth("200", WORKER_RAIL), 360);
+  assert.equal(readWidth("800", WORKER_RAIL), 800);
+  const scale = 20 / 14;
+  assert.equal(fitRail(0, 2000, SIDE.default, scale, WORKER_RAIL), Math.round(360 * scale));
+});
 
 test("a sidebar drag clamps to its own range and leaves the main its minimum", () => {
   assert.equal(fitSidebar(100, VP, 0), SIDE.min);

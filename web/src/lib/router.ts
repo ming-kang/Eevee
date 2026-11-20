@@ -2,6 +2,7 @@ import type { QuestionId } from "../../../src/domain/index.ts";
 
 const SETTINGS_SECTIONS = ["general", "models", "roles", "mcp", "engine"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+export type ControlSection = SettingsSection | "memory" | "usage";
 
 /** The item a settings page opens on its own: a provider on the models page, a server on the MCP page. */
 export const NEW_ITEM = "+";
@@ -10,11 +11,28 @@ const ITEM_SECTIONS: readonly SettingsSection[] = ["models", "mcp"];
 export type Route =
   | { name: "chat"; pid: string; qid?: QuestionId }
   | { name: "worker"; pid: string; tid: string }
-  | { name: "memory"; pid: string }
-  | { name: "usage"; pid: string }
-  | { name: "settings"; section: SettingsSection; item?: string }
+  | { name: "control"; section: ControlSection; item?: string; pid?: string }
   | { name: "connect" }
-  | { name: "home" };
+  | { name: "overview" };
+
+export type BackgroundRoute = Exclude<Route, { name: "control" }>;
+
+export function routerProjectId(route: BackgroundRoute): string | undefined {
+  return route.name === "chat" || route.name === "worker" ? route.pid : undefined;
+}
+
+export function retainBackgroundRoute(next: Route, previous: BackgroundRoute): BackgroundRoute {
+  return next.name === "control" ? previous : next;
+}
+
+export function controlProjectId(
+  next: Route,
+  background: BackgroundRoute,
+  fallbackPid?: string,
+): string | undefined {
+  if (next.name === "control" && next.pid !== undefined) return next.pid;
+  return "pid" in background ? background.pid : fallbackPid;
+}
 
 function decode(segment: string): string | undefined {
   try {
@@ -40,17 +58,28 @@ export function parseRoute(hash: string): Route | undefined {
   if (extractAuthCode(hash) !== undefined) return undefined;
   const trimmed = hash.replace(/^#\/?/, "");
   if (trimmed === "") return undefined;
-  const parts = trimmed.split("/").filter(Boolean);
+  const [path, query] = trimmed.split("?");
+  const parts = (path ?? "").split("/").filter(Boolean);
   if (parts.length === 0) return undefined;
+  if ((parts[0] === "overview" || parts[0] === "home") && parts.length === 1) {
+    return { name: "overview" };
+  }
 
   if (parts[0] === "connect" && parts.length === 1) {
     return { name: "connect" };
   }
-  if (parts[0] === "settings") {
+  if (parts[0] === "settings" || parts[0] === "control") {
     const raw = parts[1] ? decode(parts[1]) : undefined;
-    const section: SettingsSection = raw && isSettingsSection(raw) ? raw : "general";
-    const item = parts[2] && ITEM_SECTIONS.includes(section) ? decode(parts[2]) : undefined;
-    return item ? { name: "settings", section, item } : { name: "settings", section };
+    const section: ControlSection =
+      raw && isSettingsSection(raw)
+        ? raw
+        : parts[0] === "control" && (raw === "memory" || raw === "usage")
+          ? raw
+          : "general";
+    const item =
+      parts[2] && ITEM_SECTIONS.some((value) => value === section) ? decode(parts[2]) : undefined;
+    const pid = new URLSearchParams(query).get("project") || undefined;
+    return { name: "control", section, ...(item ? { item } : {}), ...(pid ? { pid } : {}) };
   }
   if (parts[0] === "p" && parts[1]) {
     const pid = decode(parts[1]);
@@ -64,8 +93,9 @@ export function parseRoute(hash: string): Route | undefined {
       const tid = decode(parts[3]);
       return tid ? { name: "worker", pid, tid } : undefined;
     }
-    if (parts[2] === "memory" && parts.length === 3) return { name: "memory", pid };
-    if (parts[2] === "usage" && parts.length === 3) return { name: "usage", pid };
+    if ((parts[2] === "memory" || parts[2] === "usage") && parts.length === 3) {
+      return { name: "control", section: parts[2], pid };
+    }
   }
   return undefined;
 }
@@ -73,9 +103,9 @@ export function parseRoute(hash: string): Route | undefined {
 export function resolveRoute(hash: string, fallbackPid?: string): Route {
   const parsed = parseRoute(hash);
   if (parsed !== undefined) return parsed;
-  // An empty hash is the Home page; only a non-empty unknown path falls back to the last project.
-  if (hash.replace(/^#\/?/, "") === "") return { name: "home" };
-  return fallbackPid !== undefined ? { name: "chat", pid: fallbackPid } : { name: "home" };
+  // An empty hash is Overview; only a non-empty unknown path falls back to the last project.
+  if (hash.replace(/^#\/?/, "") === "") return { name: "overview" };
+  return fallbackPid !== undefined ? { name: "chat", pid: fallbackPid } : { name: "overview" };
 }
 
 export function formatRoute(route: Route): string {
@@ -84,17 +114,11 @@ export function formatRoute(route: Route): string {
       return `#/p/${encodeURIComponent(route.pid)}${route.qid === undefined ? "" : `/q/${encodeURIComponent(route.qid)}`}`;
     case "worker":
       return `#/p/${encodeURIComponent(route.pid)}/t/${encodeURIComponent(route.tid)}`;
-    case "memory":
-      return `#/p/${encodeURIComponent(route.pid)}/memory`;
-    case "usage":
-      return `#/p/${encodeURIComponent(route.pid)}/usage`;
-    case "settings":
-      return route.item === undefined
-        ? `#/settings/${route.section}`
-        : `#/settings/${route.section}/${encodeURIComponent(route.item)}`;
+    case "control":
+      return `#/control/${route.section}${route.item === undefined ? "" : `/${encodeURIComponent(route.item)}`}${route.pid === undefined ? "" : `?project=${encodeURIComponent(route.pid)}`}`;
     case "connect":
       return "#/connect";
-    case "home":
-      return "#/";
+    case "overview":
+      return "#/overview";
   }
 }

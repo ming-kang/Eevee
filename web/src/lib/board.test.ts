@@ -187,10 +187,13 @@ test("collectRunningJobs returns running jobs only from open tickets", () => {
   );
 });
 
-test("resolveRailTab falls back from detail outside worker view and reportStage maps statuses", () => {
-  assert.equal(resolveRailTab("detail", false), "tickets");
-  assert.equal(resolveRailTab("detail", true), "detail");
+test("resolveRailTab falls back from a closed ticket and reportStage maps statuses", () => {
+  assert.equal(resolveRailTab("worker", false), "tickets");
+  assert.equal(resolveRailTab("worker", true), "worker");
   assert.equal(resolveRailTab("jobs", false), "jobs");
+  assert.equal(resolveRailTab("jobs", true), "jobs");
+  assert.equal(resolveRailTab("tickets", false), "tickets");
+  assert.equal(resolveRailTab("tickets", true), "tickets");
 
   assert.equal(reportStage("progress"), "progress");
   assert.equal(reportStage("waiting"), "waiting");

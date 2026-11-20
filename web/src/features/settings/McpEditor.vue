@@ -40,7 +40,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ changed: [view: CapabilitiesView] }>();
 
-const LIST = formatRoute({ name: "settings", section: "mcp" });
+const LIST = formatRoute({ name: "control", section: "mcp" });
 
 const STATE_LABEL: Record<string, { dot: string; label: string }> = {
   connected: { dot: "ok", label: t("Connected") },
@@ -153,7 +153,7 @@ async function save(): Promise<void> {
   if (!ok) return;
   showToast(t("Saved {name}", { name }));
   if (isNew.value) {
-    location.hash = formatRoute({ name: "settings", section: "mcp", item: name });
+    location.hash = formatRoute({ name: "control", section: "mcp", item: name });
     return;
   }
   await loadEntries();

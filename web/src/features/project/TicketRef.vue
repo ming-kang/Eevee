@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import type { TicketView } from "@shared/protocol/contract.ts";
 import { computed } from "vue";
-import { effectiveStage } from "../../lib/board.ts";
-import { STAGE_LABEL } from "../../lib/labels.ts";
-import { displayId } from "../../lib/ids.ts";
+import { resolveTicketRef } from "../../lib/ticket-ref.ts";
+import StageGlyph from "./StageGlyph.vue";
 
 const props = defineProps<{
   ticketId: string;
@@ -15,20 +14,19 @@ defineEmits<{
   "open-ticket": [ticketId: string];
 }>();
 
-const tooltip = computed(() => {
-  const found = props.tickets?.find((t) => t.ticket.id === props.ticketId);
-  if (!found) return props.ticketId;
-  return `${found.ticket.title} · ${STAGE_LABEL[effectiveStage(found)]}`;
-});
+const reference = computed(() => resolveTicketRef(props.ticketId, props.tickets, props.label));
 </script>
 
 <template>
   <button
     type="button"
-    class="mx-px inline rounded-xs bg-[color-mix(in_oklab,var(--fg)_7%,transparent)] px-1 py-px font-mono text-[0.88em] font-medium text-fg transition-colors [box-decoration-break:clone] hover:bg-[color-mix(in_oklab,var(--fg)_13%,transparent)]"
-    :title="tooltip"
-    @click.stop="$emit('open-ticket', ticketId)"
+    class="mx-px inline-flex items-center gap-1 rounded-xs bg-[color-mix(in_oklab,var(--fg)_7%,transparent)] px-1 py-px align-baseline font-mono text-[0.88em] font-medium text-fg transition-colors hover:bg-[color-mix(in_oklab,var(--fg)_13%,transparent)] [&_.glyph]:size-[1em]"
+    :title="reference.tooltip"
+    :aria-label="`${reference.label} · ${reference.tooltip}`"
+    :data-ticket-id="reference.ticketId"
+    @click.stop.prevent="$emit('open-ticket', reference.ticketId)"
   >
-    {{ !label || label === ticketId ? displayId(ticketId) : label }}
+    <StageGlyph v-if="reference.stage" :stage="reference.stage" />
+    {{ reference.label }}
   </button>
 </template>

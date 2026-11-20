@@ -61,6 +61,10 @@ test("splitTicketRefs chips only known ticket ids", () => {
     { kind: "ticket", ticketId: "t4" },
     { kind: "text", text: "." },
   ]);
+  assert.deepEqual(splitTicketRefs("T4 and T9", ids), [
+    { kind: "ticket", ticketId: "t4" },
+    { kind: "text", text: " and T9" },
+  ]);
   assert.deepEqual(splitTicketRefs("t9 is unknown", ids), [
     { kind: "text", text: "t9 is unknown" },
   ]);
