@@ -28,6 +28,12 @@ test("a form written one|many is picked by n", () => {
   assert.equal(t("{n} file|{n} files", { n: 1 }), "1 file");
   assert.equal(t("{n} file|{n} files", { n: 3 }), "3 files");
 });
+
+test("compact timestamps keep standard units in Chinese", () => {
+  for (const unit of ["m", "h", "d", "w"]) {
+    assert.equal(fill(zhCN[`{n}${unit}`] ?? "", { n: 8 }), `8${unit}`);
+  }
+});
 const root = new URL(".", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const CJK = /[　-〿一-鿿＀-￯]/;
 

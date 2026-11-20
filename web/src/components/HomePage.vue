@@ -16,6 +16,8 @@ const props = defineProps<{
   boards: Record<string, BoardState | undefined>;
 }>();
 
+defineEmits<{ "new-project": [] }>();
+
 const nowMs = ref(Date.now());
 let clockTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -54,6 +56,11 @@ function runningRest(row: Extract<RunningRow, { kind: "ticket" }>): string {
   <section class="page-wrap">
     <header class="header">
       <h1>{{ t("Now") }}</h1>
+      <span class="spacer" />
+      <button type="button" class="btn sm" @click="$emit('new-project')">
+        <Icon name="plus" size="sm" />
+        <span>{{ t("New project") }}</span>
+      </button>
     </header>
     <div class="page">
       <div class="page-inner home">
@@ -61,19 +68,19 @@ function runningRest(row: Extract<RunningRow, { kind: "ticket" }>): string {
           <header class="home-h">
             <h2>
               {{ t("Pending") }}
-              <span v-if="home.questionCount > 0" class="count user">{{ home.questionCount }}</span>
+              <span v-if="home.needsYou.length > 0" class="count user">{{ home.needsYou.length }}</span>
             </h2>
           </header>
           <div class="rows">
             <a
               v-for="row in home.needsYou"
               :key="row.kind === 'question' ? row.question.id : `r:${row.pid}`"
-              class="row"
-              :href="formatRoute({ name: 'chat', pid: row.pid })"
+              class="row home-attention"
+              :href="formatRoute({ name: 'chat', pid: row.pid, ...(row.kind === 'question' ? { qid: row.question.id } : {}) })"
             >
               <StageGlyph :stage="row.kind === 'question' ? 'answer' : 'blocked'" />
               <span class="r-main">
-                <span class="r-t ellipsis">{{ needsYouTitle(row) }}</span>
+                <span class="r-t">{{ needsYouTitle(row) }}</span>
                 <span class="r-d ellipsis"
                   >{{ row.project
                   }}<template v-if="needsYouRest(row)"> · {{ needsYouRest(row) }}</template></span

@@ -14,32 +14,32 @@ export const THEME_PALETTES: readonly PaletteSwatch[] = [
   {
     id: "default",
     light: { canvas: "#fcfcfc", sidebar: "#f5f5f7", primary: "#1b4ed8" },
-    dark: { canvas: "#09090b", sidebar: "#050507", primary: "#3b82f6" },
+    dark: { canvas: "#1e2127", sidebar: "#191c22", primary: "#346bf1" },
   },
   {
     id: "grove",
     light: { canvas: "#f5faf7", sidebar: "#ebf3ee", primary: "#15803d" },
-    dark: { canvas: "#0c1410", sidebar: "#080e0b", primary: "#34d399" },
+    dark: { canvas: "#1b241f", sidebar: "#161e1a", primary: "#35b271" },
   },
   {
     id: "ocean",
     light: { canvas: "#f6f9fc", sidebar: "#edf3f8", primary: "#0369a1" },
-    dark: { canvas: "#0a1118", sidebar: "#060b10", primary: "#38bdf8" },
+    dark: { canvas: "#1b2329", sidebar: "#161d22", primary: "#08a4e5" },
   },
   {
     id: "ember",
     light: { canvas: "#fcf9f6", sidebar: "#f5efe9", primary: "#c2410c" },
-    dark: { canvas: "#140e0b", sidebar: "#0d0907", primary: "#fb923c" },
+    dark: { canvas: "#28201c", sidebar: "#211a18", primary: "#f27c37" },
   },
   {
     id: "iris",
     light: { canvas: "#f9f7fc", sidebar: "#f1eef8", primary: "#6d28d9" },
-    dark: { canvas: "#100c18", sidebar: "#0a0710", primary: "#a78bfa" },
+    dark: { canvas: "#22202a", sidebar: "#1c1a23", primary: "#a380fe" },
   },
   {
     id: "rose",
     light: { canvas: "#fcf7fa", sidebar: "#f6edf3", primary: "#be185d" },
-    dark: { canvas: "#150c13", sidebar: "#0e070c", primary: "#f472b6" },
+    dark: { canvas: "#271e25", sidebar: "#21191f", primary: "#eb5ca4" },
   },
 ];
 
