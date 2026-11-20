@@ -9,6 +9,7 @@ import {
   groupTickets,
   reportStage,
   resolveRailTab,
+  ticketActivityAt,
   ticketQuestionSummary,
 } from "./board.ts";
 
@@ -43,6 +44,42 @@ test("effectiveStage uses terminal status for closed tickets", () => {
   assert.equal(effectiveStage(makeTicket("t1", "working")), "working");
   assert.equal(effectiveStage(makeTicket("t2", "idle", { status: "done" })), "done");
   assert.equal(effectiveStage(makeTicket("t3", "blocked", { status: "cancelled" })), "cancelled");
+});
+
+test("ticketActivityAt uses the latest known activity, independent of report/job order", () => {
+  const view = makeTicket("t1", "working");
+  assert.equal(ticketActivityAt(view), 1000);
+  view.ticket.closedAt = 2000;
+  view.ticket.stoppedAt = 3000;
+  assert.equal(ticketActivityAt(view), 3000);
+  const report = {
+    ticketId: view.ticket.id,
+    seq: 1,
+    status: "progress" as const,
+    summary: "Progress",
+    artifacts: [],
+    handled: false,
+    reminded: false,
+    at: 5000,
+  };
+  view.reports = [report, { ...report, seq: 2, at: 4000 }];
+  assert.equal(ticketActivityAt(view), 5000);
+  view.jobs = [
+    {
+      id: "j1",
+      ticketId: "t1",
+      command: "build",
+      status: "exited",
+      startedAt: 6000,
+      endedAt: 8000,
+    },
+    { id: "j2", ticketId: "t1", command: "test", status: "running", startedAt: 7000 },
+  ];
+  assert.equal(ticketActivityAt(view), 8000);
+  const runningJob = view.jobs[1];
+  assert.ok(runningJob);
+  runningJob.startedAt = 9000;
+  assert.equal(ticketActivityAt(view), 9000);
 });
 
 test("groupTickets partitions by stage — answer, review, blocked, active — and closed", () => {

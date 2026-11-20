@@ -37,6 +37,14 @@ export function effectiveStage(
   return view.ticket.status !== "open" ? view.ticket.status : view.stage;
 }
 
+/** Latest activity timestamp available in a board snapshot (not the live conversation). */
+export function ticketActivityAt(view: TicketView): number {
+  let at = Math.max(view.ticket.createdAt, view.ticket.closedAt ?? 0, view.ticket.stoppedAt ?? 0);
+  for (const report of view.reports) at = Math.max(at, report.at);
+  for (const job of view.jobs) at = Math.max(at, job.startedAt, job.endedAt ?? 0);
+  return at;
+}
+
 export type TicketGroups = {
   /** Open tickets waiting on the user's answer. */
   answer: TicketView[];

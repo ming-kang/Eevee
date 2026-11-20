@@ -247,12 +247,15 @@ onUnmounted(() => {
       class="nav-row"
       :class="{ on: route.name === 'home' }"
       :href="formatRoute({ name: 'home' })"
+      :aria-label="attentionTotal > 0 ? `${t('Home')} · ${attentionTotal}` : t('Home')"
       :aria-current="route.name === 'home' ? 'page' : undefined"
       @click="$emit('navigate')"
     >
-      <Icon name="home" size="sm" />
+      <span class="nav-status" aria-hidden="true">
+        <span v-if="attentionTotal > 0" class="count user">{{ attentionTotal > 99 ? "99+" : attentionTotal }}</span>
+        <Icon v-else name="home" size="sm" />
+      </span>
       <span class="label">{{ t("Home") }}</span>
-      <span v-if="attentionTotal > 0" class="count user">{{ attentionTotal }}</span>
     </a>
   </div>
 
