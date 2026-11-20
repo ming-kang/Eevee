@@ -6,6 +6,7 @@ import {
   defineTool,
   GenerationTask,
   hook,
+  LiveDoc,
 } from "@earendil-works/pi-durable";
 import { int, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import {
@@ -15,17 +16,9 @@ import {
   ProblemError,
 } from "../../../domain/index.ts";
 import { TicketBinding, TicketDoc } from "../../docs.ts";
-import { RETIRE_DREAM_TIMER } from "./dreaming.ts";
-import { MemoryConflict, type MemoryRepo } from "./repo.ts";
-
-export {
-  type DreamDraft,
-  type DreamingPort,
-  DreamLog,
-  type DreamPolicy,
-  dreamIfDue,
-} from "./dreaming.ts";
-export { MemoryConflict, MemoryRepo } from "./repo.ts";
+import { MemoryRound } from "../../memory/round.ts";
+import { MemoryConflict, type MemoryStore } from "../../memory/store.ts";
+import { RETIRE_DREAM_TIMER } from "./timer.ts";
 
 export const MEMORY_TOOL = "memory";
 /** The Router's memory: both repositories. */
@@ -34,15 +27,30 @@ export const MEMORY_EXTENSION = "eevee.memory";
 export const PROJECT_MEMORY_EXTENSION = "eevee.memory-project";
 
 export type MemoryDeps = {
-  repos: Record<MemoryScope, MemoryRepo>;
+  repos: Record<MemoryScope, MemoryStore>;
 };
 
 export function createMemory(deps: MemoryDeps) {
+  const rounds = new Map<string, { run: string; stores: Record<MemoryScope, MemoryRound> }>();
   const commitRound = hook(GenerationTask, {
-    async afterRun(_run, api, context) {
+    async afterRun(run, api, context) {
       const source = await roundSource(api, api.conversationId, context);
       const round = String(api.conversationId);
-      await Promise.all(Object.values(deps.repos).map((repo) => repo.commitRound(round, source)));
+      const pending = rounds.get(round);
+      if (pending?.run !== String(run.first)) return undefined;
+      rounds.delete(round);
+      await Promise.all(
+        Object.entries(pending.stores).map(async ([scope, store]) => {
+          try {
+            await store.flush(source);
+          } catch (error) {
+            console.error(
+              `[memory ${scope} ${round}] Could not save this run's memory edits.`,
+              error,
+            );
+          }
+        }),
+      );
       return undefined;
     },
   });
@@ -50,13 +58,13 @@ export function createMemory(deps: MemoryDeps) {
   return {
     memory: defineExtension({
       name: MEMORY_EXTENSION,
-      tools: [createMemoryTool(deps.repos, ["project", "global"])],
+      tools: [createMemoryTool(deps.repos, ["project", "global"], rounds)],
       hooks: [commitRound],
       tasks: [RETIRE_DREAM_TIMER],
     }),
     projectMemory: defineExtension({
       name: PROJECT_MEMORY_EXTENSION,
-      tools: [createMemoryTool(deps.repos, ["project"])],
+      tools: [createMemoryTool(deps.repos, ["project"], rounds)],
       hooks: [commitRound],
     }),
   };
@@ -108,13 +116,14 @@ function renderChange(detail: MemoryChangeDetail): string {
 }
 
 function createMemoryTool(
-  repos: Record<MemoryScope, MemoryRepo>,
+  repos: Record<MemoryScope, MemoryStore>,
   scopes: readonly [MemoryScope, ...MemoryScope[]],
+  rounds: Map<string, { run: string; stores: Record<MemoryScope, MemoryRound> }>,
 ) {
   const withGlobal = scopes.includes("global");
   const Parameters = obj({
-    action: oneOf(["edit", "create", "history", "show", "undo"], {
-      description: "Which action to run: edit, create, history, show or undo",
+    action: oneOf(["edit", "create", "delete", "rename", "history", "show", "undo"], {
+      description: "Which action to run: edit, create, delete, rename, history, show or undo",
     }),
     scope: oneOf(scopes, {
       description: withGlobal
@@ -122,8 +131,12 @@ function createMemoryTool(
         : "Only the project memory store can be tidied up",
     }),
     file: opt(
-      str({ description: "For edit and create: a file name such as MEMORY.md or optics-sim.md" }),
+      str({
+        description: "For edit, create and delete: a file name such as MEMORY.md or optics-sim.md",
+      }),
     ),
+    from: opt(str({ description: "For rename: the existing file name" })),
+    to: opt(str({ description: "For rename: the new file name" })),
     oldText: opt(
       str({
         description:
@@ -139,7 +152,7 @@ function createMemoryTool(
     name: MEMORY_TOOL,
     description:
       "Write to the memory store and browse its history." +
-      "Use edit to replace matching text, create to add a new file, history to list recent changes, show to view one change's edits, and undo to reverse one change." +
+      "Use edit to replace matching text, create to add a new file, delete to remove one, rename to move one, history to list recent changes, show to view one change's edits, and undo to reverse one change." +
       "Your edits are saved as one change when this run ends." +
       "Record only experience that stays useful across sessions. Do not record task progress.",
     parameters: Parameters,
@@ -147,23 +160,54 @@ function createMemoryTool(
     executionMode: "sequential",
     async execute(args, api, context) {
       const repo = repos[args.scope];
-      if (args.scope === "global" && args.file !== undefined && args.file !== "MEMORY.md") {
-        return text("The global memory store has only one file, MEMORY.md.", true);
-      }
       const round = String(api.conversationId);
+      const pending = async () => {
+        const run = String((await api.snapshot(LiveDoc, api.conversationId, context))?.run?.first);
+        let state = rounds.get(round);
+        if (state?.run !== run) {
+          state = {
+            run,
+            stores: {
+              project: new MemoryRound(repos.project),
+              global: new MemoryRound(repos.global),
+            },
+          };
+          rounds.set(round, state);
+        }
+        return state.stores[args.scope];
+      };
       try {
         switch (args.action) {
           case "edit":
             if (!args.file || args.oldText === undefined || args.newText === undefined) {
               return text("The edit action needs file, oldText and newText.", true);
             }
-            await repo.edit(args.file, args.oldText, args.newText, round);
+            await (await pending()).add({
+              action: "edit",
+              file: args.file,
+              oldText: args.oldText,
+              newText: args.newText,
+            });
             return text(`Modified ${args.file}; saved as one change when this run ends.`);
           case "create":
             if (!args.file || args.content === undefined)
               return text("The create action needs file and content.", true);
-            await repo.create(args.file, args.content, round);
+            await (await pending()).add({
+              action: "create",
+              file: args.file,
+              content: args.content,
+            });
             return text(`Created ${args.file}; saved as one change when this run ends.`);
+          case "delete":
+            if (!args.file) return text("The delete action needs file.", true);
+            await (await pending()).add({ action: "delete", file: args.file });
+            return text(`Deleted ${args.file}; saved as one change when this run ends.`);
+          case "rename":
+            if (!args.from || !args.to) return text("The rename action needs from and to.", true);
+            await (await pending()).add({ action: "rename", from: args.from, to: args.to });
+            return text(
+              `Renamed ${args.from} to ${args.to}; saved as one change when this run ends.`,
+            );
           case "history": {
             const changes = await repo.history();
             if (changes.length === 0) return text("No history yet.");

@@ -3,9 +3,9 @@ import { test } from "node:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai";
 import { createRegistry, Harness, MemoryStorage, type Tx } from "@earendil-works/pi-durable";
-import type { Report, Ticket, TicketId } from "../../../domain/index.ts";
-import { ReportLog, TicketDoc } from "../../docs.ts";
-import { allocateTicketId, saveTicket } from "../../orchestration/board.ts";
+import type { Report, Ticket, TicketId } from "../../domain/index.ts";
+import { ReportLog, TicketDoc } from "../docs.ts";
+import { allocateTicketId, saveTicket } from "../orchestration/board.ts";
 import {
   type DreamDraft,
   type DreamingPort,

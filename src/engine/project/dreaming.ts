@@ -8,8 +8,8 @@ import {
 import type { Settings } from "../../config/settings.ts";
 import { pickModel } from "../../domain/index.ts";
 import { Board } from "../docs.ts";
-import { type DreamingPort, dreamIfDue } from "../extensions/memory/index.ts";
 import type { JobHost } from "../jobs.ts";
+import { type DreamingPort, dreamIfDue } from "../memory/dreaming.ts";
 import {
   conversationOf,
   openTicket,

@@ -1,6 +1,5 @@
 import { type ModelChoice, ProblemError } from "../domain/index.ts";
 import type { Engine } from "../engine/engine.ts";
-import { memoryFile } from "../engine/project/memory.ts";
 import type { Auth } from "./auth.ts";
 import type { RouteTable } from "./http.ts";
 
@@ -200,9 +199,9 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
     "POST /api/projects/:project/memory/changes/:change/undo": {
       handle: async ({ params }) => project(params.project).memory.undo("project", params.change),
     },
-    "GET /api/memory/files": { handle: async () => ({ files: await engine.memory.listFiles() }) },
+    "GET /api/memory/files": { handle: async () => ({ files: await engine.memory.files() }) },
     "GET /api/memory/files/:file": {
-      handle: async ({ params }) => memoryFile(engine.memory, params.file),
+      handle: async ({ params }) => engine.memory.file(params.file),
     },
     "GET /api/memory/changes": { handle: async () => ({ changes: await engine.memory.history() }) },
     "GET /api/memory/changes/:change": {

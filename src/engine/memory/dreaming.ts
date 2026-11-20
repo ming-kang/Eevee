@@ -5,14 +5,13 @@ import {
   type ConversationId,
   type DocumentReader,
   defineDoc,
-  defineTask,
   type EntryRecord,
   ROOT_CONVERSATION_ID,
   type Tx,
   UserEntry,
 } from "@earendil-works/pi-durable";
-import { formatAddress, type Ticket, type TicketId } from "../../../domain/index.ts";
-import { Board, ReportLog, TicketDoc } from "../../docs.ts";
+import { formatAddress, type Ticket, type TicketId } from "../../domain/index.ts";
+import { Board, ReportLog, TicketDoc } from "../docs.ts";
 
 /** Dreaming's trigger policy; the settings' resolved `dreaming` object carries it. */
 export type DreamPolicy = {
@@ -183,22 +182,3 @@ function draft(inputs: string[]): DreamDraft {
     ],
   };
 }
-
-/**
- * Only retires the stored timers of versions that kept a `eevee.dream-timer` task per project: the trigger now
- * lives in the Scheduler, so any still live ends at once.
- */
-export const RETIRE_DREAM_TIMER = defineTask<null, { phase: "check" }, null>({
-  name: "eevee.dream-timer",
-  version: 1,
-  initial: () => ({ phase: "check" }),
-  phases: {
-    check: (_task, runtime, context) =>
-      runtime.commit(
-        () => ({ status: "terminal", outcome: { status: "completed", result: null } }),
-        context,
-      ),
-  },
-  abort: (_task, runtime, context) =>
-    runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context),
-});
