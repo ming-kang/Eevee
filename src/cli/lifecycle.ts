@@ -5,6 +5,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   InstanceLocked,
   isAlive,
+  isInstanceLocked,
   type RuntimeRecord,
   readRuntimeRecord,
   removeRuntimeRecord,
@@ -53,11 +54,13 @@ export async function startEngine(
       await log.close();
     }
   }
-  for (let i = 0; i < 60; i++) {
+  const deadline = performance.now() + 15_000;
+  while (performance.now() < deadline) {
     await sleep(250);
     const connection = await findEngine(paths);
-    if (connection) return { connection, started: !options.foreground };
-    if (exited) throw new Error(`The Engine exited before becoming ready. See the log: ${logPath}`);
+    if (connection) return { connection, started: !options.foreground && !exited };
+    if (exited && !(await isInstanceLocked(paths.runtime.lock)))
+      throw new Error(`The Engine exited before becoming ready. See the log: ${logPath}`);
   }
   throw new Error(`Timed out waiting for the Engine to start. See the log: ${logPath}`);
 }

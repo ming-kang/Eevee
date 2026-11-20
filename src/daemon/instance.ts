@@ -132,6 +132,11 @@ function holdsLock(owner: LockOwner): boolean {
   return isAlive(owner.pid);
 }
 
+export async function isInstanceLocked(path: string): Promise<boolean> {
+  const owner = await readOwner(path);
+  return owner !== undefined && holdsLock(owner);
+}
+
 export async function readRuntimeRecord(path: string): Promise<RuntimeRecord | undefined> {
   let record: Partial<RuntimeRecord> | undefined;
   try {
