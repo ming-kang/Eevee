@@ -43,8 +43,8 @@ const labels: Record<MemoryProposal["status"], string> = {
         <header class="mb-4 flex flex-col gap-2">
           <h2 class="break-words text-sm font-semibold">{{ review.detail.value.id }} · {{ review.detail.value.summary }}</h2>
           <p class="text-xs text-fg-muted">{{ labels[review.detail.value.status] }} <template v-if="review.detail.value.decidedAt">· {{ formatRelativeTime(review.detail.value.decidedAt) }}</template></p>
-          <p v-if="review.detail.value.reason" class="whitespace-pre-wrap text-sm">{{ review.detail.value.reason }}</p>
-          <p v-if="review.detail.value.conflict" :class="ERROR_TEXT">{{ review.detail.value.conflict }}</p>
+          <p v-if="review.decisionReason.value && review.decisionReason.value !== review.error.value" class="whitespace-pre-wrap text-sm">{{ review.decisionReason.value }}</p>
+          <p v-if="review.previewConflict.value" :class="ERROR_TEXT">{{ review.previewConflict.value }}</p>
           <div v-if="review.detail.value.status === 'pending'" class="flex flex-wrap items-end gap-2">
             <label class="min-w-48 flex-1 text-xs text-fg-muted">{{ t("Reason (optional)") }}
               <textarea v-model="review.reason.value" :class="fieldClass({ multiline: true })" :disabled="review.busy.value" rows="2" />
