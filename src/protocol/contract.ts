@@ -31,6 +31,7 @@ import type {
   BuiltinModelView,
   CapabilitiesView,
   ConversationView,
+  DirListing,
   EngineInfo,
   JobLogView,
   MemoryFileEntry,
@@ -180,8 +181,22 @@ export const ROUTES = [
   route<CapabilitiesView>()("DELETE /api/mcp/servers/:server", server, undefined),
   route<CapabilitiesView>()("POST /api/mcp/reload", {}, undefined),
   route<{ projects: ProjectSummary[] }>()("GET /api/projects", {}, undefined),
-  route<ProjectSummary>()("POST /api/projects", {}, body({ title: str(), workspace: str() }), 201),
+  route<ProjectSummary>()(
+    "POST /api/projects",
+    {},
+    body({ title: str(), workspaces: arr(str({ minLength: 1 }), { minItems: 1 }) }),
+    201,
+  ),
+  route<DirListing>()("GET /api/fs/browse", {}, undefined, 200, false, { path: str() }),
   route<ProjectSummary>()("GET /api/projects/:project", project, undefined),
+  route<ProjectSummary>()(
+    "PUT /api/projects/:project",
+    project,
+    body({
+      title: opt(str()),
+      workspaces: opt(arr(str({ minLength: 1 }), { minItems: 1 })),
+    }),
+  ),
   route<ProjectSummary>()(
     "PUT /api/projects/:project/models/:role",
     { ...project, role: PARAMS.modelRole },

@@ -26,7 +26,7 @@ const HC_LINE = "flex items-center gap-2 text-xs [&_.glyph]:size-(--ev-icon-xs)"
   >
     <template v-if="project && state">
       <div class="text-base font-medium tracking-(--ev-tracking) wrap-anywhere">{{ project.title }}</div>
-      <div class="mono mt-0.5 truncate text-xs text-fg-subtle">{{ project.workspace }}</div>
+      <div class="mono mt-0.5 truncate text-xs text-fg-subtle">{{ project.workspaces.join(" · ") }}</div>
       <div class="mt-2.5 flex flex-col gap-1.5">
         <div v-if="state.questionCount > 0" :class="[HC_LINE, 'text-(color:--ev-user-ink)']">
           <StageGlyph stage="answer" />

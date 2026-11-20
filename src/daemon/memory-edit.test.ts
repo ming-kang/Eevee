@@ -48,7 +48,10 @@ test("project and global memory routes save user edits with atomic version check
   try {
     const workspace = join(home, "workspace");
     await mkdir(workspace);
-    const created = await client.call("POST /api/projects", { title: "Memory editing", workspace });
+    const created = await client.call("POST /api/projects", {
+      title: "Memory editing",
+      workspaces: [workspace],
+    });
     const prefix = `/api/projects/${created.id}/memory`;
     for (const root of [prefix, "/api/memory"]) {
       const initial = await request("GET", `${root}/files/MEMORY.md`);

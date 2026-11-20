@@ -10,6 +10,7 @@ import {
   type TicketDetails,
   type TicketId,
 } from "../../domain/index.ts";
+import { workspaceKey } from "../../shared/paths.ts";
 import { conversationOf, markHandled, readReports, readTicket, saveTicket } from "./board.ts";
 import { deliver } from "./deliver.ts";
 import { route } from "./delivery.ts";
@@ -65,6 +66,8 @@ async function create(
   // `create` may leave the model out and use the default one.
   const model = command.model === undefined ? undefined : resolveModel(command.model, api);
   if (model !== undefined && !model.ok) return fail(model.reason);
+  const dir = command.dir === undefined ? undefined : resolveDir(command.dir, deps.dirs());
+  if (dir !== undefined && !dir.ok) return fail(dir.reason);
   for (const to of command.deliverTo) {
     const target = await readTicket(api, to, context);
     if (target?.status !== "open")
@@ -85,6 +88,7 @@ async function create(
           acceptance: command.acceptance,
           deliverTo: command.deliverTo,
           ...(command.output === undefined ? {} : { output: command.output }),
+          ...(dir?.value === undefined ? {} : { dir: dir.value }),
           ...(model?.value === undefined ? {} : { model: model.value }),
           ...(command.modelReason === undefined ? {} : { modelReason: command.modelReason }),
         },
@@ -98,6 +102,18 @@ async function create(
     ticketId: ticket.id,
     conversationId: ticket.conversationId,
   } satisfies TicketDetails & { conversationId: number });
+}
+
+/** The project workspace a ticket's `dir` names, in its canonical spelling, or why it isn't one. */
+function resolveDir(dir: string, dirs: readonly string[]): Parsed<string> {
+  const wanted = workspaceKey(dir);
+  const found = dirs.find((d) => workspaceKey(d) === wanted);
+  return found === undefined
+    ? {
+        ok: false,
+        reason: `dir ${dir} is not one of the project's workspaces: ${dirs.join(", ")}.`,
+      }
+    : { ok: true, value: found };
 }
 
 function resolveModel(request: ModelRequest, api: ToolExecutionApi): Parsed<ModelChoice> {

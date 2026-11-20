@@ -7,6 +7,7 @@ import {
   type RouteBody,
   type RouteKey,
   type RouteParams,
+  type RouteQuery,
   type RouteResponse,
   TOKEN_HEADER,
 } from "./contract.ts";
@@ -39,9 +40,9 @@ export function createClient(options: ClientOptions) {
     route: K,
     ...rest: CallArgs<K>
   ): Promise<RouteResponse<K>> {
-    const [params, body] = splitArgs(route, rest);
     const definition = ROUTES.find((definition) => definition.key === route);
     if (definition === undefined) throw new Error(`Unknown route ${route}`);
+    const [params, body] = splitArgs(definition, rest);
     const { method, path: template } = definition;
     const path = template.replace(/:([a-z]+)/g, (_, name: string) => {
       const value = (params as Record<string, string | number>)[name];
@@ -99,17 +100,28 @@ function isProblemBody(value: unknown): value is ApiError {
 export type Client = ReturnType<typeof createClient>;
 
 type HasParams<K extends RouteKey> = keyof RouteParams<K> extends never ? false : true;
+type HasQuery<K extends RouteKey> = keyof RouteQuery<K> extends never ? false : true;
 type HasBody<K extends RouteKey> = RouteBody<K> extends undefined ? false : true;
 
+// A route takes a params argument when it has path parameters or a query schema.
 type CallArgs<K extends RouteKey> =
   HasParams<K> extends true
     ? HasBody<K> extends true
       ? [params: ClientParams<K>, body: RouteBody<K>]
       : [params: ClientParams<K>]
-    : HasBody<K> extends true
-      ? [body: RouteBody<K>]
-      : [];
+    : HasQuery<K> extends true
+      ? HasBody<K> extends true
+        ? [params: ClientParams<K>, body: RouteBody<K>]
+        : [params: ClientParams<K>]
+      : HasBody<K> extends true
+        ? [body: RouteBody<K>]
+        : [];
 
-function splitArgs(route: string, rest: readonly unknown[]): [unknown, unknown] {
-  return route.includes(":") ? [rest[0], rest[1]] : [{}, rest[0]];
+function splitArgs(
+  definition: { path: string; query?: Record<string, unknown> },
+  rest: readonly unknown[],
+): [unknown, unknown] {
+  return definition.path.includes(":") || definition.query !== undefined
+    ? [rest[0], rest[1]]
+    : [{}, rest[0]];
 }

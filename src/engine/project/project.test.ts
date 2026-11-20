@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -1193,5 +1194,111 @@ test("a queued Worker message can be withdrawn or steered; the Router hears abou
   } finally {
     release();
     await project.close();
+  }
+});
+
+test("a ticket's dir picks the project workspace its Worker runs in", async () => {
+  const extra = await mkdtemp(join(tmpdir(), "eevee-extra-ws-"));
+  const brain: Brain = ({ role, last }) => {
+    if (role === "router") {
+      if (last?.role === "user" && textOf(last).includes("write into the second dir")) {
+        return call("ticket", {
+          action: "create",
+          title: "second dir",
+          goal: "write hello.txt there",
+          acceptance: ["hello.txt exists"],
+          dir: extra,
+        });
+      }
+      if (last?.role === "user" && textOf(last).includes("a strange dir")) {
+        return call("ticket", {
+          action: "create",
+          title: "stray",
+          goal: "write",
+          acceptance: ["none"],
+          dir: join(extra, "not-a-workspace"),
+        });
+      }
+      return say("OK.");
+    }
+    if (toolName(last) === "write") {
+      return call("report", { status: "ready", summary: "done", artifacts: [] });
+    }
+    if (last?.role === "user") return call("write", { path: "hello.txt", content: "hi" });
+    return say("Got it.");
+  };
+  const project = await openTestProject(brain, { extraWorkspaces: [extra] });
+  try {
+    await project.host.conversations.send("router", "write into the second dir");
+    const view = await project.until(async () => {
+      const found = (await project.host.board()).tickets[0];
+      return found?.ticket.dir === undefined ? undefined : found;
+    });
+    assert.equal(view.ticket.dir, project.host.meta.workspaces[1]);
+    await project.until(async () =>
+      readFile(join(extra, "hello.txt"), "utf8").then(
+        () => true,
+        () => undefined,
+      ),
+    );
+
+    // A directory that is not one of the project's workspaces is refused before a ticket exists.
+    await project.host.conversations.send("router", "write into a strange dir");
+    await project.until(async () =>
+      project.calls.some(
+        (c) =>
+          c.role === "router" &&
+          toolName(c.last) === "ticket" &&
+          textOf(c.last).includes("not one of the project's workspaces"),
+      ),
+    );
+  } finally {
+    await project.close();
+    await rm(extra, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
+
+test("updating a project's workspaces persists them and opens them to new tickets", async () => {
+  const extra = await mkdtemp(join(tmpdir(), "eevee-extra-ws-"));
+  const brain: Brain = ({ role, last }) => {
+    if (role === "router") {
+      if (last?.role === "user" && textOf(last).includes("use the new dir")) {
+        return call("ticket", {
+          action: "create",
+          title: "new dir",
+          goal: "write there",
+          acceptance: ["done"],
+          dir: extra,
+        });
+      }
+      return say("OK.");
+    }
+    if (toolName(last) === "write") {
+      return call("report", { status: "ready", summary: "done", artifacts: [] });
+    }
+    if (last?.role === "user") return call("write", { path: "hello.txt", content: "hi" });
+    return say("Got it.");
+  };
+  const project = await openTestProject(brain);
+  try {
+    await project.host.update({ title: "Renamed", workspaces: [extra] });
+    assert.equal(project.host.meta.title, "Renamed");
+    assert.deepEqual(project.host.meta.workspaces, [resolve(extra)]);
+    const saved = JSON.parse(
+      await readFile(eeveePaths(project.home).project(project.host.meta.id).meta, "utf8"),
+    ) as { title: string; workspaces: string[] };
+    assert.equal(saved.title, "Renamed");
+    assert.deepEqual(saved.workspaces, [resolve(extra)]);
+
+    // The added workspace is a valid ticket dir without reopening the project.
+    await project.host.conversations.send("router", "use the new dir");
+    const view = await project.until(async () => {
+      const found = (await project.host.board()).tickets[0];
+      return found?.ticket.dir === undefined ? undefined : found;
+    });
+    assert.equal(view.ticket.dir, project.host.meta.workspaces[0]);
+  } finally {
+    await project.close();
+    await rm(extra, { recursive: true, force: true, maxRetries: 5 });
   }
 });

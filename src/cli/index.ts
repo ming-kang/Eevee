@@ -29,7 +29,7 @@ const program = createProgram({
       `Eevee ${status.version} · pid ${status.pid} · port ${status.port} · bootId ${status.bootId} · uptime ${uptime}s\nPanel: ${running.baseUrl}/ui/`,
     );
     for (const p of (await running.client.call("GET /api/projects")).projects)
-      console.log(`  ${p.id}  ${p.title}  ${p.workspace}`);
+      console.log(`  ${p.id}  ${p.title}  ${p.workspaces.join(", ")}`);
   },
 
   async web() {

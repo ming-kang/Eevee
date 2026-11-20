@@ -63,7 +63,7 @@ export class ProjectRegistry {
     return project;
   }
 
-  async create(input: { title: string; workspace: string }): Promise<ProjectSummary> {
+  async create(input: { title: string; workspaces: readonly string[] }): Promise<ProjectSummary> {
     const meta = await createProjectMeta(this.#deps.paths, input);
     const project = await this.#deps.open(meta, this.#changed);
     this.#projects.set(meta.id, project);

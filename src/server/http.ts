@@ -156,6 +156,8 @@ const STATUS: Record<ProblemCode, number> = {
   forbidden_host: 403,
   no_route: 404,
   no_file: 404,
+  no_dir: 404,
+  not_dir: 400,
   no_project: 404,
   no_ticket: 404,
   no_worker: 404,

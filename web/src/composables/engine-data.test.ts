@@ -59,12 +59,12 @@ test("engine pushes own the project list, including while an engine-info refresh
         id: "engine",
         engine: { bootId: "boot", version: "test", projects },
       });
-    push([{ id: "p1", title: "One", workspace: "/one", createdAt: 1 }]);
+    push([{ id: "p1", title: "One", workspaces: ["/one"], createdAt: 1 }]);
     await nextTick();
     assert.equal(data.projects.value[0]?.title, "One");
     assert.ok([...watches.values()].some((watch) => watch.topic.kind === "board"));
     const refresh = data.refreshStatus();
-    push([{ id: "p2", title: "Two", workspace: "/two", createdAt: 2 }]);
+    push([{ id: "p2", title: "Two", workspaces: ["/two"], createdAt: 2 }]);
     finish(info);
     await refresh;
     await nextTick();

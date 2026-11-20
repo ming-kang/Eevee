@@ -33,7 +33,7 @@ test("the Engine collects the extensions that can be enabled; a role only gets w
   try {
     const workspace = join(home, "workspace");
     await mkdir(workspace);
-    await engine.projects.create({ title: "Test", workspace });
+    await engine.projects.create({ title: "Test", workspaces: [workspace] });
 
     for (let i = 0; i < 100 && engine.capabilities.view().mcp[0]?.state !== "connected"; i++) {
       await sleep(10);
@@ -167,7 +167,10 @@ test("the HTTP API exposes structured models, project activeAt, Board.router and
 
     const workspace = join(home, "ws");
     await mkdir(workspace);
-    const created = await client.call("POST /api/projects", { title: "HTTP", workspace });
+    const created = await client.call("POST /api/projects", {
+      title: "HTTP",
+      workspaces: [workspace],
+    });
     assert.equal(created.activeAt, created.createdAt);
 
     const status = await client.call("GET /api/projects");
@@ -269,7 +272,7 @@ test("the HTTP boundary refuses a body that is missing a field, of the wrong typ
     });
     await assert.rejects(client.call("POST /api/projects", refused({ title: "HTTP" })), {
       status: 400,
-      problem: { code: "required", field: "workspace" },
+      problem: { code: "required", field: "workspaces" },
     });
 
     // A field of the wrong type is `invalid`, not a missing one.
@@ -287,10 +290,13 @@ test("the HTTP boundary refuses a body that is missing a field, of the wrong typ
     );
 
     // Blank counts as missing for a field that has to carry something.
-    await assert.rejects(client.call("POST /api/projects", refused({ title: " ", workspace })), {
-      status: 400,
-      problem: { code: "required", field: "title" },
-    });
+    await assert.rejects(
+      client.call("POST /api/projects", refused({ title: " ", workspaces: [workspace] })),
+      {
+        status: 400,
+        problem: { code: "required", field: "title" },
+      },
+    );
 
     // An enum names the values it takes.
     await assert.rejects(

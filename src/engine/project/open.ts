@@ -90,7 +90,7 @@ export async function openProject(options: ProjectOptions): Promise<Project> {
 
   const reported = new Set<string>();
   const roles = createRoles({
-    project: { title: meta.title, workspace: meta.workspace },
+    project: () => ({ title: store.current.title, workspaces: store.current.workspaces }),
     memory: async () => ({
       global: (await repos.global.read("MEMORY.md")) ?? "",
       project: (await repos.project.read("MEMORY.md")) ?? "",
@@ -116,6 +116,7 @@ export async function openProject(options: ProjectOptions): Promise<Project> {
   const memory = createMemory({ repos });
   const orchestration = createOrchestration({
     conversations: roles.ticketConversations,
+    dirs: () => store.current.workspaces,
     handoff: {
       shouldHandoff: async (id, ctx) => {
         const found = await conversation(id, ctx);
@@ -154,7 +155,7 @@ export async function openProject(options: ProjectOptions): Promise<Project> {
     {
       models: options.models,
       registry,
-      env: ({ cwd = meta.workspace }) => new NodeExecutionEnv({ cwd }),
+      env: ({ cwd = store.current.workspaces[0] ?? "." }) => new NodeExecutionEnv({ cwd }),
       onReport: (report) => console.error(`[${meta.id}]`, report),
     },
     context,

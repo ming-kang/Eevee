@@ -9,7 +9,7 @@ export const HANDOFF_TOOL = "handoff";
 export const ROUTER_EXTENSION = "eevee.router";
 
 export type RouterSubject = {
-  project: { title: string; workspace: string };
+  project: { title: string; workspaces: readonly string[] };
   tickets: string[];
   summary?: string;
   recent?: string;
@@ -45,7 +45,10 @@ export const routerRole = defineRole<RouterSubject>({
   opening: (subject, memory) =>
     compose(
       ...memoryBlocks(memory),
-      block("project", `${subject.project.title}\nWorkspace: ${subject.project.workspace}`),
+      block(
+        "project",
+        `${subject.project.title}\n${subject.project.workspaces.map((dir) => `Workspace: ${dir}`).join("\n")}`,
+      ),
       block("tickets", subject.tickets.join("\n") || "No tickets yet."),
       block("handoff-summary", subject.summary),
       block("recent", subject.recent),

@@ -11,6 +11,12 @@ export function resolveInside(root: string, path: string): string {
   return target;
 }
 
+/** The normalized comparison key for a workspace directory; case-insensitive on Windows. */
+export function workspaceKey(dir: string): string {
+  const resolved = resolve(dir);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 export type ProjectPaths = {
   root: string;
   meta: string;

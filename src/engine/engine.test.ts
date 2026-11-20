@@ -32,7 +32,7 @@ for (const stage of ["shared", "project", "cleanup failure"]) {
     });
     t.mock.method(ProjectRegistry.prototype, "initialize", async function (this: ProjectRegistry) {
       if (stage !== "shared") {
-        const meta = await this.create({ title: "Opened project", workspace: home });
+        const meta = await this.create({ title: "Opened project", workspaces: [home] });
         const project = this.require(meta.id);
         const close = project.close.bind(project);
         cleanup.push(close);

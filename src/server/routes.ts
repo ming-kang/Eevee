@@ -2,6 +2,7 @@ import { type ModelChoice, ProblemError } from "../domain/index.ts";
 import type { Engine } from "../engine/engine.ts";
 import { deleteMemoryFile, putMemoryFile, renameMemoryFile } from "../engine/memory/edit.ts";
 import type { Auth } from "./auth.ts";
+import { browseDirs } from "./browse.ts";
 import type { RouteTable } from "./http.ts";
 
 export type RouteDeps = {
@@ -109,11 +110,26 @@ export function createRoutes({ engine, auth, port, version, shutdown }: RouteDep
       handle: async ({ body }) =>
         engine.projects.create({
           title: text(body.title, "title"),
-          workspace: text(body.workspace, "workspace"),
+          workspaces: body.workspaces.map((dir) => text(dir.trim(), "workspaces")),
         }),
+    },
+    "GET /api/fs/browse": {
+      handle: async ({ query }) => browseDirs(query.path),
     },
     "GET /api/projects/:project": {
       handle: async ({ params }) => project(params.project).summary(),
+    },
+    "PUT /api/projects/:project": {
+      handle: async ({ params, body }) => {
+        const found = project(params.project);
+        await found.update({
+          ...(body.title === undefined ? {} : { title: text(body.title, "title") }),
+          ...(body.workspaces === undefined
+            ? {}
+            : { workspaces: body.workspaces.map((dir) => text(dir.trim(), "workspaces")) }),
+        });
+        return found.summary();
+      },
     },
     "PUT /api/projects/:project/models/:role": {
       handle: async ({ params, body }) =>

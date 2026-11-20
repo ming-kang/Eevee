@@ -213,8 +213,8 @@ test("unread completions respect per-project persisted watermarks and ignore can
 
 test("buildPaletteItems and filterPaletteItems build and filter pages, tickets, projects and actions", () => {
   const projects: ProjectSummary[] = [
-    { id: "p1", title: "Optics paper", workspace: "D:/papers/optics", createdAt: 1 },
-    { id: "p2", title: "Backend rewrite", workspace: "D:/work/eevee", createdAt: 2 },
+    { id: "p1", title: "Optics paper", workspaces: ["D:/papers/optics"], createdAt: 1 },
+    { id: "p2", title: "Backend rewrite", workspaces: ["D:/work/eevee"], createdAt: 2 },
   ];
   const boards = {
     p1: {
@@ -285,10 +285,10 @@ test("palette offers every Control section without requiring projects", () => {
   );
 });
 
-test("sidebar search filters projects by title, id and workspace, not tickets", () => {
+test("sidebar search filters projects by title, id and workspaces, not tickets", () => {
   const projects: ProjectSummary[] = [
-    { id: "p1", title: "Optics paper", workspace: "D:/papers/optics", createdAt: 1 },
-    { id: "p2", title: "Backend rewrite", workspace: "D:/work/eevee", createdAt: 2 },
+    { id: "p1", title: "Optics paper", workspaces: ["D:/papers/optics"], createdAt: 1 },
+    { id: "p2", title: "Backend rewrite", workspaces: ["D:/work/eevee"], createdAt: 2 },
   ];
   assert.deepEqual(filterSidebarProjects(projects, "  "), projects);
   assert.deepEqual(filterSidebarProjects(projects, " BACKEND "), [projects[1]]);

@@ -7,6 +7,7 @@ export type TicketArgs = {
   inputs?: string[];
   acceptance?: string[];
   output?: string;
+  dir?: string;
   deliverTo?: string[];
   provider?: string;
   modelId?: string;
@@ -33,6 +34,7 @@ export type TicketCommand =
       inputs: string[];
       deliverTo: TicketId[];
       output?: string;
+      dir?: string;
       model?: ModelRequest;
       modelReason?: string;
     }
@@ -65,6 +67,7 @@ export function parseTicketCommand(args: TicketArgs): Parsed<TicketCommand> {
         inputs: args.inputs ?? [],
         deliverTo: (args.deliverTo ?? []) as TicketId[],
         ...(args.output === undefined ? {} : { output: args.output }),
+        ...(args.dir === undefined ? {} : { dir: args.dir }),
         ...(model.value === undefined ? {} : { model: model.value }),
         ...(args.modelReason === undefined ? {} : { modelReason: args.modelReason }),
       },

@@ -12,6 +12,8 @@ export type Problem =
   | { code: "forbidden_host" }
   | { code: "no_route"; method: string; path: string }
   | { code: "no_file" }
+  | { code: "no_dir"; path: string }
+  | { code: "not_dir"; path: string }
   | { code: "bad_json" }
   | { code: "too_large" }
   | { code: "required"; field: string }
@@ -76,6 +78,10 @@ export function describeProblem(problem: Problem, t: Translate = fill): string {
       return t("No endpoint {method} {path}", problem);
     case "no_file":
       return t("No such file");
+    case "no_dir":
+      return t("No directory {path}", problem);
+    case "not_dir":
+      return t("{path} is not a directory", problem);
     case "bad_json":
       return t("The request body is not valid JSON");
     case "too_large":

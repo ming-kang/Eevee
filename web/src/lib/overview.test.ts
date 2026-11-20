@@ -8,7 +8,7 @@ const NOW = 1_000_000_000;
 
 test("pending memory proposals are board attention rows, including global proposals", () => {
   const overview = buildOverviewBoard({
-    projects: [{ id: "p1", title: "Project", workspace: "/work", createdAt: 0 }],
+    projects: [{ id: "p1", title: "Project", workspaces: ["/work"], createdAt: 0 }],
     boards: {
       p1: {
         board: {
@@ -39,7 +39,7 @@ test("pending memory proposals are board attention rows, including global propos
 });
 
 function project(id: string, title = `Project ${id}`): ProjectSummary {
-  return { id, title, workspace: `/work/${id}`, createdAt: 1 };
+  return { id, title, workspaces: [`/work/${id}`], createdAt: 1 };
 }
 
 function ticket(

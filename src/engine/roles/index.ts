@@ -41,7 +41,7 @@ const ROLES: Record<RoleName, Role<never>> = {
 export const roleExtensions = (role: RoleName): readonly string[] => ROLES[role].extensions;
 
 export type RolesDeps = {
-  project: { title: string; workspace: string };
+  project(): { title: string; workspaces: readonly string[] };
   memory(): Promise<MemorySnapshot>;
   defaultModel(role: RoleName): ModelChoice | undefined;
   enabled(role: RoleName): readonly string[];
@@ -53,7 +53,18 @@ export type RolesDeps = {
 };
 
 export function createRoles(deps: RolesDeps) {
-  const agent = (role: RoleName, registry: RegistrySnapshot, model?: ModelChoice): AgentChange => {
+  // The schema keeps at least one workspace; the first is the default working directory.
+  const defaultDir = () => {
+    const dir = deps.project().workspaces[0];
+    if (dir === undefined) throw new Error("Project has no workspace");
+    return dir;
+  };
+  const agent = (
+    role: RoleName,
+    registry: RegistrySnapshot,
+    model?: ModelChoice,
+    dir?: string,
+  ): AgentChange => {
     const capability = resolveCapability(registry, [
       ...ROLES[role].extensions,
       ...deps.enabled(role),
@@ -62,7 +73,7 @@ export function createRoles(deps: RolesDeps) {
     const chosen = model ?? deps.defaultModel(role);
     const maxTurns = deps.maxTurns(role);
     return roleChange(ROLES[role], capability, {
-      cwd: deps.project.workspace,
+      cwd: dir ?? defaultDir(),
       ...(chosen === undefined ? {} : { model: chosen }),
       ...(maxTurns === undefined ? {} : { maxTurns }),
     });
@@ -73,24 +84,25 @@ export function createRoles(deps: RolesDeps) {
     context: Context,
     extra: Pick<RouterSubject, "summary" | "recent"> = {},
   ): Promise<RouterSubject> => ({
-    project: deps.project,
+    project: deps.project(),
     tickets: await ticketOverview(reader, context),
     ...extra,
   });
 
   const ticketConversations: TicketConversations = {
     async configure(tx, conversationId, ticket, registry) {
-      const change = agent(ticket.role, registry, ticket.model);
+      const change = agent(ticket.role, registry, ticket.model, ticket.dir);
       if (change.model === undefined || change.model === null)
         throw new ProblemError({ code: "model_unset", role: ticket.role });
       await configure(tx, conversationId, change);
     },
     async opening(ticket, context, handoff) {
       const memory = await deps.memory();
+      const dir = ticket.dir ?? defaultDir();
       if (ticket.role === "dreamer") return dreamerRole.opening({ ticket }, memory);
-      if (handoff === undefined) return workerRole.opening({ ticket }, memory);
+      if (handoff === undefined) return workerRole.opening({ ticket, dir }, memory);
       const recent = await deps.recent(handoff.conversationId, TICKET_RECENT_ROUNDS, context);
-      return workerRole.opening({ ticket, latest: handoff.latest, recent }, memory);
+      return workerRole.opening({ ticket, dir, latest: handoff.latest, recent }, memory);
     },
   };
 

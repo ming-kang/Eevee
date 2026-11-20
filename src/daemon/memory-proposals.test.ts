@@ -89,7 +89,10 @@ test("proposal routes and board stream require approval; rejected and stale deci
   }
   const workspace = join(home, "workspace");
   await mkdir(workspace);
-  const { id } = await client.call("POST /api/projects", { title: "Proposals", workspace });
+  const { id } = await client.call("POST /api/projects", {
+    title: "Proposals",
+    workspaces: [workspace],
+  });
   const project = engine.projects.require(id);
   const events: StreamEvent[] = [];
   socket = new WebSocket(`${baseUrl.replace("http:", "ws:")}/api/stream`, [

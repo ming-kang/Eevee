@@ -10,6 +10,7 @@ import { type ControlSection, formatRoute, type Route } from "../../lib/router.t
 import type { StreamState } from "../../lib/stream.ts";
 import Button from "../../ui/Button.vue";
 import Icon from "../../ui/Icon.vue";
+import { EMPTY } from "../../ui/surface.ts";
 import MemoryPage from "../memory/MemoryPage.vue";
 import SettingsPage from "../settings/SettingsPage.vue";
 import UsagePage from "../usage/UsagePage.vue";
@@ -83,7 +84,7 @@ function sectionRoute(section: ControlSection): Route {
             <template v-if="section === 'memory' || section === 'usage'">
               <MemoryPage v-if="section === 'memory' && project" :key="project.id" :client="client" :project="project" :board="board" />
               <UsagePage v-else-if="project" :key="project.id" :client="client" :project="project" @open-ticket="emit('open-ticket', $event)" />
-              <div v-else class="empty"><h3>{{ t("No projects yet") }}</h3></div>
+              <div v-else :class="EMPTY"><h3>{{ t("No projects yet") }}</h3></div>
             </template>
             <SettingsPage v-else :client="client" :section="section" :item="item" :status="status" :stream-state="streamState" :refresh-status="refreshStatus" />
           </div>

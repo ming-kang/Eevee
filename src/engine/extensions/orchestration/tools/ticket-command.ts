@@ -22,6 +22,12 @@ export const Parameters = obj({
     arr(str(), { description: "create: the acceptance criteria the work must meet" }),
   ),
   output: opt(str({ description: "create: where the artifacts are written" })),
+  dir: opt(
+    str({
+      description:
+        "create: the worker's working directory, one of the project's workspaces; the first one is the default",
+    }),
+  ),
   deliverTo: opt(
     arr(str({ pattern: TICKET_ID }), {
       description: "create: tickets that receive the result after review",

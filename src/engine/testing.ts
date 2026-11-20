@@ -87,11 +87,19 @@ export type TestOptions = Partial<Settings> & {
   extraModels?: string[];
   /** Extensions installed as the Engine's shared ones. */
   shared?: Extension[];
+  /** More project workspaces, after the default one. */
+  extraWorkspaces?: string[];
 };
 
 export async function openTestProject(
   brain: Brain,
-  { contextWindow, shared = [], extraModels = [], ...overrides }: TestOptions = {},
+  {
+    contextWindow,
+    shared = [],
+    extraModels = [],
+    extraWorkspaces = [],
+    ...overrides
+  }: TestOptions = {},
 ): Promise<TestProject> {
   process.env.GIT_AUTHOR_NAME = process.env.GIT_COMMITTER_NAME = "eevee-test";
   process.env.GIT_AUTHOR_EMAIL = process.env.GIT_COMMITTER_EMAIL = "eevee@test.invalid";
@@ -139,7 +147,10 @@ export async function openTestProject(
     dreaming: { ...DEFAULT_SETTINGS.dreaming, enabled: false },
     ...overrides,
   };
-  const meta = await createProjectMeta(paths, { title: "Test project", workspace });
+  const meta = await createProjectMeta(paths, {
+    title: "Test project",
+    workspaces: [workspace, ...extraWorkspaces],
+  });
   const open = () =>
     openProject({
       paths,

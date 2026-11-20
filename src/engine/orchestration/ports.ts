@@ -29,4 +29,6 @@ export type HandoffPolicy = {
 export type OrchestrationDeps = {
   conversations: TicketConversations;
   handoff: HandoffPolicy;
+  /** The project's workspaces; a ticket's `dir` must be one of them. */
+  dirs: () => readonly string[];
 };

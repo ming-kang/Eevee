@@ -30,7 +30,7 @@ test("project watches seed an empty list, coalesce summary changes and detach", 
     assert.throws(() => registry.require("missing"), {
       problem: { code: "no_project", projectId: "missing" },
     });
-    const project = await registry.create({ title: "One", workspace: home });
+    const project = await registry.create({ title: "One", workspaces: [home] });
     await nextTurn();
     assert.deepEqual(snapshots, [[], [project]]);
     current = { ...project, title: "Two" };

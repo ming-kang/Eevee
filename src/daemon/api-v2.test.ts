@@ -141,7 +141,7 @@ test("v2 parses resource params, emits problems and empty commands, and pushes e
     await mkdir(workspace);
     const created = await request("/api/projects", {
       method: "POST",
-      body: JSON.stringify({ title: "V2", workspace }),
+      body: JSON.stringify({ title: "V2", workspaces: [workspace] }),
     });
     assert.equal(created.status, 201);
     const summary = (await created.json()) as { id: string };

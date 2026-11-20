@@ -91,7 +91,9 @@ export function filterSidebarProjects(
 ): ProjectSummary[] {
   const q = query.trim().toLowerCase();
   return projects.filter((project) =>
-    [project.title, project.id, project.workspace].some((value) => value.toLowerCase().includes(q)),
+    [project.title, project.id, ...project.workspaces].some((value) =>
+      value.toLowerCase().includes(q),
+    ),
   );
 }
 
@@ -241,7 +243,7 @@ export function buildPaletteItems(input: {
       group: t("Projects"),
       label: project.title,
       ...(meta ? { meta } : {}),
-      search: `${project.title} ${project.id} ${project.workspace}`,
+      search: `${project.title} ${project.id} ${project.workspaces.join(" ")}`,
       kind: "route",
       route: { name: "chat", pid: project.id },
       icon: "folder",

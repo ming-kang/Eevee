@@ -10,7 +10,7 @@ export type TicketDraft = Pick<
   Ticket,
   "role" | "title" | "goal" | "inputs" | "acceptance" | "deliverTo"
 > &
-  Partial<Pick<Ticket, "output" | "model" | "modelReason">>;
+  Partial<Pick<Ticket, "output" | "dir" | "model" | "modelReason">>;
 
 /**
  * Creates a ticket in `tx`: a background anchor task that owns its conversation, so nothing that happens to

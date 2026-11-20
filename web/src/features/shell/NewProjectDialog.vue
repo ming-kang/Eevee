@@ -2,15 +2,15 @@
 import type { Client } from "@shared/protocol/client.ts";
 import type { ProjectSummary } from "@shared/protocol/contract.ts";
 import { ref, watch } from "vue";
-import { t } from "../../lib/i18n.ts";
 import { useSubmit } from "../../composables/submit.ts";
 import { showToast } from "../../composables/toasts.ts";
-import Icon from "../../ui/Icon.vue";
+import { t } from "../../lib/i18n.ts";
 import Button from "../../ui/Button.vue";
 import Dialog from "../../ui/Dialog.vue";
 import Input from "../../ui/Input.vue";
-import { ERROR_TEXT } from "../../ui/surface.ts";
 import { FIELD } from "../../ui/form.ts";
+import { ERROR_TEXT } from "../../ui/surface.ts";
+import DirListField from "./DirListField.vue";
 
 const props = defineProps<{
   open: boolean;
@@ -23,7 +23,8 @@ const emit = defineEmits<{
 }>();
 
 const title = ref("");
-const workspace = ref("");
+const dirs = ref<string[]>([]);
+const dirsField = ref<{ commit(): void }>();
 const localError = ref<string>();
 const titleInput = ref<{ focus(): void }>();
 const { busy, error, run } = useSubmit();
@@ -33,7 +34,7 @@ watch(
   (isOpen) => {
     if (!isOpen) return;
     title.value = "";
-    workspace.value = "";
+    dirs.value = [];
     localError.value = undefined;
     error.value = undefined;
   },
@@ -41,13 +42,13 @@ watch(
 
 async function submit(): Promise<void> {
   const name = title.value.trim();
-  const dir = workspace.value.trim();
   if (!name) {
     localError.value = t("Enter a project title");
     return;
   }
-  if (!dir) {
-    localError.value = t("Enter a working directory");
+  dirsField.value?.commit();
+  if (dirs.value.length === 0) {
+    localError.value = t("Add at least one working directory");
     return;
   }
   localError.value = undefined;
@@ -55,7 +56,7 @@ async function submit(): Promise<void> {
   const ok = await run(async () => {
     created = await props.client.call("POST /api/projects", {
       title: name,
-      workspace: dir,
+      workspaces: dirs.value,
     });
   });
   if (ok && created) {
@@ -78,15 +79,17 @@ function focusTitle(event: Event): void {
       <Input id="new-proj-name" ref="titleInput" v-model="title" :disabled="busy" />
     </div>
     <div :class="FIELD">
-      <label for="new-proj-ws">{{ t("Working directory") }}</label>
-      <Input id="new-proj-ws" v-model="workspace" mono :disabled="busy" />
+      <label id="new-proj-dirs-label">{{ t("Working directories") }}</label>
+      <div role="group" aria-labelledby="new-proj-dirs-label">
+        <DirListField ref="dirsField" v-model="dirs" :client="client" :disabled="busy" />
+      </div>
     </div>
     <p v-if="localError || error" :class="ERROR_TEXT" role="alert">
       {{ localError ?? error }}
     </p>
     <template #footer>
       <Button :disabled="busy" @click="$emit('close')">{{ t("Cancel") }}</Button>
-      <Button type="submit" variant="primary" :disabled="busy || !title.trim() || !workspace.trim()">
+      <Button type="submit" variant="primary" :disabled="busy || !title.trim()">
         {{ busy ? t("Creating…") : t("Create project") }}
       </Button>
     </template>

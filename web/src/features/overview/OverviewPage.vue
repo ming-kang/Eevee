@@ -9,6 +9,7 @@ import { reportSummary, STAGE_LABEL } from "../../lib/labels.ts";
 import { formatRoute, type Route } from "../../lib/router.ts";
 import { formatRelativeTime } from "../../lib/time.ts";
 import { fieldClass } from "../../ui/field.ts";
+import { EMPTY } from "../../ui/surface.ts";
 import Icon from "../../ui/Icon.vue";
 import StageGlyph from "../project/StageGlyph.vue";
 import Button from "../../ui/Button.vue";
@@ -128,7 +129,17 @@ const columns = computed(() => [
         <span>{{ t("New project") }}</span>
       </Button>
     </header>
-    <div v-if="projects.length === 0" class="empty"><h3>{{ t("No projects yet") }}</h3></div>
+    <div v-if="projects.length === 0" :class="EMPTY">
+      <span class="grid size-12 place-items-center rounded-xl border border-border bg-surface-2 text-fg-muted">
+        <Icon name="folderPlus" size="lg" />
+      </span>
+      <h3>{{ t("No projects yet") }}</h3>
+      <p>{{ t("Create a project to get started.") }}</p>
+      <Button variant="primary" @click="$emit('new-project')">
+        <Icon name="plus" size="sm" />
+        <span>{{ t("New project") }}</span>
+      </Button>
+    </div>
     <div v-else class="grid min-h-0 flex-1 grid-cols-3 gap-5 overflow-hidden p-5 @max-[960px]/overview:grid-cols-1 @max-[960px]/overview:auto-rows-max @max-[960px]/overview:gap-6 @max-[960px]/overview:overflow-y-auto @max-[960px]/overview:p-3">
       <section v-for="column in columns" :key="column.key" :aria-labelledby="`overview-${column.key}`" class="flex min-h-0 min-w-0 flex-col overflow-hidden @max-[960px]/overview:overflow-visible">
         <header class="flex h-10 shrink-0 items-center gap-2 px-px">

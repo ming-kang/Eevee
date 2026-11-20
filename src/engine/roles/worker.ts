@@ -7,6 +7,8 @@ import { defineRole } from "./role.ts";
 
 export type WorkerSubject = {
   ticket: Ticket;
+  /** The ticket's working directory, resolved to a concrete path. */
+  dir: string;
   latest?: Report;
   /** The last messages before a reset, so the conversation picks up where it was. */
   recent?: string;
@@ -25,10 +27,11 @@ export const workerRole = defineRole<WorkerSubject>({
   name: "worker",
   instructions,
   extensions: [RESOURCES_EXTENSION, WORKSPACE_EXTENSION, REPORT_EXTENSION],
-  opening: ({ ticket, latest, recent }, memory) =>
+  opening: ({ ticket, dir, latest, recent }, memory) =>
     compose(
       ...memoryBlocks(memory),
       block("ticket", renderTicket(ticket)),
+      block("directory", dir),
       block("latest-report", renderLatestReport(latest)),
       block("recent", recent),
     ),

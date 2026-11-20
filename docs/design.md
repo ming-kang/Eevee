@@ -66,7 +66,7 @@ Eevee 是一个基于 Pi-Durable 的 Proactive Agent，会话退化为底层实�
 | 角色 | `Role` | 一类对话的提示词、Opening 与 Extension 能力配置 |
 | 开篇 | `Opening` | 对话创建或 `reset` 时生成的开场材料，具体组成属于实现策略 |
 | 资源地址 | URI | 引用持久对象的统一写法，如 `ticket://t12`、`report://t12#3` |
-| 工作目录 | `Workspace` | 用户自己的项目目录，产物默认写在这里 |
+| 工作目录 | `Workspace` | 用户自己的项目目录（一个项目可有多个），产物默认写在这里 |
 | 模型画像 | `ModelProfile` | 模型客观参数与用户记录的使用经验，供需要时选择模型 |
 | Engine | `Engine` | 常驻后台的 Node.js 进程，承载全部项目与本地 WebUI |
 

@@ -54,6 +54,8 @@ export type Ticket = {
   inputs: string[];
   acceptance: string[];
   output?: string;
+  /** The worker's working directory; one of the project's workspaces, absent for the first. */
+  dir?: string;
   deliverTo: TicketId[];
   model?: ModelChoice;
   modelReason?: string;

@@ -584,7 +584,7 @@ const timer = setInterval(() => {
 
 const p1 = await engine.projects.create({
   title: "Optics paper “Metasurface Polarization Imaging”",
-  workspace: ws1,
+  workspaces: [ws1],
 });
 const host1 = engine.projects.get(p1.id);
 if (!host1) throw new Error(`No project ${p1.id}`);
@@ -655,7 +655,7 @@ await writeFile(
 // Project 2: Router failure state
 const ws2 = join(home, "workspaces", "eevee-demo");
 await mkdir(ws2, { recursive: true });
-const p2 = await engine.projects.create({ title: "Eevee panel integration", workspace: ws2 });
+const p2 = await engine.projects.create({ title: "Eevee panel integration", workspaces: [ws2] });
 const host2 = engine.projects.get(p2.id);
 if (!host2) throw new Error(`No project ${p2.id}`);
 await host2.conversations.send(
@@ -670,7 +670,7 @@ await until(async () => {
 // Project 3: Empty project
 const ws3 = join(home, "workspaces", "empty");
 await mkdir(ws3, { recursive: true });
-await engine.projects.create({ title: "Blank experiment log", workspace: ws3 });
+await engine.projects.create({ title: "Blank experiment log", workspaces: [ws3] });
 
 seeded = true;
 

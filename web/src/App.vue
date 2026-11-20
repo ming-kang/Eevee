@@ -26,6 +26,7 @@ import { type SessionInfo, Unauthorized, openSession } from "./lib/session.ts";
 import { useTheme } from "./composables/theme.ts";
 import { useNotifications } from "./composables/use-notifications.ts";
 import Button from "./ui/Button.vue";
+import { EMPTY } from "./ui/surface.ts";
 
 const SIDE_KEY = "eevee.sideCollapsed";
 const RAIL_KEY = "eevee.railCollapsed";
@@ -441,8 +442,9 @@ watch(
 
     <template v-else-if="route.name === 'chat' || route.name === 'worker'">
       <header class="header" />
-      <div class="empty">
+      <div :class="EMPTY">
         <h3>{{ projects.length === 0 ? t("No projects yet") : t("Project not found") }}</h3>
+        <p v-if="projects.length === 0">{{ t("Create a project to get started.") }}</p>
         <Button v-if="projects.length === 0" variant="primary" @click="openNewProject">
           <Icon name="plus" size="sm" />
           <span>{{ t("New project") }}</span>

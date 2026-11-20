@@ -23,10 +23,22 @@ import type {
 export type ProjectSummary = {
   id: string;
   title: string;
-  workspace: string;
+  /** The directories a project covers; the first is the default working directory. */
+  workspaces: string[];
   createdAt: number;
   activeAt?: number;
   models?: ModelDefaults;
+};
+
+export type DirEntry = { name: string; path: string };
+
+/** A directory listing for the path picker: `path` is the listed dir, `""` for the roots. */
+export type DirListing = {
+  path: string;
+  parent?: string;
+  dirs: DirEntry[];
+  /** The user's home directory; named on the roots listing only. */
+  home?: string;
 };
 
 export type EngineView = {

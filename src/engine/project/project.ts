@@ -7,7 +7,7 @@ import type { Memory } from "./memory.ts";
 import type { Proposals } from "./proposals.ts";
 import type { Questions } from "./questions.ts";
 import type { ProjectSettings } from "./settings.ts";
-import type { ProjectMeta, ProjectStore } from "./store.ts";
+import { type ProjectMeta, type ProjectStore, resolveWorkspaces } from "./store.ts";
 
 type Parts = {
   store: ProjectStore;
@@ -59,6 +59,18 @@ export class Project {
 
   usage(): Promise<UsageView> {
     return this.#parts.usage();
+  }
+
+  /** Edits the title or the workspace set; workspaces are resolved and checked first. */
+  async update(change: { title?: string; workspaces?: readonly string[] }): Promise<void> {
+    const workspaces =
+      change.workspaces === undefined ? undefined : await resolveWorkspaces(change.workspaces);
+    await this.#parts.store.update((meta) => ({
+      ...meta,
+      ...(change.title === undefined ? {} : { title: change.title }),
+      ...(workspaces === undefined ? {} : { workspaces }),
+    }));
+    this.#parts.changed?.();
   }
 
   async setModel(role: RoleName | "default", choice: ModelChoice | null): Promise<void> {

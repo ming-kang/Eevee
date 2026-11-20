@@ -13,7 +13,9 @@ import { useSubmit } from "../../composables/submit.ts";
 import { showToast } from "../../composables/toasts.ts";
 import { mapTranscript, type QueuedMessage, queuedMessages } from "../../lib/transcript-map.ts";
 import BrandLogo from "../../ui/BrandLogo.vue";
+import Button from "../../ui/Button.vue";
 import Composer from "./Composer.vue";
+import EditWorkspacesDialog from "../shell/EditWorkspacesDialog.vue";
 import Icon from "../../ui/Icon.vue";
 import QuestionCard from "./QuestionCard.vue";
 import QuestionReview from "./QuestionReview.vue";
@@ -65,6 +67,7 @@ const empty = computed(
   () => conversation.view.value !== undefined && displayItems.value.length === 0,
 );
 const later = ref(false);
+const editingDirs = ref(false);
 
 watch(
   () => questions.value.length,
@@ -167,7 +170,16 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
     <header class="header">
       <div v-if="!empty" class="header-title">
         <Icon name="folderOpen" size="sm" class="dim hide-sm" />
-        <h1 class="ellipsis" :title="project.workspace">{{ project.title }}</h1>
+        <h1 class="ellipsis" :title="project.workspaces.join(' · ')">{{ project.title }}</h1>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon
+          :aria-label="t('Edit directories')"
+          @click="editingDirs = true"
+        >
+          <Icon name="pencil" size="sm" />
+        </Button>
       </div>
       <span class="spacer" />
     </header>
@@ -183,8 +195,19 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
 
     <div v-if="empty" class="mt-auto flex animate-[ev-rise_var(--ev-slow)_var(--ev-ease)] flex-col items-center gap-1.5 px-(--ev-gutter) pb-5.5 text-center">
       <BrandLogo class="mb-2 size-6 text-fg-muted" />
-      <h2 class="text-xl leading-[1.4] font-medium tracking-[-0.02em]" :title="project.workspace">{{ project.title }}</h2>
-      <p class="mono ellipsis max-w-[min(100%,calc(480px*var(--ev-scale)))] text-xs text-fg-subtle">{{ project.workspace }}</p>
+      <h2 class="text-xl leading-[1.4] font-medium tracking-[-0.02em]" :title="project.workspaces.join(' · ')">{{ project.title }}</h2>
+      <div class="flex flex-col items-center gap-0.5">
+        <button
+          v-for="dir in project.workspaces"
+          :key="dir"
+          type="button"
+          class="mono max-w-[min(100%,calc(480px*var(--ev-scale)))] truncate text-xs text-fg-subtle underline decoration-dashed decoration-1 underline-offset-4 transition-colors hover:text-fg"
+          :title="t('Edit directories')"
+          @click="editingDirs = true"
+        >
+          {{ dir }}
+        </button>
+      </div>
     </div>
     <div v-else-if="displayItems.length === 0" class="chat">
       <div class="chat-inner">
@@ -275,5 +298,12 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
         </div>
       </div>
     </div>
+    <EditWorkspacesDialog
+      :open="editingDirs"
+      :client="client"
+      :project="project"
+      @close="editingDirs = false"
+      @changed="$emit('project-changed')"
+    />
   </section>
 </template>
