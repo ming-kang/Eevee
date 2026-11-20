@@ -1,5 +1,5 @@
-import type { Client } from "@shared/api/client.ts";
-import type { ModelsView } from "@shared/api/contract.ts";
+import type { Client } from "@shared/protocol/client.ts";
+import type { ModelsView } from "@shared/protocol/contract.ts";
 import { ref, shallowRef } from "vue";
 import { errorText } from "../lib/errors.ts";
 

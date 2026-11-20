@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,15 +7,15 @@ import { after, before, test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { WatchCall, WatchEnd, WatchHandle } from "@earendil-works/chord/watch";
 import type { ConversationView } from "@earendil-works/pi-durable";
-import type { BoardView } from "../api/contract.ts";
+import { BoardFeed, type BoardListener } from "../engine/board-feed.ts";
+import type { BoardView } from "../protocol/contract.ts";
 import {
   STREAM_PATH,
   STREAM_PROTOCOL,
   type StreamEvent,
   type StreamRequest,
   TOKEN_PROTOCOL_PREFIX,
-} from "../api/stream.ts";
-import { BoardFeed, type BoardListener } from "../engine/board-feed.ts";
+} from "../protocol/stream.ts";
 import { Auth } from "./auth.ts";
 import { attachStream, type ProjectStream } from "./stream.ts";
 
@@ -63,11 +63,13 @@ const project: ProjectStream = {
     listener.view(board);
     return () => boardListeners.delete(listener);
   },
-  watch: async (ticket, _context, window) => {
-    watched.push({ ticket, window });
-    return watch.handle;
+  conversations: {
+    watch: async (ticket, _context, window) => {
+      watched.push({ ticket, window });
+      return watch.handle;
+    },
+    entries: async (_ticket, query, limit) => [{ id: query.minEntryId ?? 0, limit } as never],
   },
-  entries: async (_ticket, query, limit) => [{ id: query.minEntryId ?? 0, limit } as never],
 };
 
 /** A real board feed whose builds the test finishes one at a time; each returns the board as it was when it began. */
@@ -99,15 +101,22 @@ let url: string;
 
 before(async () => {
   dir = await mkdtemp(join(tmpdir(), "eevee-stream-"));
-  const auth = await Auth.open({ tokenPath: join(dir, "token") });
-  token = (await readFile(join(dir, "token"), "utf8")).trim();
+  const auth = new Auth();
+  token = auth.token;
   server = createServer((_request, response) => response.end());
   stream = attachStream(server, {
     source: {
       bootId: "boot-1",
-      project: (id) => (id === "p1" ? project : id === "p2" ? slowProject : undefined),
+      projects: {
+        get: (id) => (id === "p1" ? project : id === "p2" ? slowProject : undefined),
+        watch: (listener) => {
+          listener([]);
+          return () => {};
+        },
+      },
     },
     auth,
+    version: "test",
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -155,6 +164,7 @@ async function connect(protocols = [STREAM_PROTOCOL, `${TOKEN_PROTOCOL_PREFIX}${
 test("a connection is refused with no token, a wrong token or no protocol", async () => {
   await assert.rejects(connect([STREAM_PROTOCOL]), /refused/);
   await assert.rejects(connect([STREAM_PROTOCOL, `${TOKEN_PROTOCOL_PREFIX}wrong`]), /refused/);
+  await assert.rejects(connect(["eevee.v1", `${TOKEN_PROTOCOL_PREFIX}${token}`]), /refused/);
   await assert.rejects(connect([`${TOKEN_PROTOCOL_PREFIX}${token}`]), /refused/);
 });
 
@@ -260,7 +270,8 @@ test("an unknown project and a bad message reply with error and keep the connect
   assert.deepEqual(error.type === "error" && error.error, {
     code: "no_project",
     projectId: "nope",
-    message: "No project nope",
+    title: "No project nope",
+    status: 404,
   });
   client.ws.send("{");
   assert.equal((await client.next()).type, "error");

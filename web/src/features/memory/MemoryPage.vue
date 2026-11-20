@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
-import type { MemoryFileEntry, ProjectSummary } from "@shared/api/contract.ts";
+import type { Client } from "@shared/protocol/client.ts";
+import type { MemoryFileEntry, ProjectSummary } from "@shared/protocol/contract.ts";
 import type {
   MemoryChange,
   MemoryChangeDetail,
   MemoryScope,
   MemorySource,
-} from "@shared/contracts/index.ts";
+} from "@shared/domain/index.ts";
 import { computed, onUnmounted, ref, watch } from "vue";
 import { errorText } from "../../lib/errors.ts";
 import { t } from "../../lib/i18n.ts";
@@ -125,10 +125,9 @@ async function loadChangeDetail(targetScope: MemoryScope, id: number): Promise<v
   loadingDiff.value = true;
   diffError.value = undefined;
   try {
-    const res = await props.client.call(
-      "GET /api/projects/:project/memory/:scope/changes/:change",
-      { project: props.project.id, scope: targetScope, change: String(id) },
-    );
+    const res = targetScope === "global"
+      ? await props.client.call("GET /api/memory/changes/:change", { change: id })
+      : await props.client.call("GET /api/projects/:project/memory/changes/:change", { project: props.project.id, change: id });
     changeDetails.value = { ...changeDetails.value, [cacheKey]: res };
   } catch (err) {
     diffError.value = errorText(err);
@@ -144,10 +143,9 @@ async function loadScope(preferredSelection?: number): Promise<void> {
   listError.value = undefined;
   diffError.value = undefined;
   try {
-    const res = await props.client.call("GET /api/projects/:project/memory/:scope/changes", {
-      project: props.project.id,
-      scope: targetScope,
-    });
+    const res = targetScope === "global"
+      ? await props.client.call("GET /api/memory/changes")
+      : await props.client.call("GET /api/projects/:project/memory/changes", { project: props.project.id });
     if (token !== requestSeq) return;
     changes.value = res.changes;
 
@@ -178,11 +176,9 @@ async function loadFileContent(targetScope: MemoryScope, filePath: string): Prom
   loadingFile.value = true;
   fileError.value = undefined;
   try {
-    const res = await props.client.call("GET /api/projects/:project/memory/:scope/files/:file", {
-      project: props.project.id,
-      scope: targetScope,
-      file: filePath,
-    });
+    const res = targetScope === "global"
+      ? await props.client.call("GET /api/memory/files/:file", { file: filePath })
+      : await props.client.call("GET /api/projects/:project/memory/files/:file", { project: props.project.id, file: filePath });
     fileContents.value = { ...fileContents.value, [cacheKey]: res.content };
   } catch (err) {
     fileError.value = errorText(err);
@@ -198,10 +194,9 @@ async function loadFiles(preferredFile?: string): Promise<void> {
   filesError.value = undefined;
   fileError.value = undefined;
   try {
-    const res = await props.client.call("GET /api/projects/:project/memory/:scope/files", {
-      project: props.project.id,
-      scope: targetScope,
-    });
+    const res = targetScope === "global"
+      ? await props.client.call("GET /api/memory/files")
+      : await props.client.call("GET /api/projects/:project/memory/files", { project: props.project.id });
     if (token !== filesSeq) return;
     files.value = res.files;
     const nextFile =
@@ -275,10 +270,11 @@ async function performUndo(): Promise<void> {
   const target = confirmChange.value;
   if (!target) return;
   const ok = await undoing.run(async () => {
-    await props.client.call(
-      "POST /api/projects/:project/memory/:scope/changes/:change/undo",
-      { project: props.project.id, scope: scope.value, change: String(target.id) },
-    );
+    if (scope.value === "global") {
+      await props.client.call("POST /api/memory/changes/:change/undo", { change: target.id });
+    } else {
+      await props.client.call("POST /api/projects/:project/memory/changes/:change/undo", { project: props.project.id, change: target.id });
+    }
   });
   if (ok) {
     confirmChange.value = undefined;

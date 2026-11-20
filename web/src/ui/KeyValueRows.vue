@@ -2,8 +2,8 @@
 import type { KeyValueRow } from "../lib/fields.ts";
 import { t } from "../lib/i18n.ts";
 import Icon from "./Icon.vue";
-import Button from "../ui/Button.vue";
-import Input from "../ui/Input.vue";
+import Button from "./Button.vue";
+import Input from "./Input.vue";
 
 /** Edits a string map in place, one row per entry. */
 const props = defineProps<{

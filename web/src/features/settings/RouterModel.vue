@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
-import type { ModelSpecView, ProjectSummary } from "@shared/api/contract.ts";
-import { type ModelChoice, pickModel, type ThinkingLevel } from "@shared/contracts/index.ts";
+import type { Client } from "@shared/protocol/client.ts";
+import type { ModelSpecView, ProjectSummary } from "@shared/protocol/contract.ts";
+import { type ModelChoice, pickModel, type ThinkingLevel } from "@shared/domain/index.ts";
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { errorText } from "../../lib/errors.ts";
 import { t } from "../../lib/i18n.ts";
@@ -106,11 +106,11 @@ onUnmounted(() => window.removeEventListener("mousedown", onWindowDown));
 async function save(model: ModelChoice | null): Promise<void> {
   busy.value = true;
   try {
-    await props.client.call(
-      "POST /api/projects/:project/models",
-      { project: props.project.id },
-      { role: "router", model },
-    );
+    if (model === null) {
+      await props.client.call("DELETE /api/projects/:project/models/:role", { project: props.project.id, role: "router" });
+    } else {
+      await props.client.call("PUT /api/projects/:project/models/:role", { project: props.project.id, role: "router" }, model);
+    }
     emit("changed");
   } catch (err) {
     showToast(errorText(err), "error");

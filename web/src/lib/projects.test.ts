@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { BoardView, ProjectSummary, TicketView } from "../../../src/api/contract.ts";
-import type { TicketId, TicketStage } from "../../../src/contracts/index.ts";
+import type { TicketId, TicketStage } from "../../../src/domain/index.ts";
+import type { BoardView, ProjectSummary, TicketView } from "../../../src/protocol/contract.ts";
 import {
   buildPaletteItems,
   deriveProjectState,

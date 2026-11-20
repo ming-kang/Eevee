@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
-import type { ProjectSummary } from "@shared/api/contract.ts";
+import type { Client } from "@shared/protocol/client.ts";
+import type { ProjectSummary } from "@shared/protocol/contract.ts";
 import { ref, watch } from "vue";
 import { t } from "../../lib/i18n.ts";
 import { useSubmit } from "../../composables/submit.ts";

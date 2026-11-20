@@ -13,11 +13,12 @@ import {
   type Message,
 } from "@earendil-works/pi-ai";
 import type { Extension, JsonObject } from "@earendil-works/pi-durable";
-import { MemoryRepo } from "../extensions/memory/index.ts";
+import { DEFAULT_SETTINGS, type Settings } from "../config/settings.ts";
 import { eeveePaths } from "../shared/paths.ts";
-import { DEFAULT_SETTINGS, type Settings } from "../shared/settings.ts";
-import { createProjectMeta } from "./project.ts";
-import { ProjectHost } from "./project-host.ts";
+import { MemoryRepo } from "./extensions/memory/index.ts";
+import { openProject } from "./project/open.ts";
+import type { Project } from "./project/project.ts";
+import { createProjectMeta } from "./project/store.ts";
 
 export type Turn = {
   role: "router" | "worker" | "dreamer";
@@ -70,7 +71,7 @@ function offeredTools(messages: readonly Message[]): string[] {
 }
 
 export type TestProject = {
-  host: ProjectHost;
+  host: Project;
   home: string;
   workspace: string;
   settings: Settings;
@@ -140,7 +141,7 @@ export async function openTestProject(
   };
   const meta = await createProjectMeta(paths, { title: "Test project", workspace });
   const open = () =>
-    ProjectHost.open({
+    openProject({
       paths,
       meta,
       models: () => models,

@@ -1,8 +1,8 @@
 import { type CommitPublication, LiveDoc } from "@earendil-works/pi-durable";
-import type { BoardView } from "../api/contract.ts";
-import { Board, QuestionDoc, ReportLog, TicketDoc } from "../contracts/docs.ts";
-import { WorkerQueue } from "../extensions/orchestration/index.ts";
+import type { BoardView } from "../protocol/contract.ts";
 import { SerialPass } from "../shared/serial-pass.ts";
+import { Board, QuestionDoc, ReportLog, TicketDoc } from "./docs.ts";
+import { WorkerQueue } from "./orchestration/index.ts";
 
 const BOARD_DOC_KINDS = new Set([
   Board.definition.kind,

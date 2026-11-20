@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApiRequestError } from "../../../src/api/client.ts";
+import { ApiRequestError } from "../../../src/protocol/client.ts";
 import { parseRoute } from "./router.ts";
 import { openSessionWith, type SessionEnv, Unauthorized } from "./session.ts";
 
@@ -33,7 +33,7 @@ test("take the #code= first and clear the hash, then let the route parse from a 
       ({
         call: async (route: string) => {
           if (route === "POST /api/session") return { token: "tok-1" };
-          if (route === "GET /api/status") {
+          if (route === "GET /api/engine") {
             assert.equal(token, "tok-1");
             return { bootId: "b1", version: "0.0.1", port: 19190, projects: [] };
           }
@@ -87,7 +87,8 @@ test("with no token or an expired session, the old token is cleared and Unauthor
         call: async () => {
           throw new ApiRequestError(401, {
             code: "unauthorized",
-            message: "Authorization required",
+            title: "Authorization required",
+            status: 401,
           });
         },
       }) as never,

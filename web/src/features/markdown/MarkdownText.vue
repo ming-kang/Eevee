@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TicketView } from "@shared/api/contract.ts";
+import type { TicketView } from "@shared/protocol/contract.ts";
 import { computed, provide } from "vue";
 import { markdownParser, TICKET_LINKS } from "../../composables/markdown.ts";
 import MarkdownBlocks from "./MarkdownBlocks.vue";

@@ -1,9 +1,9 @@
-import type { ModelSpecView } from "@shared/api/contract.ts";
+import type { ModelSpecView } from "@shared/protocol/contract.ts";
 import {
   type ModelChoice,
   THINKING_LEVELS,
   type ThinkingLevel,
-} from "../../../src/contracts/index.ts";
+} from "../../../src/domain/index.ts";
 
 /** A level as the menus write it: `High`, `X-High`. */
 export const levelLabel = (level: ThinkingLevel): string =>

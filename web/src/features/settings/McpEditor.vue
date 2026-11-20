@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Client } from "@shared/api/client.ts";
-import type { CapabilitiesView } from "@shared/api/contract.ts";
+import type { Client } from "@shared/protocol/client.ts";
+import type { CapabilitiesView } from "@shared/protocol/contract.ts";
 import { computed, nextTick, reactive, ref, watch } from "vue";
 import { configIssueText, errorText } from "../../lib/errors.ts";
 import { t } from "../../lib/i18n.ts";
