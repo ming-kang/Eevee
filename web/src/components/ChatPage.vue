@@ -7,6 +7,7 @@ import { provideComposerInsert } from "../composer-bridge.ts";
 import type { ConversationWatch } from "../engine-data.ts";
 import { errorText } from "../errors.ts";
 import { t } from "../i18n.ts";
+import { useQuestionNavigation } from "../question-navigation.ts";
 import { useSubmit } from "../submit.ts";
 import { showToast } from "../toasts.ts";
 import { mapTranscript, type QueuedMessage, queuedMessages } from "../transcript-map.ts";
@@ -29,8 +30,9 @@ const props = defineProps<{
   questionId?: QuestionId;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   "open-ticket": [ticketId: string];
+  "question-route": [questionId: QuestionId | undefined];
   "project-changed": [];
 }>();
 
@@ -48,10 +50,11 @@ const displayItems = computed(() =>
 const questions = computed(() => props.board?.openQuestions ?? []);
 const queued = computed(() => queuedMessages(conversation.inbox.value));
 const queuedBusy = ref(new Set<string>());
-/** An answered or withdrawn question opened from the transcript. */
-const reviewId = ref<QuestionId>();
-/** The open question the card should jump to. */
-const focusId = ref<QuestionId>();
+const { reviewId, focusId, open, close: closeQuestion, answered } = useQuestionNavigation(
+  () => props.questionId,
+  () => props.board?.openQuestions,
+  (id) => emit("question-route", id),
+);
 const interrupting = useSubmit();
 /** A loaded conversation with nothing in it: the title and the composer stand together in the middle. */
 const empty = computed(
@@ -92,27 +95,24 @@ async function answer(id: QuestionId, text: string, answers: readonly string[]):
     { ...params.value, question: id },
     { answer: text, answers: [...answers] },
   );
+  answered(id);
 }
 
 function openQuestion(id: QuestionId): void {
-  if (questions.value.some((q) => q.id === id)) {
-    later.value = false;
-    reviewId.value = undefined;
-    focusId.value = id;
-    return;
-  }
-  reviewId.value = id;
+  later.value = false;
+  open(id);
 }
 
-// Wait for the board before deciding whether a deep link opens the answer card or its history.
+function setAsideQuestion(): void {
+  closeQuestion();
+  later.value = true;
+}
+
 watch(
-  [() => props.questionId, () => props.board !== undefined],
-  ([id, loaded]) => {
-    reviewId.value = undefined;
-    focusId.value = undefined;
-    if (loaded && id !== undefined) openQuestion(id);
+  () => props.questionId,
+  (id) => {
+    if (id !== undefined) later.value = false;
   },
-  { immediate: true },
 );
 
 async function queueAction(
@@ -204,7 +204,7 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
           :project="project.id"
           :question="reviewId"
           :tickets="board?.tickets"
-          @close="reviewId = undefined"
+          @close="closeQuestion"
           @open-ticket="$emit('open-ticket', $event)"
         />
         <QuestionCard
@@ -213,7 +213,8 @@ function queueWithdraw(message: QueuedMessage): Promise<void> {
           :tickets="board?.tickets"
           :focus-id="focusId"
           :answer="answer"
-          @later="later = true"
+          @select-question="openQuestion"
+          @later="setAsideQuestion"
           @open-ticket="$emit('open-ticket', $event)"
         />
         <div
