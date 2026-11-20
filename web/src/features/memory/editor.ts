@@ -1,6 +1,7 @@
 import { ref } from "vue";
 import type { MemoryScope } from "../../../../src/domain/index.ts";
 import { ApiRequestError, type Client } from "../../../../src/protocol/client.ts";
+import type { MemoryMutationView } from "../../../../src/protocol/views.ts";
 import { errorText } from "../../lib/errors.ts";
 
 export type EditorMode = "edit" | "new" | "delete" | "rename";
@@ -97,36 +98,46 @@ export function createMemoryEditor(
     error.value = undefined;
     changed.value = false;
     try {
+      let result: MemoryMutationView;
       const params = { project: target.project, file: target.file };
       if (target.mode === "delete") {
         if (target.scope === "global")
-          await client.call("DELETE /api/memory/files/:file", {
+          result = await client.call("DELETE /api/memory/files/:file", {
             file: target.file,
             query: { version: target.version },
           });
         else
-          await client.call("DELETE /api/projects/:project/memory/files/:file", {
+          result = await client.call("DELETE /api/projects/:project/memory/files/:file", {
             ...params,
             query: { version: target.version },
           });
       } else if (target.mode === "rename") {
         const body = { to: target.name, version: target.version };
         if (target.scope === "global")
-          await client.call("POST /api/memory/files/:file/rename", { file: target.file }, body);
+          result = await client.call(
+            "POST /api/memory/files/:file/rename",
+            { file: target.file },
+            body,
+          );
         else
-          await client.call("POST /api/projects/:project/memory/files/:file/rename", params, body);
+          result = await client.call(
+            "POST /api/projects/:project/memory/files/:file/rename",
+            params,
+            body,
+          );
       } else {
         const file = target.mode === "new" ? target.name : target.file;
         const body = { content: target.content, version: target.version };
         if (target.scope === "global")
-          await client.call("PUT /api/memory/files/:file", { file }, body);
+          result = await client.call("PUT /api/memory/files/:file", { file }, body);
         else
-          await client.call(
+          result = await client.call(
             "PUT /api/projects/:project/memory/files/:file",
             { ...params, file },
             body,
           );
       }
+      if (result.file) target.file = target.name = result.file.path;
     } catch (cause) {
       if (token === sequence) {
         error.value = errorText(cause);

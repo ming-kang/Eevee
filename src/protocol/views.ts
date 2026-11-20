@@ -3,6 +3,7 @@ import type {
   ConfigIssue,
   ConfigProblem,
   Job,
+  MemoryChange,
   ModelChoice,
   ModelDefaults,
   Problem,
@@ -89,6 +90,7 @@ export type MemoryFileView = {
   content: string;
   version: string;
 };
+export type MemoryMutationView = { file: MemoryFileView | null; change: MemoryChange | null };
 
 export type JobLogView = {
   job: Job;

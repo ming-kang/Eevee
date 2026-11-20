@@ -33,6 +33,7 @@ import type {
   JobLogView,
   MemoryFileEntry,
   MemoryFileView,
+  MemoryMutationView,
   ModelsView,
   ProbedModelView,
   ProjectSummary,
@@ -243,12 +244,12 @@ export const ROUTES = [
     { ...project, ...file },
     undefined,
   ),
-  route<MemoryChange | MemoryFileView>()(
+  route<MemoryMutationView>()(
     "PUT /api/projects/:project/memory/files/:file",
     { ...project, ...file },
     body({ content: str(), version: opt(str()) }),
   ),
-  route<MemoryChange>()(
+  route<MemoryMutationView>()(
     "DELETE /api/projects/:project/memory/files/:file",
     { ...project, ...file },
     undefined,
@@ -256,7 +257,7 @@ export const ROUTES = [
     false,
     { version: str() },
   ),
-  route<MemoryChange>()(
+  route<MemoryMutationView>()(
     "POST /api/projects/:project/memory/files/:file/rename",
     { ...project, ...file },
     body({ to: str({ minLength: 1 }), version: opt(str()) }),
@@ -278,15 +279,15 @@ export const ROUTES = [
   ),
   route<{ files: MemoryFileEntry[] }>()("GET /api/memory/files", {}, undefined),
   route<MemoryFileView>()("GET /api/memory/files/:file", file, undefined),
-  route<MemoryChange | MemoryFileView>()(
+  route<MemoryMutationView>()(
     "PUT /api/memory/files/:file",
     file,
     body({ content: str(), version: opt(str()) }),
   ),
-  route<MemoryChange>()("DELETE /api/memory/files/:file", file, undefined, 200, false, {
+  route<MemoryMutationView>()("DELETE /api/memory/files/:file", file, undefined, 200, false, {
     version: str(),
   }),
-  route<MemoryChange>()(
+  route<MemoryMutationView>()(
     "POST /api/memory/files/:file/rename",
     file,
     body({ to: str({ minLength: 1 }), version: opt(str()) }),
