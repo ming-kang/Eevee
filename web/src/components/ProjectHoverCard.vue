@@ -19,7 +19,7 @@ defineProps<{
   <div
     class="hovercard"
     :class="{ on: visible && project !== undefined }"
-    :style="{ top: `${top}px`, left: `${left}px` }"
+    :style="{ top: `${top}px`, '--hc-left': `${left}px` }"
     aria-hidden="true"
   >
     <template v-if="project && state">

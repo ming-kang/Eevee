@@ -36,6 +36,18 @@ defineEmits<{
       @mouseenter="$emit('hover-enter', $event.currentTarget as HTMLElement)"
       @mouseleave="$emit('hover-leave', $event)"
     >
+      <button
+        v-if="tickets.length > 0"
+        type="button"
+        class="p-exp"
+        :aria-expanded="expanded"
+        :aria-controls="`project-tickets-${project.id}`"
+        :aria-label="`${expanded ? t('Collapse tickets') : t('Expand tickets')}: ${project.title}`"
+        :title="expanded ? t('Collapse tickets') : t('Expand tickets')"
+        @click.stop="$emit('toggle-expand')"
+      >
+        <Icon name="chevR" size="xs" />
+      </button>
       <a
         class="p-row"
         :href="href"
@@ -44,11 +56,6 @@ defineEmits<{
         :title="project.title"
         @click="$emit('select')"
       >
-        <Icon
-          :name="expanded && tickets.length > 0 ? 'folderOpen' : 'folder'"
-          size="sm"
-          class="p-lead"
-        />
         <span class="p-title">{{ project.title }}</span>
         <span class="p-end" :class="`s-${state.kind}`">
           <span v-if="state.kind === 'user'" class="count user">{{ state.questionCount }}</span>
@@ -59,33 +66,22 @@ defineEmits<{
           </span>
         </span>
       </a>
-      <button
-        v-if="tickets.length > 0"
-        type="button"
-        class="p-exp"
-        :aria-expanded="expanded"
-        :aria-label="expanded ? t('Collapse tickets') : t('Expand tickets')"
-        :title="expanded ? t('Collapse tickets') : t('Expand tickets')"
-        @click.stop="$emit('toggle-expand')"
-      >
-        <Icon :name="expanded ? 'chevD' : 'chevR'" size="xs" />
-      </button>
     </div>
 
-    <div v-if="expanded && tickets.length > 0" class="p-tickets">
+    <div v-if="expanded && tickets.length > 0" :id="`project-tickets-${project.id}`" class="p-tickets">
       <a
         v-for="view in tickets"
         :key="view.ticket.id"
         class="p-ticket"
         :class="{ on: activeTicketId === view.ticket.id }"
         :href="formatRoute({ name: 'worker', pid: project.id, tid: view.ticket.id })"
-        :title="view.ticket.title"
+        :title="`${view.ticket.id} · ${view.ticket.title}`"
         :aria-current="activeTicketId === view.ticket.id ? 'page' : undefined"
         @click="$emit('select')"
       >
         <StageGlyph :stage="effectiveStage(view)" />
-        <span class="pt-id mono">{{ view.ticket.id }}</span>
         <span class="pt-title">{{ view.ticket.title }}</span>
+        <span class="pt-id mono">{{ view.ticket.id }}</span>
       </a>
     </div>
   </div>
