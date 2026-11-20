@@ -780,6 +780,16 @@
   padding: 0 var(--ev-gutter) calc(16px * var(--ev-scale));
 }
 
+/* Size to the available height at every width. Keep choices and Submit in one scroll
+   area, so a short desktop window cannot hide options behind a pinned footer either. */
+.dock:has(.qcard) {
+  flex-shrink: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-padding-block: calc(12px * var(--ev-scale));
+}
+
 .dock-inner {
   max-width: var(--ev-chat-max);
   margin: 0 auto;
@@ -1060,8 +1070,6 @@
   display: flex;
   flex-direction: column;
   gap: calc(16px * var(--ev-scale));
-  max-height: min(38dvh, calc(360px * var(--ev-scale)));
-  overflow-y: auto;
   padding: 0 calc(20px * var(--ev-scale)) calc(4px * var(--ev-scale));
 }
 
@@ -1230,21 +1238,6 @@
 
   .dock {
     padding: 0 calc(12px * var(--ev-scale)) calc(12px * var(--ev-scale));
-  }
-
-  /* Show the whole question before Submit. If it exceeds the viewport, scroll the entire
-     card (including its footer) instead of quietly hiding choices in a second scroll area. */
-  .dock:has(.qcard) {
-    flex-shrink: 1;
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior-y: contain;
-    scroll-padding-block: calc(12px * var(--ev-scale));
-  }
-
-  .qbody {
-    max-height: none;
-    overflow: visible;
   }
 
   .msg-user {

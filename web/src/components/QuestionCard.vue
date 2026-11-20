@@ -24,9 +24,10 @@ const props = defineProps<{
   answer: (id: QuestionId, text: string, answers: readonly string[]) => Promise<void>;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   later: [];
   "open-ticket": [ticketId: string];
+  "select-question": [questionId: QuestionId];
 }>();
 
 const index = ref(0);
@@ -124,12 +125,16 @@ function prev(): void {
   const total = props.questions.length;
   if (total <= 1) return;
   index.value = (index.value + total - 1) % total;
+  const question = props.questions[index.value];
+  if (question) emit("select-question", question.id);
 }
 
 function next(): void {
   const total = props.questions.length;
   if (total <= 1) return;
   index.value = (index.value + 1) % total;
+  const question = props.questions[index.value];
+  if (question) emit("select-question", question.id);
 }
 
 async function submit(): Promise<void> {

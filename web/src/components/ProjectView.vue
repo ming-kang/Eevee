@@ -23,6 +23,7 @@ defineEmits<{
   "open-rail": [tab?: RailTab, jobId?: string];
   "open-ticket": [ticketId: string];
   "close-ticket": [];
+  "question-route": [questionId: QuestionId | undefined];
   "project-changed": [];
 }>();
 
@@ -55,6 +56,7 @@ const selectedView = computed(() =>
     :board="board"
     :conversation="routerConversation"
     :question-id="questionId"
+    @question-route="$emit('question-route', $event)"
     @open-ticket="$emit('open-ticket', $event)"
     @project-changed="$emit('project-changed')"
   />
