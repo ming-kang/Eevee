@@ -7,7 +7,7 @@ import { after, before, type TestContext, test } from "node:test";
 import type { MemorySource } from "../../domain/index.ts";
 import { GitStore } from "./git.ts";
 import { MemoryRound } from "./round.ts";
-import { MemoryConflict, type MemoryPolicy, MemoryStore } from "./store.ts";
+import { MemoryConflict, type MemoryPolicy, MemoryStore, memoryVersion } from "./store.ts";
 
 let dir: string;
 let repo: MemoryStore;
@@ -467,6 +467,7 @@ test("history, show, files and read have no side effects; captureUserEdits is ex
   assert.deepEqual(await store.file("./MEMORY.md"), {
     path: "MEMORY.md",
     content: "hand edited\n",
+    version: memoryVersion("hand edited\n"),
   });
   assert.deepEqual(await versions.log(), original);
   const captured = await store.captureUserEdits();
@@ -475,6 +476,44 @@ test("history, show, files and read have no side effects; captureUserEdits is ex
   assert.equal(await store.captureUserEdits(), undefined);
   assert.equal(await store.apply([], { kind: "router" }), undefined);
   assert.deepEqual(await store.history(0), []);
+});
+
+test("version preconditions validate the whole batch before writes or hand-edit capture", async (t) => {
+  const { dir, store } = await isolated(t);
+  const initial = await store.file("MEMORY.md");
+  assert.match(initial.version, /^[a-f0-9]{64}$/);
+  await writeFile(join(dir, "MEMORY.md"), "hand edit");
+  const history = await store.history();
+  await assert.rejects(
+    store.apply(
+      [
+        { action: "create", file: "new.md", content: "must not be written" },
+        { action: "write", file: "MEMORY.md", content: "stale", version: initial.version },
+      ],
+      { kind: "user" },
+    ),
+    { problem: { code: "memory_changed", file: "MEMORY.md" } },
+  );
+  assert.equal(await store.read("new.md"), undefined);
+  assert.equal(await store.read("MEMORY.md"), "hand edit");
+  assert.deepEqual(await store.history(), history);
+  const results = await Promise.allSettled(
+    ["first", "second"].map((content) =>
+      store.apply([{ action: "write", file: "new.md", content, version: "" }], { kind: "user" }),
+    ),
+  );
+  assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+  assert.equal(results.filter((result) => result.status === "rejected").length, 1);
+  assert.deepEqual(
+    (await store.history()).slice(0, 2).map((change) => change.source.kind),
+    ["user", "user"],
+  );
+  await assert.rejects(
+    store.apply([{ action: "delete", file: "absent.md", version: initial.version }], {
+      kind: "user",
+    }),
+    { problem: { code: "memory_changed", file: "absent.md" } },
+  );
 });
 
 test("applying an edit or full write first captures the same file's hand edits separately", async (t) => {
@@ -516,7 +555,9 @@ test("global policy is enforced for every operation, including undo and hand-edi
     { action: "rename", from: "MEMORY.md", to: "other.md" },
     { action: "rename", from: "other.md", to: "MEMORY.md" },
   ] as const)
-    await assert.rejects(store.apply([op], { kind: "user" }), MemoryConflict);
+    await assert.rejects(store.apply([op], { kind: "user" }), {
+      problem: { code: "memory_restricted" },
+    });
   await assert.rejects(store.read("other.md"), {
     problem: { code: "no_memory_file", file: "other.md" },
   });
@@ -532,12 +573,15 @@ test("global policy is enforced for every operation, including undo and hand-edi
   await store.undo(change.id, { kind: "user" });
   assert.equal(await store.read("MEMORY.md"), "alpha\nbeta\n");
   assert.deepEqual(await versions.changedFiles(), [{ path: "other.md", status: "added" }]);
-  await store.apply([{ action: "delete", file: "MEMORY.md" }], { kind: "user" });
-  assert.deepEqual(await store.files(), []);
-  await store.apply([{ action: "create", file: "MEMORY.md", content: "recreated" }], {
-    kind: "user",
-  });
-  assert.equal(await store.read("MEMORY.md"), "recreated");
+  for (const op of [
+    { action: "delete", file: "MEMORY.md" },
+    { action: "create", file: "MEMORY.md", content: "recreated" },
+    { action: "rename", from: "MEMORY.md", to: "renamed.md" },
+  ] as const)
+    await assert.rejects(store.apply([op], { kind: "user" }), {
+      problem: { code: "memory_restricted" },
+    });
+  assert.equal(await store.read("MEMORY.md"), "alpha\nbeta\n");
 });
 
 test("store paths exclude traversal, Git internals, directories and symlinks", async (t) => {

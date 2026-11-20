@@ -14,6 +14,8 @@ import { useSubmit } from "../../composables/submit.ts";
 import { formatRelativeTime } from "../../lib/time.ts";
 import { showToast } from "../../composables/toasts.ts";
 import FileDiffs from "./FileDiffs.vue";
+import MemoryEditor from "./MemoryEditor.vue";
+import { createMemoryEditor } from "./editor.ts";
 import Icon from "../../ui/Icon.vue";
 import Skeleton from "../../ui/Skeleton.vue";
 import Button from "../../ui/Button.vue";
@@ -51,6 +53,13 @@ const filesError = ref<string>();
 const fileError = ref<string>();
 const confirmChange = ref<MemoryChange>();
 const undoing = useSubmit();
+const editor = createMemoryEditor(props.client, () => props.project.id, async (draft) => {
+  if (draft.project !== props.project.id || draft.scope !== scope.value) return;
+  fileContents.value = {};
+  changeDetails.value = {};
+  const next = draft.mode === "new" || draft.mode === "rename" ? draft.name : draft.file;
+  await Promise.all([loadScope(), loadFiles(next)]);
+});
 
 let requestSeq = 0;
 let filesSeq = 0;
@@ -107,10 +116,8 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-watch(
-  confirmChange,
-  (val) => emit("modal-change", val !== undefined),
-);
+watch([confirmChange, editor.draft], ([change, draft]) =>
+  emit("modal-change", change !== undefined || draft !== undefined));
 
 onUnmounted(() => {
   emit("modal-change", false);
@@ -220,6 +227,7 @@ async function loadFiles(preferredFile?: string): Promise<void> {
 watch(
   [() => props.project.id, scope],
   () => {
+    editor.close();
     mobileDetail.value = false;
     selected.value = undefined;
     selectedFile.value = undefined;
@@ -353,6 +361,7 @@ const DETAIL_HEAD = `flex items-start gap-3 ${MEASURE} [&_h2]:text-(length:--ev-
           </div>
         </template>
         <template v-else>
+          <Button v-if="scope === 'project'" class="mb-2" size="sm" @click="editor.open('new', scope)">{{ t("New file") }}</Button>
           <p v-if="filesError" class="error hint">{{ filesError }}</p>
           <Skeleton v-else-if="loadingFiles && files.length === 0" />
           <div v-else class="flex flex-col gap-px">
@@ -388,6 +397,13 @@ const DETAIL_HEAD = `flex items-start gap-3 ${MEASURE} [&_h2]:text-(length:--ev-
                   <span v-if="selectedFileContent !== undefined">{{ t("{n} line|{n} lines", { n: selectedFileLines.length }) }}</span>
                   <span v-if="activeFileEntry">{{ formatBytes(activeFileEntry.size) }}</span>
                 </div>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <Button size="sm" @click="editor.open('edit', scope, selectedFile)">{{ t("Edit") }}</Button>
+                <template v-if="scope === 'project'">
+                  <Button size="sm" @click="editor.open('rename', scope, selectedFile)">{{ t("Rename") }}</Button>
+                  <Button size="sm" variant="danger" @click="editor.open('delete', scope, selectedFile)">{{ t("Delete") }}</Button>
+                </template>
               </div>
             </div>
             <p v-if="fileError" class="error hint">{{ fileError }}</p>
@@ -439,6 +455,7 @@ const DETAIL_HEAD = `flex items-start gap-3 ${MEASURE} [&_h2]:text-(length:--ev-
       </div>
     </div>
 
+    <MemoryEditor :editor="editor" />
     <Dialog :open="confirmChange !== undefined" :title="t('Undo this change?')" @close="confirmChange = undefined">
       <template v-if="confirmChange">
         <p class="muted">

@@ -1,5 +1,20 @@
 /** Chinese for every English string the interface shows (`t()` in `i18n.ts`). */
 export const zhCN: Record<string, string> = {
+  "Memory file {file} changed. Reload the latest content and try again.":
+    "记忆文件 {file} 已更改。请重新加载最新内容后重试。",
+  "Global memory only supports editing the existing MEMORY.md file":
+    "全局记忆仅支持编辑现有的 MEMORY.md 文件",
+  "New memory file": "新建记忆文件",
+  "Rename memory file": "重命名记忆文件",
+  "Delete memory file?": "删除记忆文件？",
+  "Edit memory file": "编辑记忆文件",
+  "File name": "文件名",
+  Content: "内容",
+  "Delete this file? You can undo the change from History.":
+    "删除此文件？你可以在历史记录中撤销此更改。",
+  "Reload latest content": "重新加载最新内容",
+  Rename: "重命名",
+  "New file": "新建文件",
   "(context reset)": "（上下文已重置）",
   "(no output yet)": "（暂无输出）",
   "(questions waiting)": "（有待回答问题）",
