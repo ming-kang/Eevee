@@ -14,3 +14,5 @@ export type AgentExtensionName = (typeof AGENT_EXTENSIONS)[keyof typeof AGENT_EX
 export const READONLY_TOOLS = ["read", "ls", "find", "grep"] as const;
 export const CODING_TOOLS = ["read", "write", "edit", "bash"] as const;
 export const TASKS_TOOLS = ["tasks"] as const;
+export const CODEMODE_TOOLS = ["codemode"] as const;
+export const TOOL_SEARCH_TOOLS = ["tool_search"] as const;
