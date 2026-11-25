@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels, type FauxProviderHandle, fauxProvider } from "@earendil-works/pi-ai";
+import type { Storage } from "@earendil-works/pi-durable";
 import {
   type AgentChange,
   type Conversation,
@@ -27,11 +28,14 @@ export type TestHarness = {
 export type TestHarnessOptions = {
   readonly extensions?: readonly Extension[];
   readonly cwd?: string;
+  readonly storage?: Storage;
+  readonly env?: NodeExecutionEnv;
 };
 
 export async function createTestHarness(options: TestHarnessOptions = {}): Promise<TestHarness> {
-  const dir = await mkdtemp(join(tmpdir(), "eevee-harness-test-"));
-  const env = new NodeExecutionEnv({ cwd: dir });
+  const ownsDir = options.env === undefined;
+  const dir = options.env?.cwd ?? (await mkdtemp(join(tmpdir(), "eevee-harness-test-")));
+  const env = options.env ?? new NodeExecutionEnv({ cwd: options.cwd ?? dir });
   const faux = fauxProvider({ models: [{ id: "faux-1" }] });
   const models = createModels();
   models.setProvider(faux.provider);
@@ -40,7 +44,7 @@ export async function createTestHarness(options: TestHarnessOptions = {}): Promi
     registry.install(extension);
   }
   const harness = await Harness.open(
-    new MemoryStorage(),
+    options.storage ?? new MemoryStorage(),
     {
       models,
       registry,
@@ -70,7 +74,10 @@ export async function createTestHarness(options: TestHarnessOptions = {}): Promi
       ),
     cleanup: async () => {
       await harness.close(BACKGROUND_CONTEXT);
-      await rm(dir, { recursive: true, force: true });
+      if (ownsDir) {
+        // A killed child can still hold the directory briefly on Windows.
+        await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      }
     },
   };
 }
