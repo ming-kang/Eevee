@@ -43,7 +43,7 @@ export type RouterProjectInfo = {
 
 export type RouterExtensionDeps = {
   readonly cwd: string;
-  readonly workerModel?: ModelChoice;
+  readonly workerModel?: ModelChoice | (() => ModelChoice | undefined);
   readonly workerInstructions?: string;
   readonly project?: () => RouterProjectInfo;
   readonly projectMemory?: () => string | undefined;
@@ -102,7 +102,9 @@ export function createRouterExtension(deps: RouterExtensionDeps) {
       status: lit("queued"),
     }),
     execute: async (args, api, context): Promise<ToolExecutionResult> => {
-      let model = deps.workerModel;
+      const defaultWorkerModel =
+        typeof deps.workerModel === "function" ? deps.workerModel() : deps.workerModel;
+      let model = defaultWorkerModel;
       if (args.model !== undefined) {
         model = parseModelSpec(args.model, api.models);
         if (model === undefined) {
@@ -113,7 +115,7 @@ export function createRouterExtension(deps: RouterExtensionDeps) {
       }
       const cwd = resolve(deps.cwd, args.cwd ?? ".");
       const thinkingLevel: ModelThinkingLevel | undefined =
-        args.thinkingLevel ?? deps.workerModel?.thinkingLevel;
+        args.thinkingLevel ?? defaultWorkerModel?.thinkingLevel;
       const effectiveModel =
         model === undefined
           ? undefined

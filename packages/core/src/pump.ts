@@ -21,7 +21,7 @@ import {
 import { SerialPass } from "./serial-pass.ts";
 
 export type ProjectPumpOptions = {
-  readonly maxActiveWorkers?: number;
+  readonly maxActiveWorkers?: number | (() => number);
   readonly context?: Context;
   readonly onError?: (error: unknown) => void;
 };
@@ -41,14 +41,15 @@ function describeFailure(failure: RunFailure): string {
 export class ProjectPump {
   readonly #harness: Harness;
   readonly #context: Context;
-  readonly #maxActiveWorkers: number;
+  readonly #maxActiveWorkers: () => number;
   readonly #observation: CommitObservation;
   readonly #pass: SerialPass;
 
   constructor(harness: Harness, options: ProjectPumpOptions = {}) {
     this.#harness = harness;
     this.#context = options.context ?? BACKGROUND_CONTEXT;
-    this.#maxActiveWorkers = options.maxActiveWorkers ?? 3;
+    const max = options.maxActiveWorkers;
+    this.#maxActiveWorkers = typeof max === "function" ? max : () => max ?? 3;
     this.#pass = new SerialPass(
       async () => {
         await this.pumpPendingStarts();
@@ -99,7 +100,7 @@ export class ProjectPump {
       }
 
       const active = await this.#activeRunCount(workers);
-      if (active >= this.#maxActiveWorkers) return;
+      if (active >= this.#maxActiveWorkers()) return;
 
       for (const start of board.pendingStarts) {
         const worker = workers.get(start.workerId);

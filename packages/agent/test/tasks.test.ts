@@ -312,7 +312,7 @@ test("foreground bash hands off to a background task after backgroundAfterMs", a
   const th = await createTestHarness({
     extensions: [
       createCodingToolsExtension(),
-      createTasksExtension({ manager, backgroundAfterMs: 100 }),
+      createTasksExtension({ manager, backgroundAfterMs: 1500 }),
     ],
   });
   try {
@@ -320,7 +320,8 @@ test("foreground bash hands off to a background task after backgroundAfterMs", a
       fauxAssistantMessage(
         [
           fauxToolCall("bash", {
-            command: "echo before-handoff && sleep 1 && echo after-handoff",
+            command:
+              'echo before-handoff && node -e "setTimeout(() => {}, 3500)" && echo after-handoff',
           }),
         ],
         { stopReason: "toolUse" },

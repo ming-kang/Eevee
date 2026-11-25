@@ -1212,3 +1212,71 @@ test("tool list notifications and reload update bound registries live, and close
     await th.cleanup();
   }
 });
+
+test("McpHub.reconnect reconnects failed or connected servers, skips disabled, and rejects unknown or disabled targets", async () => {
+  const alpha = new FakeMcpServer([tool("alpha_v1", "Alpha v1")]);
+  const flaky = new FakeMcpServer([tool("recovered", "Recovered tool")]);
+  flaky.failInitialize = true;
+  const disabled = new FakeMcpServer([tool("off_tool", "Off")]);
+
+  const hub = createPipeHub({ alpha, flaky, disabled }, [
+    stdioEntry("alpha"),
+    stdioEntry("flaky"),
+    stdioEntry("disabled", { enabled: false }),
+  ]);
+  const th = await createTestHarness();
+  const unbind = hub.bindRegistry(th.registry);
+  try {
+    await hub.start();
+    assert.equal(alpha.connectCount, 1);
+    assert.equal(flaky.connectCount, 1);
+    assert.equal(disabled.connectCount, 0);
+
+    await assert.rejects(hub.reconnect("missing"), /Unknown MCP server "missing"/);
+    await assert.rejects(hub.reconnect("disabled"), /MCP server "disabled" is disabled/);
+
+    // Recover flaky server via targeted reconnect
+    flaky.failInitialize = false;
+    const afterFlaky = await hub.reconnect("flaky");
+    const flakySnap = afterFlaky.find((s) => s.name === "flaky");
+    assert.equal(flakySnap?.status, "connected");
+    assert.equal(flakySnap?.toolCount, 1);
+    assert.equal(flakySnap?.error, undefined);
+    assert.equal(flaky.connectCount, 2);
+    assert.ok(
+      th.registry
+        .snapshot()
+        .extension(mcpServerExtensionName("flaky"))
+        ?.tools?.some((t) => t.name === "mcp__flaky__recovered"),
+    );
+
+    // Failing targeted reconnect leaves status = "failed" cleanly without throwing
+    alpha.setTools([tool("alpha_v2", "Alpha v2")]);
+    alpha.failInitialize = true;
+    const failedSnap = (await hub.reconnect("alpha")).find((s) => s.name === "alpha");
+    assert.equal(failedSnap?.status, "failed");
+    assert.equal(failedSnap?.toolCount, 0);
+    assert.match(failedSnap?.error ?? "", /initialize failed/);
+
+    // Reconnect all enabled servers concurrently (without touching disabled)
+    alpha.failInitialize = false;
+    const allSnaps = await hub.reconnect();
+    assert.equal(allSnaps.find((s) => s.name === "alpha")?.status, "connected");
+    assert.equal(allSnaps.find((s) => s.name === "flaky")?.status, "connected");
+    assert.equal(allSnaps.find((s) => s.name === "disabled")?.status, "idle");
+    assert.equal(disabled.connectCount, 0);
+    assert.ok(
+      th.registry
+        .snapshot()
+        .extension(mcpServerExtensionName("alpha"))
+        ?.tools?.some((t) => t.name === "mcp__alpha__alpha_v2"),
+    );
+
+    await hub.close();
+    await assert.rejects(hub.reconnect(), /MCP hub is closed/);
+  } finally {
+    unbind();
+    await hub.close();
+    await th.cleanup();
+  }
+});

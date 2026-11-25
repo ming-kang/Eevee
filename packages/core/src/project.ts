@@ -2,17 +2,22 @@ import { basename, resolve } from "node:path";
 import { BACKGROUND_CONTEXT, type Context, withAbortSignal } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
 import {
+  type CompactionSettings,
   type Conversation,
   type ConversationId,
   type ConversationView,
   type ConversationWatch,
   type ConversationWindow,
+  type Cursor,
   createRegistry,
+  type EntryQuery,
+  type EntryRecord,
   type Extension,
   Harness,
   type HarnessSettings,
   type Observation,
   type Observer,
+  type Page,
   type Report,
   ROOT_CONVERSATION_ID,
   type Storage,
@@ -33,6 +38,10 @@ import {
   createTasksExtension,
   createToolSearchExtension,
   getConversationTask,
+  type McpHub,
+  type ModelChoice,
+  type OutputReadOptions,
+  type OutputSlice,
   TaskManager,
 } from "@eevee/agent";
 import {
@@ -61,7 +70,7 @@ import {
   type WorkerRecord,
 } from "./docs.ts";
 import { answerQuestion as submitQuestionAnswer } from "./extensions/ask-user.ts";
-import { createRouterExtension } from "./extensions/router.ts";
+import { createRouterExtension, type RouterProjectInfo } from "./extensions/router.ts";
 import { createWorkerExtension } from "./extensions/worker.ts";
 import { ProjectPump } from "./pump.ts";
 import {
@@ -69,9 +78,24 @@ import {
   DEFAULT_ROUTER_INSTRUCTIONS,
   DEFAULT_WORKER_INSTRUCTIONS,
   type ModelSlots,
+  resolveRoleExtensions,
 } from "./roles.ts";
+import { SerialPass } from "./serial-pass.ts";
 import { resolveWorkerStatus } from "./status.ts";
 import { BoardFeed, type BoardView, projectUsage, readBoardView } from "./views.ts";
+
+export type {
+  Cursor,
+  EntryQuery,
+  EntryRecord,
+  Page,
+  ScanOrder,
+} from "@earendil-works/pi-durable";
+export type {
+  BackgroundTaskRecord,
+  OutputReadOptions,
+  OutputSlice,
+} from "@eevee/agent";
 
 export const DEFAULT_ROUTER_CONTEXT_TOKENS = 80_000;
 
@@ -80,17 +104,19 @@ export type OpenProjectDeps = {
   readonly title?: string;
   readonly workspaces?: readonly string[];
   readonly models: Models | (() => Models);
-  readonly modelSlots?: ModelSlots;
+  readonly modelSlots?: ModelSlots | (() => ModelSlots);
   readonly settings?: HarnessSettings;
   readonly extensions?: readonly Extension[];
   readonly baseExtensionOptions?: BaseExtensionOptions;
-  readonly maxActiveWorkers?: number;
+  readonly maxActiveWorkers?: number | (() => number);
   readonly backgroundAfterMs?: number | (() => number);
-  readonly routerContextTokens?: number;
+  readonly routerContextTokens?: number | (() => number);
+  readonly projectMeta?: () => RouterProjectInfo;
   readonly projectMemory?: () => string | undefined;
   readonly modelProfiles?: () => string | undefined | Promise<string | undefined>;
   readonly memorySummarizer?: () => Summarize | undefined;
   readonly memoryBudget?: () => RecallBudget;
+  readonly mcpHub?: McpHub;
   readonly taskManager?: TaskManager;
   readonly taskLogPath?: (conversationId: ConversationId, taskId: string) => string;
   readonly routerInstructions?: string;
@@ -132,12 +158,26 @@ export type ProjectHandle = {
     context?: Context,
     window?: ConversationWindow,
   ): Promise<Observation<ConversationView>>;
+  listEntries(
+    target: ProjectTarget,
+    query: Omit<EntryQuery, "conversationId">,
+    limit: number,
+    cursor?: Cursor,
+    context?: Context,
+  ): Promise<Page<EntryRecord, Cursor>>;
   interrupt(target: ProjectTarget, context?: Context): Promise<void>;
+  retry(target: ProjectTarget, context?: Context): Promise<Submission>;
   answerQuestion(
     questionId: QuestionId,
     answers: readonly string[],
     context?: Context,
   ): Promise<QuestionRecord>;
+  readWorkerTaskOutput(
+    workerId: WorkerId,
+    taskId: string,
+    options?: OutputReadOptions,
+    context?: Context,
+  ): Promise<{ readonly task: BackgroundTaskRecord; readonly output: OutputSlice }>;
   killWorkerTask(
     workerId: WorkerId,
     taskId: string,
@@ -149,8 +189,18 @@ export type ProjectHandle = {
   tickets(context?: Context): Promise<TicketRecord[]>;
   questions(context?: Context): Promise<QuestionRecord[]>;
   usage(context?: Context): Promise<UsageState>;
+  syncMcpExtensions(context?: Context): Promise<void>;
+  reconfigureRouterModel(model: ModelChoice | undefined, context?: Context): Promise<void>;
+  requestPump(): void;
   close(): Promise<void>;
 };
+
+function sameExtensionOrder(current: readonly Extension[], desired: readonly Extension[]): boolean {
+  return (
+    current.length === desired.length &&
+    current.every((extension, idx) => extension.name === desired[idx]?.name)
+  );
+}
 
 export async function openProject(storage: Storage, deps: OpenProjectDeps): Promise<ProjectHandle> {
   const living = new AbortController();
@@ -161,6 +211,14 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
   ).map((dir) => resolve(projectRoot, dir));
   const title = deps.title ?? (basename(projectRoot) || projectRoot);
   const getModels = typeof deps.models === "function" ? deps.models : () => deps.models as Models;
+  const modelSlotsOption = deps.modelSlots;
+  const getModelSlots =
+    typeof modelSlotsOption === "function" ? modelSlotsOption : () => modelSlotsOption ?? {};
+  const routerContextTokensOption = deps.routerContextTokens;
+  const getRouterContextTokens =
+    typeof routerContextTokensOption === "function"
+      ? routerContextTokensOption
+      : () => routerContextTokensOption ?? DEFAULT_ROUTER_CONTEXT_TOKENS;
 
   const registry = createRegistry();
   const ownsTaskManager = deps.taskManager === undefined;
@@ -195,9 +253,12 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     }),
     createRouterExtension({
       cwd: projectRoot,
-      workerModel: deps.modelSlots?.worker ?? deps.modelSlots?.router,
+      workerModel: () => {
+        const slots = getModelSlots();
+        return slots.worker ?? slots.router;
+      },
       workerInstructions,
-      project: () => ({ title, workspaces }),
+      project: () => deps.projectMeta?.() ?? { title, workspaces },
       ...(deps.projectMemory === undefined ? {} : { projectMemory: deps.projectMemory }),
       ...(deps.modelProfiles === undefined ? {} : { modelProfiles: deps.modelProfiles }),
       tasks: taskManager,
@@ -215,37 +276,51 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
   ];
   for (const extension of extensions) registry.install(extension);
 
+  const unbindMcp = deps.mcpHub === undefined ? undefined : deps.mcpHub.bindRegistry(registry);
+
   const environments = new Map<string, NodeExecutionEnv>();
   const settings: HarnessSettings = {
     ...(deps.settings ?? {}),
     followUpMode: deps.settings?.followUpMode ?? "all",
   };
-  const harness = await Harness.open(
-    storage,
-    {
-      models: getModels,
-      registry,
-      settings,
-      ...(deps.onReport === undefined ? {} : { onReport: deps.onReport }),
-      env: (target) => {
-        const cwd = target.cwd === undefined ? projectRoot : resolve(projectRoot, target.cwd);
-        let environment = environments.get(cwd);
-        if (environment === undefined) {
-          environment = new NodeExecutionEnv({ cwd });
-          environments.set(cwd, environment);
-        }
-        return environment;
+  let harness: Harness;
+  try {
+    harness = await Harness.open(
+      storage,
+      {
+        models: getModels,
+        registry,
+        settings,
+        ...(deps.onReport === undefined ? {} : { onReport: deps.onReport }),
+        env: (target) => {
+          const cwd = target.cwd === undefined ? projectRoot : resolve(projectRoot, target.cwd);
+          let environment = environments.get(cwd);
+          if (environment === undefined) {
+            environment = new NodeExecutionEnv({ cwd });
+            environments.set(cwd, environment);
+          }
+          return environment;
+        },
       },
-    },
-    BACKGROUND_CONTEXT,
-  );
+      BACKGROUND_CONTEXT,
+    );
+  } catch (error) {
+    unbindMcp?.();
+    if (ownsTaskManager) taskManager.killAll();
+    throw error;
+  }
   harnessRef = harness;
 
   let boardFeed: BoardFeed | undefined;
   let pump: ProjectPump | undefined;
   let dreamer: Dreamer | undefined;
+  let mcpSyncPass: SerialPass | undefined;
+  let unsubscribeMcp: (() => void) | undefined;
   const disposeResources = async () => {
     living.abort();
+    unsubscribeMcp?.();
+    mcpSyncPass?.close();
+    await mcpSyncPass?.idle();
     await boardFeed?.close();
     pump?.close();
     await pump?.idle();
@@ -253,6 +328,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     try {
       await harness.close(BACKGROUND_CONTEXT);
     } finally {
+      unbindMcp?.();
       if (ownsTaskManager) taskManager.killAll();
       await Promise.all(
         [...environments.values()].map((environment) =>
@@ -267,15 +343,16 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
   try {
     const resolveMemoryBudget = (): RecallBudget => {
       if (deps.memoryBudget !== undefined) return deps.memoryBudget();
-      const routerModelChoice = deps.modelSlots?.router;
+      const routerModelChoice = getModelSlots().router;
       const contextWindow =
         routerModelChoice === undefined
           ? undefined
           : getModels().getModel(routerModelChoice.provider, routerModelChoice.modelId)
               ?.contextWindow;
-      return recallBudget(contextWindow, deps.routerContextTokens ?? DEFAULT_ROUTER_CONTEXT_TOKENS);
+      return recallBudget(contextWindow, getRouterContextTokens());
     };
 
+    const initialRouterModel = getModelSlots().router;
     const initialCompaction =
       deps.memoryBudget !== undefined
         ? (resolveMemoryBudget().compaction ?? undefined)
@@ -284,7 +361,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
           : (resolveMemoryBudget().compaction ?? undefined);
     const routerAgent = buildRouterAgent({
       snapshot: registry.snapshot(),
-      ...(deps.modelSlots?.router === undefined ? {} : { model: deps.modelSlots.router }),
+      ...(initialRouterModel === undefined ? {} : { model: initialRouterModel }),
       instructions: deps.routerInstructions ?? DEFAULT_ROUTER_INSTRUCTIONS,
       cwd: projectRoot,
       ...(initialCompaction === undefined ? {} : { compaction: initialCompaction }),
@@ -293,7 +370,17 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     const rootExisted =
       (await harness.conversation(ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT)) !== undefined;
     root = await harness.root(BACKGROUND_CONTEXT, { agent: routerAgent });
-    if (rootExisted) await root.configure(routerAgent, BACKGROUND_CONTEXT);
+    if (rootExisted) {
+      const clearModelFields =
+        deps.modelSlots === undefined
+          ? {}
+          : initialRouterModel === undefined
+            ? ({ model: null, thinkingLevel: null } as const)
+            : initialRouterModel.thinkingLevel === undefined
+              ? ({ thinkingLevel: null } as const)
+              : {};
+      await root.configure({ ...routerAgent, ...clearModelFields }, BACKGROUND_CONTEXT);
+    }
 
     memoryStore = await MemoryStore.open(harness, root.id, livingContext);
     const createdDreamer = new Dreamer({
@@ -307,7 +394,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
         ),
       summarizer: () => {
         if (deps.memorySummarizer !== undefined) return deps.memorySummarizer();
-        const choice = deps.modelSlots?.dreamer;
+        const choice = getModelSlots().dreamer;
         return choice === undefined ? undefined : createSummarizer(getModels(), choice);
       },
       harness,
@@ -333,6 +420,43 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
       ...(deps.onPumpError === undefined ? {} : { onError: deps.onPumpError }),
     });
 
+    const syncMcpExtensionsNow = async (): Promise<void> => {
+      if (living.signal.aborted) return;
+      const snapshot = registry.snapshot();
+      const routerExtensions = resolveRoleExtensions("router", snapshot);
+      const workerExtensions = resolveRoleExtensions("worker", snapshot);
+      const currentRouter = await root.agent(livingContext);
+      if (!sameExtensionOrder(currentRouter.extensions, routerExtensions)) {
+        await root.configure({ extensions: routerExtensions }, livingContext);
+      }
+      const workers = await readWorkers(harness, livingContext);
+      for (const worker of workers) {
+        if (worker.closedAt !== undefined) continue;
+        const conversation = await harness.conversation(worker.conversationId, livingContext);
+        if (conversation === undefined) continue;
+        const currentWorker = await conversation.agent(livingContext);
+        if (!sameExtensionOrder(currentWorker.extensions, workerExtensions)) {
+          await conversation.configure({ extensions: workerExtensions }, livingContext);
+        }
+      }
+    };
+
+    mcpSyncPass = new SerialPass(syncMcpExtensionsNow, {
+      ...(deps.onPumpError === undefined
+        ? {}
+        : {
+            onError: (error) => {
+              if (!living.signal.aborted) deps.onPumpError?.(error);
+            },
+          }),
+    });
+    if (deps.mcpHub !== undefined) {
+      unsubscribeMcp = deps.mcpHub.subscribe(() => {
+        mcpSyncPass?.request();
+      });
+      mcpSyncPass.request();
+    }
+
     await createdDreamer.sync(livingContext);
     createdDreamer.wake();
     pump.request();
@@ -344,6 +468,8 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
 
   const activeDreamer = dreamer;
   const activeBoardFeed = boardFeed;
+  const activePump = pump;
+  const activeMcpSyncPass = mcpSyncPass;
 
   async function resolveTargetConversation(
     target: ProjectTarget,
@@ -425,12 +551,52 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
       const conversation = await resolveTargetConversation(target, context);
       return harness.observeConversation(conversation.id, observer, context, window);
     },
+    listEntries: async (target, query, limit, cursor, context = BACKGROUND_CONTEXT) => {
+      const conversation = await resolveTargetConversation(target, context);
+      return conversation.entries(query, limit, cursor, context);
+    },
     interrupt: async (target, context = BACKGROUND_CONTEXT) => {
       const conversation = await resolveTargetConversation(target, context);
       await conversation.abort(context);
     },
+    retry: async (target, context = BACKGROUND_CONTEXT) => {
+      if (target === "router") {
+        return root.submit({ type: "continue" }, context);
+      }
+      const worker = await readWorker(harness, target, context);
+      if (worker === undefined) throw new Error(`Unknown worker ${target}`);
+      if (worker.closedAt !== undefined) throw new Error(`Worker ${target} is closed`);
+      const conversation = await harness.conversation(worker.conversationId, context);
+      if (conversation === undefined) throw new Error(`Worker ${target} has no conversation`);
+      const submissionId = await harness.commit(async (tx) => {
+        const current = await tx.doc(WorkerDoc, target, null);
+        if (current.conversationId !== worker.conversationId) {
+          throw new Error(`Unknown worker ${target}`);
+        }
+        if (current.closedAt !== undefined) throw new Error(`Worker ${target} is closed`);
+        const board = await tx.doc(ProjectBoardDoc);
+        const queued = board.pendingStarts.some((start) => start.workerId === target);
+        if (queued) throw new Error(`Worker ${target} is queued`);
+        return conversation.submit(tx, { type: "continue" });
+      }, context);
+      const submission = await harness.submission(submissionId, context);
+      if (submission === undefined) throw new Error(`Submission ${submissionId} does not exist`);
+      return submission;
+    },
     answerQuestion: (questionId, answers, context = BACKGROUND_CONTEXT) =>
       submitQuestionAnswer(harness, questionId, answers, context),
+    readWorkerTaskOutput: async (workerId, taskId, options, context = BACKGROUND_CONTEXT) => {
+      const worker = await readWorker(harness, workerId, context);
+      if (worker === undefined) throw new Error(`Unknown worker ${workerId}`);
+      const record = await getConversationTask(harness, worker.conversationId, taskId, context);
+      if (record === undefined) {
+        throw new Error(`Unknown task ${taskId} on worker ${workerId}`);
+      }
+      return {
+        task: record,
+        output: await taskManager.readOutput(worker.conversationId, taskId, record, options),
+      };
+    },
     killWorkerTask: async (workerId, taskId, context = BACKGROUND_CONTEXT) => {
       const worker = await readWorker(harness, workerId, context);
       if (worker === undefined) throw new Error(`Unknown worker ${workerId}`);
@@ -472,6 +638,34 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
       return readQuestions(harness, context, board);
     },
     usage: (context = BACKGROUND_CONTEXT) => projectUsage(harness, root.id, context),
+    syncMcpExtensions: async (context = BACKGROUND_CONTEXT) => {
+      context.abortSignal?.throwIfAborted();
+      activeMcpSyncPass.request();
+      await activeMcpSyncPass.idle();
+      context.abortSignal?.throwIfAborted();
+    },
+    reconfigureRouterModel: async (model, context = BACKGROUND_CONTEXT) => {
+      const compaction: CompactionSettings | null | undefined =
+        deps.memoryBudget !== undefined
+          ? (deps.memoryBudget().compaction ?? null)
+          : deps.settings?.compaction !== undefined
+            ? undefined
+            : (recallBudget(
+                model === undefined
+                  ? undefined
+                  : getModels().getModel(model.provider, model.modelId)?.contextWindow,
+                getRouterContextTokens(),
+              ).compaction ?? null);
+      await root.configure(
+        {
+          model: model === undefined ? null : { provider: model.provider, modelId: model.modelId },
+          thinkingLevel: model?.thinkingLevel ?? null,
+          ...(compaction === undefined ? {} : { compaction }),
+        },
+        context,
+      );
+    },
+    requestPump: () => activePump.request(),
     close: () => {
       closePromise ??= disposeResources();
       return closePromise;

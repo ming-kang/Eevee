@@ -2,7 +2,7 @@
   "name": "@eevee/engine",
   "version": "0.0.1",
   "private": true,
-  "description": "Local Eevee daemon: multi-project hosting, shared MCP hub, auth/models store, and HTTP/WS API.",
+  "description": "Local Eevee daemon: multi-project hosting, shared MCP hub, auth/models store, and HTTP/SSE API.",
   "type": "module",
   "exports": {
     ".": {
@@ -24,7 +24,6 @@
     "@eevee/agent": "0.0.1",
     "@eevee/core": "0.0.1",
     "@eevee/memory": "0.0.1",
-    "@eevee/protocol": "0.0.1",
-    "ws": "8.21.0"
+    "@eevee/protocol": "0.0.1"
   }
 }

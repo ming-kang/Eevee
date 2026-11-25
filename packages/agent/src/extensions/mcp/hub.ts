@@ -69,6 +69,7 @@ type ServerRuntime = {
   pendingClient?: McpClient;
   connecting?: Promise<McpClient>;
   closePromise?: Promise<void>;
+  reconnecting?: Promise<void>;
 };
 
 type RegistryBinding = {
@@ -276,6 +277,40 @@ export class McpHub {
     await Promise.allSettled(starts);
   }
 
+  async reconnect(serverName?: string): Promise<McpServerSnapshot[]> {
+    if (this.closed) throw new Error("MCP hub is closed");
+    if (serverName !== undefined) {
+      const runtime = this.servers.get(serverName);
+      if (runtime === undefined) throw new Error(`Unknown MCP server "${serverName}"`);
+      if (!isEnabled(runtime.entry)) throw new Error(`MCP server "${serverName}" is disabled`);
+      await this.reconnectRuntime(runtime);
+      return this.status();
+    }
+    const enabled = [...this.servers.values()].filter((runtime) => isEnabled(runtime.entry));
+    await Promise.allSettled(enabled.map((runtime) => this.reconnectRuntime(runtime)));
+    return this.status();
+  }
+
+  private async reconnectRuntime(runtime: ServerRuntime): Promise<void> {
+    if (runtime.reconnecting !== undefined) return runtime.reconnecting;
+    const run = (async () => {
+      await this.closeRuntime(runtime);
+      if (this.closed || this.servers.get(runtime.entry.name) !== runtime) return;
+      runtime.closePromise = undefined;
+      runtime.status = "idle";
+      runtime.tools = [];
+      runtime.instructions = undefined;
+      runtime.error = undefined;
+      await this.connectRuntime(runtime, true).catch(() => undefined);
+    })();
+    runtime.reconnecting = run;
+    try {
+      await run;
+    } finally {
+      if (runtime.reconnecting === run) runtime.reconnecting = undefined;
+    }
+  }
+
   status(): McpServerSnapshot[] {
     return [...this.servers.values()].map((runtime) => ({
       name: runtime.entry.name,
@@ -423,18 +458,18 @@ export class McpHub {
   }
 
   private notify(): void {
-    for (const listener of [...this.listeners]) {
-      try {
-        listener();
-      } catch {
-        // Listener failures must not turn a background server notification into an unhandled error.
-      }
-    }
     for (const binding of [...this.bindings]) {
       try {
         this.publishTo(binding);
       } catch {
         // A registry may reject an update while it is being torn down; later state changes republish.
+      }
+    }
+    for (const listener of [...this.listeners]) {
+      try {
+        listener();
+      } catch {
+        // Listener failures must not turn a background server notification into an unhandled error.
       }
     }
   }

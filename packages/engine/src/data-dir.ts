@@ -4,6 +4,8 @@ import { AUTH_FILE, MODELS_FILE, MODELS_STORE_FILE } from "@eevee/agent/models";
 
 export const ENGINE_DB_FILE = "engine.sqlite";
 export const PROJECT_DB_FILE = "session.sqlite";
+export const ENGINE_TOKEN_FILE = "engine.token";
+export const ENGINE_STATE_FILE = "engine.json";
 
 export type DataDirLayout = {
   readonly root: string;
@@ -11,6 +13,8 @@ export type DataDirLayout = {
   readonly modelsFile: string;
   readonly modelsStoreFile: string;
   readonly engineDb: string;
+  readonly tokenFile: string;
+  readonly stateFile: string;
   readonly projectsDir: string;
 };
 
@@ -34,6 +38,8 @@ export function dataDirLayout(root: string): DataDirLayout {
     modelsFile: join(resolved, MODELS_FILE),
     modelsStoreFile: join(resolved, MODELS_STORE_FILE),
     engineDb: join(resolved, ENGINE_DB_FILE),
+    tokenFile: join(resolved, ENGINE_TOKEN_FILE),
+    stateFile: join(resolved, ENGINE_STATE_FILE),
     projectsDir: join(resolved, "projects"),
   };
 }

@@ -293,6 +293,7 @@ test("full optics paper scenario: ask_user, background simulation, inspect_worke
     const answered = await p.answerQuestion("q1", ["1550nm", "SiN"]);
     assert.deepEqual(answered.answers, ["1550nm", "SiN"]);
     assert.ok(answered.answeredAt !== undefined);
+    assert.deepEqual(JSON.parse(JSON.stringify(answered)), answered);
 
     await waitFor(async () => {
       const rootEntries = await entries(p.root);
@@ -431,6 +432,12 @@ test("user direct observation and intervention: watch, direct send, interrupt, a
       BACKGROUND_CONTEXT,
     );
     assert.equal(tasksAfterInterrupt[0]?.status, "running");
+
+    const taskOutput = await p.readWorkerTaskOutput("w1", "task-1");
+    assert.equal(taskOutput.task.id, "task-1");
+    assert.equal(taskOutput.task.status, "running");
+    const entryPage = await p.listEntries("w1", { order: "ascending" }, 2);
+    assert.ok(entryPage.items.length >= 1);
 
     // Now user kills the background task directly: status becomes killed, w1 becomes idle,
     // and NO extra notice is sent to Router (confirmed decision #3).
@@ -759,6 +766,67 @@ test("reopening Storage preserves Workers, Tickets, and unanswered Questions and
       await p2.close();
     }
   } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
+test("ProjectHandle.retry continues Router/Worker after failure and rejects queued/closed workers", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "eevee-core-4b-retry-"));
+  const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+  const models = createModels();
+  models.setProvider(faux.provider);
+  const storage = new MemoryStorage();
+
+  const project = await openProject(storage, {
+    cwd: dir,
+    models,
+    modelSlots: {
+      router: { provider: faux.provider.id, modelId: MODEL_ID },
+      worker: { provider: faux.provider.id, modelId: MODEL_ID },
+    },
+    maxActiveWorkers: 0,
+    baseExtensionOptions: { globalDir: join(dir, "no-global") },
+  });
+
+  try {
+    let failRouterOnce = true;
+    const brain: FauxResponseFactory = (context) => {
+      const last = lastMessage(context);
+      if (last?.role === "user") {
+        const text = messageText(last);
+        if (text.includes("spawn-queued")) {
+          if (failRouterOnce) {
+            failRouterOnce = false;
+            return fauxAssistantMessage("", {
+              stopReason: "error",
+              errorMessage: "invalid_api_key",
+            });
+          }
+          return fauxAssistantMessage(
+            [fauxToolCall("spawn_worker", { name: "qworker", prompt: "do work" })],
+            { stopReason: "toolUse" },
+          );
+        }
+      }
+      if (last?.role === "toolResult" && last.toolName === "spawn_worker") {
+        return fauxAssistantMessage("router queued qworker");
+      }
+      throw new Error(`unexpected context: ${JSON.stringify(context.messages)}`);
+    };
+    faux.setResponses(responses(brain));
+
+    const first = await project.send("spawn-queued");
+    const firstSettled = await first.wait(BACKGROUND_CONTEXT);
+    assert.equal(firstSettled.status, "unanswered");
+
+    const retriedRouter = await project.retry("router");
+    const retriedSettled = await retriedRouter.wait(BACKGROUND_CONTEXT);
+    assert.equal(retriedSettled.status, "done");
+
+    await assert.rejects(project.retry("w1"), /Worker w1 is queued/);
+    await assert.rejects(project.retry("w99"), /Unknown worker w99/);
+  } finally {
+    await project.close();
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });

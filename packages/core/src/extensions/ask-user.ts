@@ -129,7 +129,20 @@ export async function answerQuestion(
     }
 
     const answerList = [...answers];
-    const content = formatQuestionAnswerNotice({ ...doc }, answerList);
+    const items = doc.items.map((item) => ({
+      question: item.question,
+      ...(item.options === undefined ? {} : { options: [...item.options] }),
+      ...(item.recommended === undefined ? {} : { recommended: item.recommended }),
+    }));
+    const answeredAt = Date.now();
+    const content = formatQuestionAnswerNotice(
+      {
+        id: doc.id,
+        items,
+        askedAt: doc.askedAt,
+      },
+      answerList,
+    );
     await router.submit(tx, {
       type: "input",
       content,
@@ -146,7 +159,13 @@ export async function answerQuestion(
       },
     });
     doc.answers = answerList;
-    doc.answeredAt = Date.now();
-    return { ...doc, answers: [...doc.answers] };
+    doc.answeredAt = answeredAt;
+    return {
+      id: doc.id,
+      items,
+      answers: [...answerList],
+      askedAt: doc.askedAt,
+      answeredAt,
+    };
   }, context);
 }
