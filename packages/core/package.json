@@ -1,0 +1,26 @@
+{
+  "name": "@eevee/core",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Storage-agnostic Eevee orchestration: Router, Workers, attached Tickets, and user questions.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "eevee-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "test": "node ../../scripts/test.ts packages/core"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "1.6.0",
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-durable": "1.6.0",
+    "@earendil-works/pi-schema": "1.6.0",
+    "@eevee/agent": "0.0.1",
+    "@eevee/memory": "0.0.1"
+  }
+}

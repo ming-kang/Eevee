@@ -1,0 +1,26 @@
+{
+  "name": "@eevee/cli",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Command-line client for Eevee.",
+  "type": "module",
+  "bin": {
+    "eevee": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "eevee-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "test": "node ../../scripts/test.ts apps/cli"
+  },
+  "dependencies": {
+    "@eevee/engine": "0.0.1",
+    "@eevee/protocol": "0.0.1",
+    "commander": "15.1.0"
+  }
+}

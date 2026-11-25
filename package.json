@@ -1,0 +1,33 @@
+{
+  "name": "@astralyn/eevee",
+  "version": "0.0.1",
+  "private": true,
+  "description": "A proactive agent built on Pi-Durable: one Router with binary-forest memory, and reusable Workers running in the background.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=26.0.0"
+  },
+  "scripts": {
+    "dev": "node --conditions=eevee-source apps/cli/src/index.ts",
+    "clean": "node scripts/clean.ts",
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "check:deps": "node scripts/check-deps.ts",
+    "check:boundaries": "node scripts/check-boundaries.ts",
+    "test": "node scripts/test.ts",
+    "check": "npm run check:deps && npm run check:boundaries && npm run typecheck && npm run lint && npm test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.8",
+    "@types/node": "26.6.6",
+    "@types/ws": "8.18.2",
+    "typescript": "6.0.3"
+  }
+}

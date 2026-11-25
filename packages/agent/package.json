@@ -1,0 +1,41 @@
+{
+  "name": "@eevee/agent",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Internal Pi-Durable agent foundation for Eevee: models, context, and built-in extensions.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "eevee-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./models": {
+      "eevee-source": "./src/models/index.ts",
+      "types": "./dist/models/index.d.ts",
+      "import": "./dist/models/index.js"
+    },
+    "./context": {
+      "eevee-source": "./src/context/index.ts",
+      "types": "./dist/context/index.d.ts",
+      "import": "./dist/context/index.js"
+    },
+    "./extensions": {
+      "eevee-source": "./src/extensions/index.ts",
+      "types": "./dist/extensions/index.d.ts",
+      "import": "./dist/extensions/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "test": "node ../../scripts/test.ts packages/agent"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "1.6.0",
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-codemode": "1.6.0",
+    "@earendil-works/pi-durable": "1.6.0",
+    "@earendil-works/pi-mcp": "1.6.0",
+    "@earendil-works/pi-schema": "1.6.0"
+  }
+}

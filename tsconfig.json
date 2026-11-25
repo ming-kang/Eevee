@@ -1,0 +1,46 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@eevee/agent": [
+        "./packages/agent/src/index.ts"
+      ],
+      "@eevee/agent/models": [
+        "./packages/agent/src/models/index.ts"
+      ],
+      "@eevee/agent/context": [
+        "./packages/agent/src/context/index.ts"
+      ],
+      "@eevee/agent/extensions": [
+        "./packages/agent/src/extensions/index.ts"
+      ],
+      "@eevee/memory": [
+        "./packages/memory/src/index.ts"
+      ],
+      "@eevee/core": [
+        "./packages/core/src/index.ts"
+      ],
+      "@eevee/protocol": [
+        "./packages/protocol/src/index.ts"
+      ],
+      "@eevee/engine": [
+        "./packages/engine/src/index.ts"
+      ],
+      "@eevee/cli": [
+        "./apps/cli/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "apps/*/src/**/*.ts",
+    "apps/*/test/**/*.ts",
+    "scripts/**/*.ts"
+  ],
+  "exclude": [
+    "**/dist/**",
+    "**/node_modules/**"
+  ]
+}
