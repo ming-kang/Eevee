@@ -1,8 +1,34 @@
 export {
+  AGENTS_SKILLS_DIR,
+  BASE_EXTENSION,
+  type BaseExtensionOptions,
   CONTEXT_FILE,
+  type ContextDiscovery,
+  type ContextFile,
+  createBaseExtension,
+  discoverContext,
+  discoverContextFiles,
+  discoverSkills,
+  guidelinesForTools,
+  PI_SKILLS_DIR,
   type PromptContextOptions,
+  parseSkillFrontmatter,
   SKILL_FILE,
+  SKILLS_DIR,
+  type SkillInfo,
+  type ToolGuideline,
 } from "./context/index.ts";
+export {
+  CODING_TOOLS_EXTENSION,
+  type CodingToolsOptions,
+  createCodingToolsExtension,
+  createReadonlyToolsExtension,
+  findTool,
+  grepTool,
+  lsTool,
+  READONLY_TOOLS_EXTENSION,
+} from "./extensions/coding-tools/index.ts";
+export { matchGlob, walkFiles } from "./extensions/coding-tools/listings.ts";
 export {
   AGENT_EXTENSIONS,
   type AgentExtensionName,
@@ -11,8 +37,32 @@ export {
   TASKS_TOOLS,
 } from "./extensions/index.ts";
 export {
+  createShellPathsExtension,
+  type Mount,
+  parseMounts,
+  rewriteDrivePath,
+  rewriteMsysPath,
+  rewriteToolArguments,
+  SHELL_PATHS_EXTENSION,
+  type ShellPathsOptions,
+  toWindowsPath,
+} from "./extensions/shell-paths/index.ts";
+export {
   AUTH_FILE,
+  AuthStorage,
+  type ComposeOptions,
+  composeProviders,
+  FileModelsStore,
   MODELS_FILE,
   MODELS_STORE_FILE,
   type ModelChoice,
+  type ModelEntryConfig,
+  type ModelOverrideConfig,
+  ModelRuntime,
+  type ModelRuntimeOptions,
+  type ModelsConfig,
+  ModelsConfigError,
+  type ProviderConfig,
+  parseModelsConfig,
+  type ResolvedModelChoice,
 } from "./models/index.ts";
