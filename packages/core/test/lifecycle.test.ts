@@ -109,11 +109,15 @@ async function waitFor(
   }
 }
 
+function lastMessage(context: TranscriptContext): Message | undefined {
+  return context.messages.findLast((message) => message.role !== "system");
+}
+
 test("extended bidirectional scenario: message_router, message_worker, reuse with newTicket, and close_ticket(closeWorker)", async () => {
   const fixture = await openFixture();
   try {
     const brain: FauxResponseFactory = (context) => {
-      const last = context.messages.at(-1);
+      const last = lastMessage(context);
       const serialized = JSON.stringify(context.messages);
       if (last?.role === "user") {
         const text = messageText(last);
@@ -265,7 +269,7 @@ test("handoff dedupes only when message_router is in the last tool round, not an
   const fixture = await openFixture();
   try {
     const brain: FauxResponseFactory = (context) => {
-      const last = context.messages.at(-1);
+      const last = lastMessage(context);
       if (last?.role === "user") {
         const text = messageText(last);
         if (text.includes("spawn-progress-worker")) {
@@ -336,7 +340,7 @@ test("Worker waiting on background bash stays running without occupying run slot
     let worker2RanWhileWorker1BgActive = false;
 
     const brain: FauxResponseFactory = async (context) => {
-      const last = context.messages.at(-1);
+      const last = lastMessage(context);
       const serialized = JSON.stringify(context.messages);
       if (last?.role === "user") {
         const text = messageText(last);
@@ -422,7 +426,7 @@ test("model error reports worker_failed once across restarts while interrupt sta
 
   try {
     const brain: FauxResponseFactory = (context) => {
-      const last = context.messages.at(-1);
+      const last = lastMessage(context);
       if (last?.role === "user") {
         const text = messageText(last);
         if (text.includes("spawn-failing-worker")) {
@@ -501,7 +505,7 @@ test("aborting Router preserves queued Worker notices (onAbort keep) for the nex
     let nextRouterContext: TranscriptContext | undefined;
 
     const brain: FauxResponseFactory = (context, options) => {
-      const last = context.messages.at(-1);
+      const last = lastMessage(context);
       const serialized = JSON.stringify(context.messages);
       if (last?.role === "user") {
         const text = messageText(last);
@@ -583,7 +587,7 @@ test("multiple concurrent Worker handoffs batch into a single Router run (follow
     let batchedContext: TranscriptContext | undefined;
 
     const brain: FauxResponseFactory = (context) => {
-      const last = context.messages.at(-1);
+      const last = lastMessage(context);
       const serialized = JSON.stringify(context.messages);
       if (last?.role === "user") {
         const text = messageText(last);
@@ -658,7 +662,7 @@ test("stop_worker close kills background tasks, prevents waking, and cancels the
     let bgTaskStarted = false;
 
     const brain: FauxResponseFactory = (context) => {
-      const last = context.messages.at(-1);
+      const last = lastMessage(context);
       const serialized = JSON.stringify(context.messages);
       if (last?.role === "user") {
         const text = messageText(last);
@@ -774,7 +778,7 @@ test("Ticket and Worker tool error paths and queued message_worker behavior", as
   });
   try {
     const brain: FauxResponseFactory = (context) => {
-      const last = context.messages.at(-1);
+      const last = lastMessage(context);
       if (last?.role === "user") {
         const text = messageText(last);
         if (text.includes("exercise-all-errors")) {

@@ -119,7 +119,7 @@ async function waitFor(
 }
 
 function lastMessage(context: TranscriptContext): Message | undefined {
-  return context.messages.at(-1);
+  return context.messages.findLast((message) => message.role !== "system");
 }
 
 test("minimal end-to-end loop delegates to a Worker and receives its handoff", async () => {

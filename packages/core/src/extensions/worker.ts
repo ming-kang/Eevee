@@ -11,6 +11,7 @@ import {
   hook,
   hookTask,
   ROOT_CONVERSATION_ID,
+  section,
   type TaskRuntime,
   type ToolExecutionResult,
 } from "@earendil-works/pi-durable";
@@ -167,7 +168,11 @@ export function createWorkerHandoffTask() {
   });
 }
 
-export function createWorkerExtension() {
+export type WorkerExtensionDeps = {
+  readonly projectMemory?: () => string | undefined;
+};
+
+export function createWorkerExtension(deps: WorkerExtensionDeps = {}) {
   const handoffTask = createWorkerHandoffTask();
   const messageRouter = defineTool({
     name: "message_router",
@@ -234,9 +239,25 @@ export function createWorkerExtension() {
     },
   });
 
+  const workerRoleSection = section("worker-role", (input) => {
+    const lines = [
+      "You are an autonomous Eevee Worker assigned by the Router.",
+      ...(input.agent.cwd === undefined ? [] : [`Workspace: ${input.agent.cwd}`]),
+      "- Use message_router to send progress updates, ask for missing decisions/data, or deliver results immediately.",
+      "- When your run ends with no active background tasks and your last tool round did not call message_router, your final reply is automatically handed off to the Router.",
+    ];
+    return lines.join("\n");
+  });
+
+  const projectMemorySection = section("project-memory", () => {
+    const text = deps.projectMemory?.()?.trim();
+    return text ? text : undefined;
+  });
+
   return defineExtension({
     name: WORKER_EXTENSION,
     tools: [messageRouter],
+    sections: [workerRoleSection, projectMemorySection],
     tasks: [handoffTask],
     hooks: [
       hook(GenerationTask, {

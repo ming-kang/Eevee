@@ -1,15 +1,18 @@
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
+import type { Context } from "@earendil-works/chord/context";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import {
   type ConversationId,
   configure,
   defineExtension,
   defineTool,
+  type EntryRecord,
+  section,
   type ToolExecutionResult,
   UserEntry,
 } from "@earendil-works/pi-durable";
 import { bool, lit, num, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
-import type { ModelChoice } from "@eevee/agent";
+import { type ModelChoice, TaskManager } from "@eevee/agent";
 import {
   ProjectBoardDoc,
   readBoard,
@@ -27,13 +30,30 @@ import {
   ROUTER_EXTENSION,
 } from "../roles.ts";
 import { resolveWorkerStatus } from "../status.ts";
+import { formatBoardOverview, readBoardView } from "../views.ts";
+import { createAskUserTool } from "./ask-user.ts";
+import { createInspectWorkerTool } from "./inspect-worker.ts";
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+export type RouterProjectInfo = {
+  readonly title: string;
+  readonly workspaces: readonly string[];
+};
 
 export type RouterExtensionDeps = {
   readonly cwd: string;
   readonly workerModel?: ModelChoice;
   readonly workerInstructions?: string;
+  readonly project?: () => RouterProjectInfo;
+  readonly projectMemory?: () => string | undefined;
+  readonly modelProfiles?: () => string | undefined | Promise<string | undefined>;
+  readonly tasks?: TaskManager;
+  readonly readEntries?: (
+    conversationId: ConversationId,
+    limit: number,
+    context: Context,
+  ) => Promise<readonly EntryRecord[]>;
 };
 
 export type SpawnWorkerResult = {
@@ -513,8 +533,39 @@ export function createRouterExtension(deps: RouterExtensionDeps) {
     },
   });
 
+  const askUser = createAskUserTool();
+  const inspectWorker = createInspectWorkerTool({
+    tasks: deps.tasks ?? new TaskManager(),
+    readEntries: deps.readEntries ?? (async () => []),
+  });
+
+  const projectSection = section("project", () => {
+    const info = deps.project?.() ?? {
+      title: basename(deps.cwd) || deps.cwd,
+      workspaces: [deps.cwd],
+    };
+    const dirs = info.workspaces.length > 0 ? info.workspaces : [deps.cwd];
+    return [`Project: ${info.title}`, "Workspaces:", ...dirs.map((dir) => `- ${dir}`)].join("\n");
+  });
+
+  const boardOverviewSection = section("board-overview", async (input, context) => {
+    const view = await readBoardView(input.read, context);
+    return formatBoardOverview(view);
+  });
+
+  const modelProfilesSection = section("model-profiles", async () => {
+    const text = (await deps.modelProfiles?.())?.trim();
+    return text ? text : undefined;
+  });
+
+  const projectMemorySection = section("project-memory", () => {
+    const text = deps.projectMemory?.()?.trim();
+    return text ? text : undefined;
+  });
+
   return defineExtension({
     name: ROUTER_EXTENSION,
-    tools: [spawnWorker, messageWorker, closeTicket, stopWorker],
+    tools: [spawnWorker, messageWorker, closeTicket, stopWorker, inspectWorker, askUser],
+    sections: [projectSection, boardOverviewSection, modelProfilesSection, projectMemorySection],
   });
 }

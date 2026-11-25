@@ -188,6 +188,29 @@ export async function readTickets(
   return tickets;
 }
 
+export async function readQuestion(
+  reader: DocumentReader,
+  questionId: QuestionId,
+  context: Context,
+): Promise<QuestionDocState | undefined> {
+  const question = await reader.snapshot(QuestionDoc, questionId, context);
+  return question === undefined ? undefined : { ...question };
+}
+
+export async function readQuestions(
+  reader: DocumentReader,
+  context: Context,
+  board?: ProjectBoardState,
+): Promise<QuestionDocState[]> {
+  const resolved = board ?? (await readBoard(reader, context));
+  const questions: QuestionDocState[] = [];
+  for (const questionId of resolved?.questionOrder ?? []) {
+    const question = await readQuestion(reader, questionId, context);
+    if (question !== undefined) questions.push(question);
+  }
+  return questions;
+}
+
 export async function findWorkerByConversation(
   reader: DocumentReader,
   conversationId: ConversationId,
