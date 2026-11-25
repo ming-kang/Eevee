@@ -16,8 +16,8 @@
 | `@eevee/agent` | `packages/agent` | 基于 `pi-durable` 的 Agent 底座：模型/凭据、上下文发现与内置扩展 | 无 |
 | `@eevee/memory` | `packages/memory` | 会话级二叉森林记忆（`zoom` / `search`）与独立静默 Dreamer | 无 |
 | `@eevee/core` | `packages/core` | 存储无关的编排逻辑：Project、Router、Worker、Ticket、Question | `agent`, `memory` |
-| `@eevee/protocol` | `packages/protocol` | 运行时无关的 HTTP/WS Schema 与契约（基于 `pi-schema`） | 无 |
-| `@eevee/engine` | `packages/engine` | 本地常驻守护进程：`engine.sqlite`、多项目托管、共享 MCP Hub、HTTP/WS | `agent`, `memory`, `core`, `protocol` |
+| `@eevee/protocol` | `packages/protocol` | 运行时无关的 HTTP/SSE Schema 与契约（基于 `pi-schema`） | 无 |
+| `@eevee/engine` | `packages/engine` | 本地常驻守护进程：`engine.sqlite`、多项目托管、共享 MCP Hub、HTTP/SSE | `agent`, `memory`, `core`, `protocol` |
 | `@eevee/cli` | `apps/cli` | 命令行客户端 | `protocol`, `engine` |
 
 ### `@eevee/agent` 内部模块

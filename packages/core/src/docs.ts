@@ -1,0 +1,198 @@
+import type { Context } from "@earendil-works/chord/context";
+import {
+  type ConversationId,
+  type DocumentReader,
+  defineDoc,
+  defineDocFamily,
+  type TaskId,
+} from "@earendil-works/pi-durable";
+import type { ModelChoice } from "@eevee/agent";
+
+export const NOTICE_ENTRY_KIND = "eevee.notice";
+
+export type WorkerId = `w${number}`;
+export type TicketId = `t${number}`;
+export type QuestionId = `q${number}`;
+
+export type WorkerStatus = "queued" | "running" | "idle" | "closed";
+export type TicketStatus = "open" | "done" | "cancelled";
+
+export type PendingStart = {
+  workerId: WorkerId;
+  requestId: string;
+};
+
+export type ProjectBoardState = {
+  nextWorkerSeq: number;
+  nextTicketSeq: number;
+  nextQuestionSeq: number;
+  workerOrder: WorkerId[];
+  ticketOrder: TicketId[];
+  questionOrder: QuestionId[];
+  pendingStarts: PendingStart[];
+};
+
+export type WorkerDocState = {
+  id: WorkerId;
+  name: string;
+  cwd: string;
+  conversationId: ConversationId;
+  model?: ModelChoice;
+  activeTicketId?: TicketId;
+  reportedFailure?: TaskId;
+  createdAt: number;
+  closedAt?: number;
+};
+
+export type TicketDocState = {
+  id: TicketId;
+  workerId: WorkerId;
+  title: string;
+  status: TicketStatus;
+  note?: string;
+  createdAt: number;
+  closedAt?: number;
+};
+
+export type QuestionItem = {
+  readonly question: string;
+  readonly options?: string[];
+  readonly recommended?: string;
+};
+
+export type QuestionDocState = {
+  id: QuestionId;
+  items: QuestionItem[];
+  answers?: string[];
+  askedAt: number;
+  answeredAt?: number;
+  withdrawnAt?: number;
+};
+
+export type WorkerRecord = WorkerDocState & {
+  readonly status: WorkerStatus;
+};
+export type TicketRecord = TicketDocState;
+export type QuestionRecord = QuestionDocState;
+
+export const ProjectBoardDoc = defineDoc<ProjectBoardState>({
+  kind: "eevee.project-board",
+  version: 1,
+  scope: "session",
+  initial: () => ({
+    nextWorkerSeq: 1,
+    nextTicketSeq: 1,
+    nextQuestionSeq: 1,
+    workerOrder: [],
+    ticketOrder: [],
+    questionOrder: [],
+    pendingStarts: [],
+  }),
+  checkpointWhen: () => true,
+});
+
+export const WorkerDoc = defineDocFamily<WorkerDocState, null>({
+  kind: "eevee.worker",
+  version: 1,
+  scope: "session",
+  family: true,
+  initial: () => ({
+    id: "w0" as WorkerId,
+    name: "",
+    cwd: "",
+    conversationId: 0 as ConversationId,
+    createdAt: 0,
+  }),
+  checkpointWhen: () => true,
+});
+
+export const TicketDoc = defineDocFamily<TicketDocState, null>({
+  kind: "eevee.ticket",
+  version: 1,
+  scope: "session",
+  family: true,
+  initial: () => ({
+    id: "t0" as TicketId,
+    workerId: "w0" as WorkerId,
+    title: "",
+    status: "open",
+    createdAt: 0,
+  }),
+  checkpointWhen: () => true,
+});
+
+export const QuestionDoc = defineDocFamily<QuestionDocState, null>({
+  kind: "eevee.question",
+  version: 1,
+  scope: "session",
+  family: true,
+  initial: () => ({
+    id: "q0" as QuestionId,
+    items: [],
+    askedAt: 0,
+  }),
+  checkpointWhen: () => true,
+});
+
+export async function readBoard(
+  reader: DocumentReader,
+  context: Context,
+): Promise<ProjectBoardState | undefined> {
+  const board = await reader.snapshot(ProjectBoardDoc, context);
+  return board === undefined ? undefined : { ...board };
+}
+
+export async function readWorker(
+  reader: DocumentReader,
+  workerId: WorkerId,
+  context: Context,
+): Promise<WorkerDocState | undefined> {
+  const worker = await reader.snapshot(WorkerDoc, workerId, context);
+  return worker === undefined ? undefined : { ...worker };
+}
+
+export async function readWorkers(
+  reader: DocumentReader,
+  context: Context,
+  board?: ProjectBoardState,
+): Promise<WorkerDocState[]> {
+  const resolved = board ?? (await readBoard(reader, context));
+  const workers: WorkerDocState[] = [];
+  for (const workerId of resolved?.workerOrder ?? []) {
+    const worker = await readWorker(reader, workerId, context);
+    if (worker !== undefined) workers.push(worker);
+  }
+  return workers;
+}
+
+export async function readTicket(
+  reader: DocumentReader,
+  ticketId: TicketId,
+  context: Context,
+): Promise<TicketDocState | undefined> {
+  const ticket = await reader.snapshot(TicketDoc, ticketId, context);
+  return ticket === undefined ? undefined : { ...ticket };
+}
+
+export async function readTickets(
+  reader: DocumentReader,
+  context: Context,
+  board?: ProjectBoardState,
+): Promise<TicketDocState[]> {
+  const resolved = board ?? (await readBoard(reader, context));
+  const tickets: TicketDocState[] = [];
+  for (const ticketId of resolved?.ticketOrder ?? []) {
+    const ticket = await readTicket(reader, ticketId, context);
+    if (ticket !== undefined) tickets.push(ticket);
+  }
+  return tickets;
+}
+
+export async function findWorkerByConversation(
+  reader: DocumentReader,
+  conversationId: ConversationId,
+  context: Context,
+): Promise<WorkerDocState | undefined> {
+  const workers = await readWorkers(reader, context);
+  return workers.find((worker) => worker.conversationId === conversationId);
+}
