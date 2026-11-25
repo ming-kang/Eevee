@@ -16,6 +16,7 @@ import {
   type QuestionRecord,
   readQuestion,
 } from "../docs.ts";
+import { ProjectError } from "../errors.ts";
 
 export function formatQuestionAnswerNotice(
   question: QuestionDocState,
@@ -98,15 +99,17 @@ export async function answerQuestion(
   context: Context,
 ): Promise<QuestionRecord> {
   const existing = await readQuestion(harness, questionId, context);
-  if (existing === undefined) throw new Error(`Unknown question ${questionId}`);
+  if (existing === undefined)
+    throw new ProjectError("question_not_found", `Unknown question ${questionId}`);
   if (existing.withdrawnAt !== undefined) {
-    throw new Error(`Question ${questionId} was withdrawn`);
+    throw new ProjectError("question_closed", `Question ${questionId} was withdrawn`);
   }
   if (existing.answeredAt !== undefined) {
-    throw new Error(`Question ${questionId} is already answered`);
+    throw new ProjectError("question_closed", `Question ${questionId} is already answered`);
   }
   if (answers.length !== existing.items.length) {
-    throw new Error(
+    throw new ProjectError(
+      "invalid_answer",
       `Question ${questionId} expects ${existing.items.length} answer(s), received ${answers.length}`,
     );
   }
@@ -117,13 +120,16 @@ export async function answerQuestion(
   return harness.commit(async (tx) => {
     const board = await tx.doc(ProjectBoardDoc);
     if (!board.questionOrder.includes(questionId)) {
-      throw new Error(`Unknown question ${questionId}`);
+      throw new ProjectError("question_not_found", `Unknown question ${questionId}`);
     }
     const doc = await tx.doc(QuestionDoc, questionId, null);
-    if (doc.withdrawnAt !== undefined) throw new Error(`Question ${questionId} was withdrawn`);
-    if (doc.answeredAt !== undefined) throw new Error(`Question ${questionId} is already answered`);
+    if (doc.withdrawnAt !== undefined)
+      throw new ProjectError("question_closed", `Question ${questionId} was withdrawn`);
+    if (doc.answeredAt !== undefined)
+      throw new ProjectError("question_closed", `Question ${questionId} is already answered`);
     if (answers.length !== doc.items.length) {
-      throw new Error(
+      throw new ProjectError(
+        "invalid_answer",
         `Question ${questionId} expects ${doc.items.length} answer(s), received ${answers.length}`,
       );
     }

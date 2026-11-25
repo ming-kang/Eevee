@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import type { ConversationWindow, EntryId } from "@earendil-works/pi-durable";
-import { compile } from "@earendil-works/pi-schema";
+import type { Schema, Static } from "@earendil-works/pi-schema";
 import type { OutputReadOptions } from "@eevee/core";
 import {
   AnswerQuestionRequestSchema,
@@ -31,6 +31,7 @@ import {
   TaskReadModeSchema,
   UpdateProjectRequestSchema,
   UpsertMcpServerRequestSchema,
+  validateWithSchema,
   type WorkerId,
   WorkerIdSchema,
 } from "@eevee/protocol";
@@ -40,28 +41,6 @@ import { type Engine, EngineError, type ListEntriesParams, type LoginSseFrame } 
 
 const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
 const SSE_KEEPALIVE_MS = 20_000;
-
-const projectIdValidator = compile(ProjectIdSchema);
-const conversationRefValidator = compile(ConversationRefSchema);
-const questionIdValidator = compile(QuestionIdSchema);
-const workerIdValidator = compile(WorkerIdSchema);
-const createProjectValidator = compile(CreateProjectRequestSchema);
-const updateProjectValidator = compile(UpdateProjectRequestSchema);
-const putProjectMemoryValidator = compile(PutProjectMemoryRequestSchema);
-const sendMessageValidator = compile(SendMessageRequestSchema);
-const answerQuestionValidator = compile(AnswerQuestionRequestSchema);
-const scanOrderValidator = compile(ScanOrderSchema);
-const taskReadModeValidator = compile(TaskReadModeSchema);
-const setApiKeyValidator = compile(SetApiKeyRequestSchema);
-const startLoginValidator = compile(StartLoginRequestSchema);
-const loginInputValidator = compile(LoginInputRequestSchema);
-const refreshModelsValidator = compile(RefreshModelsRequestSchema);
-const modelProfilesValidator = compile(ModelProfilesDocumentSchema);
-const putMcpConfigValidator = compile(PutMcpConfigRequestSchema);
-const upsertMcpServerValidator = compile(UpsertMcpServerRequestSchema);
-const reconnectMcpValidator = compile(ReconnectMcpRequestSchema);
-const engineSettingsValidator = compile(EngineSettingsSchema);
-const configBundleValidator = compile(ConfigBundleSchema);
 
 export type EngineHttpServerOptions = {
   readonly host?: string;
@@ -232,7 +211,7 @@ function parseEntriesQuery(url: URL): ListEntriesParams {
   const orderParam = url.searchParams.get("order");
   let order: ScanOrder | undefined;
   if (orderParam !== null) {
-    const checked = scanOrderValidator.validate(orderParam);
+    const checked = validateWithSchema(ScanOrderSchema, orderParam);
     if (!checked.ok) {
       throw new EngineError(
         400,
@@ -279,7 +258,7 @@ function parseReadWorkerTaskQuery(url: URL): OutputReadOptions {
   const modeParam = url.searchParams.get("mode");
   let mode: TaskReadMode | undefined;
   if (modeParam !== null) {
-    const checked = taskReadModeValidator.validate(modeParam);
+    const checked = validateWithSchema(TaskReadModeSchema, modeParam);
     if (!checked.ok) {
       throw new EngineError(400, "invalid_query", "Query parameter mode must be head or tail");
     }
@@ -362,27 +341,116 @@ function parseWindowParams(url: URL, req: IncomingMessage): ConversationWindow |
   };
 }
 
-function parseProjectIdSegment(raw: string): string {
-  return parseWithSchema(projectIdValidator, raw, "projectId");
-}
-
-function parseConversationRefSegment(raw: string): ConversationRef {
-  return parseWithSchema(conversationRefValidator, raw, "conversationRef");
-}
-
-function parseQuestionIdSegment(raw: string): QuestionId {
-  return parseWithSchema(questionIdValidator, raw, "questionId");
-}
-
-function parseWorkerIdSegment(raw: string): WorkerId {
-  return parseWithSchema(workerIdValidator, raw, "workerId");
-}
-
 function parseNonEmptySegment(raw: string, label: string): string {
   if (raw.trim().length === 0) {
     throw new EngineError(400, "invalid_request", `${label} must not be empty`);
   }
   return raw;
+}
+
+type PathParams = {
+  readonly projectId: string;
+  readonly ref: ConversationRef;
+  readonly questionId: QuestionId;
+  readonly workerId: WorkerId;
+  readonly providerId: string;
+  readonly sessionId: string;
+  readonly serverName: string;
+  readonly taskId: string;
+};
+
+const PATH_PARAM_PARSERS: { readonly [K in keyof PathParams]: (raw: string) => PathParams[K] } = {
+  projectId: (raw) => parseWithSchema(ProjectIdSchema, raw, "projectId"),
+  ref: (raw) => parseWithSchema(ConversationRefSchema, raw, "conversationRef"),
+  questionId: (raw) => parseWithSchema(QuestionIdSchema, raw, "questionId"),
+  workerId: (raw) => parseWithSchema(WorkerIdSchema, raw, "workerId"),
+  providerId: (raw) => parseNonEmptySegment(raw, "providerId"),
+  sessionId: (raw) => parseNonEmptySegment(raw, "sessionId"),
+  serverName: (raw) => parseNonEmptySegment(raw, "serverName"),
+  taskId: (raw) => parseNonEmptySegment(raw, "taskId"),
+};
+
+type ParamName<Path extends string> = Path extends `${string}:${infer Name}/${infer Rest}`
+  ? Name | ParamName<Rest>
+  : Path extends `${string}:${infer Name}`
+    ? Name
+    : never;
+
+type RouteContext<Path extends string> = {
+  readonly req: IncomingMessage;
+  readonly res: ServerResponse;
+  readonly url: URL;
+  readonly params: Pick<PathParams, ParamName<Path> & keyof PathParams>;
+};
+
+type Route = {
+  readonly method: string;
+  readonly pattern: readonly string[];
+  readonly handle: (context: RouteContext<string>) => Promise<void> | void;
+};
+
+function route<Path extends string>(
+  method: string,
+  path: Path,
+  handle: (context: RouteContext<Path>) => Promise<void> | void,
+): Route {
+  return {
+    method,
+    pattern: path.split("/").filter((part) => part.length > 0),
+    handle: handle as Route["handle"],
+  };
+}
+
+function matchesPattern(pattern: readonly string[], segments: readonly string[]): boolean {
+  return (
+    pattern.length === segments.length &&
+    pattern.every((part, index) => part.startsWith(":") || part === segments[index])
+  );
+}
+
+function parsePathParams(
+  pattern: readonly string[],
+  segments: readonly string[],
+): RouteContext<string>["params"] {
+  const params: Record<string, unknown> = {};
+  pattern.forEach((part, index) => {
+    if (!part.startsWith(":")) return;
+    const name = part.slice(1) as keyof PathParams;
+    params[name] = PATH_PARAM_PARSERS[name](segments[index] ?? "");
+  });
+  return params;
+}
+
+async function readBody<S extends Schema>(
+  req: IncomingMessage,
+  schema: S,
+  label: string,
+): Promise<Static<S>> {
+  return parseWithSchema(schema, await readJsonBody(req), label);
+}
+
+async function readOptionalBody<S extends Schema>(
+  req: IncomingMessage,
+  schema: S,
+  label: string,
+): Promise<Static<S>> {
+  return parseWithSchema(schema, await readOptionalJsonBody(req), label);
+}
+
+function openSseStream(res: ServerResponse): ReturnType<typeof setInterval> {
+  res.setTimeout(0);
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.flushHeaders();
+  const keepalive = setInterval(() => {
+    writeSseComment(res, "keepalive");
+  }, SSE_KEEPALIVE_MS);
+  keepalive.unref?.();
+  return keepalive;
 }
 
 export async function startEngineHttpServer(
@@ -401,6 +469,199 @@ export async function startEngineHttpServer(
   const server = createServer((req, res) => {
     void handleRequest(req, res);
   });
+
+  const routes: readonly Route[] = [
+    route("GET", "/health", ({ res }) => {
+      sendJson(res, 200, {
+        ok: true,
+        protocolVersion: ENGINE_PROTOCOL_VERSION,
+        engineVersion: ENGINE_VERSION,
+        pid: process.pid,
+      });
+    }),
+    route("POST", "/shutdown", ({ res }) => {
+      sendJson(res, 200, { ok: true });
+      if (options.onShutdown !== undefined) setImmediate(options.onShutdown);
+    }),
+
+    route("GET", "/providers", async ({ res }) => {
+      sendJson(res, 200, await engine.listProviders());
+    }),
+    route("PUT", "/providers/:providerId/auth/api-key", async ({ req, res, params }) => {
+      const input = await readBody(req, SetApiKeyRequestSchema, "SetApiKeyRequest");
+      sendJson(res, 200, await engine.setProviderApiKey(params.providerId, input));
+    }),
+    route("DELETE", "/providers/:providerId/auth", async ({ res, params }) => {
+      sendJson(res, 200, await engine.logoutProvider(params.providerId));
+    }),
+    route("POST", "/providers/:providerId/auth/login", async ({ req, res, params }) => {
+      const input = await readBody(req, StartLoginRequestSchema, "StartLoginRequest");
+      sendJson(res, 201, engine.startProviderLogin(params.providerId, input));
+    }),
+    route("GET", "/providers/:providerId/auth/login/:sessionId/stream", ({ req, res, params }) => {
+      handleLoginStream(req, res, params.providerId, params.sessionId);
+    }),
+    route(
+      "POST",
+      "/providers/:providerId/auth/login/:sessionId/input",
+      async ({ req, res, params }) => {
+        const input = await readBody(req, LoginInputRequestSchema, "LoginInputRequest");
+        sendJson(res, 200, engine.submitLoginInput(params.providerId, params.sessionId, input));
+      },
+    ),
+    route(
+      "POST",
+      "/providers/:providerId/auth/login/:sessionId/cancel",
+      async ({ req, res, params }) => {
+        await readOptionalJsonBody(req);
+        sendJson(res, 200, engine.cancelLoginSession(params.providerId, params.sessionId));
+      },
+    ),
+
+    route("GET", "/models", async ({ res, url }) => {
+      sendJson(res, 200, await engine.listModels(parseModelsQuery(url)));
+    }),
+    route("POST", "/models/refresh", async ({ req, res }) => {
+      const input = await readOptionalBody(req, RefreshModelsRequestSchema, "RefreshModelsRequest");
+      sendJson(res, 200, await engine.refreshModels(input));
+    }),
+    route("GET", "/models/profiles", ({ res }) => {
+      sendJson(res, 200, engine.getModelProfiles());
+    }),
+    route("PUT", "/models/profiles", async ({ req, res }) => {
+      const input = await readBody(req, ModelProfilesDocumentSchema, "ModelProfilesDocument");
+      sendJson(res, 200, engine.putModelProfiles(input));
+    }),
+
+    route("GET", "/mcp", ({ res }) => {
+      sendJson(res, 200, engine.getMcpState());
+    }),
+    route("PUT", "/mcp", async ({ req, res }) => {
+      const input = await readBody(req, PutMcpConfigRequestSchema, "PutMcpConfigRequest");
+      sendJson(res, 200, await engine.putMcpConfig(input));
+    }),
+    route("PUT", "/mcp/servers/:serverName", async ({ req, res, params }) => {
+      const input = await readBody(req, UpsertMcpServerRequestSchema, "UpsertMcpServerRequest");
+      sendJson(res, 200, await engine.upsertMcpServer(params.serverName, input));
+    }),
+    route("DELETE", "/mcp/servers/:serverName", async ({ res, params }) => {
+      sendJson(res, 200, await engine.deleteMcpServer(params.serverName));
+    }),
+    route("POST", "/mcp/reconnect", async ({ req, res }) => {
+      const input = await readOptionalBody(req, ReconnectMcpRequestSchema, "ReconnectMcpRequest");
+      sendJson(res, 200, await engine.reconnectMcp(input));
+    }),
+
+    route("GET", "/settings", ({ res }) => {
+      sendJson(res, 200, engine.getSettings());
+    }),
+    route("PATCH", "/settings", async ({ req, res }) => {
+      const input = await readBody(req, EngineSettingsSchema, "EngineSettings");
+      sendJson(res, 200, await engine.patchSettings(input));
+    }),
+    route("PUT", "/settings", async ({ req, res }) => {
+      const input = await readBody(req, EngineSettingsSchema, "EngineSettings");
+      sendJson(res, 200, await engine.putSettings(input));
+    }),
+    route("GET", "/config/export", async ({ res }) => {
+      sendJson(res, 200, await engine.exportConfig());
+    }),
+    route("POST", "/config/import", async ({ req, res }) => {
+      const input = await readBody(req, ConfigBundleSchema, "ConfigBundle");
+      sendJson(res, 200, await engine.importConfig(input));
+    }),
+
+    route("GET", "/projects", ({ res }) => {
+      sendJson(res, 200, { projects: engine.listProjects() });
+    }),
+    route("POST", "/projects", async ({ req, res }) => {
+      const input = await readBody(req, CreateProjectRequestSchema, "CreateProjectRequest");
+      sendJson(res, 201, { project: engine.createProject(input) });
+    }),
+    route("GET", "/projects/:projectId", ({ res, params }) => {
+      sendJson(res, 200, { project: engine.getProject(params.projectId) });
+    }),
+    route("PATCH", "/projects/:projectId", async ({ req, res, params }) => {
+      const input = await readBody(req, UpdateProjectRequestSchema, "UpdateProjectRequest");
+      sendJson(res, 200, await engine.updateProject(params.projectId, input));
+    }),
+    route("DELETE", "/projects/:projectId", async ({ res, params }) => {
+      sendJson(res, 200, await engine.deleteProject(params.projectId));
+    }),
+    route("GET", "/projects/:projectId/memory", ({ res, params }) => {
+      sendJson(res, 200, engine.getProjectMemory(params.projectId));
+    }),
+    route("PUT", "/projects/:projectId/memory", async ({ req, res, params }) => {
+      const input = await readBody(req, PutProjectMemoryRequestSchema, "PutProjectMemoryRequest");
+      sendJson(res, 200, engine.putProjectMemory(params.projectId, input));
+    }),
+    route("GET", "/projects/:projectId/usage", async ({ res, params }) => {
+      sendJson(res, 200, await engine.getProjectUsage(params.projectId));
+    }),
+    route("GET", "/projects/:projectId/board", async ({ res, params }) => {
+      sendJson(res, 200, await engine.getBoard(params.projectId));
+    }),
+    route("GET", "/projects/:projectId/board/stream", async ({ req, res, params }) => {
+      await handleBoardStream(req, res, params.projectId);
+    }),
+
+    route(
+      "POST",
+      "/projects/:projectId/conversations/:ref/messages",
+      async ({ req, res, params }) => {
+        const input = await readBody(req, SendMessageRequestSchema, "SendMessageRequest");
+        sendJson(res, 202, await engine.sendMessage(params.projectId, params.ref, input));
+      },
+    ),
+    route(
+      "GET",
+      "/projects/:projectId/conversations/:ref/entries",
+      async ({ res, url, params }) => {
+        const query = parseEntriesQuery(url);
+        sendJson(res, 200, await engine.listEntries(params.projectId, params.ref, query));
+      },
+    ),
+    route("POST", "/projects/:projectId/conversations/:ref/interrupt", async ({ res, params }) => {
+      sendJson(res, 200, await engine.interrupt(params.projectId, params.ref));
+    }),
+    route("POST", "/projects/:projectId/conversations/:ref/retry", async ({ res, params }) => {
+      sendJson(res, 202, await engine.retry(params.projectId, params.ref));
+    }),
+    route(
+      "GET",
+      "/projects/:projectId/conversations/:ref/stream",
+      async ({ req, res, url, params }) => {
+        const window = parseWindowParams(url, req);
+        await handleConversationStream(req, res, params.projectId, params.ref, window);
+      },
+    ),
+    route(
+      "POST",
+      "/projects/:projectId/questions/:questionId/answer",
+      async ({ req, res, params }) => {
+        const input = await readBody(req, AnswerQuestionRequestSchema, "AnswerQuestionRequest");
+        const result = await engine.answerQuestion(params.projectId, params.questionId, input);
+        sendJson(res, 200, result);
+      },
+    ),
+    route(
+      "GET",
+      "/projects/:projectId/workers/:workerId/tasks/:taskId",
+      async ({ res, url, params }) => {
+        const query = parseReadWorkerTaskQuery(url);
+        const { projectId, workerId, taskId } = params;
+        sendJson(res, 200, await engine.readWorkerTask(projectId, workerId, taskId, query));
+      },
+    ),
+    route(
+      "POST",
+      "/projects/:projectId/workers/:workerId/tasks/:taskId/kill",
+      async ({ res, params }) => {
+        const { projectId, workerId, taskId } = params;
+        sendJson(res, 200, await engine.killWorkerTask(projectId, workerId, taskId));
+      },
+    ),
+  ];
 
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (!verifyBearerToken(req.headers.authorization, options.token)) {
@@ -438,499 +699,18 @@ export async function startEngineHttpServer(
     const method = req.method ?? "GET";
 
     try {
-      if (segments.length === 1 && segments[0] === "health") {
-        if (method !== "GET") {
-          sendMethodNotAllowed(res, method, "GET");
-          return;
+      const candidates = routes.filter((candidate) => matchesPattern(candidate.pattern, segments));
+      const matched = candidates.find((candidate) => candidate.method === method);
+      if (matched === undefined) {
+        if (candidates.length === 0) {
+          sendProblem(res, 404, { code: "not_found", message: "Route not found" });
+        } else {
+          sendMethodNotAllowed(res, method, candidates.map((c) => c.method).join(", "));
         }
-        sendJson(res, 200, {
-          ok: true,
-          protocolVersion: ENGINE_PROTOCOL_VERSION,
-          engineVersion: ENGINE_VERSION,
-          pid: process.pid,
-        });
         return;
       }
-
-      if (segments.length === 1 && segments[0] === "shutdown") {
-        if (method !== "POST") {
-          sendMethodNotAllowed(res, method, "POST");
-          return;
-        }
-        sendJson(res, 200, { ok: true });
-        if (options.onShutdown !== undefined) setImmediate(options.onShutdown);
-        return;
-      }
-
-      if (segments.length === 1 && segments[0] === "providers") {
-        if (method !== "GET") {
-          sendMethodNotAllowed(res, method, "GET");
-          return;
-        }
-        sendJson(res, 200, await engine.listProviders());
-        return;
-      }
-
-      if (
-        segments.length === 4 &&
-        segments[0] === "providers" &&
-        segments[2] === "auth" &&
-        segments[3] === "api-key"
-      ) {
-        if (method !== "PUT") {
-          sendMethodNotAllowed(res, method, "PUT");
-          return;
-        }
-        const providerId = parseNonEmptySegment(segments[1] ?? "", "providerId");
-        const rawBody = await readJsonBody(req);
-        const input = parseWithSchema(setApiKeyValidator, rawBody, "SetApiKeyRequest");
-        sendJson(res, 200, await engine.setProviderApiKey(providerId, input));
-        return;
-      }
-
-      if (segments.length === 3 && segments[0] === "providers" && segments[2] === "auth") {
-        if (method !== "DELETE") {
-          sendMethodNotAllowed(res, method, "DELETE");
-          return;
-        }
-        const providerId = parseNonEmptySegment(segments[1] ?? "", "providerId");
-        sendJson(res, 200, await engine.logoutProvider(providerId));
-        return;
-      }
-
-      if (
-        segments.length === 4 &&
-        segments[0] === "providers" &&
-        segments[2] === "auth" &&
-        segments[3] === "login"
-      ) {
-        if (method !== "POST") {
-          sendMethodNotAllowed(res, method, "POST");
-          return;
-        }
-        const providerId = parseNonEmptySegment(segments[1] ?? "", "providerId");
-        const rawBody = await readJsonBody(req);
-        const input = parseWithSchema(startLoginValidator, rawBody, "StartLoginRequest");
-        sendJson(res, 201, engine.startProviderLogin(providerId, input));
-        return;
-      }
-
-      if (
-        segments.length === 6 &&
-        segments[0] === "providers" &&
-        segments[2] === "auth" &&
-        segments[3] === "login" &&
-        segments[5] === "stream"
-      ) {
-        if (method !== "GET") {
-          sendMethodNotAllowed(res, method, "GET");
-          return;
-        }
-        const providerId = parseNonEmptySegment(segments[1] ?? "", "providerId");
-        const sessionId = parseNonEmptySegment(segments[4] ?? "", "sessionId");
-        handleLoginStream(req, res, providerId, sessionId);
-        return;
-      }
-
-      if (
-        segments.length === 6 &&
-        segments[0] === "providers" &&
-        segments[2] === "auth" &&
-        segments[3] === "login" &&
-        segments[5] === "input"
-      ) {
-        if (method !== "POST") {
-          sendMethodNotAllowed(res, method, "POST");
-          return;
-        }
-        const providerId = parseNonEmptySegment(segments[1] ?? "", "providerId");
-        const sessionId = parseNonEmptySegment(segments[4] ?? "", "sessionId");
-        const rawBody = await readJsonBody(req);
-        const input = parseWithSchema(loginInputValidator, rawBody, "LoginInputRequest");
-        sendJson(res, 200, engine.submitLoginInput(providerId, sessionId, input));
-        return;
-      }
-
-      if (
-        segments.length === 6 &&
-        segments[0] === "providers" &&
-        segments[2] === "auth" &&
-        segments[3] === "login" &&
-        segments[5] === "cancel"
-      ) {
-        if (method !== "POST") {
-          sendMethodNotAllowed(res, method, "POST");
-          return;
-        }
-        const providerId = parseNonEmptySegment(segments[1] ?? "", "providerId");
-        const sessionId = parseNonEmptySegment(segments[4] ?? "", "sessionId");
-        await readOptionalJsonBody(req);
-        sendJson(res, 200, engine.cancelLoginSession(providerId, sessionId));
-        return;
-      }
-
-      if (segments.length === 1 && segments[0] === "models") {
-        if (method !== "GET") {
-          sendMethodNotAllowed(res, method, "GET");
-          return;
-        }
-        const query = parseModelsQuery(url);
-        sendJson(res, 200, await engine.listModels(query));
-        return;
-      }
-
-      if (segments.length === 2 && segments[0] === "models" && segments[1] === "refresh") {
-        if (method !== "POST") {
-          sendMethodNotAllowed(res, method, "POST");
-          return;
-        }
-        const rawBody = await readOptionalJsonBody(req);
-        const input = parseWithSchema(refreshModelsValidator, rawBody, "RefreshModelsRequest");
-        sendJson(res, 200, await engine.refreshModels(input));
-        return;
-      }
-
-      if (segments.length === 2 && segments[0] === "models" && segments[1] === "profiles") {
-        if (method === "GET") {
-          sendJson(res, 200, engine.getModelProfiles());
-          return;
-        }
-        if (method === "PUT") {
-          const rawBody = await readJsonBody(req);
-          const input = parseWithSchema(modelProfilesValidator, rawBody, "ModelProfilesDocument");
-          sendJson(res, 200, engine.putModelProfiles(input));
-          return;
-        }
-        sendMethodNotAllowed(res, method, "GET, PUT");
-        return;
-      }
-
-      if (segments.length === 1 && segments[0] === "mcp") {
-        if (method === "GET") {
-          sendJson(res, 200, engine.getMcpState());
-          return;
-        }
-        if (method === "PUT") {
-          const rawBody = await readJsonBody(req);
-          const input = parseWithSchema(putMcpConfigValidator, rawBody, "PutMcpConfigRequest");
-          sendJson(res, 200, await engine.putMcpConfig(input));
-          return;
-        }
-        sendMethodNotAllowed(res, method, "GET, PUT");
-        return;
-      }
-
-      if (segments.length === 3 && segments[0] === "mcp" && segments[1] === "servers") {
-        const serverName = parseNonEmptySegment(segments[2] ?? "", "serverName");
-        if (method === "PUT") {
-          const rawBody = await readJsonBody(req);
-          const input = parseWithSchema(
-            upsertMcpServerValidator,
-            rawBody,
-            "UpsertMcpServerRequest",
-          );
-          sendJson(res, 200, await engine.upsertMcpServer(serverName, input));
-          return;
-        }
-        if (method === "DELETE") {
-          sendJson(res, 200, await engine.deleteMcpServer(serverName));
-          return;
-        }
-        sendMethodNotAllowed(res, method, "PUT, DELETE");
-        return;
-      }
-
-      if (segments.length === 2 && segments[0] === "mcp" && segments[1] === "reconnect") {
-        if (method !== "POST") {
-          sendMethodNotAllowed(res, method, "POST");
-          return;
-        }
-        const rawBody = await readOptionalJsonBody(req);
-        const input = parseWithSchema(reconnectMcpValidator, rawBody, "ReconnectMcpRequest");
-        sendJson(res, 200, await engine.reconnectMcp(input));
-        return;
-      }
-
-      if (segments.length === 1 && segments[0] === "settings") {
-        if (method === "GET") {
-          sendJson(res, 200, engine.getSettings());
-          return;
-        }
-        if (method === "PATCH") {
-          const rawBody = await readJsonBody(req);
-          const input = parseWithSchema(engineSettingsValidator, rawBody, "EngineSettings");
-          sendJson(res, 200, await engine.patchSettings(input));
-          return;
-        }
-        if (method === "PUT") {
-          const rawBody = await readJsonBody(req);
-          const input = parseWithSchema(engineSettingsValidator, rawBody, "EngineSettings");
-          sendJson(res, 200, await engine.putSettings(input));
-          return;
-        }
-        sendMethodNotAllowed(res, method, "GET, PATCH, PUT");
-        return;
-      }
-
-      if (segments.length === 2 && segments[0] === "config" && segments[1] === "export") {
-        if (method !== "GET") {
-          sendMethodNotAllowed(res, method, "GET");
-          return;
-        }
-        sendJson(res, 200, await engine.exportConfig());
-        return;
-      }
-
-      if (segments.length === 2 && segments[0] === "config" && segments[1] === "import") {
-        if (method !== "POST") {
-          sendMethodNotAllowed(res, method, "POST");
-          return;
-        }
-        const rawBody = await readJsonBody(req);
-        const input = parseWithSchema(configBundleValidator, rawBody, "ConfigBundle");
-        sendJson(res, 200, await engine.importConfig(input));
-        return;
-      }
-
-      if (segments.length === 1 && segments[0] === "projects") {
-        if (method === "GET") {
-          sendJson(res, 200, { projects: engine.listProjects() });
-          return;
-        }
-        if (method === "POST") {
-          const rawBody = await readJsonBody(req);
-          const input = parseWithSchema(createProjectValidator, rawBody, "CreateProjectRequest");
-          const project = engine.createProject(input);
-          sendJson(res, 201, { project });
-          return;
-        }
-        sendMethodNotAllowed(res, method, "GET, POST");
-        return;
-      }
-
-      if (segments.length === 2 && segments[0] === "projects") {
-        const projectId = parseProjectIdSegment(segments[1] ?? "");
-        if (method === "GET") {
-          const project = engine.getProject(projectId);
-          sendJson(res, 200, { project });
-          return;
-        }
-        if (method === "PATCH") {
-          const rawBody = await readJsonBody(req);
-          const input = parseWithSchema(updateProjectValidator, rawBody, "UpdateProjectRequest");
-          sendJson(res, 200, await engine.updateProject(projectId, input));
-          return;
-        }
-        if (method === "DELETE") {
-          sendJson(res, 200, await engine.deleteProject(projectId));
-          return;
-        }
-        sendMethodNotAllowed(res, method, "GET, PATCH, DELETE");
-        return;
-      }
-
-      if (segments.length === 3 && segments[0] === "projects" && segments[2] === "memory") {
-        const projectId = parseProjectIdSegment(segments[1] ?? "");
-        if (method === "GET") {
-          sendJson(res, 200, engine.getProjectMemory(projectId));
-          return;
-        }
-        if (method === "PUT") {
-          const rawBody = await readJsonBody(req);
-          const input = parseWithSchema(
-            putProjectMemoryValidator,
-            rawBody,
-            "PutProjectMemoryRequest",
-          );
-          sendJson(res, 200, engine.putProjectMemory(projectId, input));
-          return;
-        }
-        sendMethodNotAllowed(res, method, "GET, PUT");
-        return;
-      }
-
-      if (segments.length === 3 && segments[0] === "projects" && segments[2] === "usage") {
-        if (method !== "GET") {
-          sendMethodNotAllowed(res, method, "GET");
-          return;
-        }
-        const projectId = parseProjectIdSegment(segments[1] ?? "");
-        sendJson(res, 200, await engine.getProjectUsage(projectId));
-        return;
-      }
-
-      if (segments.length === 3 && segments[0] === "projects" && segments[2] === "board") {
-        if (method !== "GET") {
-          sendMethodNotAllowed(res, method, "GET");
-          return;
-        }
-        const projectId = parseProjectIdSegment(segments[1] ?? "");
-        const board = await engine.getBoard(projectId);
-        sendJson(res, 200, board);
-        return;
-      }
-
-      if (
-        segments.length === 4 &&
-        segments[0] === "projects" &&
-        segments[2] === "board" &&
-        segments[3] === "stream"
-      ) {
-        if (method !== "GET") {
-          sendMethodNotAllowed(res, method, "GET");
-          return;
-        }
-        const projectId = parseProjectIdSegment(segments[1] ?? "");
-        await handleBoardStream(req, res, projectId);
-        return;
-      }
-
-      if (
-        segments.length === 5 &&
-        segments[0] === "projects" &&
-        segments[2] === "conversations" &&
-        segments[4] === "messages"
-      ) {
-        if (method !== "POST") {
-          sendMethodNotAllowed(res, method, "POST");
-          return;
-        }
-        const projectId = parseProjectIdSegment(segments[1] ?? "");
-        const ref = parseConversationRefSegment(segments[3] ?? "");
-        const rawBody = await readJsonBody(req);
-        const input = parseWithSchema(sendMessageValidator, rawBody, "SendMessageRequest");
-        const result = await engine.sendMessage(projectId, ref, input);
-        sendJson(res, 202, result);
-        return;
-      }
-
-      if (
-        segments.length === 5 &&
-        segments[0] === "projects" &&
-        segments[2] === "conversations" &&
-        segments[4] === "entries"
-      ) {
-        if (method !== "GET") {
-          sendMethodNotAllowed(res, method, "GET");
-          return;
-        }
-        const projectId = parseProjectIdSegment(segments[1] ?? "");
-        const ref = parseConversationRefSegment(segments[3] ?? "");
-        const query = parseEntriesQuery(url);
-        const result = await engine.listEntries(projectId, ref, query);
-        sendJson(res, 200, result);
-        return;
-      }
-
-      if (
-        segments.length === 5 &&
-        segments[0] === "projects" &&
-        segments[2] === "conversations" &&
-        segments[4] === "interrupt"
-      ) {
-        if (method !== "POST") {
-          sendMethodNotAllowed(res, method, "POST");
-          return;
-        }
-        const projectId = parseProjectIdSegment(segments[1] ?? "");
-        const ref = parseConversationRefSegment(segments[3] ?? "");
-        const result = await engine.interrupt(projectId, ref);
-        sendJson(res, 200, result);
-        return;
-      }
-
-      if (
-        segments.length === 5 &&
-        segments[0] === "projects" &&
-        segments[2] === "conversations" &&
-        segments[4] === "retry"
-      ) {
-        if (method !== "POST") {
-          sendMethodNotAllowed(res, method, "POST");
-          return;
-        }
-        const projectId = parseProjectIdSegment(segments[1] ?? "");
-        const ref = parseConversationRefSegment(segments[3] ?? "");
-        const result = await engine.retry(projectId, ref);
-        sendJson(res, 202, result);
-        return;
-      }
-
-      if (
-        segments.length === 5 &&
-        segments[0] === "projects" &&
-        segments[2] === "conversations" &&
-        segments[4] === "stream"
-      ) {
-        if (method !== "GET") {
-          sendMethodNotAllowed(res, method, "GET");
-          return;
-        }
-        const projectId = parseProjectIdSegment(segments[1] ?? "");
-        const ref = parseConversationRefSegment(segments[3] ?? "");
-        const window = parseWindowParams(url, req);
-        await handleConversationStream(req, res, projectId, ref, window);
-        return;
-      }
-
-      if (
-        segments.length === 5 &&
-        segments[0] === "projects" &&
-        segments[2] === "questions" &&
-        segments[4] === "answer"
-      ) {
-        if (method !== "POST") {
-          sendMethodNotAllowed(res, method, "POST");
-          return;
-        }
-        const projectId = parseProjectIdSegment(segments[1] ?? "");
-        const questionId = parseQuestionIdSegment(segments[3] ?? "");
-        const rawBody = await readJsonBody(req);
-        const input = parseWithSchema(answerQuestionValidator, rawBody, "AnswerQuestionRequest");
-        const result = await engine.answerQuestion(projectId, questionId, input);
-        sendJson(res, 200, result);
-        return;
-      }
-
-      if (
-        segments.length === 6 &&
-        segments[0] === "projects" &&
-        segments[2] === "workers" &&
-        segments[4] === "tasks"
-      ) {
-        if (method !== "GET") {
-          sendMethodNotAllowed(res, method, "GET");
-          return;
-        }
-        const projectId = parseProjectIdSegment(segments[1] ?? "");
-        const workerId = parseWorkerIdSegment(segments[3] ?? "");
-        const taskId = parseNonEmptySegment(segments[5] ?? "", "taskId");
-        const options = parseReadWorkerTaskQuery(url);
-        const result = await engine.readWorkerTask(projectId, workerId, taskId, options);
-        sendJson(res, 200, result);
-        return;
-      }
-
-      if (
-        segments.length === 7 &&
-        segments[0] === "projects" &&
-        segments[2] === "workers" &&
-        segments[4] === "tasks" &&
-        segments[6] === "kill"
-      ) {
-        if (method !== "POST") {
-          sendMethodNotAllowed(res, method, "POST");
-          return;
-        }
-        const projectId = parseProjectIdSegment(segments[1] ?? "");
-        const workerId = parseWorkerIdSegment(segments[3] ?? "");
-        const taskId = parseNonEmptySegment(segments[5] ?? "", "taskId");
-        const result = await engine.killWorkerTask(projectId, workerId, taskId);
-        sendJson(res, 200, result);
-        return;
-      }
-
-      sendProblem(res, 404, { code: "not_found", message: "Route not found" });
+      const params = parsePathParams(matched.pattern, segments);
+      await matched.handle({ req, res, url, params });
     } catch (error) {
       if (res.headersSent) {
         if (!res.writableEnded && !res.destroyed) res.end();
@@ -998,19 +778,7 @@ export async function startEngineHttpServer(
       return;
     }
 
-    res.setTimeout(0);
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    });
-    res.flushHeaders();
-
-    keepalive = setInterval(() => {
-      writeSseComment(res, "keepalive");
-    }, SSE_KEEPALIVE_MS);
-    keepalive.unref?.();
+    keepalive = openSseStream(res);
 
     closeForServer = async () => {
       if (!ended) {
@@ -1045,24 +813,12 @@ export async function startEngineHttpServer(
         return;
       }
 
-      res.setTimeout(0);
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-      });
-      res.flushHeaders();
-
+      const keepalive = openSseStream(res);
       let ended = false;
       let lastSignature = JSON.stringify(initial);
       writeSseEvent(res, "board", initial);
 
       let unsubscribe = () => {};
-      const keepalive = setInterval(() => {
-        writeSseComment(res, "keepalive");
-      }, SSE_KEEPALIVE_MS);
-      keepalive.unref?.();
 
       const finish = async (reason?: "closed"): Promise<void> => {
         if (ended) return;
@@ -1117,20 +873,8 @@ export async function startEngineHttpServer(
         return;
       }
 
-      res.setTimeout(0);
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-      });
-      res.flushHeaders();
-
+      const keepalive = openSseStream(res);
       let ended = false;
-      const keepalive = setInterval(() => {
-        writeSseComment(res, "keepalive");
-      }, SSE_KEEPALIVE_MS);
-      keepalive.unref?.();
 
       const finish = async (
         endPayload?: {

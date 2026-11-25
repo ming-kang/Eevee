@@ -69,6 +69,7 @@ import {
   type WorkerId,
   type WorkerRecord,
 } from "./docs.ts";
+import { ProjectError } from "./errors.ts";
 import { answerQuestion as submitQuestionAnswer } from "./extensions/ask-user.ts";
 import { createRouterExtension, type RouterProjectInfo } from "./extensions/router.ts";
 import { createWorkerExtension } from "./extensions/worker.ts";
@@ -477,9 +478,11 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
   ): Promise<Conversation> {
     if (target === "router") return root;
     const worker = await readWorker(harness, target, context);
-    if (worker === undefined) throw new Error(`Unknown worker ${target}`);
+    if (worker === undefined)
+      throw new ProjectError("worker_not_found", `Unknown worker ${target}`);
     const conversation = await harness.conversation(worker.conversationId, context);
-    if (conversation === undefined) throw new Error(`Worker ${target} has no conversation`);
+    if (conversation === undefined)
+      throw new ProjectError("worker_not_found", `Worker ${target} has no conversation`);
     return conversation;
   }
 
@@ -504,16 +507,20 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     }
 
     const worker = await readWorker(harness, target, BACKGROUND_CONTEXT);
-    if (worker === undefined) throw new Error(`Unknown worker ${target}`);
-    if (worker.closedAt !== undefined) throw new Error(`Worker ${target} is closed`);
+    if (worker === undefined)
+      throw new ProjectError("worker_not_found", `Unknown worker ${target}`);
+    if (worker.closedAt !== undefined)
+      throw new ProjectError("worker_closed", `Worker ${target} is closed`);
     const conversation = await harness.conversation(worker.conversationId, BACKGROUND_CONTEXT);
-    if (conversation === undefined) throw new Error(`Worker ${target} has no conversation`);
+    if (conversation === undefined)
+      throw new ProjectError("worker_not_found", `Worker ${target} has no conversation`);
     const submissionId = await harness.commit(async (tx) => {
       const current = await tx.doc(WorkerDoc, target, null);
       if (current.conversationId !== worker.conversationId) {
-        throw new Error(`Unknown worker ${target}`);
+        throw new ProjectError("worker_not_found", `Unknown worker ${target}`);
       }
-      if (current.closedAt !== undefined) throw new Error(`Worker ${target} is closed`);
+      if (current.closedAt !== undefined)
+        throw new ProjectError("worker_closed", `Worker ${target} is closed`);
       const board = await tx.doc(ProjectBoardDoc);
       const queued = board.pendingStarts.some((start) => start.workerId === target);
       if (queued) {
@@ -564,19 +571,23 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
         return root.submit({ type: "continue" }, context);
       }
       const worker = await readWorker(harness, target, context);
-      if (worker === undefined) throw new Error(`Unknown worker ${target}`);
-      if (worker.closedAt !== undefined) throw new Error(`Worker ${target} is closed`);
+      if (worker === undefined)
+        throw new ProjectError("worker_not_found", `Unknown worker ${target}`);
+      if (worker.closedAt !== undefined)
+        throw new ProjectError("worker_closed", `Worker ${target} is closed`);
       const conversation = await harness.conversation(worker.conversationId, context);
-      if (conversation === undefined) throw new Error(`Worker ${target} has no conversation`);
+      if (conversation === undefined)
+        throw new ProjectError("worker_not_found", `Worker ${target} has no conversation`);
       const submissionId = await harness.commit(async (tx) => {
         const current = await tx.doc(WorkerDoc, target, null);
         if (current.conversationId !== worker.conversationId) {
-          throw new Error(`Unknown worker ${target}`);
+          throw new ProjectError("worker_not_found", `Unknown worker ${target}`);
         }
-        if (current.closedAt !== undefined) throw new Error(`Worker ${target} is closed`);
+        if (current.closedAt !== undefined)
+          throw new ProjectError("worker_closed", `Worker ${target} is closed`);
         const board = await tx.doc(ProjectBoardDoc);
         const queued = board.pendingStarts.some((start) => start.workerId === target);
-        if (queued) throw new Error(`Worker ${target} is queued`);
+        if (queued) throw new ProjectError("worker_queued", `Worker ${target} is queued`);
         return conversation.submit(tx, { type: "continue" });
       }, context);
       const submission = await harness.submission(submissionId, context);
@@ -587,10 +598,11 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
       submitQuestionAnswer(harness, questionId, answers, context),
     readWorkerTaskOutput: async (workerId, taskId, options, context = BACKGROUND_CONTEXT) => {
       const worker = await readWorker(harness, workerId, context);
-      if (worker === undefined) throw new Error(`Unknown worker ${workerId}`);
+      if (worker === undefined)
+        throw new ProjectError("worker_not_found", `Unknown worker ${workerId}`);
       const record = await getConversationTask(harness, worker.conversationId, taskId, context);
       if (record === undefined) {
-        throw new Error(`Unknown task ${taskId} on worker ${workerId}`);
+        throw new ProjectError("task_not_found", `Unknown task ${taskId} on worker ${workerId}`);
       }
       return {
         task: record,
@@ -599,13 +611,17 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     },
     killWorkerTask: async (workerId, taskId, context = BACKGROUND_CONTEXT) => {
       const worker = await readWorker(harness, workerId, context);
-      if (worker === undefined) throw new Error(`Unknown worker ${workerId}`);
+      if (worker === undefined)
+        throw new ProjectError("worker_not_found", `Unknown worker ${workerId}`);
       const record = await getConversationTask(harness, worker.conversationId, taskId, context);
       if (record === undefined) {
-        throw new Error(`Unknown task ${taskId} on worker ${workerId}`);
+        throw new ProjectError("task_not_found", `Unknown task ${taskId} on worker ${workerId}`);
       }
       if (record.status !== "running" || record.durableTaskId === undefined) {
-        throw new Error(`Task ${taskId} on worker ${workerId} is not running (${record.status})`);
+        throw new ProjectError(
+          "task_not_running",
+          `Task ${taskId} on worker ${workerId} is not running (${record.status})`,
+        );
       }
       const durableTaskId = record.durableTaskId as TaskId;
       await harness.abortTask(durableTaskId, context);

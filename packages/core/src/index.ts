@@ -1,4 +1,5 @@
 export * from "./docs.ts";
+export * from "./errors.ts";
 export * from "./extensions/ask-user.ts";
 export * from "./extensions/inspect-worker.ts";
 export * from "./extensions/router.ts";

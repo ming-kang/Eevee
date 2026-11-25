@@ -14,6 +14,7 @@ import {
   type Report,
   type Storage,
   StorageRequestError,
+  type Submission,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import {
@@ -36,7 +37,10 @@ import {
   type ModelSlots,
   type OutputReadOptions,
   openProject as openCoreProject,
+  ProjectError,
+  type ProjectErrorCode,
   type ProjectHandle,
+  type ProjectTarget,
 } from "@eevee/core";
 import {
   type AnswerQuestionRequest,
@@ -212,46 +216,41 @@ function decodeCursor(raw: string): Cursor {
   }
 }
 
-function mapCoreError(error: unknown): never {
+const PROJECT_ERROR_HTTP: Record<ProjectErrorCode, readonly [status: number, code: string]> = {
+  worker_not_found: [404, "worker_not_found"],
+  worker_closed: [409, "worker_closed"],
+  worker_queued: [409, "worker_queued"],
+  question_not_found: [404, "question_not_found"],
+  question_closed: [409, "question_closed"],
+  invalid_answer: [400, "invalid_request"],
+  task_not_found: [404, "task_not_found"],
+  task_not_running: [409, "task_not_running"],
+};
+
+function toEngineError(error: unknown): unknown {
+  if (error instanceof ProjectError) {
+    const [status, code] = PROJECT_ERROR_HTTP[error.code];
+    return new EngineError(status, code, error.message);
+  }
   if (error instanceof ConversationBusy) {
-    throw new EngineError(409, "conversation_busy", error.message);
+    return new EngineError(409, "conversation_busy", error.message);
   }
   if (error instanceof StorageRequestError) {
-    throw new EngineError(400, "invalid_query", error.message);
+    return new EngineError(400, "invalid_query", error.message);
   }
   if (error instanceof RangeError) {
-    throw new EngineError(400, "invalid_request", error.message);
+    return new EngineError(400, "invalid_request", error.message);
   }
-  if (error instanceof Error) {
-    if (
-      /^Unknown worker /i.test(error.message) ||
-      /^Worker .+ has no conversation$/i.test(error.message)
-    ) {
-      throw new EngineError(404, "worker_not_found", error.message);
-    }
-    if (/^Worker .+ is closed$/i.test(error.message)) {
-      throw new EngineError(409, "worker_closed", error.message);
-    }
-    if (/^Worker .+ is queued$/i.test(error.message)) {
-      throw new EngineError(409, "worker_queued", error.message);
-    }
-    if (/^Unknown question /i.test(error.message)) {
-      throw new EngineError(404, "question_not_found", error.message);
-    }
-    if (/^Question .+ (?:is already answered|was withdrawn)$/i.test(error.message)) {
-      throw new EngineError(409, "question_closed", error.message);
-    }
-    if (/^Question .+ expects .+ answer\(s\)/i.test(error.message)) {
-      throw new EngineError(400, "invalid_request", error.message);
-    }
-    if (/^Unknown task /i.test(error.message)) {
-      throw new EngineError(404, "task_not_found", error.message);
-    }
-    if (/^Task .+ is not running(?:\s|$)/i.test(error.message)) {
-      throw new EngineError(409, "task_not_running", error.message);
-    }
-  }
-  throw error;
+  return error;
+}
+
+function conversationTarget(ref: ConversationRef): ProjectTarget {
+  return ref === "router" ? "router" : (ref as CoreWorkerId);
+}
+
+async function submissionResponse(submission: Submission): Promise<SendMessageResponse> {
+  const { status } = await submission.status(BACKGROUND_CONTEXT);
+  return { submissionId: submission.id, status };
 }
 
 export class Engine {
@@ -516,15 +515,7 @@ export class Engine {
 
   async putMcpConfig(input: PutMcpConfigRequest): Promise<McpStateResponse> {
     this.#assertOpen();
-    const parsed = parseMcpConfig({ mcpServers: input.servers });
-    if (parsed.errors.length > 0) {
-      throw new EngineError(400, "invalid_mcp_config", parsed.errors.join("; "));
-    }
-    const normalized = normalizeMcpMap(parsed.servers);
-    this.store.setKv(KV_MCP_SERVERS, normalized);
-    await this.mcpHub.reload(parsed.servers);
-    await this.#syncOpenProjectsMcp();
-    return this.getMcpState();
+    return this.#replaceMcpServers(input.servers);
   }
 
   async upsertMcpServer(name: string, input: UpsertMcpServerRequest): Promise<McpStateResponse> {
@@ -533,19 +524,7 @@ export class Engine {
     if (typeof validated === "string") {
       throw new EngineError(400, "invalid_mcp_config", validated);
     }
-    const candidate = {
-      ...this.#getMcpServersRecord(),
-      [name]: { ...validated } as Record<string, unknown>,
-    };
-    const parsed = parseMcpConfig({ mcpServers: candidate });
-    if (parsed.errors.length > 0) {
-      throw new EngineError(400, "invalid_mcp_config", parsed.errors.join("; "));
-    }
-    const normalized = normalizeMcpMap(parsed.servers);
-    this.store.setKv(KV_MCP_SERVERS, normalized);
-    await this.mcpHub.reload(parsed.servers);
-    await this.#syncOpenProjectsMcp();
-    return this.getMcpState();
+    return this.#replaceMcpServers({ ...this.#getMcpServersRecord(), [name]: { ...validated } });
   }
 
   async deleteMcpServer(name: string): Promise<McpStateResponse> {
@@ -555,34 +534,27 @@ export class Engine {
       throw new EngineError(404, "mcp_server_not_found", `Unknown MCP server "${name}"`);
     }
     delete current[name];
-    const parsed = parseMcpConfig({ mcpServers: current });
-    if (parsed.errors.length > 0) {
-      throw new EngineError(400, "invalid_mcp_config", parsed.errors.join("; "));
-    }
-    const normalized = normalizeMcpMap(parsed.servers);
-    this.store.setKv(KV_MCP_SERVERS, normalized);
-    await this.mcpHub.reload(parsed.servers);
-    await this.#syncOpenProjectsMcp();
-    return this.getMcpState();
+    return this.#replaceMcpServers(current);
   }
 
   async reconnectMcp(input: ReconnectMcpRequest = {}): Promise<ReconnectMcpResponse> {
     this.#assertOpen();
-    try {
-      const status = await this.mcpHub.reconnect(input.server);
-      await this.#syncOpenProjectsMcp();
-      return { status };
-    } catch (error) {
-      if (error instanceof Error) {
-        if (/^Unknown MCP server /i.test(error.message)) {
-          throw new EngineError(404, "mcp_server_not_found", error.message);
-        }
-        if (/^MCP server .+ is disabled$/i.test(error.message)) {
-          throw new EngineError(409, "mcp_server_disabled", error.message);
-        }
+    if (input.server !== undefined) {
+      const server = this.mcpHub.status().find((snapshot) => snapshot.name === input.server);
+      if (server === undefined) {
+        throw new EngineError(404, "mcp_server_not_found", `Unknown MCP server "${input.server}"`);
       }
-      throw error;
+      if (!server.enabled) {
+        throw new EngineError(
+          409,
+          "mcp_server_disabled",
+          `MCP server "${input.server}" is disabled`,
+        );
+      }
     }
+    const status = await this.mcpHub.reconnect(input.server);
+    await this.#syncOpenProjectsMcp();
+    return { status };
   }
 
   getSettings(): EngineSettings {
@@ -915,22 +887,10 @@ export class Engine {
     ref: ConversationRef,
     input: SendMessageRequest,
   ): Promise<SendMessageResponse> {
-    const handle = await this.openProject(projectId);
-    const sendOptions = input.whenBusy === undefined ? undefined : { whenBusy: input.whenBusy };
-    try {
-      const submission =
-        ref === "router"
-          ? await handle.send(input.text, sendOptions)
-          : await handle.send(ref as CoreWorkerId, input.text, sendOptions);
-      this.#touchProject(projectId);
-      const statusRecord = await submission.status(BACKGROUND_CONTEXT);
-      return {
-        submissionId: submission.id,
-        status: statusRecord.status,
-      };
-    } catch (error) {
-      mapCoreError(error);
-    }
+    const options = input.whenBusy === undefined ? undefined : { whenBusy: input.whenBusy };
+    return this.#inProject(projectId, async (handle) =>
+      submissionResponse(await handle.send(conversationTarget(ref), input.text, options)),
+    );
   }
 
   async listEntries(
@@ -943,50 +903,37 @@ export class Engine {
       throw new EngineError(400, "invalid_query", "limit must be an integer between 1 and 500");
     }
     const cursor = params.cursor === undefined ? undefined : decodeCursor(params.cursor);
-    const handle = await this.openProject(projectId);
-    const target = ref === "router" ? "router" : (ref as CoreWorkerId);
     const query: Omit<EntryQuery, "conversationId"> = {
       ...(params.order === undefined ? {} : { order: params.order }),
       ...(params.minEntryId === undefined ? {} : { minEntryId: params.minEntryId as EntryId }),
       ...(params.maxEntryId === undefined ? {} : { maxEntryId: params.maxEntryId as EntryId }),
     };
-    try {
-      const page = await handle.listEntries(target, query, limit, cursor, BACKGROUND_CONTEXT);
+    return this.#inProject(projectId, async (handle) => {
+      const page = await handle.listEntries(
+        conversationTarget(ref),
+        query,
+        limit,
+        cursor,
+        BACKGROUND_CONTEXT,
+      );
       return {
         entries: page.items as unknown as EntryRecordPayload[],
         ...(page.next === undefined ? {} : { nextCursor: encodeCursor(page.next) }),
       };
-    } catch (error) {
-      mapCoreError(error);
-    }
+    });
   }
 
   async interrupt(projectId: string, ref: ConversationRef): Promise<OkResponse> {
-    const handle = await this.openProject(projectId);
-    const target = ref === "router" ? "router" : (ref as CoreWorkerId);
-    try {
-      await handle.interrupt(target, BACKGROUND_CONTEXT);
-      this.#touchProject(projectId);
+    return this.#inProject(projectId, async (handle) => {
+      await handle.interrupt(conversationTarget(ref), BACKGROUND_CONTEXT);
       return { ok: true };
-    } catch (error) {
-      mapCoreError(error);
-    }
+    });
   }
 
   async retry(projectId: string, ref: ConversationRef): Promise<SendMessageResponse> {
-    const handle = await this.openProject(projectId);
-    const target = ref === "router" ? "router" : (ref as CoreWorkerId);
-    try {
-      const submission = await handle.retry(target, BACKGROUND_CONTEXT);
-      this.#touchProject(projectId);
-      const statusRecord = await submission.status(BACKGROUND_CONTEXT);
-      return {
-        submissionId: submission.id,
-        status: statusRecord.status,
-      };
-    } catch (error) {
-      mapCoreError(error);
-    }
+    return this.#inProject(projectId, async (handle) =>
+      submissionResponse(await handle.retry(conversationTarget(ref), BACKGROUND_CONTEXT)),
+    );
   }
 
   async answerQuestion(
@@ -994,18 +941,13 @@ export class Engine {
     questionId: QuestionId,
     input: AnswerQuestionRequest,
   ): Promise<AnswerQuestionResponse> {
-    const handle = await this.openProject(projectId);
-    try {
-      const question = await handle.answerQuestion(
+    return this.#inProject(projectId, async (handle) => ({
+      question: await handle.answerQuestion(
         questionId as CoreQuestionId,
         input.answers,
         BACKGROUND_CONTEXT,
-      );
-      this.#touchProject(projectId);
-      return { question };
-    } catch (error) {
-      mapCoreError(error);
-    }
+      ),
+    }));
   }
 
   async readWorkerTask(
@@ -1014,17 +956,9 @@ export class Engine {
     taskId: string,
     options?: OutputReadOptions,
   ): Promise<ReadWorkerTaskResponse> {
-    const handle = await this.openProject(projectId);
-    try {
-      return await handle.readWorkerTaskOutput(
-        workerId as CoreWorkerId,
-        taskId,
-        options,
-        BACKGROUND_CONTEXT,
-      );
-    } catch (error) {
-      mapCoreError(error);
-    }
+    return this.#inProject(projectId, (handle) =>
+      handle.readWorkerTaskOutput(workerId as CoreWorkerId, taskId, options, BACKGROUND_CONTEXT),
+    );
   }
 
   async killWorkerTask(
@@ -1032,18 +966,9 @@ export class Engine {
     workerId: WorkerId,
     taskId: string,
   ): Promise<KillWorkerTaskResponse> {
-    const handle = await this.openProject(projectId);
-    try {
-      const task = await handle.killWorkerTask(
-        workerId as CoreWorkerId,
-        taskId,
-        BACKGROUND_CONTEXT,
-      );
-      this.#touchProject(projectId);
-      return { task };
-    } catch (error) {
-      mapCoreError(error);
-    }
+    return this.#inProject(projectId, async (handle) => ({
+      task: await handle.killWorkerTask(workerId as CoreWorkerId, taskId, BACKGROUND_CONTEXT),
+    }));
   }
 
   async getBoard(projectId: string): Promise<BoardView> {
@@ -1057,13 +982,9 @@ export class Engine {
     context: Context = BACKGROUND_CONTEXT,
     window?: ConversationWindow,
   ): Promise<ConversationWatch> {
-    const handle = await this.openProject(projectId);
-    try {
-      const target = ref === "router" ? "router" : (ref as CoreWorkerId);
-      return await handle.watchConversation(target, context, window);
-    } catch (error) {
-      mapCoreError(error);
-    }
+    return this.#inProject(projectId, (handle) =>
+      handle.watchConversation(conversationTarget(ref), context, window),
+    );
   }
 
   close(): Promise<void> {
@@ -1144,9 +1065,31 @@ export class Engine {
     );
   }
 
+  async #inProject<T>(projectId: string, run: (handle: ProjectHandle) => Promise<T>): Promise<T> {
+    const handle = await this.openProject(projectId);
+    try {
+      return await run(handle);
+    } catch (error) {
+      throw toEngineError(error);
+    } finally {
+      this.#touchProject(projectId);
+    }
+  }
+
   #touchProject(projectId: string): void {
     const entry = this.#projects.get(projectId);
     if (entry !== undefined) entry.lastActivityAt = Date.now();
+  }
+
+  async #replaceMcpServers(servers: Record<string, unknown>): Promise<McpStateResponse> {
+    const parsed = parseMcpConfig({ mcpServers: servers });
+    if (parsed.errors.length > 0) {
+      throw new EngineError(400, "invalid_mcp_config", parsed.errors.join("; "));
+    }
+    this.store.setKv(KV_MCP_SERVERS, normalizeMcpMap(parsed.servers));
+    await this.mcpHub.reload(parsed.servers);
+    await this.#syncOpenProjectsMcp();
+    return this.getMcpState();
   }
 
   async #syncOpenProjectsMcp(): Promise<void> {
