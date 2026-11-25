@@ -4,8 +4,11 @@ import {
   ConversationBusy,
   type Harness,
   LiveDoc,
+  ROOT_CONVERSATION_ID,
+  type RunFailure,
 } from "@earendil-works/pi-durable";
 import {
+  NOTICE_ENTRY_KIND,
   ProjectBoardDoc,
   type ProjectBoardState,
   readBoard,
@@ -29,6 +32,12 @@ const WATCHED_DOCUMENT_KINDS = new Set([
   WorkerDoc.definition.kind,
 ]);
 
+const DELIBERATE_FAILURE_REASONS = new Set(["aborted", "reset"]);
+
+function describeFailure(failure: RunFailure): string {
+  return failure.detail === undefined ? failure.reason : `${failure.reason}: ${failure.detail}`;
+}
+
 export class ProjectPump {
   readonly #harness: Harness;
   readonly #context: Context;
@@ -40,9 +49,15 @@ export class ProjectPump {
     this.#harness = harness;
     this.#context = options.context ?? BACKGROUND_CONTEXT;
     this.#maxActiveWorkers = options.maxActiveWorkers ?? 3;
-    this.#pass = new SerialPass(() => this.pumpPendingStarts(), {
-      ...(options.onError === undefined ? {} : { onError: options.onError }),
-    });
+    this.#pass = new SerialPass(
+      async () => {
+        await this.pumpPendingStarts();
+        await this.reportRunFailures();
+      },
+      {
+        ...(options.onError === undefined ? {} : { onError: options.onError }),
+      },
+    );
     this.#observation = harness.observeCommits({
       advance: (publication) => {
         const relevant = publication.changes.some(
@@ -136,6 +151,58 @@ export class ProjectPump {
       ) {
         return;
       }
+    }
+  }
+
+  async reportRunFailures(): Promise<void> {
+    const board = await readBoard(this.#harness, this.#context);
+    if (board === undefined || board.workerOrder.length === 0) return;
+    const workers = await readWorkers(this.#harness, this.#context, board);
+    const due: { worker: WorkerDocState; failure: RunFailure }[] = [];
+
+    for (const worker of workers) {
+      if (worker.closedAt !== undefined) continue;
+      const live = await this.#harness.snapshot(LiveDoc, worker.conversationId, this.#context);
+      if (live?.run !== undefined || live?.runFailure === undefined) continue;
+      const failure = live.runFailure;
+      if (DELIBERATE_FAILURE_REASONS.has(failure.reason)) continue;
+      if (worker.reportedFailure === failure.taskId) continue;
+      due.push({ worker, failure });
+    }
+    if (due.length === 0) return;
+
+    const router = await this.#harness.conversation(ROOT_CONVERSATION_ID, this.#context);
+    if (router === undefined) return;
+
+    for (const { worker, failure } of due) {
+      const description = describeFailure(failure);
+      await this.#harness.commit(async (tx) => {
+        const currentBoard = await tx.doc(ProjectBoardDoc);
+        if (!currentBoard.workerOrder.includes(worker.id)) return;
+        const current = await tx.doc(WorkerDoc, worker.id, null);
+        if (current.closedAt !== undefined || current.reportedFailure === failure.taskId) return;
+        const ticketId = current.activeTicketId;
+        await router.submit(tx, {
+          type: "input",
+          content: `Worker ${current.name} (${current.id}) run failed: ${description}`,
+          whenBusy: "followUp",
+          onAbort: "keep",
+          requestId: `eevee.worker.failed:${failure.taskId}`,
+          entry: {
+            kind: NOTICE_ENTRY_KIND,
+            data: {
+              type: "worker_failed",
+              workerId: current.id,
+              workerName: current.name,
+              ...(ticketId === undefined ? {} : { ticketId }),
+              taskId: failure.taskId,
+              reason: failure.reason,
+              ...(failure.detail === undefined ? {} : { detail: failure.detail }),
+            },
+          },
+        });
+        current.reportedFailure = failure.taskId;
+      }, this.#context);
     }
   }
 

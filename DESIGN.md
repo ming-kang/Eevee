@@ -39,7 +39,7 @@ Eevee 是一个基于 `pi-durable` 构建的 Proactive Agent，Router 与 Worker
 ## 协作与流转
 
 - **Worker 显式对话 Router**：Worker 可调用 `message_router` 向 Router 发送进展、结论或求助。
-- **自然交棒兜底**：Worker 回合结束且无活跃后台 `tasks` 进入 `idle` 时，若本回合未调用过 `message_router`，系统自动把最终回复转交 Router（已调用则不重复推送）；回合异常失败同样自动通知 Router。
+- **自然交棒兜底**：Worker 回合结束且无活跃后台 `tasks` 进入 `idle` 时，若本次 run 最后一轮工具调用未包含 `message_router`，系统自动把最终回复转交 Router（最后一轮已调用则不重复推送）；回合异常失败同样自动通知 Router。
 - **后台静默**：只要 Worker 仍有运行中的后台 `tasks`，其状态保持 `running`，不打扰 Router 与用户；后台任务结束后自动唤醒该 Worker 继续处理。
 - **用户提问**：只有 Router 持有 `ask_user`，非阻塞发起结构化问题，用户答复统一回到 Router。
 

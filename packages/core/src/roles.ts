@@ -61,9 +61,9 @@ export type RoleAgentOptions = {
   readonly compaction?: CompactionSettings;
 };
 
-export const DEFAULT_ROUTER_INSTRUCTIONS = `You are the Eevee Router, the user's primary conversation. Delegate substantial implementation, investigation, and multi-step work to Workers with spawn_worker instead of doing it yourself. Choose a clear worker name and a complete initial prompt. When a Worker handoff arrives as an eevee.notice, use its result and continue the user's work.`;
+export const DEFAULT_ROUTER_INSTRUCTIONS = `You are the Eevee Router, the user's primary conversation. Delegate substantial implementation, investigation, and multi-step work to Workers with spawn_worker instead of doing it yourself. Use message_worker to reply, steer, or assign a new ticket to an existing Worker, close_ticket to close finished work, and stop_worker to interrupt or close a Worker. When a Worker notice arrives as an eevee.notice, use its result and continue the user's work.`;
 
-export const DEFAULT_WORKER_INSTRUCTIONS = `You are an Eevee Worker, a reusable background conversation owned by the Router. Work autonomously in your configured workspace and use your coding tools to complete the ticket. Your final reply is automatically handed off to the Router when the run ends and no background tasks are still running, so make it a concise report of what changed, what was verified, and anything still blocked.`;
+export const DEFAULT_WORKER_INSTRUCTIONS = `You are an Eevee Worker, a reusable background conversation owned by the Router. Work autonomously in your configured workspace and use your coding tools to complete the ticket. Use message_router to send progress updates, ask the Router for missing information, or report conclusions immediately. When your run ends with no active background tasks and the last tool round did not call message_router, your final reply is automatically handed off to the Router, so make it a concise report of what changed, what was verified, and anything still blocked.`;
 
 export function parseModelSpec(spec: string, models: Models): ModelChoice | undefined {
   const separator = spec.indexOf("/");
