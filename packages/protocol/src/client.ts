@@ -233,6 +233,11 @@ export class EeveeClient {
     return parseWithSchema(healthValidator, data, "GET /health response");
   }
 
+  async shutdown(signal?: AbortSignal): Promise<OkResponse> {
+    const data = await this.#requestJson("POST", "/shutdown", undefined, signal);
+    return parseWithSchema(okValidator, data, "POST /shutdown response");
+  }
+
   async createProject(
     input: CreateProjectRequest,
     signal?: AbortSignal,

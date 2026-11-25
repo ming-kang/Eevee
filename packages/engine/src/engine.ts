@@ -805,6 +805,22 @@ export class Engine {
     return { projectId, usage };
   }
 
+  async recoverProjects(): Promise<void> {
+    this.#assertOpen();
+    const errors: unknown[] = [];
+    for (const project of this.listProjects()) {
+      if (this.#closed) break;
+      try {
+        await this.openProject(project.id);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, `Failed to recover ${errors.length} project(s)`);
+    }
+  }
+
   isProjectOpen(projectId: string): boolean {
     return this.#projects.has(projectId);
   }

@@ -24,6 +24,8 @@ test("CLI program registers core metadata and all 4A + 4B subcommands and option
   for (const expected of [
     "info",
     "start",
+    "stop",
+    "status",
     "project",
     "send",
     "board",
@@ -189,9 +191,19 @@ test("eevee info prints resolved layout including tokenFile and stateFile", asyn
   assert.equal(parsed.stateFile, join(parsed.home as string, "engine.json"));
 });
 
-test("eevee start without --foreground rejects cleanly in 4A", async () => {
-  const program = createProgram({ EEVEE_HOME: "/tmp/eevee-cli-test" });
-  await assert.rejects(program.parseAsync(["node", "eevee", "start"]), /--foreground/);
+test("eevee status reports stopped without a runtime state", async () => {
+  const program = createProgram({ EEVEE_HOME: "/tmp/eevee-cli-stopped-test" });
+  const logs: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  try {
+    await program.parseAsync(["node", "eevee", "status", "--json"]);
+  } finally {
+    console.log = originalLog;
+  }
+  assert.deepEqual(JSON.parse(logs[0] ?? "{}"), { status: "stopped", restartCount: 0 });
 });
 
 test("parseModelFlag and formatBoard handle valid and edge-case inputs", () => {

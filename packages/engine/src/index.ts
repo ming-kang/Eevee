@@ -11,6 +11,20 @@ export {
 } from "./auth.ts";
 export { ENGINE_PROTOCOL_VERSION, ENGINE_VERSION } from "./constants.ts";
 export {
+  type DaemonControlOptions,
+  type DaemonStartResult,
+  type DaemonStatus,
+  type DaemonStopResult,
+  getDaemonStatus,
+  readSupervisorState,
+  removeSupervisorState,
+  type StartDaemonOptions,
+  type SupervisorRuntimeState,
+  startDaemon,
+  stopDaemon,
+  writeSupervisorState,
+} from "./daemon.ts";
+export {
   type DataDirLayout,
   dataDirLayout,
   ENGINE_DB_FILE,
@@ -20,6 +34,7 @@ export {
   type ProjectPaths,
   projectPaths,
   resolveDataDir,
+  SUPERVISOR_STATE_FILE,
 } from "./data-dir.ts";
 export {
   Engine,
@@ -35,6 +50,7 @@ export {
   type EngineHttpServerOptions,
   startEngineHttpServer,
 } from "./http.ts";
+export { isProcessAlive } from "./process-lock.ts";
 export {
   DEFAULT_ENGINE_HOST,
   DEFAULT_ENGINE_PORT,
@@ -43,3 +59,4 @@ export {
   startForegroundEngine,
 } from "./server.ts";
 export { EngineStore, type UpdateProjectInput } from "./store.ts";
+export { type RunSupervisorOptions, runSupervisor } from "./supervisor.ts";

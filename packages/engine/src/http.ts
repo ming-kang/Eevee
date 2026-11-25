@@ -67,6 +67,7 @@ export type EngineHttpServerOptions = {
   readonly host?: string;
   readonly port?: number;
   readonly token: string;
+  readonly onShutdown?: () => void;
 };
 
 export type EngineHttpServer = {
@@ -448,6 +449,16 @@ export async function startEngineHttpServer(
           engineVersion: ENGINE_VERSION,
           pid: process.pid,
         });
+        return;
+      }
+
+      if (segments.length === 1 && segments[0] === "shutdown") {
+        if (method !== "POST") {
+          sendMethodNotAllowed(res, method, "POST");
+          return;
+        }
+        sendJson(res, 200, { ok: true });
+        if (options.onShutdown !== undefined) setImmediate(options.onShutdown);
         return;
       }
 

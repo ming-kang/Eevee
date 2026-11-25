@@ -3,14 +3,16 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   connectLocalEngine,
   DEFAULT_ENGINE_PORT,
   dataDirLayout,
   ENGINE_VERSION,
+  getDaemonStatus,
   resolveDataDir,
-  startForegroundEngine,
+  startDaemon,
+  stopDaemon,
 } from "@eevee/engine";
 import {
   type AuthType,
@@ -48,6 +50,7 @@ import {
   formatTaskOutput,
   parseModelFlag,
 } from "./format.ts";
+import { formatDaemonStatus, runForegroundEngine, runSupervisorProcess } from "./lifecycle.ts";
 
 function parsePort(raw: string): number {
   if (!/^[0-9]+$/.test(raw)) {
@@ -175,6 +178,8 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
             engineDb: layout.engineDb,
             tokenFile: layout.tokenFile,
             stateFile: layout.stateFile,
+            supervisorStateFile: layout.supervisorStateFile,
+            daemonLogFile: layout.daemonLogFile,
           },
           null,
           2,
@@ -185,28 +190,68 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
   program
     .command("start")
     .description("Start the local Eevee Engine")
-    .option("--foreground", "Run the Engine in the foreground")
+    .option("--foreground", "Run the Engine in the foreground without a supervisor")
     .option("--port <port>", "Port to listen on (127.0.0.1 only)")
-    .action(async (options: { foreground?: boolean; port?: string }) => {
-      if (!options.foreground) {
-        throw new Error("Background daemon mode is not yet implemented; run with --foreground.");
-      }
+    .option("--json", "Output JSON (background mode only)")
+    .action(async (options: { foreground?: boolean; port?: string; json?: boolean }) => {
       const port = options.port === undefined ? DEFAULT_ENGINE_PORT : parsePort(options.port);
-      const handle = await startForegroundEngine({ env, port });
-      console.log(`Eevee engine listening on ${handle.url} (pid ${handle.state.pid})`);
-
-      await new Promise<void>((resolveStop, rejectStop) => {
-        let stopping = false;
-        const shutdown = () => {
-          if (stopping) return;
-          stopping = true;
-          process.off("SIGINT", shutdown);
-          process.off("SIGTERM", shutdown);
-          void handle.close().then(resolveStop, rejectStop);
-        };
-        process.on("SIGINT", shutdown);
-        process.on("SIGTERM", shutdown);
+      if (options.foreground) {
+        await runForegroundEngine({ env, port });
+        return;
+      }
+      const result = await startDaemon({
+        env,
+        port,
+        cliEntry: fileURLToPath(import.meta.url),
       });
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(
+        result.outcome === "already_running"
+          ? `Eevee engine is already running at ${result.url} (pid ${result.enginePid})`
+          : `Started Eevee engine at ${result.url} (pid ${result.enginePid}, supervisor pid ${result.supervisorPid})`,
+      );
+    });
+
+  program
+    .command("stop")
+    .description("Stop the supervised local Eevee Engine")
+    .option("--json", "Output JSON")
+    .action(async (options: { json?: boolean }) => {
+      const result = await stopDaemon({ env });
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(
+        result.outcome === "already_stopped"
+          ? "Eevee engine is already stopped"
+          : "Stopped Eevee engine",
+      );
+    });
+
+  program
+    .command("status")
+    .description("Show local Eevee Engine and supervisor status")
+    .option("--json", "Output JSON")
+    .action(async (options: { json?: boolean }) => {
+      const status = await getDaemonStatus({ env });
+      if (options.json) {
+        console.log(JSON.stringify(status, null, 2));
+        return;
+      }
+      console.log(formatDaemonStatus(status));
+    });
+
+  program
+    .command("__supervisor", { hidden: true })
+    .description("Run the Eevee supervisor process")
+    .option("--port <port>", "Port for the supervised Engine")
+    .action(async (options: { port?: string }) => {
+      const port = options.port === undefined ? DEFAULT_ENGINE_PORT : parsePort(options.port);
+      await runSupervisorProcess({ env, port, cliEntry: fileURLToPath(import.meta.url) });
     });
 
   const projectCommand = program.command("project").description("Manage Eevee projects");

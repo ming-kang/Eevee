@@ -152,7 +152,7 @@ export async function connectLocalEngine(
     const state = await readEngineState(layout.stateFile);
     if (state === undefined) {
       throw new Error(
-        `Eevee engine is not running (missing state file at ${layout.stateFile}). Start it with "eevee start --foreground".`,
+        `Eevee engine is not running (missing state file at ${layout.stateFile}). Start it with "eevee start".`,
       );
     }
     url = state.url;

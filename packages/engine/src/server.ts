@@ -12,6 +12,7 @@ import { ENGINE_PROTOCOL_VERSION, ENGINE_VERSION } from "./constants.ts";
 import { type DataDirLayout, dataDirLayout, resolveDataDir } from "./data-dir.ts";
 import { Engine, type OpenProjectStorage } from "./engine.ts";
 import { type EngineHttpServer, startEngineHttpServer } from "./http.ts";
+import { acquireProcessLock } from "./process-lock.ts";
 
 export const DEFAULT_ENGINE_HOST = "127.0.0.1";
 export const DEFAULT_ENGINE_PORT = 4173;
@@ -30,6 +31,9 @@ export type StartForegroundEngineOptions = {
   readonly backgroundAfterMs?: number;
   readonly routerContextTokens?: number;
   readonly idleHibernateMs?: number;
+  readonly recoverProjects?: boolean;
+  readonly onRecoveryError?: (error: unknown) => void;
+  readonly onShutdown?: () => void;
   readonly onReport?: (projectId: string, report: Report) => void;
   readonly onPumpError?: (projectId: string, error: unknown) => void;
 };
@@ -40,6 +44,7 @@ export type ForegroundEngineHandle = {
   readonly token: string;
   readonly engine: Engine;
   readonly url: string;
+  readonly recovery: Promise<void>;
   close(): Promise<void>;
 };
 
@@ -53,9 +58,30 @@ export async function startForegroundEngine(
 
   const root = options.dataDir ?? resolveDataDir(options.env);
   const layout = dataDirLayout(root);
+  const runtimeLock = await acquireProcessLock(layout.runtimeLockFile);
+  let handle: ForegroundEngineHandle | undefined;
+  try {
+    await removeEngineState(layout.stateFile);
+    handle = await startLockedForegroundEngine(layout, options);
+    const started = handle;
+    return {
+      ...started,
+      close: () => started.close().finally(() => runtimeLock.release()),
+    };
+  } catch (error) {
+    await handle?.close().catch(() => undefined);
+    await runtimeLock.release();
+    throw error;
+  }
+}
+
+async function startLockedForegroundEngine(
+  layout: DataDirLayout,
+  options: StartForegroundEngineOptions,
+): Promise<ForegroundEngineHandle> {
   const token = await ensureAuthToken(layout.tokenFile);
   const engine = await Engine.open({
-    dataDir: root,
+    dataDir: layout.root,
     env: options.env,
     models: options.models,
     credentials: options.credentials,
@@ -70,12 +96,14 @@ export async function startForegroundEngine(
     onPumpError: options.onPumpError,
   });
 
+  const host = options.host ?? DEFAULT_ENGINE_HOST;
   let httpServer: EngineHttpServer;
   try {
     httpServer = await startEngineHttpServer(engine, {
       host,
       port: options.port ?? DEFAULT_ENGINE_PORT,
       token,
+      ...(options.onShutdown === undefined ? {} : { onShutdown: options.onShutdown }),
     });
   } catch (error) {
     await engine.close().catch(() => undefined);
@@ -101,12 +129,19 @@ export async function startForegroundEngine(
   }
 
   let closePromise: Promise<void> | undefined;
+  const recovery =
+    options.recoverProjects === false
+      ? Promise.resolve()
+      : engine.recoverProjects().catch((error: unknown) => {
+          options.onRecoveryError?.(error);
+        });
   return {
     layout,
     state,
     token,
     engine,
     url: httpServer.url,
+    recovery,
     close: () => {
       closePromise ??= (async () => {
         await removeEngineState(layout.stateFile, process.pid).catch(() => undefined);

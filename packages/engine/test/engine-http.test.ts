@@ -134,6 +134,7 @@ test("auth helpers manage 0o600 token, timing-safe bearer verification, state PI
 test("startEngineHttpServer rejects non-127.0.0.1 hosts and enforces bearer auth on every route", async () => {
   await withTempDir(async (dir) => {
     const engine = await Engine.open({ dataDir: dir });
+    let shutdownRequests = 0;
     try {
       for (const badHost of ["0.0.0.0", "::", "localhost", "192.168.1.10"]) {
         await assert.rejects(
@@ -147,10 +148,17 @@ test("startEngineHttpServer rejects non-127.0.0.1 hosts and enforces bearer auth
         /127\.0\.0\.1/,
       );
 
-      const server = await startEngineHttpServer(engine, { port: 0, token: "secret-token" });
+      const server = await startEngineHttpServer(engine, {
+        port: 0,
+        token: "secret-token",
+        onShutdown: () => {
+          shutdownRequests += 1;
+        },
+      });
       try {
         const routes: [string, string][] = [
           ["GET", "/health"],
+          ["POST", "/shutdown"],
           ["GET", "/projects"],
           ["POST", "/projects"],
           ["GET", "/projects/demo"],
@@ -174,6 +182,10 @@ test("startEngineHttpServer rejects non-127.0.0.1 hosts and enforces bearer auth
           assert.equal(wrong.status, 401, `expected 401 for ${method} ${path} with wrong token`);
           parseWithSchema(ProblemSchema, await wrong.json());
         }
+
+        const client = new EeveeClient({ baseUrl: server.url, token: "secret-token" });
+        assert.deepEqual(await client.shutdown(), { ok: true });
+        await waitFor(() => shutdownRequests === 1, "authenticated shutdown callback");
       } finally {
         await server.close();
       }

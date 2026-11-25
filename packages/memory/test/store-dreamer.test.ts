@@ -83,7 +83,7 @@ async function writeUserEntry(conversation: Conversation, text: string): Promise
   return created.id;
 }
 
-async function waitUntil(predicate: () => boolean, timeoutMs = 3_000): Promise<void> {
+async function waitUntil(predicate: () => boolean, timeoutMs = 10_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!predicate()) {
     if (Date.now() > deadline) throw new Error("Timed out waiting for condition");

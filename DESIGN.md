@@ -61,3 +61,9 @@ Eevee 是一个基于 `pi-durable` 构建的 Proactive Agent，Router 与 Worker
 | `projects/<id>/logs/` | `engine` | 后台任务持久化输出日志 |
 
 删除项目只清理项目自身数据并停止其未完成工作，绝不触碰工作目录中的用户文件。
+
+## 本地进程生命周期
+
+后台运行时，Supervisor 只负责 Engine 子进程的生命周期，项目与会话仍由 Engine 托管。Engine 异常退出后由同一个 Supervisor 重启；用户停止通过停止请求文件与 IPC 传递，在 Windows 与 POSIX 上都走优雅关闭，不会被误判为崩溃。前台模式不启动 Supervisor。
+
+Engine 启动后重新打开已有项目，复用持久会话的恢复机制继续未完成 run 和排队 Worker。运行状态与进程锁带 PID 属主，崩溃残留可被后续启动安全回收。
