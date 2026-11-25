@@ -19,6 +19,23 @@ export {
   type ToolGuideline,
 } from "./context/index.ts";
 export {
+  CACHED_COMPACTION_EXTENSION,
+  type CachedCompactionEvent,
+  type CachedCompactionOptions,
+  type CompactionFileLists,
+  checkpointSummary,
+  computeFileLists,
+  createCachedCompactionExtension,
+  extractFileOps,
+  type FileOperations,
+  formatFileOperations,
+  type KeptStart,
+  keptStart,
+  type ReconstructedContext,
+  reconstructConversationMessages,
+  summaryInstruction,
+} from "./extensions/cached-compaction/index.ts";
+export {
   CODEMODE_EXTENSION,
   CODEMODE_TOOL_NAME,
   type CodemodeExtensionOptions,

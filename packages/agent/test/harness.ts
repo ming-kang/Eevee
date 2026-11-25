@@ -2,8 +2,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { createModels, type FauxProviderHandle, fauxProvider } from "@earendil-works/pi-ai";
-import type { Storage } from "@earendil-works/pi-durable";
+import {
+  createModels,
+  type FauxModelDefinition,
+  type FauxProviderHandle,
+  fauxProvider,
+} from "@earendil-works/pi-ai";
+import type { HarnessSettings, Storage } from "@earendil-works/pi-durable";
 import {
   type AgentChange,
   type Conversation,
@@ -30,13 +35,15 @@ export type TestHarnessOptions = {
   readonly cwd?: string;
   readonly storage?: Storage;
   readonly env?: NodeExecutionEnv;
+  readonly settings?: HarnessSettings;
+  readonly model?: Omit<FauxModelDefinition, "id">;
 };
 
 export async function createTestHarness(options: TestHarnessOptions = {}): Promise<TestHarness> {
   const ownsDir = options.env === undefined;
   const dir = options.env?.cwd ?? (await mkdtemp(join(tmpdir(), "eevee-harness-test-")));
   const env = options.env ?? new NodeExecutionEnv({ cwd: options.cwd ?? dir });
-  const faux = fauxProvider({ models: [{ id: "faux-1" }] });
+  const faux = fauxProvider({ models: [{ id: "faux-1", ...options.model }] });
   const models = createModels();
   models.setProvider(faux.provider);
   const registry = createRegistry();
@@ -49,6 +56,7 @@ export async function createTestHarness(options: TestHarnessOptions = {}): Promi
       models,
       registry,
       env: () => env,
+      ...(options.settings === undefined ? {} : { settings: options.settings }),
     },
     BACKGROUND_CONTEXT,
   );
