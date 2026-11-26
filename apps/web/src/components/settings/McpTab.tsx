@@ -29,7 +29,6 @@ import {
 } from "@earendil-works/elanor-react";
 import type {
   McpExposure,
-  McpOAuthEvent,
   McpServerSnapshotPayload,
   McpServerStatusPayload,
   McpStateResponse,
@@ -40,6 +39,7 @@ import { api } from "../../lib/api.ts";
 import { showToast } from "../../lib/toasts.ts";
 import { type HeaderRow, HeadersEditor, headersToRows, rowsToHeaders } from "./HeadersEditor.tsx";
 import { buildRoleTogglePatch, mergeProjectOverridePatch } from "./mcp-helpers.ts";
+import { useMcpOAuth } from "./useMcpOAuth.ts";
 
 const SERVER_NAME_RE = /^[A-Za-z0-9_-]+$/;
 const DEFAULT_EXPOSURE: McpExposure = "codemode";
@@ -78,26 +78,6 @@ type ServerFormState = {
   readonly oauthClientRegistration: "" | "auto" | "dcr" | "cimd";
   readonly oauthAuthServerMetadataUrl: string;
   readonly oauthAdvancedOpen: boolean;
-};
-
-type OAuthProgressEntry = {
-  readonly id: number;
-  readonly message: string;
-};
-
-let nextOAuthProgressId = 1;
-
-type OAuthUiSession = {
-  readonly serverName: string;
-  readonly sessionId: string;
-  readonly authUrl?: string;
-  readonly redirectHint?: string;
-  readonly instructions?: string;
-  readonly progress: readonly OAuthProgressEntry[];
-  readonly redirectInput: string;
-  readonly submittingInput: boolean;
-  readonly done: boolean;
-  readonly error?: string;
 };
 
 type ServerLogsState = {
@@ -470,8 +450,6 @@ export function McpTab({
   const [openLogs, setOpenLogs] = useState<Record<string, boolean>>({});
   const [logsByServer, setLogsByServer] = useState<Record<string, ServerLogsState>>({});
 
-  const [oauthSession, setOauthSession] = useState<OAuthUiSession | undefined>(undefined);
-  const oauthAbortRef = useRef<AbortController | undefined>(undefined);
   const loadAbortRef = useRef<AbortController | undefined>(undefined);
 
   const applyState = useCallback(
@@ -508,18 +486,30 @@ export function McpTab({
     }
   }, [projectId]);
 
+  const {
+    oauthSession,
+    oauthMutatingServers,
+    startOAuth,
+    submitOAuthRedirect,
+    cancelOAuth,
+    logoutOAuth,
+    setOAuthRedirectInput,
+    dismissOAuth,
+  } = useMcpOAuth({
+    projectId,
+    onRefresh: load,
+    onError: setError,
+  });
+
   useEffect(() => {
     setFormState(undefined);
     setJsonPanelOpen(false);
     setOpenTools({});
     setOpenLogs({});
     setLogsByServer({});
-    oauthAbortRef.current?.abort();
-    setOauthSession(undefined);
     void load();
     return () => {
       loadAbortRef.current?.abort();
-      oauthAbortRef.current?.abort();
     };
   }, [load]);
 
@@ -652,6 +642,7 @@ export function McpTab({
         ? await api.deleteProjectMcpServer(projectId, srv.name)
         : await api.deleteMcpServer(srv.name);
       applyState(next);
+      dismissOAuth(srv.name);
       if (formState?.originalName === srv.name) setFormState(undefined);
       showToast(
         projectId && srv.scope === "override"
@@ -803,133 +794,6 @@ export function McpTab({
     setOpenLogs((prev) => ({ ...prev, [srv.name]: nextOpen }));
     if (nextOpen) {
       void fetchLogs(srv.name);
-    }
-  };
-
-  const startOAuth = async (serverName: string) => {
-    oauthAbortRef.current?.abort();
-    const controller = new AbortController();
-    oauthAbortRef.current = controller;
-    setError(undefined);
-    try {
-      const started = await api.startMcpOAuth(serverName, controller.signal);
-      setOauthSession({
-        serverName,
-        sessionId: started.sessionId,
-        progress: [],
-        redirectInput: "",
-        submittingInput: false,
-        done: false,
-      });
-
-      for await (const event of api.streamMcpOAuth(serverName, started.sessionId, {
-        signal: controller.signal,
-      })) {
-        if (controller.signal.aborted) return;
-        const ev: McpOAuthEvent = event;
-        if (ev.type === "auth_url") {
-          setOauthSession((prev) =>
-            prev && prev.sessionId === started.sessionId
-              ? {
-                  ...prev,
-                  authUrl: ev.url,
-                  redirectHint: ev.redirectUrl,
-                  instructions: ev.instructions,
-                }
-              : prev,
-          );
-        } else if (ev.type === "progress") {
-          setOauthSession((prev) =>
-            prev && prev.sessionId === started.sessionId
-              ? {
-                  ...prev,
-                  progress: [...prev.progress, { id: nextOAuthProgressId++, message: ev.message }],
-                }
-              : prev,
-          );
-        } else if (ev.type === "complete") {
-          setOauthSession((prev) =>
-            prev && prev.sessionId === started.sessionId ? { ...prev, done: true } : prev,
-          );
-          showToast(`${serverName} OAuth 登录成功`);
-          await load();
-        } else if (ev.type === "error") {
-          setOauthSession((prev) =>
-            prev && prev.sessionId === started.sessionId ? { ...prev, error: ev.message } : prev,
-          );
-        }
-      }
-    } catch (err) {
-      if (!controller.signal.aborted) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setOauthSession((prev) =>
-          prev && prev.serverName === serverName ? { ...prev, error: msg } : prev,
-        );
-        setError(msg);
-      }
-    }
-  };
-
-  const submitOAuthRedirect = async () => {
-    if (!oauthSession) return;
-    const redirectUrl = oauthSession.redirectInput.trim();
-    if (!redirectUrl) return;
-    setOauthSession((prev) => (prev ? { ...prev, submittingInput: true, error: undefined } : prev));
-    try {
-      await api.submitMcpOAuthInput(oauthSession.serverName, oauthSession.sessionId, {
-        redirectUrl,
-      });
-      setOauthSession((prev) =>
-        prev
-          ? {
-              ...prev,
-              submittingInput: false,
-              redirectInput: "",
-              progress: [
-                ...prev.progress,
-                { id: nextOAuthProgressId++, message: "已提交回调 URL，等待验证完成…" },
-              ],
-            }
-          : prev,
-      );
-    } catch (err) {
-      setOauthSession((prev) =>
-        prev
-          ? {
-              ...prev,
-              submittingInput: false,
-              error: err instanceof Error ? err.message : String(err),
-            }
-          : prev,
-      );
-    }
-  };
-
-  const cancelOAuth = async () => {
-    if (!oauthSession) return;
-    oauthAbortRef.current?.abort();
-    await api
-      .cancelMcpOAuth(oauthSession.serverName, oauthSession.sessionId)
-      .catch(() => undefined);
-    setOauthSession(undefined);
-  };
-
-  const logoutOAuth = async (serverName: string) => {
-    setMutatingServers((prev) => ({ ...prev, [serverName]: true }));
-    setError(undefined);
-    try {
-      await api.logoutMcpOAuth(serverName);
-      if (oauthSession?.serverName === serverName) setOauthSession(undefined);
-      await load();
-      showToast(`已清除「${serverName}」的 OAuth 凭据`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setMutatingServers((prev) => {
-        const copy = { ...prev };
-        delete copy[serverName];
-        return copy;
-      });
     }
   };
 
@@ -1482,7 +1346,7 @@ export function McpTab({
           {statuses.map((srv) => {
             const meta = statusMeta(srv.status);
             const scope = scopeBadge(srv.scope);
-            const isBusy = Boolean(mutatingServers[srv.name]);
+            const isBusy = Boolean(mutatingServers[srv.name] || oauthMutatingServers[srv.name]);
             const effectiveCfg = effectiveServers[srv.name] ?? globalServers[srv.name];
             const ownCfg = projectId
               ? (projectServers[srv.name] ?? effectiveServers[srv.name])
@@ -1500,7 +1364,7 @@ export function McpTab({
             const toolsExpanded = Boolean(openTools[srv.name]);
             const logsExpanded = Boolean(openLogs[srv.name]);
             const logState = logsByServer[srv.name];
-            const canOAuth = transport === "http" && (!projectId || srv.scope !== "project");
+            const canOAuth = transport === "http";
             const needsAuth = srv.status === "auth_required" || srv.authRequired === true;
             const activeOAuth = oauthSession?.serverName === srv.name ? oauthSession : undefined;
             const previewTarget = targetSummary(effectiveCfg);
@@ -1721,11 +1585,7 @@ export function McpTab({
                               ? `若未自动回跳，粘贴回调 URL（如 ${activeOAuth.redirectHint}?code=...）`
                               : "若未自动回跳，粘贴完整回调 URL"
                           }
-                          onValueChange={(value) =>
-                            setOauthSession((prev) =>
-                              prev ? { ...prev, redirectInput: value } : prev,
-                            )
-                          }
+                          onValueChange={setOAuthRedirectInput}
                         />
                         <Button
                           type="button"

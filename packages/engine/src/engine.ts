@@ -18,6 +18,7 @@ import {
   type McpHub,
   type McpHubOptions,
   McpOAuthCredentialStore,
+  mcpOAuthStoreKey,
   parseMcpConfig,
   resolveTaskId,
   sliceRetainedOutput,
@@ -131,6 +132,7 @@ import {
   putProjectMcpConfig,
   reconnectMcp,
   reconnectProjectMcp,
+  resolveEffectiveProjectMcp,
   upsertMcpServer,
   upsertProjectMcpServer,
 } from "./engine-mcp.ts";
@@ -169,7 +171,11 @@ import {
   type SkillsDeps,
 } from "./engine-skills.ts";
 import { LoginSessionManager, type LoginSseFrame } from "./login-sessions.ts";
-import { McpOAuthSessionManager } from "./mcp-oauth-sessions.ts";
+import {
+  GLOBAL_MCP_OAUTH_SCOPE,
+  McpOAuthSessionManager,
+  projectMcpOAuthScope,
+} from "./mcp-oauth-sessions.ts";
 import { type OpenProjectStorage, ProjectPool } from "./project-pool.ts";
 import { EngineStore } from "./store.ts";
 
@@ -558,7 +564,9 @@ export class Engine {
   async startMcpOAuth(serverName: string): Promise<StartMcpOAuthResponse> {
     this.#assertOpen();
     const config = this.#requireGlobalHttpMcpServer(serverName, true);
+    const storeKey = mcpOAuthStoreKey(serverName, config.url);
     return this.#mcpOAuthSessions.start({
+      scopeKey: GLOBAL_MCP_OAUTH_SCOPE,
       serverName,
       serverUrl: config.url,
       store: this.oauthStore,
@@ -571,7 +579,7 @@ export class Engine {
       },
       onComplete: async (name) => {
         await this.mcpHub.reconnect(name).catch(() => undefined);
-        await this.#pool.reconnectServerOnProjectHubs(name);
+        await this.#pool.reconnectServerOnProjectHubs(name, storeKey);
         await this.#pool.syncMcpExtensions();
       },
     });
@@ -583,7 +591,7 @@ export class Engine {
     onEvent: (event: McpOAuthEvent) => void,
   ): () => void {
     this.#assertOpen();
-    return this.#mcpOAuthSessions.subscribe(serverName, sessionId, onEvent);
+    return this.#mcpOAuthSessions.subscribe(serverName, sessionId, onEvent, GLOBAL_MCP_OAUTH_SCOPE);
   }
 
   submitMcpOAuthInput(
@@ -592,26 +600,137 @@ export class Engine {
     input: McpOAuthInputRequest,
   ): OkResponse {
     this.#assertOpen();
-    this.#mcpOAuthSessions.submitInput(serverName, sessionId, input.redirectUrl);
+    this.#mcpOAuthSessions.submitInput(
+      serverName,
+      sessionId,
+      input.redirectUrl,
+      GLOBAL_MCP_OAUTH_SCOPE,
+    );
     return { ok: true };
   }
 
   cancelMcpOAuth(serverName: string, sessionId: string): OkResponse {
     this.#assertOpen();
-    this.#mcpOAuthSessions.cancel(serverName, sessionId);
+    this.#mcpOAuthSessions.cancel(serverName, sessionId, GLOBAL_MCP_OAUTH_SCOPE);
     return { ok: true };
   }
 
   async logoutMcpOAuth(serverName: string): Promise<OkResponse> {
     this.#assertOpen();
     const config = this.#requireGlobalHttpMcpServer(serverName, false);
-    await this.#mcpOAuthSessions.cancelForServer(serverName);
+    await this.#mcpOAuthSessions.cancelForServer(serverName, GLOBAL_MCP_OAUTH_SCOPE);
     await this.oauthStore.remove(serverName, config.url);
     if (config.enabled !== false) {
       await this.mcpHub.reconnect(serverName).catch(() => undefined);
-      await this.#pool.reconnectServerOnProjectHubs(serverName);
+      await this.#pool.reconnectServerOnProjectHubs(
+        serverName,
+        mcpOAuthStoreKey(serverName, config.url),
+      );
       await this.#pool.syncMcpExtensions();
     }
+    return { ok: true };
+  }
+
+  async startProjectMcpOAuth(
+    projectId: string,
+    serverName: string,
+  ): Promise<StartMcpOAuthResponse> {
+    this.#assertOpen();
+    const config = this.#requireEffectiveProjectHttpMcpServer(projectId, serverName, true);
+    const scopeKey = projectMcpOAuthScope(projectId);
+    const expectedStoreKey = mcpOAuthStoreKey(serverName, config.url);
+    return this.#mcpOAuthSessions.start({
+      scopeKey,
+      serverName,
+      serverUrl: config.url,
+      store: this.oauthStore,
+      ...(config.oauth === undefined ? {} : { settings: config.oauth }),
+      env: this.#options.env,
+      challenge: this.#pool.getProjectMcpHub(projectId)?.getAuthChallenge(serverName),
+      beforeStart: () => {
+        this.#assertOpen();
+        const current = this.#requireEffectiveProjectHttpMcpServer(projectId, serverName, true);
+        if (mcpOAuthStoreKey(serverName, current.url) !== expectedStoreKey) {
+          throw new EngineError(
+            409,
+            "mcp_server_changed",
+            `MCP server "${serverName}" configuration changed before sign-in started`,
+          );
+        }
+      },
+      onComplete: async (name) => {
+        if (this.#closed || this.#pool.isDeleting(projectId)) return;
+        if (this.store.getProject(projectId) === undefined) return;
+        const { entries } = resolveEffectiveProjectMcp(
+          getMcpServersRecord(this.store),
+          this.store.getProjectMcpServers(projectId) ?? {},
+          false,
+        );
+        const current = entries.find((item) => item.name === name);
+        if (
+          current === undefined ||
+          !("url" in current.config) ||
+          current.config.enabled === false ||
+          mcpOAuthStoreKey(name, current.config.url) !== expectedStoreKey
+        ) {
+          return;
+        }
+        await this.#reconnectAfterProjectOAuth(projectId, name, config.url);
+      },
+    });
+  }
+
+  subscribeProjectMcpOAuthSession(
+    projectId: string,
+    serverName: string,
+    sessionId: string,
+    onEvent: (event: McpOAuthEvent) => void,
+  ): () => void {
+    this.#assertOpen();
+    this.getProject(projectId);
+    return this.#mcpOAuthSessions.subscribe(
+      serverName,
+      sessionId,
+      onEvent,
+      projectMcpOAuthScope(projectId),
+    );
+  }
+
+  submitProjectMcpOAuthInput(
+    projectId: string,
+    serverName: string,
+    sessionId: string,
+    input: McpOAuthInputRequest,
+  ): OkResponse {
+    this.#assertOpen();
+    this.getProject(projectId);
+    this.#mcpOAuthSessions.submitInput(
+      serverName,
+      sessionId,
+      input.redirectUrl,
+      projectMcpOAuthScope(projectId),
+    );
+    return { ok: true };
+  }
+
+  cancelProjectMcpOAuth(projectId: string, serverName: string, sessionId: string): OkResponse {
+    this.#assertOpen();
+    this.getProject(projectId);
+    this.#mcpOAuthSessions.cancel(serverName, sessionId, projectMcpOAuthScope(projectId));
+    return { ok: true };
+  }
+
+  async logoutProjectMcpOAuth(projectId: string, serverName: string): Promise<OkResponse> {
+    this.#assertOpen();
+    const config = this.#requireEffectiveProjectHttpMcpServer(projectId, serverName, false);
+    await this.#mcpOAuthSessions.cancelForServer(serverName, projectMcpOAuthScope(projectId));
+    await this.oauthStore.remove(serverName, config.url);
+    await this.#reconnectAfterProjectOAuth(
+      projectId,
+      serverName,
+      config.url,
+      config.enabled !== false,
+    );
     return { ok: true };
   }
 
@@ -694,8 +813,8 @@ export class Engine {
         modelRuntime: this.modelRuntime,
         mcpHub: this.mcpHub,
         oauthStore: this.oauthStore,
-        cancelOAuthForServers: (serverNames) =>
-          this.#mcpOAuthSessions.cancelAllForServers(serverNames),
+        cancelOAuthForServers: (serverNames, scopeKey) =>
+          this.#mcpOAuthSessions.cancelAllForServers(serverNames, scopeKey),
         env: this.#options.env,
         syncProjects: () => this.#pool.reloadGlobalMcpChanges(),
         applySettings: () => this.#pool.applySettingsLive(),
@@ -775,6 +894,7 @@ export class Engine {
   async deleteProject(projectId: string): Promise<DeleteProjectResponse> {
     this.#assertOpen();
     this.getProject(projectId);
+    await this.#mcpOAuthSessions.cancelForScope(projectMcpOAuthScope(projectId));
     await this.#pool.deleteOpenProject(projectId, async () => {
       this.store.deleteProject(projectId);
       const paths = projectPaths(this.layout, projectId);
@@ -1280,14 +1400,72 @@ export class Engine {
     return config;
   }
 
+  #requireEffectiveProjectHttpMcpServer(
+    projectId: string,
+    serverName: string,
+    requireEnabled: boolean,
+  ): McpHttpServerConfig {
+    this.getProject(projectId);
+    const globalServers = getMcpServersRecord(this.store);
+    const projectServers = this.store.getProjectMcpServers(projectId) ?? {};
+    const { entries } = resolveEffectiveProjectMcp(globalServers, projectServers, false);
+    const entry = entries.find((item) => item.name === serverName);
+    if (entry === undefined) {
+      throw new EngineError(404, "mcp_server_not_found", `Unknown MCP server "${serverName}"`);
+    }
+    if (!("url" in entry.config)) {
+      throw new EngineError(
+        400,
+        "mcp_oauth_unsupported",
+        `MCP server "${serverName}" does not use HTTP transport`,
+      );
+    }
+    if (requireEnabled && entry.config.enabled === false) {
+      throw new EngineError(409, "mcp_server_disabled", `MCP server "${serverName}" is disabled`);
+    }
+    return entry.config;
+  }
+
+  async #reconnectAfterProjectOAuth(
+    projectId: string,
+    serverName: string,
+    serverUrl: string,
+    reconnectProject = true,
+  ): Promise<void> {
+    const storeKey = mcpOAuthStoreKey(serverName, serverUrl);
+    if (reconnectProject) {
+      await this.#pool.reconnectServerOnProject(projectId, serverName);
+    }
+    const globalServers = getMcpServersRecord(this.store);
+    const globalRaw = Object.hasOwn(globalServers, serverName)
+      ? globalServers[serverName]
+      : undefined;
+    const globalConfig =
+      globalRaw === undefined ? undefined : validateMcpServerEntry(serverName, globalRaw);
+    const sharesGlobal =
+      globalConfig !== undefined &&
+      typeof globalConfig !== "string" &&
+      "url" in globalConfig &&
+      globalConfig.enabled !== false &&
+      mcpOAuthStoreKey(serverName, globalConfig.url) === storeKey;
+
+    if (sharesGlobal) {
+      await this.mcpHub.reconnect(serverName).catch(() => undefined);
+    }
+    await this.#pool.reconnectServerOnProjectHubs(serverName, storeKey, projectId);
+    if (sharesGlobal) {
+      await this.#pool.syncMcpExtensions();
+    }
+  }
+
   #mcpDeps(): McpDeps {
     return {
       layout: this.layout,
       store: this.store,
       mcpHub: this.mcpHub,
       oauthStore: this.oauthStore,
-      cancelOAuthForServers: (serverNames) =>
-        this.#mcpOAuthSessions.cancelAllForServers(serverNames),
+      cancelOAuthForServers: (serverNames, scopeKey) =>
+        this.#mcpOAuthSessions.cancelAllForServers(serverNames, scopeKey),
       globalLogPath: this.#mcpLogPath,
       requireProject: (projectId) => this.getProject(projectId),
       syncProjects: () => this.#pool.reloadGlobalMcpChanges(),

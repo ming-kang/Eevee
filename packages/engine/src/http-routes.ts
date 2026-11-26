@@ -383,6 +383,63 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     route("GET", "/projects/:projectId/mcp/servers/:serverName/logs", ({ res, params }) => {
       sendJson(res, 200, engine.getProjectMcpLogs(params.projectId, params.serverName));
     }),
+    route(
+      "POST",
+      "/projects/:projectId/mcp/servers/:serverName/oauth/login",
+      async ({ req, res, params }) => {
+        await readOptionalJsonBody(req);
+        sendJson(res, 201, await engine.startProjectMcpOAuth(params.projectId, params.serverName));
+      },
+    ),
+    route(
+      "GET",
+      "/projects/:projectId/mcp/servers/:serverName/oauth/login/:sessionId/stream",
+      ({ req, res, params }) => {
+        streams.handleProjectMcpOAuthStream(
+          req,
+          res,
+          params.projectId,
+          params.serverName,
+          params.sessionId,
+        );
+      },
+    ),
+    route(
+      "POST",
+      "/projects/:projectId/mcp/servers/:serverName/oauth/login/:sessionId/input",
+      async ({ req, res, params }) => {
+        const input = await readBody(req, McpOAuthInputRequestSchema, "McpOAuthInputRequest");
+        sendJson(
+          res,
+          200,
+          engine.submitProjectMcpOAuthInput(
+            params.projectId,
+            params.serverName,
+            params.sessionId,
+            input,
+          ),
+        );
+      },
+    ),
+    route(
+      "POST",
+      "/projects/:projectId/mcp/servers/:serverName/oauth/login/:sessionId/cancel",
+      async ({ req, res, params }) => {
+        await readOptionalJsonBody(req);
+        sendJson(
+          res,
+          200,
+          engine.cancelProjectMcpOAuth(params.projectId, params.serverName, params.sessionId),
+        );
+      },
+    ),
+    route(
+      "DELETE",
+      "/projects/:projectId/mcp/servers/:serverName/oauth",
+      async ({ res, params }) => {
+        sendJson(res, 200, await engine.logoutProjectMcpOAuth(params.projectId, params.serverName));
+      },
+    ),
     route("GET", "/projects/:projectId/board", async ({ res, params }) => {
       sendJson(res, 200, await engine.getBoard(params.projectId));
     }),

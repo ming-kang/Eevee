@@ -958,27 +958,13 @@ export class EeveeClient {
     return parseWithSchema(startMcpOAuthValidator, data, `POST ${path} response`);
   }
 
-  async *streamMcpOAuth(
+  streamMcpOAuth(
     serverName: string,
     sessionId: string,
     opts?: StreamMcpOAuthOptions,
   ): AsyncGenerator<McpOAuthEvent> {
     const path = `/mcp/servers/${encodeURIComponent(serverName)}/oauth/login/${encodeURIComponent(sessionId)}/stream`;
-    const response = await this.#requestSse(path, opts?.signal);
-    for await (const sse of parseSseStream(response.body, opts?.signal)) {
-      if (
-        sse.event === "auth_url" ||
-        sse.event === "progress" ||
-        sse.event === "complete" ||
-        sse.event === "error" ||
-        sse.event === "message"
-      ) {
-        const raw = parseJsonString(sse.data, "MCP OAuth SSE payload");
-        const event = parseWithSchema(mcpOAuthEventValidator, raw, "MCP OAuth SSE payload");
-        yield event;
-        if (event.type === "complete" || event.type === "error") return;
-      }
-    }
+    return this.#streamMcpOAuthPath(path, opts);
   }
 
   async submitMcpOAuthInput(
@@ -1066,6 +1052,59 @@ export class EeveeClient {
     const path = `/projects/${encodeURIComponent(projectId)}/mcp/servers/${encodeURIComponent(serverName)}/logs`;
     const data = await this.#requestJson("GET", path, undefined, signal);
     return parseWithSchema(mcpLogsValidator, data, `GET ${path} response`);
+  }
+
+  async startProjectMcpOAuth(
+    projectId: string,
+    serverName: string,
+    signal?: AbortSignal,
+  ): Promise<StartMcpOAuthResponse> {
+    const path = `/projects/${encodeURIComponent(projectId)}/mcp/servers/${encodeURIComponent(serverName)}/oauth/login`;
+    const data = await this.#requestJson("POST", path, undefined, signal);
+    return parseWithSchema(startMcpOAuthValidator, data, `POST ${path} response`);
+  }
+
+  streamProjectMcpOAuth(
+    projectId: string,
+    serverName: string,
+    sessionId: string,
+    opts?: StreamMcpOAuthOptions,
+  ): AsyncGenerator<McpOAuthEvent> {
+    const path = `/projects/${encodeURIComponent(projectId)}/mcp/servers/${encodeURIComponent(serverName)}/oauth/login/${encodeURIComponent(sessionId)}/stream`;
+    return this.#streamMcpOAuthPath(path, opts);
+  }
+
+  async submitProjectMcpOAuthInput(
+    projectId: string,
+    serverName: string,
+    sessionId: string,
+    input: McpOAuthInputRequest,
+    signal?: AbortSignal,
+  ): Promise<OkResponse> {
+    const path = `/projects/${encodeURIComponent(projectId)}/mcp/servers/${encodeURIComponent(serverName)}/oauth/login/${encodeURIComponent(sessionId)}/input`;
+    const data = await this.#requestJson("POST", path, input, signal);
+    return parseWithSchema(okValidator, data, `POST ${path} response`);
+  }
+
+  async cancelProjectMcpOAuth(
+    projectId: string,
+    serverName: string,
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<OkResponse> {
+    const path = `/projects/${encodeURIComponent(projectId)}/mcp/servers/${encodeURIComponent(serverName)}/oauth/login/${encodeURIComponent(sessionId)}/cancel`;
+    const data = await this.#requestJson("POST", path, undefined, signal);
+    return parseWithSchema(okValidator, data, `POST ${path} response`);
+  }
+
+  async logoutProjectMcpOAuth(
+    projectId: string,
+    serverName: string,
+    signal?: AbortSignal,
+  ): Promise<OkResponse> {
+    const path = `/projects/${encodeURIComponent(projectId)}/mcp/servers/${encodeURIComponent(serverName)}/oauth`;
+    const data = await this.#requestJson("DELETE", path, undefined, signal);
+    return parseWithSchema(okValidator, data, `DELETE ${path} response`);
   }
 
   async getSettings(signal?: AbortSignal): Promise<EngineSettings> {
@@ -1163,6 +1202,27 @@ export class EeveeClient {
 
     const text = await response.text();
     return parseJsonString(text, `${method} ${path}`);
+  }
+
+  async *#streamMcpOAuthPath(
+    path: string,
+    opts?: StreamMcpOAuthOptions,
+  ): AsyncGenerator<McpOAuthEvent> {
+    const response = await this.#requestSse(path, opts?.signal);
+    for await (const sse of parseSseStream(response.body, opts?.signal)) {
+      if (
+        sse.event === "auth_url" ||
+        sse.event === "progress" ||
+        sse.event === "complete" ||
+        sse.event === "error" ||
+        sse.event === "message"
+      ) {
+        const raw = parseJsonString(sse.data, "MCP OAuth SSE payload");
+        const event = parseWithSchema(mcpOAuthEventValidator, raw, "MCP OAuth SSE payload");
+        yield event;
+        if (event.type === "complete" || event.type === "error") return;
+      }
+    }
   }
 
   async #requestSse(

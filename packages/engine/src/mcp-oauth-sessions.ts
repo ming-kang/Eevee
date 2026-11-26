@@ -9,7 +9,14 @@ import {
 import type { McpOAuthEvent, StartMcpOAuthResponse } from "@eevee/protocol";
 import { EngineError } from "./engine-error.ts";
 
+export const GLOBAL_MCP_OAUTH_SCOPE = "global";
+
+export function projectMcpOAuthScope(projectId: string): string {
+  return `project:${projectId}`;
+}
+
 export type StartMcpOAuthSessionOptions = {
+  readonly scopeKey?: string;
   readonly serverName: string;
   readonly serverUrl: string;
   readonly store: McpOAuthCredentialStore;
@@ -22,6 +29,7 @@ export type StartMcpOAuthSessionOptions = {
 
 type ManagedOAuthSession = {
   readonly sessionId: string;
+  readonly scopeKey: string;
   readonly serverName: string;
   readonly raw: McpOAuthSession;
   readonly history: McpOAuthEvent[];
@@ -60,31 +68,36 @@ export class McpOAuthSessionManager {
     if (this.#closed) {
       return Promise.reject(new EngineError(503, "engine_closed", "Engine is closing"));
     }
-    return this.#enqueueStart(options.serverName, () => this.#startNow(options));
+    const scopeKey = options.scopeKey ?? GLOBAL_MCP_OAUTH_SCOPE;
+    const chainKey = `${scopeKey}:${options.serverName}`;
+    return this.#enqueueStart(chainKey, () => this.#startNow(options, scopeKey));
   }
 
-  #enqueueStart<T>(serverName: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.#startChains.get(serverName) ?? Promise.resolve();
+  #enqueueStart<T>(chainKey: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.#startChains.get(chainKey) ?? Promise.resolve();
     const run = prev.then(() => fn());
     const tail = run.then(
       () => undefined,
       () => undefined,
     );
     const cleaned = tail.finally(() => {
-      if (this.#startChains.get(serverName) === cleaned) {
-        this.#startChains.delete(serverName);
+      if (this.#startChains.get(chainKey) === cleaned) {
+        this.#startChains.delete(chainKey);
       }
     });
-    this.#startChains.set(serverName, cleaned);
+    this.#startChains.set(chainKey, cleaned);
     return cleaned.then(() => run);
   }
 
-  async #startNow(options: StartMcpOAuthSessionOptions): Promise<StartMcpOAuthResponse> {
+  async #startNow(
+    options: StartMcpOAuthSessionOptions,
+    scopeKey: string,
+  ): Promise<StartMcpOAuthResponse> {
     if (this.#closed) {
       throw new EngineError(503, "engine_closed", "Engine is closing");
     }
 
-    await this.cancelForServer(options.serverName);
+    await this.cancelForServer(options.serverName, scopeKey);
     if (this.#closed) {
       throw new EngineError(503, "engine_closed", "Engine is closing");
     }
@@ -130,6 +143,7 @@ export class McpOAuthSessionManager {
     const sessionId = raw.id;
     const managed: ManagedOAuthSession = {
       sessionId,
+      scopeKey,
       serverName: options.serverName,
       raw,
       history,
@@ -181,8 +195,9 @@ export class McpOAuthSessionManager {
     serverName: string,
     sessionId: string,
     onEvent: (event: McpOAuthEvent) => void,
+    scopeKey = GLOBAL_MCP_OAUTH_SCOPE,
   ): () => void {
-    const session = this.#requireSession(serverName, sessionId);
+    const session = this.#requireSession(serverName, sessionId, scopeKey);
     for (const event of session.history) {
       onEvent(event);
     }
@@ -195,8 +210,13 @@ export class McpOAuthSessionManager {
     };
   }
 
-  submitInput(serverName: string, sessionId: string, redirectUrl: string): void {
-    const session = this.#requireSession(serverName, sessionId);
+  submitInput(
+    serverName: string,
+    sessionId: string,
+    redirectUrl: string,
+    scopeKey = GLOBAL_MCP_OAUTH_SCOPE,
+  ): void {
+    const session = this.#requireSession(serverName, sessionId, scopeKey);
     if (session.terminal) {
       throw new EngineError(
         409,
@@ -218,22 +238,39 @@ export class McpOAuthSessionManager {
     }
   }
 
-  cancel(serverName: string, sessionId: string): void {
-    const session = this.#requireSession(serverName, sessionId);
+  cancel(serverName: string, sessionId: string, scopeKey = GLOBAL_MCP_OAUTH_SCOPE): void {
+    const session = this.#requireSession(serverName, sessionId, scopeKey);
     if (session.terminal) return;
     session.raw.cancel();
   }
 
-  async cancelForServer(serverName: string): Promise<void> {
-    await this.cancelAllForServers([serverName]);
+  async cancelForServer(serverName: string, scopeKey?: string): Promise<void> {
+    await this.cancelAllForServers([serverName], scopeKey);
   }
 
-  async cancelAllForServers(serverNames: Iterable<string>): Promise<void> {
+  async cancelAllForServers(serverNames: Iterable<string>, scopeKey?: string): Promise<void> {
     const targets = new Set(serverNames);
     if (targets.size === 0) return;
     const pending: Promise<void>[] = [];
     for (const session of this.#sessions.values()) {
-      if (targets.has(session.serverName) && !session.terminal) {
+      if (
+        targets.has(session.serverName) &&
+        (scopeKey === undefined || session.scopeKey === scopeKey) &&
+        !session.terminal
+      ) {
+        session.raw.cancel();
+        pending.push(session.done);
+      }
+    }
+    if (pending.length > 0) {
+      await Promise.allSettled(pending);
+    }
+  }
+
+  async cancelForScope(scopeKey: string): Promise<void> {
+    const pending: Promise<void>[] = [];
+    for (const session of this.#sessions.values()) {
+      if (session.scopeKey === scopeKey && !session.terminal) {
         session.raw.cancel();
         pending.push(session.done);
       }
@@ -267,9 +304,17 @@ export class McpOAuthSessionManager {
     this.#sessions.clear();
   }
 
-  #requireSession(serverName: string, sessionId: string): ManagedOAuthSession {
+  #requireSession(
+    serverName: string,
+    sessionId: string,
+    scopeKey = GLOBAL_MCP_OAUTH_SCOPE,
+  ): ManagedOAuthSession {
     const session = this.#sessions.get(sessionId);
-    if (session === undefined || session.serverName !== serverName) {
+    if (
+      session === undefined ||
+      session.serverName !== serverName ||
+      session.scopeKey !== scopeKey
+    ) {
       throw new EngineError(
         404,
         "mcp_oauth_session_not_found",

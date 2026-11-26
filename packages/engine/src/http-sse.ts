@@ -46,6 +46,13 @@ export type SseStreamHandlers = {
     serverName: string,
     sessionId: string,
   ) => void;
+  readonly handleProjectMcpOAuthStream: (
+    req: IncomingMessage,
+    res: ServerResponse,
+    projectId: string,
+    serverName: string,
+    sessionId: string,
+  ) => void;
 };
 
 function writeSseEvent(
@@ -378,11 +385,10 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     }
   }
 
-  function handleMcpOAuthStream(
+  function streamMcpOAuth(
     req: IncomingMessage,
     res: ServerResponse,
-    serverName: string,
-    sessionId: string,
+    subscribe: (onEvent: (event: McpOAuthEvent) => void) => () => void,
   ): void {
     const buffered: McpOAuthEvent[] = [];
     let streamReady = false;
@@ -409,7 +415,7 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
       }
     };
 
-    unsubscribe = engine.subscribeMcpOAuthSession(serverName, sessionId, (event) => {
+    unsubscribe = subscribe((event) => {
       if (!streamReady) {
         buffered.push(event);
         return;
@@ -446,11 +452,35 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     }
   }
 
+  function handleMcpOAuthStream(
+    req: IncomingMessage,
+    res: ServerResponse,
+    serverName: string,
+    sessionId: string,
+  ): void {
+    streamMcpOAuth(req, res, (onEvent) =>
+      engine.subscribeMcpOAuthSession(serverName, sessionId, onEvent),
+    );
+  }
+
+  function handleProjectMcpOAuthStream(
+    req: IncomingMessage,
+    res: ServerResponse,
+    projectId: string,
+    serverName: string,
+    sessionId: string,
+  ): void {
+    streamMcpOAuth(req, res, (onEvent) =>
+      engine.subscribeProjectMcpOAuthSession(projectId, serverName, sessionId, onEvent),
+    );
+  }
+
   return {
     handleBoardStream,
     handleConversationStream,
     handleTaskStream,
     handleLoginStream,
     handleMcpOAuthStream,
+    handleProjectMcpOAuthStream,
   };
 }

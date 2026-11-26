@@ -10,6 +10,7 @@ import {
   type McpHubOptions,
   type McpOAuthCredentialStore,
   type McpServerEntry,
+  mcpOAuthStoreKey,
 } from "@eevee/agent";
 import { openProject as openCoreProject, type ProjectHandle } from "@eevee/core";
 import type { ProjectSummary } from "@eevee/protocol";
@@ -248,16 +249,54 @@ export class ProjectPool {
     });
   }
 
-  async reconnectServerOnProjectHubs(serverName: string): Promise<void> {
-    const projectIds = [...new Set([...this.#projects.keys(), ...this.#opening.keys()])];
+  async reconnectServerOnProject(projectId: string, serverName: string): Promise<void> {
+    await this.#enqueueProjectMcp(projectId, async () => {
+      if (this.#closed || this.#deletingProjects.has(projectId)) return;
+      const opening = this.#opening.get(projectId);
+      if (opening !== undefined) {
+        await opening.catch(() => undefined);
+      }
+      if (this.#closed || this.#deletingProjects.has(projectId)) return;
+      const entry = this.#projects.get(projectId);
+      if (entry?.projectMcpHub?.status().some((snap) => snap.name === serverName && snap.enabled)) {
+        await entry.projectMcpHub.reconnect(serverName).catch(() => undefined);
+        await entry.handle.syncMcpExtensions();
+      }
+    });
+  }
+
+  async reconnectServerOnProjectHubs(
+    serverName: string,
+    storeKey?: string,
+    excludeProjectId?: string,
+  ): Promise<void> {
+    const projectIds = [...new Set([...this.#projects.keys(), ...this.#opening.keys()])].filter(
+      (id) => id !== excludeProjectId,
+    );
     await Promise.all(
       projectIds.map((projectId) =>
         this.#enqueueProjectMcp(projectId, async () => {
+          if (this.#closed || this.#deletingProjects.has(projectId)) return;
+          const opening = this.#opening.get(projectId);
+          if (opening !== undefined) {
+            await opening.catch(() => undefined);
+          }
           if (this.#closed || this.#deletingProjects.has(projectId)) return;
           const entry = this.#projects.get(projectId);
           if (
             entry?.projectMcpHub?.status().some((snap) => snap.name === serverName && snap.enabled)
           ) {
+            if (storeKey !== undefined) {
+              const effective = resolveEffectiveProjectMcpForStore(this.#deps.store, projectId);
+              const server = effective.find((item) => item.name === serverName);
+              if (
+                server === undefined ||
+                !("url" in server.config) ||
+                mcpOAuthStoreKey(serverName, server.config.url) !== storeKey
+              ) {
+                return;
+              }
+            }
             await entry.projectMcpHub.reconnect(serverName).catch(() => undefined);
             await entry.handle.syncMcpExtensions();
           }

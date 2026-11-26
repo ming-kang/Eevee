@@ -341,9 +341,11 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
     .command("login")
     .description("Authenticate an HTTP MCP server via OAuth")
     .argument("<name>", "MCP server name")
+    .option("--project <projectId>", "Authenticate an MCP server for a specific project")
     .option("--json", "Output JSON")
-    .action(async (rawName: string, options: { json?: boolean }) => {
+    .action(async (rawName: string, options: { project?: string; json?: boolean }) => {
       const name = parseNonEmptyServerName(rawName);
+      const projectId = parseProjectIdFlag(options.project);
       const { client } = await connectLocalEngine(env);
       const promptOut = options.json ? process.stderr : process.stdout;
       const controller = new AbortController();
@@ -355,11 +357,17 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
       let cancelPromise: Promise<unknown> | undefined;
       let sessionId: string | undefined;
 
+      const cancelOAuthSession = (activeSessionId: string) =>
+        (projectId === undefined
+          ? client.cancelMcpOAuth(name, activeSessionId)
+          : client.cancelProjectMcpOAuth(projectId, name, activeSessionId)
+        ).catch(() => undefined);
+
       const onAbort = () => {
         promptController.abort();
         rl?.close();
         if (sessionId !== undefined) {
-          cancelPromise = client.cancelMcpOAuth(name, sessionId).catch(() => undefined);
+          cancelPromise = cancelOAuthSession(sessionId);
         }
       };
       controller.signal.addEventListener("abort", onAbort, { once: true });
@@ -383,7 +391,13 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
               const redirectUrl = answer.trim();
               if (redirectUrl.length === 0) continue;
               try {
-                await client.submitMcpOAuthInput(name, activeSessionId, { redirectUrl });
+                if (projectId === undefined) {
+                  await client.submitMcpOAuthInput(name, activeSessionId, { redirectUrl });
+                } else {
+                  await client.submitProjectMcpOAuthInput(projectId, name, activeSessionId, {
+                    redirectUrl,
+                  });
+                }
                 return;
               } catch (error) {
                 if (promptController.signal.aborted || controller.signal.aborted) return;
@@ -400,15 +414,22 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
 
       let terminalEvent: Extract<McpOAuthEvent, { type: "complete" | "error" }> | undefined;
       try {
-        const session = await client.startMcpOAuth(name, controller.signal);
+        const session =
+          projectId === undefined
+            ? await client.startMcpOAuth(name, controller.signal)
+            : await client.startProjectMcpOAuth(projectId, name, controller.signal);
         sessionId = session.sessionId;
         if (controller.signal.aborted) {
-          cancelPromise = client.cancelMcpOAuth(name, sessionId).catch(() => undefined);
+          cancelPromise = cancelOAuthSession(sessionId);
           return;
         }
-        for await (const event of client.streamMcpOAuth(name, session.sessionId, {
-          signal: controller.signal,
-        })) {
+        const stream =
+          projectId === undefined
+            ? client.streamMcpOAuth(name, session.sessionId, { signal: controller.signal })
+            : client.streamProjectMcpOAuth(projectId, name, session.sessionId, {
+                signal: controller.signal,
+              });
+        for await (const event of stream) {
           if (event.type === "auth_url") {
             promptOut.write(`Open URL: ${event.url}\n`);
             if (event.instructions !== undefined) {
@@ -448,7 +469,13 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
         throw new Error(`${terminalEvent.message} (${terminalEvent.code})`);
       }
       if (options.json) {
-        console.log(JSON.stringify({ ok: true, server: name }, null, 2));
+        console.log(
+          JSON.stringify(
+            { ok: true, server: name, ...(projectId === undefined ? {} : { projectId }) },
+            null,
+            2,
+          ),
+        );
         return;
       }
       console.log(`Authenticated MCP server ${name}`);
@@ -458,11 +485,16 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
     .command("logout")
     .description("Remove stored OAuth credentials for an MCP server")
     .argument("<name>", "MCP server name")
+    .option("--project <projectId>", "Remove stored OAuth credentials for a project MCP server")
     .option("--json", "Output JSON")
-    .action(async (rawName: string, options: { json?: boolean }) => {
+    .action(async (rawName: string, options: { project?: string; json?: boolean }) => {
       const name = parseNonEmptyServerName(rawName);
+      const projectId = parseProjectIdFlag(options.project);
       const { client } = await connectLocalEngine(env);
-      const response = await client.logoutMcpOAuth(name);
+      const response =
+        projectId === undefined
+          ? await client.logoutMcpOAuth(name)
+          : await client.logoutProjectMcpOAuth(projectId, name);
       if (options.json) {
         console.log(JSON.stringify(response, null, 2));
         return;

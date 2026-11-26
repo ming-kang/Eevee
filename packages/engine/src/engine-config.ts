@@ -29,6 +29,7 @@ import {
 } from "@eevee/protocol";
 import type { DataDirLayout } from "./data-dir.ts";
 import { EngineError } from "./engine-error.ts";
+import { GLOBAL_MCP_OAUTH_SCOPE, projectMcpOAuthScope } from "./mcp-oauth-sessions.ts";
 import type { EngineStore } from "./store.ts";
 
 export const KV_SETTINGS = "settings";
@@ -360,20 +361,66 @@ export function pruneOrphanProjectMcpOverrides(
   }
 }
 
+export type OAuthCancellationScope = {
+  readonly scopeKey: string;
+  readonly serverNames: readonly string[];
+};
+
+export function collectGlobalMcpOAuthCancellations(
+  store: EngineStore,
+  removedGlobalHttp: readonly RemovedHttpMcpServer[],
+): OAuthCancellationScope[] {
+  if (removedGlobalHttp.length === 0) return [];
+  const scopes: OAuthCancellationScope[] = [
+    {
+      scopeKey: GLOBAL_MCP_OAUTH_SCOPE,
+      serverNames: removedGlobalHttp.map((entry) => entry.name),
+    },
+  ];
+  for (const project of store.listProjects()) {
+    const projectServers = store.getProjectMcpServers(project.id) ?? {};
+    const inheritedNames = removedGlobalHttp
+      .filter((entry) => {
+        const raw = projectServers[entry.name];
+        return raw === undefined || (isRecord(raw) && isMcpServerOverride(raw));
+      })
+      .map((entry) => entry.name);
+    if (inheritedNames.length > 0) {
+      scopes.push({
+        scopeKey: projectMcpOAuthScope(project.id),
+        serverNames: inheritedNames,
+      });
+    }
+  }
+  return scopes;
+}
+
 export type CleanupRemovedMcpOAuthOptions = {
   readonly store: EngineStore;
   readonly oauthStore: McpOAuthCredentialStore;
-  readonly cancelOAuthForServers: (serverNames: readonly string[]) => Promise<void>;
+  readonly cancelOAuthForServers: (
+    serverNames: readonly string[],
+    scopeKey?: string,
+  ) => Promise<void>;
   readonly removed: readonly RemovedHttpMcpServer[];
   readonly cancelServerNames?: readonly string[];
+  readonly cancellations?: readonly OAuthCancellationScope[];
 };
 
 export async function cleanupRemovedMcpOAuth(
   options: CleanupRemovedMcpOAuthOptions,
 ): Promise<void> {
-  const cancelNames = options.cancelServerNames ?? options.removed.map((entry) => entry.name);
-  if (cancelNames.length > 0) {
-    await options.cancelOAuthForServers(cancelNames);
+  if (options.cancellations !== undefined) {
+    for (const scope of options.cancellations) {
+      if (scope.serverNames.length > 0) {
+        await options.cancelOAuthForServers(scope.serverNames, scope.scopeKey);
+      }
+    }
+  } else {
+    const cancelNames = options.cancelServerNames ?? options.removed.map((entry) => entry.name);
+    if (cancelNames.length > 0) {
+      await options.cancelOAuthForServers(cancelNames);
+    }
   }
   if (options.removed.length === 0) return;
 
@@ -391,7 +438,10 @@ export type ImportConfigDeps = ExportConfigDeps & {
   readonly modelRuntime: ModelRuntime;
   readonly mcpHub: McpHub;
   readonly oauthStore: McpOAuthCredentialStore;
-  readonly cancelOAuthForServers: (serverNames: readonly string[]) => Promise<void>;
+  readonly cancelOAuthForServers: (
+    serverNames: readonly string[],
+    scopeKey?: string,
+  ) => Promise<void>;
   readonly env: Readonly<Record<string, string | undefined>> | undefined;
   readonly syncProjects: () => Promise<void>;
   readonly applySettings: () => Promise<void>;
@@ -431,6 +481,7 @@ export async function importEngineConfig(
   const previousMcp = getMcpServersRecord(deps.store);
   const normalizedMcp = normalizeMcpMap(parsedMcp.servers);
   const removedHttpMcp = findRemovedHttpMcpServers(previousMcp, normalizedMcp);
+  const cancellations = collectGlobalMcpOAuthCancellations(deps.store, removedHttpMcp);
   deps.store.setKv(KV_SETTINGS, bundle.settings);
   deps.store.setKv(KV_MODEL_PROFILES, bundle.modelProfiles);
   deps.store.setKv(KV_MCP_SERVERS, normalizedMcp);
@@ -446,6 +497,7 @@ export async function importEngineConfig(
     oauthStore: deps.oauthStore,
     cancelOAuthForServers: deps.cancelOAuthForServers,
     removed: removedHttpMcp,
+    cancellations,
   });
 
   await deps.mcpHub.reload(parsedMcp.servers);

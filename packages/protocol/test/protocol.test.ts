@@ -1688,3 +1688,111 @@ test("protocol 4B schemas and EeveeClient methods validate Skills, MCP OAuth/log
     true,
   );
 });
+
+test("EeveeClient project-scoped MCP OAuth methods hit expected routes, bodies, and SSE streams", async () => {
+  const calls: { method: string; pathname: string; body?: string }[] = [];
+  let streamMode: "complete" | "error" = "complete";
+
+  const client = new EeveeClient({
+    baseUrl: "http://127.0.0.1:4173",
+    token: "tok-proj-oauth",
+    fetch: async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? "GET";
+      calls.push({
+        method,
+        pathname: url.pathname,
+        body: typeof init?.body === "string" ? init.body : undefined,
+      });
+
+      if (
+        method === "POST" &&
+        url.pathname === "/projects/proj-1/mcp/servers/srv%20one/oauth/login"
+      ) {
+        return Response.json({ sessionId: "poa-1", server: "srv one" }, { status: 201 });
+      }
+      if (
+        method === "GET" &&
+        url.pathname === "/projects/proj-1/mcp/servers/srv%20one/oauth/login/poa-1/stream"
+      ) {
+        if (streamMode === "error") {
+          return sseResponse([
+            `event: error\ndata: ${JSON.stringify({ type: "error", code: "login_cancelled", message: "Cancelled" })}\n\n`,
+          ]);
+        }
+        return sseResponse([
+          `event: auth_url\ndata: ${JSON.stringify({
+            type: "auth_url",
+            url: "https://auth.example/proj",
+            redirectUrl: "http://127.0.0.1:4321/callback",
+            instructions: "Sign in",
+          })}\n\n`,
+          `event: progress\ndata: ${JSON.stringify({ type: "progress", message: "Exchanging" })}\n\n`,
+          `event: complete\ndata: ${JSON.stringify({ type: "complete" })}\n\n`,
+        ]);
+      }
+      if (
+        method === "POST" &&
+        url.pathname === "/projects/proj-1/mcp/servers/srv%20one/oauth/login/poa-1/input"
+      ) {
+        return Response.json({ ok: true });
+      }
+      if (
+        method === "POST" &&
+        url.pathname === "/projects/proj-1/mcp/servers/srv%20one/oauth/login/poa-1/cancel"
+      ) {
+        return Response.json({ ok: true });
+      }
+      if (method === "DELETE" && url.pathname === "/projects/proj-1/mcp/servers/srv%20one/oauth") {
+        return Response.json({ ok: true });
+      }
+      return Response.json({ code: "not_found", message: "missing" }, { status: 404 });
+    },
+  });
+
+  assert.deepEqual(await client.startProjectMcpOAuth("proj-1", "srv one"), {
+    sessionId: "poa-1",
+    server: "srv one",
+  });
+
+  const events = [];
+  for await (const evt of client.streamProjectMcpOAuth("proj-1", "srv one", "poa-1")) {
+    events.push(evt);
+  }
+  assert.deepEqual(
+    events.map((evt) => evt.type),
+    ["auth_url", "progress", "complete"],
+  );
+
+  streamMode = "error";
+  const errEvents = [];
+  for await (const evt of client.streamProjectMcpOAuth("proj-1", "srv one", "poa-1")) {
+    errEvents.push(evt);
+  }
+  assert.deepEqual(errEvents, [{ type: "error", code: "login_cancelled", message: "Cancelled" }]);
+
+  assert.deepEqual(
+    await client.submitProjectMcpOAuthInput("proj-1", "srv one", "poa-1", {
+      redirectUrl: "http://127.0.0.1:4321/callback?code=abc",
+    }),
+    { ok: true },
+  );
+  assert.equal(
+    calls.at(-1)?.body,
+    JSON.stringify({ redirectUrl: "http://127.0.0.1:4321/callback?code=abc" }),
+  );
+  assert.deepEqual(await client.cancelProjectMcpOAuth("proj-1", "srv one", "poa-1"), { ok: true });
+  assert.deepEqual(await client.logoutProjectMcpOAuth("proj-1", "srv one"), { ok: true });
+
+  assert.deepEqual(
+    calls.map((c) => `${c.method} ${c.pathname}`),
+    [
+      "POST /projects/proj-1/mcp/servers/srv%20one/oauth/login",
+      "GET /projects/proj-1/mcp/servers/srv%20one/oauth/login/poa-1/stream",
+      "GET /projects/proj-1/mcp/servers/srv%20one/oauth/login/poa-1/stream",
+      "POST /projects/proj-1/mcp/servers/srv%20one/oauth/login/poa-1/input",
+      "POST /projects/proj-1/mcp/servers/srv%20one/oauth/login/poa-1/cancel",
+      "DELETE /projects/proj-1/mcp/servers/srv%20one/oauth",
+    ],
+  );
+});

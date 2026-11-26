@@ -261,7 +261,7 @@ function sendHttpJson(res: ServerResponse, status: number, body: unknown): void 
   res.end(JSON.stringify(body));
 }
 
-async function startMockOAuthMcpServer(): Promise<{
+async function startMockOAuthMcpServer(toolName = "whoami"): Promise<{
   readonly baseUrl: string;
   readonly mcpUrl: string;
   close(): Promise<void>;
@@ -405,7 +405,7 @@ async function startMockOAuthMcpServer(): Promise<{
         sendHttpJson(res, 200, {
           jsonrpc: "2.0",
           id: msg.id,
-          result: { tools: [mcpTool("whoami", "Identity check")] },
+          result: { tools: [mcpTool(toolName, "Identity check")] },
         });
         return;
       }
@@ -1430,6 +1430,477 @@ test("HTTP MCP deletion/URL change cleans up OAuth sessions and mcp-auth.json cr
         config: { type: "http", url: mock2.mcpUrl, exposure: "direct" },
       });
       assert.equal(await foreground.engine.oauthStore.hasTokens("sharedhttp", mock1.mcpUrl), false);
+    } finally {
+      await foreground.close();
+      await mock1.close();
+      await mock2.close();
+    }
+  });
+});
+
+function watchOAuthUntilAuthUrl(stream: AsyncIterable<McpOAuthEvent>): {
+  readonly ready: Promise<Extract<McpOAuthEvent, { readonly type: "auth_url" }>>;
+  readonly events: McpOAuthEvent[];
+  readonly done: Promise<void>;
+} {
+  const events: McpOAuthEvent[] = [];
+  let resolveReady!: (event: Extract<McpOAuthEvent, { readonly type: "auth_url" }>) => void;
+  let rejectReady!: (error: Error) => void;
+  const ready = new Promise<Extract<McpOAuthEvent, { readonly type: "auth_url" }>>(
+    (resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    },
+  );
+  const done = (async () => {
+    let sawAuthUrl = false;
+    try {
+      for await (const evt of stream) {
+        events.push(evt);
+        if (evt.type === "auth_url" && !sawAuthUrl) {
+          sawAuthUrl = true;
+          resolveReady(evt);
+        }
+      }
+      if (!sawAuthUrl) {
+        rejectReady(new Error("Expected auth_url event before SSE stream closed"));
+      }
+    } catch (error) {
+      if (!sawAuthUrl) {
+        rejectReady(error instanceof Error ? error : new Error(String(error)));
+      }
+      throw error;
+    }
+  })();
+  return { ready, events, done };
+}
+
+test("project-scoped MCP OAuth sign-in, tool exposure, manual redirect, cancel, and logout for project-only HTTP servers", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws = join(dir, "ws");
+    await mkdir(ws, { recursive: true });
+    const mock = await startMockOAuthMcpServer("proj_whoami");
+
+    const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+
+    const foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      userHomeDir: null,
+      models,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+    });
+
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      const projectId = (await client.createProject({ workspaces: [ws], title: "ProjOAuth" }))
+        .project.id;
+      const handle = await foreground.engine.openProject(projectId);
+
+      // Add project-only HTTP MCP server -> transitions to auth_required
+      const added = await client.upsertProjectMcpServer(projectId, "projhttp", {
+        config: { type: "http", url: mock.mcpUrl, exposure: "direct" },
+      });
+      const initialSnap = added.status.find((s) => s.name === "projhttp");
+      assert.equal(initialSnap?.scope, "project");
+      assert.equal(initialSnap?.status, "auth_required");
+      assert.equal(initialSnap?.authRequired, true);
+      assert.equal(
+        (await client.getMcpState()).status.some((s) => s.name === "projhttp"),
+        false,
+      );
+
+      // Loopback OAuth flow over SSE
+      const started = await client.startProjectMcpOAuth(projectId, "projhttp");
+      assert.equal(started.server, "projhttp");
+
+      const events: McpOAuthEvent[] = [];
+      for await (const evt of client.streamProjectMcpOAuth(
+        projectId,
+        "projhttp",
+        started.sessionId,
+      )) {
+        events.push(evt);
+        if (evt.type === "auth_url") {
+          const browserRes = await fetch(evt.url, { redirect: "follow" });
+          assert.equal(browserRes.status, 200);
+        }
+      }
+      assert.equal(events[0]?.type, "auth_url");
+      assert.equal(events.at(-1)?.type, "complete");
+
+      // By completion, project hub has reconnected and synced tools to the project
+      const stateAfter = await client.getProjectMcpState(projectId);
+      const connectedSnap = stateAfter.status.find((s) => s.name === "projhttp");
+      assert.equal(connectedSnap?.status, "connected");
+      assert.equal(connectedSnap?.toolCount, 1);
+      assert.equal(connectedSnap?.tools?.[0]?.name, "proj_whoami");
+      const routerAgent = await handle.root.agent(BACKGROUND_CONTEXT);
+      assert.equal(
+        routerAgent.tools.some((t) => t.name === "mcp__projhttp__proj_whoami"),
+        true,
+      );
+
+      // Logout clears credentials, returns to auth_required, and removes tools
+      assert.deepEqual(await client.logoutProjectMcpOAuth(projectId, "projhttp"), { ok: true });
+      assert.equal(await foreground.engine.oauthStore.hasTokens("projhttp", mock.mcpUrl), false);
+      const afterLogout = await client.getProjectMcpState(projectId);
+      assert.equal(afterLogout.status.find((s) => s.name === "projhttp")?.status, "auth_required");
+      const routerAgentAfterLogout = await handle.root.agent(BACKGROUND_CONTEXT);
+      assert.equal(
+        routerAgentAfterLogout.tools.some((t) => t.name === "mcp__projhttp__proj_whoami"),
+        false,
+      );
+
+      // Manual redirect submission flow
+      const started2 = await client.startProjectMcpOAuth(projectId, "projhttp");
+      const events2: McpOAuthEvent[] = [];
+      for await (const evt of client.streamProjectMcpOAuth(
+        projectId,
+        "projhttp",
+        started2.sessionId,
+      )) {
+        events2.push(evt);
+        if (evt.type === "auth_url") {
+          const redirectRes = await fetch(evt.url, { redirect: "manual" });
+          const location = redirectRes.headers.get("location");
+          assert.ok(location);
+          await client.submitProjectMcpOAuthInput(projectId, "projhttp", started2.sessionId, {
+            redirectUrl: location,
+          });
+        }
+      }
+      assert.equal(events2.at(-1)?.type, "complete");
+      assert.equal(
+        (await client.getProjectMcpState(projectId)).status.find((s) => s.name === "projhttp")
+          ?.status,
+        "connected",
+      );
+
+      // Cancel flow
+      await client.logoutProjectMcpOAuth(projectId, "projhttp");
+      const started3 = await client.startProjectMcpOAuth(projectId, "projhttp");
+      const events3: McpOAuthEvent[] = [];
+      for await (const evt of client.streamProjectMcpOAuth(
+        projectId,
+        "projhttp",
+        started3.sessionId,
+      )) {
+        events3.push(evt);
+        if (evt.type === "auth_url") {
+          await client.cancelProjectMcpOAuth(projectId, "projhttp", started3.sessionId);
+        }
+      }
+      const last3 = events3.at(-1);
+      assert.equal(last3?.type, "error");
+      if (last3?.type === "error") {
+        assert.equal(last3.code, "login_cancelled");
+      }
+    } finally {
+      await foreground.close();
+      await mock.close();
+    }
+  });
+});
+
+test("project URL override authenticates against mock2 without authenticating global mock1", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws1 = join(dir, "ws-1");
+    const ws2 = join(dir, "ws-2");
+    await Promise.all([mkdir(ws1, { recursive: true }), mkdir(ws2, { recursive: true })]);
+    const mock1 = await startMockOAuthMcpServer("from_mock1");
+    const mock2 = await startMockOAuthMcpServer("from_mock2");
+
+    const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+
+    const foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      userHomeDir: null,
+      models,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+    });
+
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      await client.upsertMcpServer("shared", {
+        config: { type: "http", url: mock1.mcpUrl, exposure: "direct" },
+      });
+
+      const p1 = (await client.createProject({ workspaces: [ws1], title: "OverrideUrl" })).project
+        .id;
+      const p2 = (await client.createProject({ workspaces: [ws2], title: "InheritedUrl" })).project
+        .id;
+
+      const h1 = await foreground.engine.openProject(p1);
+      await foreground.engine.openProject(p2);
+
+      // p1 overrides shared server URL from mock1 to mock2
+      const overrideState = await client.upsertProjectMcpServer(p1, "shared", {
+        config: { type: "http", url: mock2.mcpUrl, exposure: "direct" },
+      });
+      const p1Snap = overrideState.status.find((s) => s.name === "shared");
+      assert.equal(p1Snap?.scope, "override");
+      assert.equal(p1Snap?.status, "auth_required");
+
+      // Sign in on p1 -> authenticates against mock2 ONLY
+      const started = await client.startProjectMcpOAuth(p1, "shared");
+      const events: McpOAuthEvent[] = [];
+      for await (const evt of client.streamProjectMcpOAuth(p1, "shared", started.sessionId)) {
+        events.push(evt);
+        if (evt.type === "auth_url") {
+          assert.ok(evt.url.startsWith(mock2.baseUrl), `Expected mock2 auth URL, got ${evt.url}`);
+          const res = await fetch(evt.url, { redirect: "follow" });
+          assert.equal(res.status, 200);
+        }
+      }
+      assert.equal(events.at(-1)?.type, "complete");
+
+      // p1 hub connected with mock2's tool; mock1 remains unauthenticated
+      const p1After = await client.getProjectMcpState(p1);
+      const p1Connected = p1After.status.find((s) => s.name === "shared");
+      assert.equal(p1Connected?.status, "connected");
+      assert.deepEqual(
+        p1Connected?.tools?.map((t) => t.name),
+        ["from_mock2"],
+      );
+      const p1Tools = (await h1.root.agent(BACKGROUND_CONTEXT)).tools.map((t) => t.name);
+      assert.equal(p1Tools.includes("mcp__shared__from_mock2"), true);
+      assert.equal(p1Tools.includes("mcp__shared__from_mock1"), false);
+
+      assert.equal(await foreground.engine.oauthStore.hasTokens("shared", mock2.mcpUrl), true);
+      assert.equal(await foreground.engine.oauthStore.hasTokens("shared", mock1.mcpUrl), false);
+      assert.equal(
+        (await client.getMcpState()).status.find((s) => s.name === "shared")?.status,
+        "auth_required",
+      );
+      assert.equal(
+        (await client.getProjectMcpState(p2)).status.find((s) => s.name === "shared")?.status,
+        "auth_required",
+      );
+    } finally {
+      await foreground.close();
+      await mock1.close();
+      await mock2.close();
+    }
+  });
+});
+
+test("project-scoped MCP OAuth error paths, cross-scope session isolation, and scoped cancellation", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws1 = join(dir, "ws-1");
+    const ws2 = join(dir, "ws-2");
+    await Promise.all([mkdir(ws1, { recursive: true }), mkdir(ws2, { recursive: true })]);
+    const mock1 = await startMockOAuthMcpServer("tool1");
+    const mock2 = await startMockOAuthMcpServer("tool2");
+
+    const stdioSrv = new FakeMcpServer([mcpTool("stdio_tool", "Stdio tool")]);
+
+    const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+
+    const foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      userHomeDir: null,
+      models,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+      createMcpTransport: (entry: McpServerEntry) => {
+        if (entry.name === "stdiosrv") return stdioSrv.createTransport();
+        throw new Error(`Unexpected stdio transport request for ${entry.name}`);
+      },
+    });
+
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      const p1 = (await client.createProject({ workspaces: [ws1], title: "Errors1" })).project.id;
+      const p2 = (await client.createProject({ workspaces: [ws2], title: "Errors2" })).project.id;
+
+      await client.putMcpConfig({
+        servers: {
+          shared: { type: "http", url: mock1.mcpUrl, exposure: "direct" },
+          inherited: { type: "http", url: mock1.mcpUrl, exposure: "direct" },
+          stdiosrv: { command: "stdio-cmd" },
+          disabledsrv: { type: "http", url: mock1.mcpUrl, enabled: false },
+        },
+      });
+      await client.upsertProjectMcpServer(p1, "shared", {
+        config: { type: "http", url: mock2.mcpUrl, exposure: "direct" },
+      });
+
+      // 404 unknown project
+      await assert.rejects(
+        client.startProjectMcpOAuth("missing-project", "shared"),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 404 &&
+          err.problem.code === "project_not_found",
+      );
+      await assert.rejects(
+        client.logoutProjectMcpOAuth("missing-project", "shared"),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 404 &&
+          err.problem.code === "project_not_found",
+      );
+
+      // 404 unknown server
+      await assert.rejects(
+        client.startProjectMcpOAuth(p1, "no-such-server"),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 404 &&
+          err.problem.code === "mcp_server_not_found",
+      );
+
+      // 400 stdio server
+      await assert.rejects(
+        client.startProjectMcpOAuth(p1, "stdiosrv"),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 400 &&
+          err.problem.code === "mcp_oauth_unsupported",
+      );
+      await assert.rejects(
+        client.logoutProjectMcpOAuth(p1, "stdiosrv"),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 400 &&
+          err.problem.code === "mcp_oauth_unsupported",
+      );
+
+      // 409 disabled server (while logout succeeds when disabled)
+      await assert.rejects(
+        client.startProjectMcpOAuth(p1, "disabledsrv"),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 409 &&
+          err.problem.code === "mcp_server_disabled",
+      );
+      assert.deepEqual(await client.logoutProjectMcpOAuth(p1, "disabledsrv"), { ok: true });
+
+      // Cross-scope session isolation: concurrent global + p1 sessions for "shared" do not collide
+      const globalSess = await client.startMcpOAuth("shared");
+      const globalWatcher = watchOAuthUntilAuthUrl(
+        client.streamMcpOAuth("shared", globalSess.sessionId),
+      );
+      await globalWatcher.ready;
+
+      const projSess = await client.startProjectMcpOAuth(p1, "shared");
+      const projWatcher = watchOAuthUntilAuthUrl(
+        client.streamProjectMcpOAuth(p1, "shared", projSess.sessionId),
+      );
+      const projAuthEvent = await projWatcher.ready;
+      assert.ok(projAuthEvent.url.startsWith(mock2.baseUrl));
+
+      // Cross-scope access returns 404
+      await assert.rejects(
+        async () => {
+          for await (const _ of client.streamProjectMcpOAuth(p1, "shared", globalSess.sessionId)) {
+            // drain
+          }
+        },
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 404 &&
+          err.problem.code === "mcp_oauth_session_not_found",
+      );
+      await assert.rejects(
+        client.submitProjectMcpOAuthInput(p1, "shared", globalSess.sessionId, {
+          redirectUrl: "http://127.0.0.1/cb",
+        }),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 404 &&
+          err.problem.code === "mcp_oauth_session_not_found",
+      );
+      await assert.rejects(
+        client.cancelProjectMcpOAuth(p1, "shared", globalSess.sessionId),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 404 &&
+          err.problem.code === "mcp_oauth_session_not_found",
+      );
+      await assert.rejects(
+        client.cancelMcpOAuth("shared", projSess.sessionId),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 404 &&
+          err.problem.code === "mcp_oauth_session_not_found",
+      );
+      await assert.rejects(
+        client.cancelProjectMcpOAuth(p2, "shared", projSess.sessionId),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 404 &&
+          err.problem.code === "mcp_oauth_session_not_found",
+      );
+
+      // Deleting p1's override cancels p1's session for "shared" WITHOUT touching globalSess!
+      await client.deleteProjectMcpServer(p1, "shared");
+      await projWatcher.done;
+      const lastProjEvt = projWatcher.events.at(-1);
+      assert.equal(lastProjEvt?.type, "error");
+      if (lastProjEvt?.type === "error") {
+        assert.equal(lastProjEvt.code, "login_cancelled");
+      }
+
+      // Global session is still alive and can complete normally!
+      const globalAuthEvent = globalWatcher.events.find((e) => e.type === "auth_url");
+      assert.ok(globalAuthEvent && globalAuthEvent.type === "auth_url");
+      const globalBrowserRes = await fetch(globalAuthEvent.url, { redirect: "follow" });
+      assert.equal(globalBrowserRes.status, 200);
+      await globalWatcher.done;
+      assert.equal(globalWatcher.events.at(-1)?.type, "complete");
+
+      // Changing/deleting a global server cancels an inherited project session ("inherited")
+      // while NOT cancelling a project-overridden-URL session ("shared" on p1)
+      await client.upsertProjectMcpServer(p1, "shared", {
+        config: { type: "http", url: mock2.mcpUrl, exposure: "direct" },
+      });
+      const inheritedSess = await client.startProjectMcpOAuth(p1, "inherited");
+      const inheritedWatcher = watchOAuthUntilAuthUrl(
+        client.streamProjectMcpOAuth(p1, "inherited", inheritedSess.sessionId),
+      );
+      await inheritedWatcher.ready;
+
+      const overriddenSess = await client.startProjectMcpOAuth(p1, "shared");
+      const overriddenWatcher = watchOAuthUntilAuthUrl(
+        client.streamProjectMcpOAuth(p1, "shared", overriddenSess.sessionId),
+      );
+      const overriddenAuth = await overriddenWatcher.ready;
+
+      // Delete both global "inherited" and global "shared"
+      await client.deleteMcpServer("inherited");
+      await client.deleteMcpServer("shared");
+
+      // Inherited session was cancelled
+      await inheritedWatcher.done;
+      const lastInherited = inheritedWatcher.events.at(-1);
+      assert.equal(lastInherited?.type, "error");
+      if (lastInherited?.type === "error") {
+        assert.equal(lastInherited.code, "login_cancelled");
+      }
+
+      // Overridden project session survived global deletion and can finish
+      const overriddenRes = await fetch(overriddenAuth.url, { redirect: "follow" });
+      assert.equal(overriddenRes.status, 200);
+      await overriddenWatcher.done;
+      assert.equal(overriddenWatcher.events.at(-1)?.type, "complete");
     } finally {
       await foreground.close();
       await mock1.close();

@@ -1526,10 +1526,12 @@ test("CLI registers skills and upgraded MCP subcommands and options", () => {
 
   const mcpLogin = mcpCmd.commands.find((c) => c.name() === "login");
   assert.equal(mcpLogin?.registeredArguments.length, 1);
+  assert.ok(mcpLogin?.options.some((o) => o.long === "--project"));
   assert.ok(mcpLogin?.options.some((o) => o.long === "--json"));
 
   const mcpLogout = mcpCmd.commands.find((c) => c.name() === "logout");
   assert.equal(mcpLogout?.registeredArguments.length, 1);
+  assert.ok(mcpLogout?.options.some((o) => o.long === "--project"));
   assert.ok(mcpLogout?.options.some((o) => o.long === "--json"));
 });
 
@@ -1582,8 +1584,16 @@ test("CLI validates skills and upgraded MCP arguments and flags cleanly", async 
     /Invalid server name/,
   );
   await assert.rejects(
+    program.parseAsync(["node", "eevee", "mcp", "login", "docs", "--project", "../bad"]),
+    /Invalid --project/,
+  );
+  await assert.rejects(
     program.parseAsync(["node", "eevee", "mcp", "logout", "   "]),
     /Invalid server name/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "mcp", "logout", "docs", "--project", "../bad"]),
+    /Invalid --project/,
   );
 });
 
@@ -2025,6 +2035,61 @@ test("skills and MCP CLI commands dispatch expected API requests and handle OAut
       writeHttpJson(res, 200, { ok: true });
       return;
     }
+    if (method === "POST" && url === "/projects/demo/mcp/servers/oauth-srv/oauth/login") {
+      calls.push({ method, url });
+      writeHttpJson(res, 201, { sessionId: "proj-sess-1", server: "oauth-srv" });
+      return;
+    }
+    if (
+      method === "GET" &&
+      url === "/projects/demo/mcp/servers/oauth-srv/oauth/login/proj-sess-1/stream"
+    ) {
+      calls.push({ method, url });
+      res.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+      });
+      res.write(
+        `event: auth_url\ndata: ${JSON.stringify({
+          type: "auth_url",
+          url: "https://auth.example/project-authorize",
+          redirectUrl: "http://127.0.0.1:9999/callback",
+          instructions: "Open browser to sign in for project.",
+        })}\n\n`,
+      );
+      if (oauthMode === "complete") {
+        res.write(
+          `event: progress\ndata: ${JSON.stringify({ type: "progress", message: "Exchanging code..." })}\n\n`,
+        );
+        res.write(`event: complete\ndata: ${JSON.stringify({ type: "complete" })}\n\n`);
+        res.end();
+      } else if (oauthMode === "error") {
+        res.write(
+          `event: error\ndata: ${JSON.stringify({
+            type: "error",
+            code: "oauth_denied",
+            message: "Project access denied",
+          })}\n\n`,
+        );
+        res.end();
+      } else {
+        req.on("close", () => res.end());
+      }
+      return;
+    }
+    if (
+      method === "POST" &&
+      url === "/projects/demo/mcp/servers/oauth-srv/oauth/login/proj-sess-1/cancel"
+    ) {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, { ok: true });
+      return;
+    }
+    if (method === "DELETE" && url === "/projects/demo/mcp/servers/oauth-srv/oauth") {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, { ok: true });
+      return;
+    }
     writeHttpJson(res, 404, { code: "not_found", message: `Unhandled ${method} ${url}` });
   });
 
@@ -2161,6 +2226,68 @@ test("skills and MCP CLI commands dispatch expected API requests and handle OAut
     logs.length = 0;
     await run(["mcp", "logout", "oauth-srv"]);
     assert.ok(logs.includes("Logged out of MCP server oauth-srv"));
+
+    oauthMode = "complete";
+    const projLoginOk = await runCliSubprocess(
+      ["mcp", "login", "oauth-srv", "--project", "demo"],
+      env,
+    );
+    assert.equal(projLoginOk.code, 0, projLoginOk.stderr);
+    assert.ok(projLoginOk.stdout.includes("Open URL: https://auth.example/project-authorize"));
+    assert.ok(projLoginOk.stdout.includes("Open browser to sign in for project."));
+    assert.ok(projLoginOk.stdout.includes("Authenticated MCP server oauth-srv"));
+
+    const projLoginJson = await runCliSubprocess(
+      ["mcp", "login", "oauth-srv", "--project", "demo", "--json"],
+      env,
+    );
+    assert.equal(projLoginJson.code, 0, projLoginJson.stderr);
+    assert.deepEqual(JSON.parse(projLoginJson.stdout), {
+      ok: true,
+      server: "oauth-srv",
+      projectId: "demo",
+    });
+
+    oauthMode = "error";
+    const projLoginErr = await runCliSubprocess(
+      ["mcp", "login", "oauth-srv", "--project", "demo"],
+      env,
+    );
+    assert.equal(projLoginErr.code, 1);
+    assert.ok(projLoginErr.stderr.includes("Project access denied (oauth_denied)"));
+
+    oauthMode = "hang";
+    const beforeProjSigint = new Set(process.listeners("SIGINT"));
+    const originalStderrWrite2 = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    try {
+      const loginPromise = run(["mcp", "login", "oauth-srv", "--project", "demo", "--json"]);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      const addedSigint = process
+        .listeners("SIGINT")
+        .filter((listener) => !beforeProjSigint.has(listener));
+      assert.equal(addedSigint.length, 1);
+      addedSigint[0]?.("SIGINT");
+      await loginPromise;
+    } finally {
+      process.stderr.write = originalStderrWrite2;
+    }
+    assert.ok(
+      calls.some(
+        (c) =>
+          c.method === "POST" &&
+          c.url === "/projects/demo/mcp/servers/oauth-srv/oauth/login/proj-sess-1/cancel",
+      ),
+    );
+
+    logs.length = 0;
+    await run(["mcp", "logout", "oauth-srv", "--project", "demo"]);
+    assert.ok(logs.includes("Logged out of MCP server oauth-srv"));
+    assert.ok(
+      calls.some(
+        (c) => c.method === "DELETE" && c.url === "/projects/demo/mcp/servers/oauth-srv/oauth",
+      ),
+    );
   } finally {
     console.log = originalLog;
     await new Promise<void>((resolve) => server.close(() => resolve()));
