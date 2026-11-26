@@ -8,26 +8,16 @@ import type {
   ListProvidersResponse,
   McpServerSnapshotPayload,
   McpStateResponse,
-  ModelChoice,
   ModelProfilesDocument,
   ProjectUsageResponse,
   ReadWorkerTaskResponse,
   RefreshModelsResponse,
 } from "@eevee/protocol";
 
+export { parseModelFlag } from "./args.ts";
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function parseModelFlag(spec: string, flagName: string): ModelChoice {
-  const slash = spec.indexOf("/");
-  if (slash <= 0 || slash === spec.length - 1) {
-    throw new Error(`Invalid ${flagName} "${spec}": expected <provider>/<modelId>`);
-  }
-  return {
-    provider: spec.slice(0, slash),
-    modelId: spec.slice(slash + 1),
-  };
 }
 
 export function formatBoard(board: BoardViewPayload): string {
