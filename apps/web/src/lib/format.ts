@@ -1,3 +1,5 @@
+import type { BackgroundTaskStatus } from "@eevee/protocol";
+
 export function formatTime(ms: number | undefined): string {
   if (ms === undefined || !Number.isFinite(ms)) return "";
   return new Date(ms).toLocaleTimeString([], {
@@ -76,4 +78,63 @@ export function workerStatusTone(status: string): "info" | "positive" | "warning
     default:
       return "neutral";
   }
+}
+
+export function isTaskActive(status: BackgroundTaskStatus): boolean {
+  return status === "queued" || status === "running" || status === "stopping";
+}
+
+export function taskStatusPhase(status: BackgroundTaskStatus): number {
+  if (status === "queued") return 0;
+  if (status === "running") return 1;
+  if (status === "stopping") return 2;
+  return 3;
+}
+
+export function taskStatusStage(status: BackgroundTaskStatus): "working" | "done" | "blocked" {
+  if (isTaskActive(status)) return "working";
+  if (status === "completed") return "done";
+  return "blocked";
+}
+
+export function taskStatusLabel(status: BackgroundTaskStatus, exitCode?: number): string {
+  switch (status) {
+    case "completed":
+      return exitCode !== undefined && exitCode !== 0 ? `completed (${exitCode})` : "completed";
+    case "failed":
+      return exitCode !== undefined ? `failed (${exitCode})` : "failed";
+    case "queued":
+    case "running":
+    case "stopping":
+    case "timed_out":
+    case "cancelled":
+    case "interrupted":
+      return status;
+  }
+}
+
+export function taskStatusTone(
+  status: BackgroundTaskStatus,
+): "info" | "positive" | "warning" | "negative" | "neutral" {
+  switch (status) {
+    case "queued":
+    case "running":
+      return "info";
+    case "stopping":
+    case "cancelled":
+      return "warning";
+    case "completed":
+      return "positive";
+    case "failed":
+    case "timed_out":
+    case "interrupted":
+      return "negative";
+  }
+}
+
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
+  if (bytes < 1024) return `${Math.floor(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }

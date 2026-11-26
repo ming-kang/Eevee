@@ -10,6 +10,7 @@ import {
   GenerationTask,
   hook,
   hookTask,
+  InboxDoc,
   ROOT_CONVERSATION_ID,
   section,
   type TaskRuntime,
@@ -17,7 +18,7 @@ import {
   wrapSection,
 } from "@earendil-works/pi-durable";
 import { lit, obj, opt, str } from "@earendil-works/pi-schema";
-import { TaskRecordDoc, TasksBoardDoc, withToolPromptMeta } from "@eevee/agent";
+import { isTaskActiveStatus, TaskRecordDoc, TasksBoardDoc, withToolPromptMeta } from "@eevee/agent";
 import { NOTICE_ENTRY_KIND, ProjectBoardDoc, WorkerDoc, type WorkerDocState } from "../docs.ts";
 import { DEFAULT_WORKER_INSTRUCTIONS, WORKER_EXTENSION, WORKER_PREAMBLE } from "../roles.ts";
 
@@ -115,7 +116,12 @@ export function createWorkerHandoffTask() {
           const tasksBoard = await tx.doc(TasksBoardDoc, runtime.conversationId);
           for (const taskId of tasksBoard.order) {
             const record = await tx.doc(TaskRecordDoc, runtime.conversationId, taskId, null);
-            if (record.status === "running") return terminal;
+            if (isTaskActiveStatus(record.status)) return terminal;
+          }
+
+          const inbox = await tx.doc(InboxDoc, runtime.conversationId);
+          if (inbox.items.some((item) => item.mode === "steer" || item.mode === "followUp")) {
+            return terminal;
           }
 
           const board = await tx.doc(ProjectBoardDoc);

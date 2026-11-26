@@ -753,7 +753,8 @@ test("stop_worker close kills background tasks, prevents waking, and cancels the
       worker.conversationId,
       BACKGROUND_CONTEXT,
     );
-    assert.equal(tasksAfterClose[0]?.status, "killed");
+    assert.equal(tasksAfterClose[0]?.status, "cancelled");
+    assert.equal(tasksAfterClose[0]?.cancelReason, "abort");
 
     // Closed worker stays idle/unwoken (no new assistant message after close).
     await new Promise((resolve) => setTimeout(resolve, 100));

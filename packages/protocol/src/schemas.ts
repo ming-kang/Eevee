@@ -30,7 +30,19 @@ export const ConversationRefSchema = union([lit("router"), WorkerIdSchema]);
 
 export const WorkerStatusSchema = oneOf(["queued", "running", "idle", "closed"]);
 export const TicketStatusSchema = oneOf(["open", "done", "cancelled"]);
-export const BackgroundTaskStatusSchema = oneOf(["running", "exited", "killed", "interrupted"]);
+export const BackgroundTaskStatusSchema = oneOf([
+  "queued",
+  "running",
+  "stopping",
+  "completed",
+  "failed",
+  "timed_out",
+  "cancelled",
+  "interrupted",
+]);
+export const TaskShellSchema = oneOf(["bash", "powershell"]);
+export const TaskCancelReasonSchema = oneOf(["user", "tool", "abort"]);
+export const TaskListStatusFilterSchema = oneOf(["all", "active", "finished"]);
 export const ThinkingLevelSchema = oneOf([
   "off",
   "minimal",
@@ -110,12 +122,16 @@ export const SendMessageResponseSchema = obj({
 export const BackgroundTaskRecordSchema = obj({
   id: str({ minLength: 1 }),
   durableTaskId: opt(int({ minimum: 1 })),
+  shell: opt(TaskShellSchema),
   command: str(),
   cwd: opt(str()),
   status: BackgroundTaskStatusSchema,
   exitCode: opt(int()),
   error: opt(str()),
   logPath: opt(str()),
+  logTruncated: opt(bool()),
+  logError: opt(str()),
+  cancelReason: opt(TaskCancelReasonSchema),
   startedAt: num(),
   endedAt: opt(num()),
 });
@@ -222,7 +238,7 @@ export const ConversationFailedEventSchema = obj({
 });
 
 export const StreamEndEventSchema = obj({
-  reason: oneOf(["ended", "aborted", "closed", "failed"]),
+  reason: oneOf(["ended", "aborted", "closed", "failed", "terminal", "completed"]),
   message: opt(str()),
 });
 
@@ -253,6 +269,15 @@ export const TaskOutputSliceSchema = obj({
   truncated: bool(),
   fromByte: int({ minimum: 0 }),
   endByte: int({ minimum: 0 }),
+  matchedLines: opt(int({ minimum: 0 })),
+  totalMatchedLines: opt(int({ minimum: 0 })),
+  scanTruncated: opt(bool()),
+});
+
+export const OutputSliceSchema = TaskOutputSliceSchema;
+
+export const ListWorkerTasksResponseSchema = obj({
+  tasks: arr(BackgroundTaskRecordSchema),
 });
 
 export const ReadWorkerTaskResponseSchema = obj({
@@ -261,6 +286,22 @@ export const ReadWorkerTaskResponseSchema = obj({
 });
 
 export const KillWorkerTaskResponseSchema = obj({
+  task: BackgroundTaskRecordSchema,
+});
+
+export const TaskStreamSnapshotEventSchema = obj({
+  task: BackgroundTaskRecordSchema,
+  output: OutputSliceSchema,
+});
+
+export const TaskStreamChunkEventSchema = obj({
+  text: str(),
+  fromByte: int({ minimum: 0 }),
+  endByte: int({ minimum: 0 }),
+  totalBytes: int({ minimum: 0 }),
+});
+
+export const TaskStreamStatusEventSchema = obj({
   task: BackgroundTaskRecordSchema,
 });
 
@@ -551,6 +592,9 @@ export type ConversationRef = Static<typeof ConversationRefSchema>;
 export type WorkerStatus = Static<typeof WorkerStatusSchema>;
 export type TicketStatus = Static<typeof TicketStatusSchema>;
 export type BackgroundTaskStatus = Static<typeof BackgroundTaskStatusSchema>;
+export type TaskShell = Static<typeof TaskShellSchema>;
+export type TaskCancelReason = Static<typeof TaskCancelReasonSchema>;
+export type TaskListStatusFilter = Static<typeof TaskListStatusFilterSchema>;
 export type ThinkingLevel = Static<typeof ThinkingLevelSchema>;
 export type WhenBusy = Static<typeof WhenBusySchema>;
 export type SubmissionStatus = Static<typeof SubmissionStatusSchema>;
@@ -586,8 +630,13 @@ export type AnswerQuestionRequest = Static<typeof AnswerQuestionRequestSchema>;
 export type AnswerQuestionResponse = Static<typeof AnswerQuestionResponseSchema>;
 export type TaskReadMode = Static<typeof TaskReadModeSchema>;
 export type TaskOutputSlice = Static<typeof TaskOutputSliceSchema>;
+export type OutputSlice = TaskOutputSlice;
+export type ListWorkerTasksResponse = Static<typeof ListWorkerTasksResponseSchema>;
 export type ReadWorkerTaskResponse = Static<typeof ReadWorkerTaskResponseSchema>;
 export type KillWorkerTaskResponse = Static<typeof KillWorkerTaskResponseSchema>;
+export type TaskStreamSnapshotEvent = Static<typeof TaskStreamSnapshotEventSchema>;
+export type TaskStreamChunkEvent = Static<typeof TaskStreamChunkEventSchema>;
+export type TaskStreamStatusEvent = Static<typeof TaskStreamStatusEventSchema>;
 export type AuthType = Static<typeof AuthTypeSchema>;
 export type ProviderAuthMethods = Static<typeof ProviderAuthMethodsSchema>;
 export type ProviderSummary = Static<typeof ProviderSummarySchema>;

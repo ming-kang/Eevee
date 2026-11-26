@@ -384,6 +384,12 @@ test("user direct observation and intervention: watch, direct send, interrupt, a
             });
           });
         }
+        if (text.includes("cancelled by the user")) {
+          return fauxAssistantMessage("user cancelled task noted");
+        }
+        if (text.includes("user cancelled task noted")) {
+          return fauxAssistantMessage("router noted user cancel");
+        }
       }
       if (last?.role === "toolResult") {
         if (last.toolName === "spawn_worker") return fauxAssistantMessage("spawned obs");
@@ -439,13 +445,17 @@ test("user direct observation and intervention: watch, direct send, interrupt, a
     const entryPage = await p.listEntries("w1", { order: "ascending" }, 2);
     assert.ok(entryPage.items.length >= 1);
 
-    // Now user kills the background task directly: status becomes killed, w1 becomes idle,
-    // and NO extra notice is sent to Router (confirmed decision #3).
+    // Now user kills the background task directly: status becomes cancelled with cancelReason "user",
+    // Worker receives the unified steer notice to wrap up cleanly, and then becomes idle.
     const killed = await p.killWorkerTask("w1", "task-1");
-    assert.equal(killed.status, "killed");
+    assert.equal(killed.status, "cancelled");
+    assert.equal(killed.cancelReason, "user");
+    await waitFor(
+      async () => (await noticeEntries(p.root)).length === 1,
+      "worker wrap-up handoff after user cancel",
+    );
+    await p.root.waitForIdle(BACKGROUND_CONTEXT);
     assert.equal((await p.workers())[0]?.status, "idle");
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    assert.equal((await noticeEntries(p.root)).length, 0);
     assert.ok(observedViews.length >= 2, "observeConversation should receive live updates");
     assert.ok(routerWatchUpdates >= 1, "watchConversation should receive live updates");
 

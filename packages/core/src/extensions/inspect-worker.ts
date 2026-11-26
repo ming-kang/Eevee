@@ -9,8 +9,9 @@ import {
 import { arr, bool, int, num, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import {
   describeTaskOutcome,
-  getConversationTask,
   listConversationTasks,
+  resolveTaskId,
+  TASK_FILTER_MAX_CONTEXT_LINES,
   type TaskManager,
   withToolPromptMeta,
 } from "@eevee/agent";
@@ -85,10 +86,28 @@ export function createInspectWorkerTool(deps: InspectWorkerDeps) {
             description: "What to inspect for the Worker (default summary)",
           }),
         ),
-        taskId: opt(str({ minLength: 1, description: "Background task id when include='tasks'" })),
+        taskId: opt(
+          str({ minLength: 1, description: "Background task id or prefix when include='tasks'" }),
+        ),
         mode: opt(oneOf(["head", "tail"], { description: "Task output read mode (default tail)" })),
         bytes: opt(num({ description: "Max bytes of task output to read" })),
         sinceBytes: opt(num({ description: "Incremental byte cursor for task output" })),
+        endByte: opt(
+          num({ description: "Backward paging upper bound byte offset for task output" }),
+        ),
+        filter: opt(
+          str({
+            description:
+              "Filter task output to matching lines (case-insensitive substring or /regex/flags)",
+          }),
+        ),
+        contextLines: opt(
+          int({
+            minimum: 0,
+            maximum: TASK_FILTER_MAX_CONTEXT_LINES,
+            description: `Context lines around each filtered match, 0–${TASK_FILTER_MAX_CONTEXT_LINES} (requires filter)`,
+          }),
+        ),
         limit: opt(
           int({
             minimum: 1,
@@ -178,6 +197,9 @@ export function createInspectWorkerTool(deps: InspectWorkerDeps) {
           endByte: opt(num()),
           totalBytes: opt(num()),
           truncated: opt(bool()),
+          matchedLines: opt(num()),
+          totalMatchedLines: opt(num()),
+          scanTruncated: opt(bool()),
         },
         { open: true },
       ),
@@ -242,22 +264,36 @@ export function createInspectWorkerTool(deps: InspectWorkerDeps) {
         }
 
         if (include === "tasks") {
+          const tasks = await listConversationTasks(api, worker.conversationId, context);
           if (args.taskId !== undefined) {
-            const record = await getConversationTask(
-              api,
-              worker.conversationId,
-              args.taskId,
-              context,
-            );
-            if (record === undefined) {
+            const resolution = resolveTaskId(tasks, args.taskId);
+            if (resolution.kind === "not_found") {
               return errorResult(`Unknown task ${args.taskId} on worker ${workerId}.`);
             }
-            const slice = await deps.tasks.readOutput(worker.conversationId, args.taskId, record, {
-              ...(args.mode === undefined ? {} : { mode: args.mode }),
-              ...(args.bytes === undefined ? {} : { bytes: args.bytes }),
-              ...(args.sinceBytes === undefined ? {} : { sinceBytes: args.sinceBytes }),
-            });
-            const header = `Worker ${workerId} task ${record.id} (${describeTaskOutcome(record)}) — ${record.command}\nBytes ${slice.fromByte}..${slice.endByte} of ${slice.totalBytes}${slice.truncated ? " (truncated)" : ""}`;
+            if (resolution.kind === "ambiguous") {
+              return errorResult(
+                `Ambiguous task id "${args.taskId}" on worker ${workerId}; matches: ${resolution.matches.map((m) => m.id).join(", ")}.`,
+              );
+            }
+            const record = resolution.record;
+            let slice: Awaited<ReturnType<TaskManager["readOutput"]>>;
+            try {
+              slice = await deps.tasks.readOutput(worker.conversationId, record.id, record, {
+                ...(args.mode === undefined ? {} : { mode: args.mode }),
+                ...(args.bytes === undefined ? {} : { bytes: args.bytes }),
+                ...(args.sinceBytes === undefined ? {} : { sinceBytes: args.sinceBytes }),
+                ...(args.endByte === undefined ? {} : { endByte: args.endByte }),
+                ...(args.filter === undefined ? {} : { filter: args.filter }),
+                ...(args.contextLines === undefined ? {} : { contextLines: args.contextLines }),
+              });
+            } catch (error) {
+              return errorResult(error instanceof Error ? error.message : String(error));
+            }
+            const rangeSummary =
+              args.filter !== undefined && args.filter !== ""
+                ? `Matched ${slice.matchedLines ?? 0} of ${slice.totalMatchedLines ?? 0} lines in bytes ${slice.fromByte}..${slice.endByte} of ${slice.totalBytes}${slice.scanTruncated ? " (scan capped at 20 MiB)" : ""}`
+                : `Bytes ${slice.fromByte}..${slice.endByte} of ${slice.totalBytes}${slice.truncated ? " (truncated)" : ""}`;
+            const header = `Worker ${workerId} task ${record.id} (${describeTaskOutcome(record)}) — ${record.command}\n${rangeSummary}`;
             return {
               output: [
                 { type: "text", text: slice.text === "" ? header : `${header}\n\n${slice.text}` },
@@ -273,11 +309,17 @@ export function createInspectWorkerTool(deps: InspectWorkerDeps) {
                 endByte: slice.endByte,
                 totalBytes: slice.totalBytes,
                 truncated: slice.truncated,
+                ...(slice.matchedLines === undefined ? {} : { matchedLines: slice.matchedLines }),
+                ...(slice.totalMatchedLines === undefined
+                  ? {}
+                  : { totalMatchedLines: slice.totalMatchedLines }),
+                ...(slice.scanTruncated === undefined
+                  ? {}
+                  : { scanTruncated: slice.scanTruncated }),
               },
             };
           }
 
-          const tasks = await listConversationTasks(api, worker.conversationId, context);
           const lines =
             tasks.length === 0
               ? [`Worker ${workerId} (${worker.name}) has no background tasks.`]

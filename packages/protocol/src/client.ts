@@ -4,6 +4,7 @@ import {
   type AnswerQuestionRequest,
   type AnswerQuestionResponse,
   AnswerQuestionResponseSchema,
+  type BackgroundTaskRecordPayload,
   type BoardViewPayload,
   BoardViewSchema,
   type ConfigBundle,
@@ -37,6 +38,8 @@ import {
   ListProjectsResponseSchema,
   type ListProvidersResponse,
   ListProvidersResponseSchema,
+  type ListWorkerTasksResponse,
+  ListWorkerTasksResponseSchema,
   type LoginAuthEvent,
   LoginAuthEventSchema,
   type LoginCompleteEvent,
@@ -52,6 +55,7 @@ import {
   ModelProfilesDocumentSchema,
   type OkResponse,
   OkResponseSchema,
+  type OutputSlice,
   type Problem,
   ProblemSchema,
   type ProjectMemoryResponse,
@@ -80,7 +84,11 @@ import {
   StartLoginResponseSchema,
   type StreamEndEvent,
   StreamEndEventSchema,
+  type TaskListStatusFilter,
   type TaskReadMode,
+  TaskStreamChunkEventSchema,
+  TaskStreamSnapshotEventSchema,
+  TaskStreamStatusEventSchema,
   type UpdateProjectRequest,
   type UpsertMcpServerRequest,
   type WebSessionResponse,
@@ -99,7 +107,11 @@ const listEntriesValidator = compile(ListEntriesResponseSchema);
 const okValidator = compile(OkResponseSchema);
 const answerQuestionValidator = compile(AnswerQuestionResponseSchema);
 const readWorkerTaskValidator = compile(ReadWorkerTaskResponseSchema);
+const listWorkerTasksValidator = compile(ListWorkerTasksResponseSchema);
 const killWorkerTaskValidator = compile(KillWorkerTaskResponseSchema);
+const taskStreamSnapshotValidator = compile(TaskStreamSnapshotEventSchema);
+const taskStreamChunkValidator = compile(TaskStreamChunkEventSchema);
+const taskStreamStatusValidator = compile(TaskStreamStatusEventSchema);
 const boardViewValidator = compile(BoardViewSchema);
 const conversationSnapshotValidator = compile(ConversationSnapshotEventSchema);
 const conversationPatchValidator = compile(ConversationPatchEventSchema);
@@ -198,8 +210,44 @@ export type ReadWorkerTaskOptions = {
   readonly mode?: TaskReadMode;
   readonly bytes?: number;
   readonly sinceBytes?: number;
+  readonly endByte?: number;
+  readonly filter?: string;
+  readonly contextLines?: number;
   readonly signal?: AbortSignal;
 };
+
+export type ListWorkerTasksOptions = {
+  readonly status?: TaskListStatusFilter;
+  readonly limit?: number;
+  readonly signal?: AbortSignal;
+};
+
+export type StreamWorkerTaskOptions = {
+  readonly mode?: TaskReadMode;
+  readonly bytes?: number;
+  readonly sinceBytes?: number;
+  readonly signal?: AbortSignal;
+};
+
+export type TaskStreamEvent =
+  | {
+      readonly type: "snapshot";
+      readonly task: BackgroundTaskRecordPayload;
+      readonly output: OutputSlice;
+    }
+  | {
+      readonly type: "chunk";
+      readonly text: string;
+      readonly fromByte: number;
+      readonly endByte: number;
+      readonly totalBytes: number;
+    }
+  | { readonly type: "status"; readonly task: BackgroundTaskRecordPayload }
+  | {
+      readonly type: "end";
+      readonly reason: StreamEndEvent["reason"];
+      readonly message?: string;
+    };
 
 export type ListModelsOptions = {
   readonly provider?: string;
@@ -355,6 +403,20 @@ export class EeveeClient {
     return parseWithSchema(answerQuestionValidator, data, `POST ${path} response`);
   }
 
+  async listWorkerTasks(
+    projectId: string,
+    workerId: WorkerId,
+    opts?: ListWorkerTasksOptions,
+  ): Promise<ListWorkerTasksResponse> {
+    const params = new URLSearchParams();
+    if (opts?.status !== undefined) params.set("status", opts.status);
+    if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
+    const query = params.toString();
+    const path = `/projects/${encodeURIComponent(projectId)}/workers/${encodeURIComponent(workerId)}/tasks${query ? `?${query}` : ""}`;
+    const data = await this.#requestJson("GET", path, undefined, opts?.signal);
+    return parseWithSchema(listWorkerTasksValidator, data, `GET ${path} response`);
+  }
+
   async readWorkerTask(
     projectId: string,
     workerId: WorkerId,
@@ -365,10 +427,62 @@ export class EeveeClient {
     if (opts?.mode !== undefined) params.set("mode", opts.mode);
     if (opts?.bytes !== undefined) params.set("bytes", String(opts.bytes));
     if (opts?.sinceBytes !== undefined) params.set("sinceBytes", String(opts.sinceBytes));
+    if (opts?.endByte !== undefined) params.set("endByte", String(opts.endByte));
+    if (opts?.filter !== undefined) params.set("filter", opts.filter);
+    if (opts?.contextLines !== undefined) params.set("contextLines", String(opts.contextLines));
     const query = params.toString();
     const path = `/projects/${encodeURIComponent(projectId)}/workers/${encodeURIComponent(workerId)}/tasks/${encodeURIComponent(taskId)}${query ? `?${query}` : ""}`;
     const data = await this.#requestJson("GET", path, undefined, opts?.signal);
     return parseWithSchema(readWorkerTaskValidator, data, `GET ${path} response`);
+  }
+
+  async *streamWorkerTask(
+    projectId: string,
+    workerId: WorkerId,
+    taskId: string,
+    opts?: StreamWorkerTaskOptions,
+  ): AsyncGenerator<TaskStreamEvent> {
+    const params = new URLSearchParams();
+    if (opts?.mode !== undefined) params.set("mode", opts.mode);
+    if (opts?.bytes !== undefined) params.set("bytes", String(opts.bytes));
+    if (opts?.sinceBytes !== undefined) params.set("sinceBytes", String(opts.sinceBytes));
+    const query = params.toString();
+    const path = `/projects/${encodeURIComponent(projectId)}/workers/${encodeURIComponent(workerId)}/tasks/${encodeURIComponent(taskId)}/stream${query ? `?${query}` : ""}`;
+    const response = await this.#requestSse(path, opts?.signal);
+    for await (const sse of parseSseStream(response.body, opts?.signal)) {
+      if (sse.event === "snapshot") {
+        const raw = parseJsonString(sse.data, "task snapshot SSE payload");
+        const parsed = parseWithSchema(
+          taskStreamSnapshotValidator,
+          raw,
+          "task snapshot SSE payload",
+        );
+        yield { type: "snapshot", task: parsed.task, output: parsed.output };
+      } else if (sse.event === "chunk") {
+        const raw = parseJsonString(sse.data, "task chunk SSE payload");
+        const parsed = parseWithSchema(taskStreamChunkValidator, raw, "task chunk SSE payload");
+        yield {
+          type: "chunk",
+          text: parsed.text,
+          fromByte: parsed.fromByte,
+          endByte: parsed.endByte,
+          totalBytes: parsed.totalBytes,
+        };
+      } else if (sse.event === "status") {
+        const raw = parseJsonString(sse.data, "task status SSE payload");
+        const parsed = parseWithSchema(taskStreamStatusValidator, raw, "task status SSE payload");
+        yield { type: "status", task: parsed.task };
+      } else if (sse.event === "end") {
+        const raw = parseJsonString(sse.data, "task end SSE payload");
+        const parsed = parseWithSchema(streamEndValidator, raw, "task end SSE payload");
+        yield {
+          type: "end",
+          reason: parsed.reason,
+          ...(parsed.message === undefined ? {} : { message: parsed.message }),
+        };
+        return;
+      }
+    }
   }
 
   async killWorkerTask(

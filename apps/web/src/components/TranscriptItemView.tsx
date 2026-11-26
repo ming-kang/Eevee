@@ -2,32 +2,120 @@ import { ChevronRightIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Collapsible } from "@earendil-works/elanor-react";
 import type { WorkerId } from "@eevee/protocol";
 import { useRef, useState } from "react";
-import { formatDurationMs, shortPath } from "../lib/format.ts";
+import {
+  formatDurationMs,
+  shortPath,
+  taskStatusLabel,
+  taskStatusStage,
+  taskStatusTone,
+} from "../lib/format.ts";
 import {
   activitySummary,
   closedWorkedItems,
   type DisplayItem,
   editSummary,
+  type VisualStage,
 } from "../lib/transcript.ts";
 import { Markdown } from "./Markdown.tsx";
 
-function noticeMetaLabel(meta: Extract<DisplayItem, { kind: "notice" }>["meta"]): {
+type NoticeLabelInfo = {
   readonly title: string;
   readonly tone: "default" | "danger";
-} {
+  readonly stage: VisualStage;
+  readonly badge?: {
+    readonly text: string;
+    readonly tone: "info" | "positive" | "warning" | "negative" | "neutral";
+  };
+};
+
+function taskNotificationLabel(
+  meta: Extract<DisplayItem, { kind: "notice" }>["meta"],
+): NoticeLabelInfo {
+  const idSuffix = meta.taskId ? ` · ${meta.taskId}` : "";
+  const status = meta.taskStatus;
+  if (status === undefined) {
+    return { title: `后台任务${idSuffix}`, tone: "default", stage: "done" };
+  }
+  const stage = taskStatusStage(status);
+  const tone = taskStatusTone(status);
+  const badgeText =
+    status === "cancelled" && meta.taskCancelReason === "user"
+      ? "cancelled (user)"
+      : taskStatusLabel(status, meta.taskExitCode);
+  switch (status) {
+    case "completed":
+      return {
+        title: `后台任务完成${idSuffix}`,
+        tone: "default",
+        stage,
+        badge: { text: badgeText, tone },
+      };
+    case "failed":
+      return {
+        title: `后台任务失败${idSuffix}`,
+        tone: "danger",
+        stage,
+        badge: { text: badgeText, tone },
+      };
+    case "timed_out":
+      return {
+        title: `后台任务超时${idSuffix}`,
+        tone: "danger",
+        stage,
+        badge: { text: badgeText, tone },
+      };
+    case "cancelled":
+      return {
+        title: `后台任务已取消${idSuffix}`,
+        tone: "default",
+        stage,
+        badge: { text: badgeText, tone },
+      };
+    case "interrupted":
+      return {
+        title: `后台任务中断${idSuffix}`,
+        tone: "danger",
+        stage,
+        badge: { text: badgeText, tone },
+      };
+    case "queued":
+    case "running":
+    case "stopping":
+      return {
+        title: `后台任务${idSuffix}`,
+        tone: "default",
+        stage,
+        badge: { text: badgeText, tone },
+      };
+  }
+}
+
+function noticeMetaLabel(meta: Extract<DisplayItem, { kind: "notice" }>["meta"]): NoticeLabelInfo {
   switch (meta.type) {
     case "handoff":
-      return { title: `Worker 交棒 · ${meta.workerName ?? meta.workerId ?? ""}`, tone: "default" };
+      return {
+        title: `Worker 交棒 · ${meta.workerName ?? meta.workerId ?? ""}`,
+        tone: "default",
+        stage: "done",
+      };
     case "worker_message":
-      return { title: `Worker 消息 · ${meta.workerName ?? meta.workerId ?? ""}`, tone: "default" };
+      return {
+        title: `Worker 消息 · ${meta.workerName ?? meta.workerId ?? ""}`,
+        tone: "default",
+        stage: "done",
+      };
     case "worker_failed":
-      return { title: `Worker 失败 · ${meta.workerName ?? meta.workerId ?? ""}`, tone: "danger" };
+      return {
+        title: `Worker 失败 · ${meta.workerName ?? meta.workerId ?? ""}`,
+        tone: "danger",
+        stage: "blocked",
+      };
     case "question_answered":
-      return { title: `用户答复 · ${meta.questionId ?? ""}`, tone: "default" };
+      return { title: `用户答复 · ${meta.questionId ?? ""}`, tone: "default", stage: "done" };
     case "task_notification":
-      return { title: `后台任务 · ${meta.taskId ?? ""}`, tone: "default" };
+      return taskNotificationLabel(meta);
     default:
-      return { title: `通知 · ${meta.type}`, tone: "default" };
+      return { title: `通知 · ${meta.type}`, tone: "default", stage: "done" };
   }
 }
 
@@ -60,9 +148,16 @@ export function TranscriptItemView({
         data-item-key={item.key}
       >
         <div className="ev-notice-head">
-          <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-            <span className="ev-dot" data-stage={label.tone === "danger" ? "blocked" : "done"} />
+          <div
+            style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flexWrap: "wrap" }}
+          >
+            <span className="ev-dot" data-stage={label.stage} />
             <span style={{ fontWeight: 500, color: "var(--ev-fg)" }}>{label.title}</span>
+            {label.badge && (
+              <span className="eevee-badge" data-tone={label.badge.tone}>
+                {label.badge.text}
+              </span>
+            )}
             {item.meta.ticketId && <span className="ev-chip-id">{item.meta.ticketId}</span>}
           </div>
           {item.meta.workerId && onOpenWorker && (

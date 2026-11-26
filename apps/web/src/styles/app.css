@@ -1602,7 +1602,7 @@
   font-size: 12.5px;
 }
 
-/* ---------------- Right Rail (Workers / Jobs / WorkerView) ---------------- */
+/* ---------------- Right Rail (Workers / Tasks / WorkerView) ---------------- */
 
 .ev-rail-head {
   height: var(--ev-header-h);
@@ -1656,6 +1656,114 @@
 
 .ev-rail-item[data-active="true"] {
   background: var(--ev-selected);
+}
+
+.ev-task-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ev-task-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  border-radius: 7px;
+  border: var(--ev-hairline) solid var(--ev-border);
+  background: var(--ev-surface-2);
+  padding: 0 6px 0 8px;
+  color: var(--ev-fg-subtle);
+  transition:
+    border-color var(--ev-dur-fast) var(--ev-ease-out),
+    background-color var(--ev-dur-fast) var(--ev-ease-out),
+    box-shadow var(--ev-dur-fast) var(--ev-ease-out);
+}
+
+.ev-task-filter:focus-within {
+  border-color: var(--ev-accent);
+  background: var(--ev-surface);
+  box-shadow: 0 0 0 2px var(--ev-accent-soft);
+}
+
+.ev-task-filter input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ev-fg);
+  font-size: 12.5px;
+  outline: none;
+}
+
+.ev-task-filter input::placeholder {
+  color: var(--ev-fg-subtle);
+}
+
+.ev-task-clear-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ev-fg-subtle);
+  cursor: pointer;
+  flex: none;
+}
+
+.ev-task-clear-btn:hover {
+  background: var(--ev-hover);
+  color: var(--ev-fg);
+}
+
+.ev-follow-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 9px;
+  border: var(--ev-hairline) solid var(--ev-border);
+  border-radius: 7px;
+  background: var(--ev-surface);
+  color: var(--ev-fg-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--ev-dur-fast) var(--ev-ease-out),
+    border-color var(--ev-dur-fast) var(--ev-ease-out),
+    color var(--ev-dur-fast) var(--ev-ease-out);
+}
+
+.ev-follow-btn:hover:not(:disabled) {
+  background: var(--ev-hover);
+  color: var(--ev-fg);
+}
+
+.ev-follow-btn[aria-pressed="true"] {
+  border-color: color-mix(in oklab, var(--ev-accent) 40%, var(--ev-border));
+  background: var(--ev-accent-soft);
+  color: var(--ev-accent);
+}
+
+.ev-follow-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ev-task-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 11.5px;
+  color: var(--ev-fg-subtle);
 }
 
 /* ---------------- Memory / Usage / Settings Pages ---------------- */

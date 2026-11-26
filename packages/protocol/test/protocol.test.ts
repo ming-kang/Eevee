@@ -28,6 +28,7 @@ import {
   ListModelsResponseSchema,
   ListProjectsResponseSchema,
   ListProvidersResponseSchema,
+  ListWorkerTasksResponseSchema,
   LoginAuthEventSchema,
   LoginCompleteEventSchema,
   LoginErrorEventSchema,
@@ -42,6 +43,7 @@ import {
   ModelProfilesDocumentSchema,
   ModelSlotsOverrideSchema,
   OkResponseSchema,
+  OutputSliceSchema,
   PROTOCOL_VERSION,
   ProblemSchema,
   ProjectIdSchema,
@@ -69,8 +71,15 @@ import {
   StartLoginResponseSchema,
   StreamEndEventSchema,
   SubmissionStatusSchema,
+  TaskCancelReasonSchema,
+  TaskListStatusFilterSchema,
   TaskOutputSliceSchema,
   TaskReadModeSchema,
+  TaskShellSchema,
+  TaskStreamChunkEventSchema,
+  type TaskStreamEvent,
+  TaskStreamSnapshotEventSchema,
+  TaskStreamStatusEventSchema,
   ThinkingLevelSchema,
   TicketIdSchema,
   TicketRecordSchema,
@@ -149,7 +158,31 @@ test("protocol schemas validate IDs, enums, project, message, board, and stream 
   assert.equal(compile(WorkerStatusSchema).check("queued"), true);
   assert.equal(compile(WorkerStatusSchema).check("paused"), false);
   assert.equal(compile(TicketStatusSchema).check("cancelled"), true);
-  assert.equal(compile(BackgroundTaskStatusSchema).check("interrupted"), true);
+  const checkTaskStatus = compile(BackgroundTaskStatusSchema);
+  for (const status of [
+    "queued",
+    "running",
+    "stopping",
+    "completed",
+    "failed",
+    "timed_out",
+    "cancelled",
+    "interrupted",
+  ]) {
+    assert.equal(checkTaskStatus.check(status), true);
+  }
+  assert.equal(checkTaskStatus.check("exited"), false);
+  assert.equal(checkTaskStatus.check("killed"), false);
+  assert.equal(compile(TaskShellSchema).check("bash"), true);
+  assert.equal(compile(TaskShellSchema).check("powershell"), true);
+  assert.equal(compile(TaskShellSchema).check("zsh"), false);
+  assert.equal(compile(TaskCancelReasonSchema).check("user"), true);
+  assert.equal(compile(TaskCancelReasonSchema).check("tool"), true);
+  assert.equal(compile(TaskCancelReasonSchema).check("abort"), true);
+  assert.equal(compile(TaskListStatusFilterSchema).check("all"), true);
+  assert.equal(compile(TaskListStatusFilterSchema).check("active"), true);
+  assert.equal(compile(TaskListStatusFilterSchema).check("finished"), true);
+  assert.equal(compile(TaskListStatusFilterSchema).check("unknown"), false);
   assert.equal(compile(ThinkingLevelSchema).check("xhigh"), true);
   assert.equal(compile(WhenBusySchema).check("steer"), true);
   assert.equal(compile(SubmissionStatusSchema).check("unanswered"), true);
@@ -206,10 +239,12 @@ test("protocol schemas validate IDs, enums, project, message, board, and stream 
           {
             id: "task-1",
             durableTaskId: 4,
+            shell: "bash",
             command: "npm test",
             cwd: "/tmp/demo",
             status: "running",
             logPath: "/tmp/log.txt",
+            logTruncated: false,
             startedAt: 11,
           },
         ],
@@ -253,6 +288,8 @@ test("protocol schemas validate IDs, enums, project, message, board, and stream 
   assert.equal(compile(ConversationPatchEventSchema).check({ ops: [], retired: false }), true);
   assert.equal(compile(ConversationFailedEventSchema).check({ message: "boom" }), true);
   assert.equal(compile(StreamEndEventSchema).check({ reason: "ended" }), true);
+  assert.equal(compile(StreamEndEventSchema).check({ reason: "terminal" }), true);
+  assert.equal(compile(StreamEndEventSchema).check({ reason: "completed" }), true);
 
   assert.deepEqual(parseWithSchema(ProblemSchema, { code: "x", message: "y" }), {
     code: "x",
@@ -525,25 +562,54 @@ test("protocol 4B schemas and EeveeClient methods validate entries, intervention
     truncated: false,
     fromByte: 0,
     endByte: 6,
+    matchedLines: 1,
+    totalMatchedLines: 1,
+    scanTruncated: false,
   };
   assert.equal(compile(TaskOutputSliceSchema).check(outputSlice), true);
+  assert.equal(compile(OutputSliceSchema).check(outputSlice), true);
   assert.equal(compile(TaskOutputSliceSchema).check({ ...outputSlice, totalBytes: -1 }), false);
+  assert.equal(compile(TaskOutputSliceSchema).check({ ...outputSlice, matchedLines: -1 }), false);
 
   const taskRecord = {
     id: "task-1",
     durableTaskId: 4,
+    shell: "bash" as const,
     command: "node -e 'console.log(1)'",
     status: "running" as const,
     startedAt: 100,
   };
+  const cancelledRecord = {
+    ...taskRecord,
+    status: "cancelled" as const,
+    cancelReason: "user" as const,
+    logTruncated: true,
+    logError: "disk full",
+    endedAt: 300,
+  };
+  assert.equal(
+    compile(ListWorkerTasksResponseSchema).check({ tasks: [taskRecord, cancelledRecord] }),
+    true,
+  );
   assert.equal(
     compile(ReadWorkerTaskResponseSchema).check({ task: taskRecord, output: outputSlice }),
     true,
   );
+  assert.equal(compile(KillWorkerTaskResponseSchema).check({ task: cancelledRecord }), true);
   assert.equal(
-    compile(KillWorkerTaskResponseSchema).check({ task: { ...taskRecord, status: "killed" } }),
+    compile(TaskStreamSnapshotEventSchema).check({ task: taskRecord, output: outputSlice }),
     true,
   );
+  assert.equal(
+    compile(TaskStreamChunkEventSchema).check({
+      text: "more\n",
+      fromByte: 6,
+      endByte: 11,
+      totalBytes: 11,
+    }),
+    true,
+  );
+  assert.equal(compile(TaskStreamStatusEventSchema).check({ task: cancelledRecord }), true);
 
   const entriesPage = {
     entries: [
@@ -584,10 +650,40 @@ test("protocol 4B schemas and EeveeClient methods validate entries, intervention
         return Response.json({ question: answeredQuestion });
       }
       if (url.includes("/workers/w1/tasks/task-1/kill")) {
-        return Response.json({ task: { ...taskRecord, status: "killed", endedAt: 300 } });
+        return Response.json({ task: cancelledRecord });
+      }
+      if (url.includes("/workers/w1/tasks/task-1/stream")) {
+        const completedRecord = {
+          ...taskRecord,
+          status: "completed" as const,
+          exitCode: 0,
+          endedAt: 250,
+        };
+        return sseResponse([
+          `event: snapshot\ndata: ${JSON.stringify({ task: taskRecord, output: outputSlice })}\n\n`,
+          `event: chunk\ndata: ${JSON.stringify({ text: "more\n", fromByte: 6, endByte: 11, totalBytes: 11 })}\n\n`,
+          `event: status\ndata: ${JSON.stringify({ task: completedRecord })}\n\n`,
+          `event: end\ndata: ${JSON.stringify({ reason: "completed" })}\n\n`,
+        ]);
+      }
+      if (url.includes("/workers/w1/tasks/task-2/stream")) {
+        const terminalRecord = {
+          ...taskRecord,
+          id: "task-2",
+          status: "completed" as const,
+          exitCode: 0,
+          endedAt: 200,
+        };
+        return sseResponse([
+          `event: snapshot\ndata: ${JSON.stringify({ task: terminalRecord, output: outputSlice })}\n\n`,
+          `event: end\ndata: ${JSON.stringify({ reason: "terminal" })}\n\n`,
+        ]);
       }
       if (url.includes("/workers/w1/tasks/task-1")) {
         return Response.json({ task: taskRecord, output: outputSlice });
+      }
+      if (url.includes("/workers/w1/tasks")) {
+        return Response.json({ tasks: [taskRecord] });
       }
       if (url.includes("/conversations/router/stream")) {
         const snapshot = {
@@ -647,19 +743,72 @@ test("protocol 4B schemas and EeveeClient methods validate entries, intervention
   assert.equal(answered.question.id, "q1");
   assert.equal(calls.at(-1)?.body, JSON.stringify({ answers: ["yes"] }));
 
+  const taskList = await client.listWorkerTasks("demo", "w1", { status: "active", limit: 10 });
+  assert.equal(taskList.tasks.length, 1);
+  const taskListUrl = new URL(calls.at(-1)?.url ?? "");
+  assert.equal(taskListUrl.pathname, "/projects/demo/workers/w1/tasks");
+  assert.equal(taskListUrl.searchParams.get("status"), "active");
+  assert.equal(taskListUrl.searchParams.get("limit"), "10");
+
   const taskRead = await client.readWorkerTask("demo", "w1", "task-1", {
     mode: "head",
     bytes: 512,
     sinceBytes: 0,
+    endByte: 1024,
+    filter: "/line/i",
+    contextLines: 2,
   });
   assert.equal(taskRead.output.text, "line1\n");
   const taskReadUrl = new URL(calls.at(-1)?.url ?? "");
   assert.equal(taskReadUrl.searchParams.get("mode"), "head");
   assert.equal(taskReadUrl.searchParams.get("bytes"), "512");
   assert.equal(taskReadUrl.searchParams.get("sinceBytes"), "0");
+  assert.equal(taskReadUrl.searchParams.get("endByte"), "1024");
+  assert.equal(taskReadUrl.searchParams.get("filter"), "/line/i");
+  assert.equal(taskReadUrl.searchParams.get("contextLines"), "2");
 
   const killed = await client.killWorkerTask("demo", "w1", "task-1");
-  assert.equal(killed.task.status, "killed");
+  assert.equal(killed.task.status, "cancelled");
+  assert.equal(killed.task.cancelReason, "user");
+
+  const taskStreamEvents: TaskStreamEvent[] = [];
+  for await (const event of client.streamWorkerTask("demo", "w1", "task-1", {
+    mode: "tail",
+    bytes: 2048,
+    sinceBytes: 0,
+  })) {
+    taskStreamEvents.push(event);
+  }
+  const taskStreamUrl = new URL(calls.at(-1)?.url ?? "");
+  assert.equal(taskStreamUrl.pathname, "/projects/demo/workers/w1/tasks/task-1/stream");
+  assert.equal(taskStreamUrl.searchParams.get("mode"), "tail");
+  assert.equal(taskStreamUrl.searchParams.get("bytes"), "2048");
+  assert.equal(taskStreamUrl.searchParams.get("sinceBytes"), "0");
+  assert.deepEqual(
+    taskStreamEvents.map((e) => e.type),
+    ["snapshot", "chunk", "status", "end"],
+  );
+  if (taskStreamEvents[1]?.type === "chunk") {
+    assert.equal(taskStreamEvents[1].text, "more\n");
+    assert.equal(taskStreamEvents[1].fromByte, 6);
+    assert.equal(taskStreamEvents[1].endByte, 11);
+    assert.equal(taskStreamEvents[1].totalBytes, 11);
+  }
+  if (taskStreamEvents[3]?.type === "end") {
+    assert.equal(taskStreamEvents[3].reason, "completed");
+  }
+
+  const terminalEvents: TaskStreamEvent[] = [];
+  for await (const event of client.streamWorkerTask("demo", "w1", "task-2")) {
+    terminalEvents.push(event);
+  }
+  assert.deepEqual(
+    terminalEvents.map((e) => e.type),
+    ["snapshot", "end"],
+  );
+  if (terminalEvents[1]?.type === "end") {
+    assert.equal(terminalEvents[1].reason, "terminal");
+  }
 
   const streamEvents: ConversationStreamEvent[] = [];
   for await (const event of client.streamConversation("demo", "router", { lastEventId: "4" })) {

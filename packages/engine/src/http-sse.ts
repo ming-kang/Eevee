@@ -1,8 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import type { ConversationWindow } from "@earendil-works/pi-durable";
-import type { ConversationRef } from "@eevee/protocol";
-import type { Engine, LoginSseFrame } from "./engine.ts";
+import type { ConversationRef, WorkerId } from "@eevee/protocol";
+import type { Engine, LoginSseFrame, WorkerTaskStream } from "./engine.ts";
+import type { StreamWorkerTaskQuery } from "./http-io.ts";
 
 const SSE_KEEPALIVE_MS = 20_000;
 
@@ -24,6 +25,14 @@ export type SseStreamHandlers = {
     projectId: string,
     ref: ConversationRef,
     window: ConversationWindow | undefined,
+  ) => Promise<void>;
+  readonly handleTaskStream: (
+    req: IncomingMessage,
+    res: ServerResponse,
+    projectId: string,
+    workerId: WorkerId,
+    taskId: string,
+    query: StreamWorkerTaskQuery,
   ) => Promise<void>;
   readonly handleLoginStream: (
     req: IncomingMessage,
@@ -290,5 +299,78 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     }
   }
 
-  return { handleBoardStream, handleConversationStream, handleLoginStream };
+  async function handleTaskStream(
+    req: IncomingMessage,
+    res: ServerResponse,
+    projectId: string,
+    workerId: WorkerId,
+    taskId: string,
+    query: StreamWorkerTaskQuery,
+  ): Promise<void> {
+    const releaseStream = engine.acquireStream(projectId);
+    let stream: WorkerTaskStream | undefined;
+    try {
+      stream = await engine.subscribeWorkerTaskStream(projectId, workerId, taskId, query);
+
+      if (isClosing() || res.destroyed || req.socket.destroyed) {
+        stream.close();
+        releaseStream();
+        return;
+      }
+
+      const keepalive = openSseStream(res);
+      let ended = false;
+      let untrackCloser: () => void = () => {};
+
+      const finish = async (endPayload?: {
+        readonly reason: "completed" | "terminal" | "closed";
+        readonly message?: string;
+      }): Promise<void> => {
+        if (ended) return;
+        ended = true;
+        untrackCloser();
+        clearInterval(keepalive);
+        stream?.close();
+        releaseStream();
+        if (endPayload !== undefined) {
+          writeSseEvent(res, "end", endPayload);
+        }
+        if (!res.writableEnded && !res.destroyed) res.end();
+      };
+
+      const closeForServer = () => finish({ reason: "closed" });
+      untrackCloser = trackCloser(closeForServer);
+
+      res.on("close", () => {
+        void finish();
+      });
+
+      writeSseEvent(res, "snapshot", stream.snapshot);
+
+      if (stream.terminal) {
+        await finish({ reason: "terminal" });
+        return;
+      }
+
+      stream.start({
+        onChunk: (chunk) => {
+          if (ended) return;
+          writeSseEvent(res, "chunk", chunk);
+        },
+        onStatus: (task) => {
+          if (ended) return;
+          writeSseEvent(res, "status", { task });
+        },
+        onEnd: (reason) => {
+          void finish({ reason });
+        },
+      });
+    } catch (error) {
+      stream?.close();
+      releaseStream();
+      throw error;
+    }
+  }
+
+  return { handleBoardStream, handleConversationStream, handleTaskStream, handleLoginStream };
 }

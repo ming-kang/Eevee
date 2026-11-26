@@ -7,6 +7,7 @@ import {
   CreateProjectResponseSchema,
   KillWorkerTaskResponseSchema,
   ListEntriesResponseSchema,
+  ListWorkerTasksResponseSchema,
   OkResponseSchema,
   parseWithSchema,
   ReadWorkerTaskResponseSchema,
@@ -17,6 +18,7 @@ import {
   type ScriptedOpenAiTurn,
   startE2eFixture,
   waitFor,
+  waitForChildExit,
 } from "./e2e-harness.ts";
 
 test("Slice 4B E2E: ask_user -> answer -> watch w1 -> bg task -> direct send -> interrupt -> retry -> task read/kill", async () => {
@@ -88,6 +90,16 @@ test("Slice 4B E2E: ask_user -> answer -> watch w1 -> bg task -> direct send -> 
           }
           return {
             textChunks: ["Slow check resumed and completed!"],
+          };
+        }
+        if (last.text.includes("cancelled by the user")) {
+          return {
+            textChunks: ["Monitor task-1 cancelled by user."],
+          };
+        }
+        if (last.text.includes("Monitor task-1 cancelled by user.")) {
+          return {
+            textChunks: ["Acknowledged task-1 cancellation."],
           };
         }
       }
@@ -280,23 +292,185 @@ test("Slice 4B E2E: ask_user -> answer -> watch w1 -> bg task -> direct send -> 
     assert.equal(humanTaskRead.code, 0, humanTaskRead.stderr);
     assert.ok(humanTaskRead.stdout.includes("Worker w1 task task-1 [running]"));
 
-    // 9. Kill task-1 via eevee task kill and verify Router is NOT notified
-    const routerEntriesBeforeKill = await fixture.client.listEntries(projectId, "router", {
-      limit: 500,
-    });
-    const requestsBeforeKill = fixture.mockOpenAi.requests.length;
+    // 8b. List tasks via eevee task list (project-wide and worker-scoped) and read with --filter --context
+    const projectListJson = await fixture.runCli([
+      "task",
+      "list",
+      projectId,
+      "--status",
+      "active",
+      "--json",
+    ]);
+    assert.equal(projectListJson.code, 0, projectListJson.stderr);
+    const listedProject = JSON.parse(projectListJson.stdout) as {
+      tasks: Array<{ workerId?: string; id: string; status: string }>;
+    };
+    assert.equal(listedProject.tasks.length, 1);
+    assert.equal(listedProject.tasks[0]?.workerId, "w1");
+    assert.equal(listedProject.tasks[0]?.id, "task-1");
+    assert.equal(listedProject.tasks[0]?.status, "running");
+
+    const workerListJson = await fixture.runCli([
+      "task",
+      "list",
+      projectId,
+      "w1",
+      "--status",
+      "active",
+      "--json",
+    ]);
+    assert.equal(workerListJson.code, 0, workerListJson.stderr);
+    const listedWorker = parseWithSchema(
+      ListWorkerTasksResponseSchema,
+      JSON.parse(workerListJson.stdout),
+    );
+    assert.equal(listedWorker.tasks.length, 1);
+    assert.equal(listedWorker.tasks[0]?.id, "task-1");
+
+    const projectListHuman = await fixture.runCli(["task", "list", projectId]);
+    assert.equal(projectListHuman.code, 0, projectListHuman.stderr);
+    assert.ok(projectListHuman.stdout.includes("w1\ttask-1\trunning"));
+
+    await waitFor(async () => {
+      const res = await fixture.runCli([
+        "task",
+        "read",
+        projectId,
+        "w1",
+        "task-1",
+        "--filter",
+        "/^line-2$/",
+        "--context",
+        "1",
+        "--end-byte",
+        String(sinceOffset + 256),
+        "--json",
+      ]);
+      assert.equal(res.code, 0, res.stderr);
+      const filtered = parseWithSchema(ReadWorkerTaskResponseSchema, JSON.parse(res.stdout));
+      return (
+        filtered.output.matchedLines === 1 &&
+        filtered.output.endByte <= sinceOffset + 256 &&
+        filtered.output.text.includes("1- line-1") &&
+        filtered.output.text.includes("2: line-2") &&
+        filtered.output.text.includes("3- line-3")
+      );
+    }, "task-1 filtered read with context lines");
+
+    const filteredHuman = await fixture.runCli([
+      "task",
+      "read",
+      projectId,
+      "w1",
+      "task-1",
+      "--filter",
+      "/^line-2$/",
+      "--context",
+      "1",
+    ]);
+    assert.equal(filteredHuman.code, 0, filteredHuman.stderr);
+    assert.ok(filteredHuman.stdout.includes("Matches: 1 of 1 line(s)"));
+    assert.ok(filteredHuman.stdout.includes("2: line-2"));
+
+    // 9. Watch task-1 via eevee task watch, kill it via eevee task kill, and verify user-kill steer settles cleanly
+    const watchTask = fixture.spawnCli(["task", "watch", projectId, "w1", "task-1"]);
+    await watchTask.waitForStdout(
+      (out) => out.includes("Worker w1 task task-1 [running]") && out.includes("line-"),
+      15_000,
+    );
 
     const killRes = await fixture.runCli(["task", "kill", projectId, "w1", "task-1", "--json"]);
     assert.equal(killRes.code, 0, killRes.stderr);
     const killed = parseWithSchema(KillWorkerTaskResponseSchema, JSON.parse(killRes.stdout));
-    assert.equal(killed.task.status, "killed");
+    assert.equal(killed.task.status, "cancelled");
+    assert.equal(killed.task.cancelReason, "user");
 
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    const routerEntriesAfterKill = await fixture.client.listEntries(projectId, "router", {
+    const watchExit = await waitForChildExit(watchTask.child, 15_000);
+    assert.equal(watchExit.code, 0, watchTask.stderr());
+    const watchOut = watchTask.stdout();
+    assert.ok(watchOut.includes("cancelled (reason user)"), watchOut);
+    assert.ok(watchOut.includes("[end] completed"), watchOut);
+
+    const finishedListJson = await fixture.runCli([
+      "task",
+      "list",
+      projectId,
+      "--status",
+      "finished",
+      "--json",
+    ]);
+    assert.equal(finishedListJson.code, 0, finishedListJson.stderr);
+    const finishedListed = JSON.parse(finishedListJson.stdout) as {
+      tasks: Array<{ workerId?: string; id: string; status: string; cancelReason?: string }>;
+    };
+    assert.equal(finishedListed.tasks.length, 1);
+    assert.equal(finishedListed.tasks[0]?.status, "cancelled");
+    assert.equal(finishedListed.tasks[0]?.cancelReason, "user");
+
+    const watchFinishedJson = await fixture.runCli([
+      "task",
+      "watch",
+      projectId,
+      "w1",
+      "task-1",
+      "--filter",
+      "/^line-2$/",
+      "--context",
+      "1",
+      "--json",
+    ]);
+    assert.equal(watchFinishedJson.code, 0, watchFinishedJson.stderr);
+    const watchEvents = watchFinishedJson.stdout
+      .trim()
+      .split("\n")
+      .map(
+        (line) => JSON.parse(line) as { type: string; reason?: string; task?: { status: string } },
+      );
+    assert.deepEqual(
+      watchEvents.map((event) => event.type),
+      ["snapshot", "end"],
+    );
+    assert.equal(watchEvents[0]?.task?.status, "cancelled");
+    assert.equal(watchEvents[1]?.reason, "terminal");
+
+    const watchFinishedFiltered = await fixture.runCli([
+      "task",
+      "watch",
+      projectId,
+      "w1",
+      "task-1",
+      "--filter",
+      "/^line-2$/",
+      "--context",
+      "1",
+    ]);
+    assert.equal(watchFinishedFiltered.code, 0, watchFinishedFiltered.stderr);
+    assert.ok(watchFinishedFiltered.stdout.includes("1- line-1"));
+    assert.ok(watchFinishedFiltered.stdout.includes("2: line-2"));
+    assert.ok(watchFinishedFiltered.stdout.includes("3- line-3"));
+    assert.ok(watchFinishedFiltered.stdout.includes("[end] terminal"));
+
+    await waitFor(async () => {
+      const workerEntries = await fixture.client.listEntries(projectId, "w1", { limit: 500 });
+      const routerEntries = await fixture.client.listEntries(projectId, "router", { limit: 500 });
+      return (
+        workerEntries.entries.some((e) =>
+          JSON.stringify(e).includes("Monitor task-1 cancelled by user."),
+        ) &&
+        routerEntries.entries.some((e) =>
+          JSON.stringify(e).includes("Acknowledged task-1 cancellation."),
+        )
+      );
+    }, "worker and router to settle after user kill steer notice");
+
+    const workerEntriesAfterKill = await fixture.client.listEntries(projectId, "w1", {
       limit: 500,
     });
-    assert.equal(routerEntriesAfterKill.entries.length, routerEntriesBeforeKill.entries.length);
-    assert.equal(fixture.mockOpenAi.requests.length, requestsBeforeKill);
+    assert.ok(
+      workerEntriesAfterKill.entries.some((e) =>
+        JSON.stringify(e).includes("cancelled by the user"),
+      ),
+    );
 
     const finalBoard = await fixture.client.getBoard(projectId);
     const w1Final = finalBoard.workers.find((w) => w.id === "w1");

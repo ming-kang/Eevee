@@ -41,6 +41,17 @@ export function parseNonNegativeIntFlag(raw: string, flagName: string): number {
   return value;
 }
 
+export function parseIntRangeFlag(raw: string, flagName: string, min: number, max: number): number {
+  if (!/^-?[0-9]+$/.test(raw)) {
+    throw new Error(`Invalid ${flagName} "${raw}": expected integer ${min}..${max}`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new Error(`Invalid ${flagName} "${raw}": expected integer ${min}..${max}`);
+  }
+  return value;
+}
+
 export function parseConversationRefArg(raw: string | undefined): ConversationRef {
   return parseWithSchema(ConversationRefSchema, raw ?? "router", "ref");
 }

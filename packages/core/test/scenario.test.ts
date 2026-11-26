@@ -707,7 +707,7 @@ test("worker status derivation covers queued, running, idle, and closed preceden
 
     await fixture.project.harness.commit(async (tx) => {
       const record = await tx.doc(TaskRecordDoc, workerState.conversationId, "task-1", null);
-      record.status = "exited";
+      record.status = "completed";
       record.exitCode = 0;
       record.endedAt = 2;
     }, BACKGROUND_CONTEXT);

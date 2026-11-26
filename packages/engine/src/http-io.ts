@@ -1,7 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ConversationWindow, EntryId } from "@earendil-works/pi-durable";
 import type { Schema, Static } from "@earendil-works/pi-schema";
-import type { OutputReadOptions } from "@eevee/core";
+import { TASK_FILTER_MAX_CONTEXT_LINES, validateOutputReadOptions } from "@eevee/agent";
+import type {
+  ListWorkerTasksOptions as CoreListWorkerTasksOptions,
+  OutputReadOptions,
+} from "@eevee/core";
 import {
   type ConversationRef,
   ConversationRefSchema,
@@ -12,6 +16,8 @@ import {
   QuestionIdSchema,
   type ScanOrder,
   ScanOrderSchema,
+  type TaskListStatusFilter,
+  TaskListStatusFilterSchema,
   type TaskReadMode,
   TaskReadModeSchema,
   validateWithSchema,
@@ -213,7 +219,117 @@ export function parseEntriesQuery(url: URL): ListEntriesParams {
   };
 }
 
+export type StreamWorkerTaskQuery = {
+  readonly mode?: TaskReadMode;
+  readonly bytes?: number;
+  readonly sinceBytes?: number;
+};
+
+export function parseListWorkerTasksQuery(url: URL): CoreListWorkerTasksOptions {
+  const statusParam = url.searchParams.get("status");
+  let status: TaskListStatusFilter | undefined;
+  if (statusParam !== null) {
+    const checked = validateWithSchema(TaskListStatusFilterSchema, statusParam);
+    if (!checked.ok) {
+      throw new EngineError(
+        400,
+        "invalid_query",
+        "Query parameter status must be all, active, or finished",
+      );
+    }
+    status = checked.value;
+  }
+
+  const limitParam = url.searchParams.get("limit");
+  let limit: number | undefined;
+  if (limitParam !== null) {
+    limit = parsePositiveInt(limitParam, "Query parameter limit");
+    if (limit > 100) {
+      throw new EngineError(400, "invalid_query", "Query parameter limit must be <= 100");
+    }
+  }
+
+  return {
+    ...(status === undefined ? {} : { status }),
+    ...(limit === undefined ? {} : { limit }),
+  };
+}
+
 export function parseReadWorkerTaskQuery(url: URL): OutputReadOptions {
+  const modeParam = url.searchParams.get("mode");
+  let mode: TaskReadMode | undefined;
+  if (modeParam !== null) {
+    const checked = validateWithSchema(TaskReadModeSchema, modeParam);
+    if (!checked.ok) {
+      throw new EngineError(400, "invalid_query", "Query parameter mode must be head or tail");
+    }
+    mode = checked.value;
+  }
+
+  const bytesParam = url.searchParams.get("bytes");
+  const bytes =
+    bytesParam === null ? undefined : parsePositiveInt(bytesParam, "Query parameter bytes");
+
+  const sinceBytesParam = url.searchParams.get("sinceBytes");
+  const sinceBytes =
+    sinceBytesParam === null
+      ? undefined
+      : parseNonNegativeInt(sinceBytesParam, "Query parameter sinceBytes");
+
+  const endByteParam = url.searchParams.get("endByte");
+  const endByte =
+    endByteParam === null
+      ? undefined
+      : parseNonNegativeInt(endByteParam, "Query parameter endByte");
+
+  const filterParam = url.searchParams.get("filter");
+  let filter: string | undefined;
+  if (filterParam !== null) {
+    if (filterParam.length === 0) {
+      throw new EngineError(400, "invalid_query", "Query parameter filter must not be empty");
+    }
+    filter = filterParam;
+  }
+
+  const contextLinesParam = url.searchParams.get("contextLines");
+  let contextLines: number | undefined;
+  if (contextLinesParam !== null) {
+    contextLines = parseNonNegativeInt(contextLinesParam, "Query parameter contextLines");
+    if (contextLines > TASK_FILTER_MAX_CONTEXT_LINES) {
+      throw new EngineError(
+        400,
+        "invalid_query",
+        `Query parameter contextLines must be <= ${TASK_FILTER_MAX_CONTEXT_LINES}`,
+      );
+    }
+    if (filter === undefined) {
+      throw new EngineError(400, "invalid_query", "Query parameter contextLines requires filter");
+    }
+  }
+
+  const options: OutputReadOptions = {
+    ...(mode === undefined ? {} : { mode }),
+    ...(bytes === undefined ? {} : { bytes }),
+    ...(sinceBytes === undefined ? {} : { sinceBytes }),
+    ...(endByte === undefined ? {} : { endByte }),
+    ...(filter === undefined ? {} : { filter }),
+    ...(contextLines === undefined ? {} : { contextLines }),
+  };
+
+  try {
+    validateOutputReadOptions(options);
+  } catch (error) {
+    throw new EngineError(
+      400,
+      "invalid_query",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+
+  return options;
+}
+
+export function parseStreamWorkerTaskQuery(url: URL): StreamWorkerTaskQuery {
   const modeParam = url.searchParams.get("mode");
   let mode: TaskReadMode | undefined;
   if (modeParam !== null) {

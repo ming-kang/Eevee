@@ -22,11 +22,13 @@ import {
   EeveeClient,
   KillWorkerTaskResponseSchema,
   ListEntriesResponseSchema,
+  ListWorkerTasksResponseSchema,
   OkResponseSchema,
   ProblemSchema,
   parseWithSchema,
   ReadWorkerTaskResponseSchema,
   SendMessageResponseSchema,
+  type TaskStreamEvent,
 } from "@eevee/protocol";
 import { startForegroundEngine } from "../src/index.ts";
 
@@ -95,7 +97,9 @@ test("4B routes enforce bearer auth, 405 Allow headers, and strict param/query v
         ["POST", `/projects/${projectId}/conversations/router/interrupt`],
         ["POST", `/projects/${projectId}/conversations/router/retry`],
         ["POST", `/projects/${projectId}/questions/q1/answer`],
+        ["GET", `/projects/${projectId}/workers/w1/tasks`],
         ["GET", `/projects/${projectId}/workers/w1/tasks/task-1`],
+        ["GET", `/projects/${projectId}/workers/w1/tasks/task-1/stream`],
         ["POST", `/projects/${projectId}/workers/w1/tasks/task-1/kill`],
       ];
       for (const [method, path] of unauthRoutes) {
@@ -111,7 +115,9 @@ test("4B routes enforce bearer auth, 405 Allow headers, and strict param/query v
         ["GET", `/projects/${projectId}/conversations/router/interrupt`, "POST"],
         ["GET", `/projects/${projectId}/conversations/router/retry`, "POST"],
         ["GET", `/projects/${projectId}/questions/q1/answer`, "POST"],
+        ["POST", `/projects/${projectId}/workers/w1/tasks`, "GET"],
         ["POST", `/projects/${projectId}/workers/w1/tasks/task-1`, "GET"],
+        ["POST", `/projects/${projectId}/workers/w1/tasks/task-1/stream`, "GET"],
         ["GET", `/projects/${projectId}/workers/w1/tasks/task-1/kill`, "POST"],
       ];
       for (const [method, path, allow] of methodChecks) {
@@ -168,6 +174,9 @@ test("4B routes enforce bearer auth, 405 Allow headers, and strict param/query v
           { method: "GET", headers: auth },
         ],
         [`/projects/${projectId}/workers/w1/tasks/%20`, { method: "GET", headers: auth }],
+        [`/projects/${projectId}/workers/w1/tasks?status=bogus`, { method: "GET", headers: auth }],
+        [`/projects/${projectId}/workers/w1/tasks?limit=0`, { method: "GET", headers: auth }],
+        [`/projects/${projectId}/workers/w1/tasks?limit=101`, { method: "GET", headers: auth }],
         [
           `/projects/${projectId}/workers/w1/tasks/task-1?mode=middle`,
           { method: "GET", headers: auth },
@@ -178,6 +187,42 @@ test("4B routes enforce bearer auth, 405 Allow headers, and strict param/query v
         ],
         [
           `/projects/${projectId}/workers/w1/tasks/task-1?sinceBytes=-1`,
+          { method: "GET", headers: auth },
+        ],
+        [
+          `/projects/${projectId}/workers/w1/tasks/task-1?endByte=-1`,
+          { method: "GET", headers: auth },
+        ],
+        [
+          `/projects/${projectId}/workers/w1/tasks/task-1?filter=`,
+          { method: "GET", headers: auth },
+        ],
+        [
+          `/projects/${projectId}/workers/w1/tasks/task-1?filter=${encodeURIComponent("/[/")}`,
+          { method: "GET", headers: auth },
+        ],
+        [
+          `/projects/${projectId}/workers/w1/tasks/task-1?filter=ok&contextLines=-1`,
+          { method: "GET", headers: auth },
+        ],
+        [
+          `/projects/${projectId}/workers/w1/tasks/task-1?filter=ok&contextLines=6`,
+          { method: "GET", headers: auth },
+        ],
+        [
+          `/projects/${projectId}/workers/w1/tasks/task-1?contextLines=1`,
+          { method: "GET", headers: auth },
+        ],
+        [
+          `/projects/${projectId}/workers/w1/tasks/task-1/stream?mode=middle`,
+          { method: "GET", headers: auth },
+        ],
+        [
+          `/projects/${projectId}/workers/w1/tasks/task-1/stream?bytes=0`,
+          { method: "GET", headers: auth },
+        ],
+        [
+          `/projects/${projectId}/workers/w1/tasks/task-1/stream?sinceBytes=-1`,
           { method: "GET", headers: auth },
         ],
       ];
@@ -643,7 +688,7 @@ test("answerQuestion handles valid answers, 404, 400 count mismatch, and 409 clo
   });
 });
 
-test("readWorkerTask supports head/tail/sinceBytes and killWorkerTask stops task without waking Worker or Router", async () => {
+test("readWorkerTask supports head/tail/sinceBytes and killWorkerTask cancels task and wakes Worker with cancelled-by-user notice", async () => {
   await withTempDir(async (dir) => {
     const home = join(dir, "home");
     const ws = join(dir, "ws");
@@ -670,6 +715,12 @@ test("readWorkerTask supports head/tail/sinceBytes and killWorkerTask stops task
             [fauxToolCall("bash", { command: longTaskCmd, background: true })],
             { stopReason: "toolUse" },
           );
+        }
+        if (text.includes("cancelled by the user")) {
+          return fauxAssistantMessage("worker noted user cancellation");
+        }
+        if (text.includes("worker noted user cancellation")) {
+          return fauxAssistantMessage("router acknowledged cancellation");
         }
       }
       if (last?.role === "toolResult") {
@@ -784,14 +835,11 @@ test("readWorkerTask supports head/tail/sinceBytes and killWorkerTask stops task
           err.problem.code === "task_not_found",
       );
 
-      const routerBeforeKill = await client.listEntries(projectId, "router", { limit: 500 });
-      const workerBeforeKill = await client.listEntries(projectId, "w1", { limit: 500 });
-      const fauxCallsBeforeKill = faux.state.callCount;
-
-      // Kill task-1 -> 200 status="killed"
+      // Kill task-1 -> 200 status="cancelled", cancelReason="user"
       const killed = await client.killWorkerTask(projectId, "w1", "task-1");
       parseWithSchema(KillWorkerTaskResponseSchema, killed);
-      assert.equal(killed.task.status, "killed");
+      assert.equal(killed.task.status, "cancelled");
+      assert.equal(killed.task.cancelReason, "user");
 
       // Second kill -> 409 task_not_running
       await assert.rejects(
@@ -802,18 +850,469 @@ test("readWorkerTask supports head/tail/sinceBytes and killWorkerTask stops task
           err.problem.code === "task_not_running",
       );
 
-      // Give event loop a brief settle window and confirm neither Worker nor Router woke up.
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      const routerAfterKill = await client.listEntries(projectId, "router", { limit: 500 });
+      // User kill wakes the Worker with a "cancelled by the user" steer notice and settles cleanly.
+      await waitFor(async () => {
+        const workerEntries = await client.listEntries(projectId, "w1", { limit: 500 });
+        const routerEntries = await client.listEntries(projectId, "router", { limit: 500 });
+        return (
+          workerEntries.entries.some((e) =>
+            JSON.stringify(e).includes("worker noted user cancellation"),
+          ) &&
+          routerEntries.entries.some((e) =>
+            JSON.stringify(e).includes("router acknowledged cancellation"),
+          )
+        );
+      }, "worker and router to settle after user kill steer notice");
+
       const workerAfterKill = await client.listEntries(projectId, "w1", { limit: 500 });
-      assert.equal(routerAfterKill.entries.length, routerBeforeKill.entries.length);
-      assert.equal(workerAfterKill.entries.length, workerBeforeKill.entries.length);
-      assert.equal(faux.state.callCount, fauxCallsBeforeKill);
+      assert.ok(
+        workerAfterKill.entries.some((e) => JSON.stringify(e).includes("cancelled by the user")),
+      );
+
+      const handle = await foreground.engine.openProject(projectId);
+      const w1Record = (await handle.workers(BACKGROUND_CONTEXT)).find((w) => w.id === "w1");
+      assert.ok(w1Record !== undefined);
+      await waitFor(async () => {
+        const live = await handle.harness.snapshot(
+          LiveDoc,
+          w1Record.conversationId,
+          BACKGROUND_CONTEXT,
+        );
+        return live?.run === undefined;
+      }, "w1 to go idle after user kill wrap-up");
+      await handle.root.waitForIdle(BACKGROUND_CONTEXT);
 
       const boardAfterKill = await client.getBoard(projectId);
       const w1 = boardAfterKill.workers.find((w) => w.id === "w1");
       assert.equal(w1?.status, "idle");
       assert.equal(w1?.activeTaskCount, 0);
+    } finally {
+      await foreground.close();
+    }
+  });
+});
+
+test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and streamWorkerTask SSE", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws = join(dir, "ws");
+    await mkdir(ws, { recursive: true });
+    const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+
+    const nodeBin = JSON.stringify(process.execPath.replace(/\\/g, "/"));
+    const finishedLogCmd = `${nodeBin} -e 'for (let i = 1; i <= 12; i++) console.log(i === 5 ? "ERR: boom-marker" : i === 9 ? "WARN: warn-marker" : "line-" + i);'`;
+    const liveStreamCmd = `${nodeBin} -e 'console.log("init-✓"); setTimeout(() => console.log("chunk-1-🦀"), 100); setTimeout(() => { console.log("chunk-2"); process.exit(0); }, 250);'`;
+    const killStreamCmd = `${nodeBin} -e 'console.log("kill-start"); const t = setInterval(() => console.log("kill-tick"), 60); setTimeout(() => clearInterval(t), 15000);'`;
+
+    const brain: FauxResponseFactory = (context) => {
+      const last = lastMessage(context);
+      if (last?.role === "user") {
+        const text = messageText(last);
+        if (text.includes("spawn-task-worker")) {
+          return fauxAssistantMessage(
+            [fauxToolCall("spawn_worker", { name: "streamer", prompt: "run-finished-logs" })],
+            { stopReason: "toolUse" },
+          );
+        }
+        if (text.includes("run-finished-logs")) {
+          return fauxAssistantMessage(
+            [fauxToolCall("bash", { command: finishedLogCmd, background: true })],
+            { stopReason: "toolUse" },
+          );
+        }
+        if (text.includes("launch-live-stream")) {
+          return fauxAssistantMessage(
+            [fauxToolCall("bash", { command: liveStreamCmd, background: true })],
+            { stopReason: "toolUse" },
+          );
+        }
+        if (text.includes("launch-kill-stream")) {
+          return fauxAssistantMessage(
+            [fauxToolCall("bash", { command: killStreamCmd, background: true })],
+            { stopReason: "toolUse" },
+          );
+        }
+        if (text.includes("launch-extra-task")) {
+          return fauxAssistantMessage(
+            [
+              fauxToolCall("bash", {
+                command: `${nodeBin} -e 'console.log("ok")'`,
+                background: true,
+              }),
+            ],
+            { stopReason: "toolUse" },
+          );
+        }
+        if (text.includes("Background task")) {
+          return fauxAssistantMessage("worker noted task event");
+        }
+        if (text.includes("worker noted task event")) {
+          return fauxAssistantMessage("router noted worker wrap-up");
+        }
+      }
+      if (last?.role === "toolResult") {
+        if (last.toolName === "spawn_worker") return fauxAssistantMessage("spawned streamer");
+        if (last.toolName === "bash") return fauxAssistantMessage("started background command");
+      }
+      return fauxAssistantMessage("ack");
+    };
+    faux.setResponses(Array.from({ length: 60 }, () => brain));
+
+    const foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      models,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+        worker: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+    });
+
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      const created = await client.createProject({ workspaces: [ws], title: "TaskStream" });
+      const projectId = created.project.id;
+
+      // 1. Start worker and wait for task-1 to complete
+      await client.sendMessage(projectId, "router", { text: "spawn-task-worker" });
+      await waitFor(async () => {
+        const board = await client.getBoard(projectId);
+        const w1 = board.workers.find((w) => w.id === "w1");
+        return w1?.tasks.some((t) => t.id === "task-1" && t.status === "completed") ?? false;
+      }, "task-1 to complete");
+
+      // listWorkerTasks filtering & error checks
+      await assert.rejects(
+        client.listWorkerTasks(projectId, "w99"),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 404 &&
+          err.problem.code === "worker_not_found",
+      );
+      const listedAll = await client.listWorkerTasks(projectId, "w1");
+      parseWithSchema(ListWorkerTasksResponseSchema, listedAll);
+      assert.equal(listedAll.tasks.length, 1);
+      assert.equal(listedAll.tasks[0]?.status, "completed");
+      assert.equal(
+        (await client.listWorkerTasks(projectId, "w1", { status: "active" })).tasks.length,
+        0,
+      );
+      assert.equal(
+        (await client.listWorkerTasks(projectId, "w1", { status: "finished" })).tasks.length,
+        1,
+      );
+
+      // readWorkerTask endByte backward paging
+      const headPart = await client.readWorkerTask(projectId, "w1", "task-1", {
+        mode: "head",
+        bytes: 256,
+      });
+      assert.ok(headPart.output.totalBytes > 40);
+      const midSlice = await client.readWorkerTask(projectId, "w1", "task-1", {
+        mode: "tail",
+        bytes: 256,
+        endByte: Math.floor(headPart.output.totalBytes / 2),
+      });
+      assert.ok(midSlice.output.endByte <= Math.floor(headPart.output.totalBytes / 2));
+      assert.equal(midSlice.output.text.includes("line-12"), false);
+
+      // readWorkerTask filter (substring + contextLines + regex)
+      const substrFiltered = await client.readWorkerTask(projectId, "w1", "task-1", {
+        filter: "BOOM-MARKER",
+        contextLines: 1,
+      });
+      assert.equal(substrFiltered.output.matchedLines, 1);
+      assert.equal(substrFiltered.output.totalMatchedLines, 1);
+      assert.equal(substrFiltered.output.scanTruncated, false);
+      assert.ok(substrFiltered.output.text.includes("4- line-4"));
+      assert.ok(substrFiltered.output.text.includes("5: ERR: boom-marker"));
+      assert.ok(substrFiltered.output.text.includes("6- line-6"));
+
+      const regexFiltered = await client.readWorkerTask(projectId, "w1", "task-1", {
+        filter: "/(boom|warn)-marker/i",
+        contextLines: 0,
+      });
+      assert.equal(regexFiltered.output.matchedLines, 2);
+      assert.equal(regexFiltered.output.totalMatchedLines, 2);
+      assert.ok(regexFiltered.output.text.includes("5: ERR: boom-marker"));
+      assert.ok(regexFiltered.output.text.includes("9: WARN: warn-marker"));
+
+      // Invalid filter regex & contextLines without filter -> 400 invalid_query
+      await assert.rejects(
+        client.readWorkerTask(projectId, "w1", "task-1", { filter: "/[unclosed/" }),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 400 &&
+          err.problem.code === "invalid_query",
+      );
+      await assert.rejects(
+        client.readWorkerTask(projectId, "w1", "task-1", { contextLines: 1 }),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 400 &&
+          err.problem.code === "invalid_query",
+      );
+
+      // streamWorkerTask on already-terminal task -> snapshot + end(reason="terminal")
+      const terminalEvents: TaskStreamEvent[] = [];
+      for await (const evt of client.streamWorkerTask(projectId, "w1", "task-1")) {
+        terminalEvents.push(evt);
+      }
+      assert.deepEqual(
+        terminalEvents.map((e) => e.type),
+        ["snapshot", "end"],
+      );
+      if (terminalEvents[0]?.type === "snapshot") {
+        assert.equal(terminalEvents[0].task.status, "completed");
+        assert.ok(terminalEvents[0].output.text.includes("ERR: boom-marker"));
+      }
+      if (terminalEvents[1]?.type === "end") {
+        assert.equal(terminalEvents[1].reason, "terminal");
+      }
+
+      // Pre-SSE 404 checks
+      await assert.rejects(
+        async () => {
+          for await (const _ of client.streamWorkerTask(projectId, "w99", "task-1")) {
+            // consume
+          }
+        },
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 404 &&
+          err.problem.code === "worker_not_found",
+      );
+      await assert.rejects(
+        async () => {
+          for await (const _ of client.streamWorkerTask(projectId, "w1", "task-999")) {
+            // consume
+          }
+        },
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 404 &&
+          err.problem.code === "task_not_found",
+      );
+
+      // 2. Start task-2 and stream live output through completion (including multi-byte UTF-8!)
+      await client.sendMessage(projectId, "w1", { text: "launch-live-stream" });
+      await waitFor(async () => {
+        const res = await client.listWorkerTasks(projectId, "w1", { status: "active" });
+        return res.tasks.some((t) => t.id === "task-2");
+      }, "task-2 to start running");
+
+      const liveEvents: TaskStreamEvent[] = [];
+      for await (const evt of client.streamWorkerTask(projectId, "w1", "task-2", {
+        mode: "head",
+        bytes: 8192,
+      })) {
+        liveEvents.push(evt);
+      }
+      assert.equal(liveEvents[0]?.type, "snapshot");
+      assert.ok(liveEvents.some((e) => e.type === "chunk"));
+      const lastStatus = liveEvents.findLast((e) => e.type === "status");
+      assert.ok(lastStatus?.type === "status");
+      assert.equal(lastStatus.task.status, "completed");
+      assert.equal(lastStatus.task.exitCode, 0);
+      const lastLiveEvt = liveEvents.at(-1);
+      assert.equal(lastLiveEvt?.type, "end");
+      if (lastLiveEvt?.type === "end") {
+        assert.equal(lastLiveEvt.reason, "completed");
+      }
+
+      // Verify exact continuous UTF-8 byte offsets and combined content match disk log!
+      let reconstructed = "";
+      let expectedByte = 0;
+      if (liveEvents[0]?.type === "snapshot") {
+        reconstructed += liveEvents[0].output.text;
+        expectedByte = liveEvents[0].output.endByte;
+      }
+      for (const evt of liveEvents) {
+        if (evt.type !== "chunk") continue;
+        assert.equal(evt.fromByte, expectedByte);
+        assert.equal(evt.endByte, evt.fromByte + Buffer.byteLength(evt.text, "utf8"));
+        assert.ok(evt.totalBytes >= evt.endByte);
+        expectedByte = evt.endByte;
+        reconstructed += evt.text;
+      }
+      const diskFull = await client.readWorkerTask(projectId, "w1", "task-2", {
+        mode: "head",
+        bytes: 48 * 1024,
+      });
+      assert.equal(reconstructed, diskFull.output.text);
+      assert.ok(reconstructed.includes("init-✓"));
+      assert.ok(reconstructed.includes("chunk-1-🦀"));
+      assert.ok(reconstructed.includes("chunk-2"));
+
+      // 3. Start task-3, stream it, and kill it via killWorkerTask -> receives status cancelled + end(completed)
+      await client.sendMessage(projectId, "w1", { text: "launch-kill-stream" });
+      await waitFor(async () => {
+        const res = await client.listWorkerTasks(projectId, "w1", { status: "active" });
+        return res.tasks.some((t) => t.id === "task-3");
+      }, "task-3 to start running");
+
+      const killEvents: TaskStreamEvent[] = [];
+      let killTriggered = false;
+      const killStreamLoop = (async () => {
+        for await (const evt of client.streamWorkerTask(projectId, "w1", "task-3")) {
+          killEvents.push(evt);
+          if (!killTriggered && (evt.type === "snapshot" || evt.type === "chunk")) {
+            const combined = killEvents
+              .map((item) =>
+                item.type === "snapshot"
+                  ? item.output.text
+                  : item.type === "chunk"
+                    ? item.text
+                    : "",
+              )
+              .join("");
+            if (combined.includes("kill-tick")) {
+              killTriggered = true;
+              void client.killWorkerTask(projectId, "w1", "task-3");
+            }
+          }
+        }
+      })();
+      await killStreamLoop;
+      assert.equal(killEvents[0]?.type, "snapshot");
+      const finalKillStatus = killEvents.findLast((e) => e.type === "status");
+      assert.ok(finalKillStatus?.type === "status");
+      assert.equal(finalKillStatus.task.status, "cancelled");
+      assert.equal(finalKillStatus.task.cancelReason, "user");
+      const finalKillEnd = killEvents.at(-1);
+      assert.equal(finalKillEnd?.type, "end");
+      if (finalKillEnd?.type === "end") {
+        assert.equal(finalKillEnd.reason, "completed");
+      }
+
+      // 4. listWorkerTasks limit & ambiguous task prefix -> 400 task_ambiguous
+      // Create enough tasks up to task-10 so prefix "1" matches both task-1 and task-10!
+      for (let idx = 4; idx <= 10; idx++) {
+        await client.sendMessage(projectId, "w1", { text: "launch-extra-task" });
+        await waitFor(async () => {
+          const res = await client.listWorkerTasks(projectId, "w1", {
+            status: "finished",
+            limit: 20,
+          });
+          return res.tasks.some((t) => t.id === `task-${idx}`);
+        }, `task-${idx} to finish`);
+      }
+
+      const limited = await client.listWorkerTasks(projectId, "w1", {
+        status: "finished",
+        limit: 3,
+      });
+      assert.deepEqual(
+        limited.tasks.map((t) => t.id),
+        ["task-8", "task-9", "task-10"],
+      );
+
+      await assert.rejects(
+        client.readWorkerTask(projectId, "w1", "1"),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 400 &&
+          err.problem.code === "task_ambiguous",
+      );
+      await assert.rejects(
+        client.killWorkerTask(projectId, "w1", "1"),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 400 &&
+          err.problem.code === "task_ambiguous",
+      );
+      await assert.rejects(
+        async () => {
+          for await (const _ of client.streamWorkerTask(projectId, "w1", "1")) {
+            // consume
+          }
+        },
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 400 &&
+          err.problem.code === "task_ambiguous",
+      );
+    } finally {
+      await foreground.close();
+    }
+  });
+});
+
+test("streamWorkerTask closes cleanly with end reason='closed' on server shutdown", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws = join(dir, "ws");
+    await mkdir(ws, { recursive: true });
+    const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+
+    const nodeBin = JSON.stringify(process.execPath.replace(/\\/g, "/"));
+    const idleCmd = `${nodeBin} -e 'console.log("steady"); setTimeout(() => {}, 15000);'`;
+
+    const brain: FauxResponseFactory = (context) => {
+      const last = lastMessage(context);
+      if (last?.role === "user") {
+        const text = messageText(last);
+        if (text.includes("spawn-idle")) {
+          return fauxAssistantMessage(
+            [fauxToolCall("spawn_worker", { name: "keeper", prompt: "run-steady" })],
+            { stopReason: "toolUse" },
+          );
+        }
+        if (text.includes("run-steady")) {
+          return fauxAssistantMessage(
+            [fauxToolCall("bash", { command: idleCmd, background: true })],
+            { stopReason: "toolUse" },
+          );
+        }
+      }
+      if (last?.role === "toolResult") {
+        if (last.toolName === "spawn_worker") return fauxAssistantMessage("spawned");
+        if (last.toolName === "bash") return fauxAssistantMessage("running steady");
+      }
+      return fauxAssistantMessage("ack");
+    };
+    faux.setResponses(Array.from({ length: 15 }, () => brain));
+
+    const foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      models,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+        worker: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+    });
+
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      const created = await client.createProject({ workspaces: [ws], title: "CloseStream" });
+      const projectId = created.project.id;
+
+      await client.sendMessage(projectId, "router", { text: "spawn-idle" });
+      await waitFor(async () => {
+        const board = await client.getBoard(projectId);
+        const w1 = board.workers.find((w) => w.id === "w1");
+        return w1?.tasks.some((t) => t.id === "task-1" && t.status === "running") ?? false;
+      }, "task-1 running before server close");
+
+      const events: TaskStreamEvent[] = [];
+      const streamDone = (async () => {
+        for await (const evt of client.streamWorkerTask(projectId, "w1", "task-1")) {
+          events.push(evt);
+        }
+      })();
+      await waitFor(() => events.length >= 1, "snapshot received before server close");
+      await foreground.close();
+      await streamDone;
+      const lastEvent = events.at(-1);
+      assert.equal(lastEvent?.type, "end");
+      if (lastEvent?.type === "end") {
+        assert.equal(lastEvent.reason, "closed");
+      }
     } finally {
       await foreground.close();
     }

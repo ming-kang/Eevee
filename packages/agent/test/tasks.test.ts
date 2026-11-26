@@ -1,18 +1,23 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import type { Conversation, ConversationId, EntryRecord } from "@earendil-works/pi-durable";
+import { fauxAssistantMessage, fauxToolCall, type TranscriptContext } from "@earendil-works/pi-ai";
+import type { Conversation, ConversationId, EntryRecord, TaskId } from "@earendil-works/pi-durable";
+import { ExecutionError, err } from "@earendil-works/pi-durable/env";
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
+import { createCachedCompactionExtension } from "../src/extensions/cached-compaction/index.ts";
 import { createCodingToolsExtension } from "../src/extensions/coding-tools/index.ts";
 import {
   type BackgroundTaskRecord,
   clampReadBytes,
   createTasksExtension,
   getConversationTask,
+  listConversationTasks,
   readOutputFileSlice,
   sliceOutputText,
   sliceRetainedOutput,
@@ -285,8 +290,9 @@ test("bash background:true returns a taskId, then wakes the conversation on comp
     assert.equal(bash.isError, false);
     assert.match(resultText(bash), /task-1/);
 
-    const record = await waitForRecord(th, conversation.id, "task-1", "exited");
+    const record = await waitForRecord(th, conversation.id, "task-1", "completed");
     assert.equal(record.exitCode, 0);
+    assert.equal(record.shell, "bash");
     assert.equal(record.command, "echo bg-output");
     await waitFor(() => hasNotification(conversation), "task notification entry");
     await conversation.waitForIdle(BACKGROUND_CONTEXT);
@@ -343,7 +349,7 @@ test("foreground bash hands off to a background task after backgroundAfterMs", a
     assert.ok(text.includes("before-handoff"), text);
     assert.ok(text.includes("task-1"), text);
 
-    const record = await waitForRecord(th, conversation.id, "task-1", "exited");
+    const record = await waitForRecord(th, conversation.id, "task-1", "completed");
     assert.equal(record.exitCode, 0);
     const read = await manager.readOutput(conversation.id, "task-1", record, {});
     assert.ok(read.text.includes("before-handoff"), read.text);
@@ -398,12 +404,13 @@ test("tasks tool lists, reads incrementally, and kills background tasks", async 
     assert.ok(read);
     assert.ok(resultText(read).includes("next sinceBytes:"), resultText(read));
 
-    const record = await waitForRecord(th, conversation.id, "task-1", "killed");
+    const record = await waitForRecord(th, conversation.id, "task-1", "cancelled");
+    assert.equal(record.cancelReason, "tool");
     assert.ok(record.endedAt !== undefined);
     const log = await manager.readOutput(conversation.id, "task-1", record, {});
     assert.ok(log.text.includes("listed-output"), log.text);
     const kill = results.find(
-      (entry) => entry.toolName === "tasks" && resultText(entry).includes("killed"),
+      (entry) => entry.toolName === "tasks" && resultText(entry).includes("cancelled"),
     );
     assert.ok(kill);
     assert.equal(kill.isError, false);
@@ -472,7 +479,7 @@ test("killing an already-ended task is an error result", async () => {
       BACKGROUND_CONTEXT,
     );
     await submission.wait(BACKGROUND_CONTEXT);
-    await waitForRecord(th, conversation.id, "task-1", "exited");
+    await waitForRecord(th, conversation.id, "task-1", "completed");
     await conversation.waitForIdle(BACKGROUND_CONTEXT);
 
     th.faux.appendResponses([
@@ -522,7 +529,8 @@ test("conversation.abort() spares background tasks; abort({background:true}) kil
     assert.equal((await taskRecord(th, conversation.id, "task-1"))?.status, "running");
 
     await conversation.abort(BACKGROUND_CONTEXT, { background: true });
-    const record = await waitForRecord(th, conversation.id, "task-1", "killed");
+    const record = await waitForRecord(th, conversation.id, "task-1", "cancelled");
+    assert.equal(record.cancelReason, "abort");
     assert.ok(record.endedAt !== undefined);
     assert.equal(manager.get(conversation.id, "task-1"), undefined);
     assert.equal(await hasNotification(conversation), false);
@@ -615,7 +623,7 @@ test("disk log mode writes the task output to a file readable after completion",
       BACKGROUND_CONTEXT,
     );
     await submission.wait(BACKGROUND_CONTEXT);
-    const record = await waitForRecord(th, conversation.id, "task-1", "exited");
+    const record = await waitForRecord(th, conversation.id, "task-1", "completed");
     assert.ok(record.logPath !== undefined);
     const onDisk = await readFile(record.logPath, "utf8");
     assert.ok(onDisk.includes("log-line-one"), onDisk);
@@ -630,5 +638,601 @@ test("disk log mode writes the task output to a file readable after completion",
     manager.killAll();
     await th.cleanup();
     await rm(logRoot, { recursive: true, force: true });
+  }
+});
+
+test("powershell tool wraps foreground and background execution and fails preflight when unavailable", async () => {
+  const unavailableTh = await createTestHarness({
+    extensions: [
+      createCodingToolsExtension({ powerShell: true }),
+      createTasksExtension({ resolvePowerShell: async () => undefined }),
+    ],
+  });
+  try {
+    unavailableTh.faux.setResponses([
+      fauxAssistantMessage(
+        [fauxToolCall("powershell", { command: "Write-Output nope", background: true })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("ok"),
+    ]);
+    const conv = await unavailableTh.createConversation();
+    const sub = await conv.submit({ type: "input", content: "go" }, BACKGROUND_CONTEXT);
+    await sub.wait(BACKGROUND_CONTEXT);
+    const results = await toolResults(conv);
+    const ps = results.find((entry) => entry.toolName === "powershell");
+    assert.ok(ps);
+    assert.equal(ps.isError, true);
+    assert.match(resultText(ps), /PowerShell.*unavailable/i);
+    const board = await unavailableTh.harness.snapshot(TasksBoardDoc, conv.id, BACKGROUND_CONTEXT);
+    assert.equal(board === undefined || board.order.length === 0, true);
+  } finally {
+    await unavailableTh.cleanup();
+  }
+
+  const manager = new TaskManager();
+  const th = await createTestHarness({
+    extensions: [
+      createCodingToolsExtension({ powerShell: true }),
+      createTasksExtension({
+        manager,
+        resolvePowerShell: async () => ({
+          executable: process.execPath,
+          kind: "pwsh",
+          buildArgs: (cmd) => ["-e", cmd],
+        }),
+      }),
+    ],
+  });
+  try {
+    th.faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("powershell", {
+            command: "console.log('ps-bg-hello')",
+            background: true,
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("started ps"),
+      fauxAssistantMessage("noted ps"),
+    ]);
+    const conversation = await th.createConversation();
+    const submission = await conversation.submit(
+      { type: "input", content: "go" },
+      BACKGROUND_CONTEXT,
+    );
+    await submission.wait(BACKGROUND_CONTEXT);
+    const record = await waitForRecord(th, conversation.id, "task-1", "completed");
+    assert.equal(record.shell, "powershell");
+    assert.equal(record.exitCode, 0);
+    await waitFor(() => hasNotification(conversation), "ps notification");
+    await conversation.waitForIdle(BACKGROUND_CONTEXT);
+    const output = await manager.readOutput(conversation.id, "task-1", record, {});
+    assert.ok(output.text.includes("ps-bg-hello"), output.text);
+  } finally {
+    await manager.close();
+    await th.cleanup();
+  }
+});
+
+test("background:true preflight returns inline error when command fails immediately without phantom task", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "eevee-tasks-preflight-"));
+  const env = new NodeExecutionEnv({ cwd: dir });
+  env.exec = async () => err(new ExecutionError("spawn_error", "immediate spawn failure"));
+
+  const manager = new TaskManager();
+  const th = await createTestHarness({
+    env,
+    extensions: [createCodingToolsExtension(), createTasksExtension({ manager })],
+  });
+  try {
+    th.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("bash", { command: "bad-cmd", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("handled"),
+    ]);
+    const conversation = await th.createConversation();
+    const sub = await conversation.submit({ type: "input", content: "go" }, BACKGROUND_CONTEXT);
+    await sub.wait(BACKGROUND_CONTEXT);
+    const results = await toolResults(conversation);
+    const bash = results.find((entry) => entry.toolName === "bash");
+    assert.ok(bash);
+    assert.equal(bash.isError, true);
+    assert.match(resultText(bash), /immediate spawn failure/);
+    const tasks = await listConversationTasks(th.harness, conversation.id, BACKGROUND_CONTEXT);
+    assert.equal(tasks.length, 0);
+  } finally {
+    await manager.close();
+    await th.cleanup();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("TaskManager enforces maxActivePerConversation and maxActiveTotal admission limits", async () => {
+  const manager = new TaskManager({ maxActivePerConversation: 2, maxActiveTotal: 3 });
+  const th = await createTestHarness({
+    extensions: [createCodingToolsExtension(), createTasksExtension({ manager })],
+  });
+  try {
+    th.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("bash", { command: "sleep 60", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage([fauxToolCall("bash", { command: "sleep 60", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage([fauxToolCall("bash", { command: "sleep 60", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("limit seen"),
+    ]);
+    const conv1 = await th.createConversation();
+    const sub1 = await conv1.submit({ type: "input", content: "go" }, BACKGROUND_CONTEXT);
+    await sub1.wait(BACKGROUND_CONTEXT);
+    const results1 = await toolResults(conv1);
+    const bashResults = results1.filter((entry) => entry.toolName === "bash").reverse();
+    assert.equal(bashResults.length, 3);
+    assert.equal(bashResults[0]?.isError, false);
+    assert.equal(bashResults[1]?.isError, false);
+    assert.equal(bashResults[2]?.isError, true);
+    assert.match(resultText(bashResults[2] as ToolResultEntry), /active limit/i);
+    assert.match(resultText(bashResults[2] as ToolResultEntry), /task-1/);
+    assert.match(resultText(bashResults[2] as ToolResultEntry), /task-2/);
+
+    th.faux.appendResponses([
+      fauxAssistantMessage([fauxToolCall("bash", { command: "sleep 60", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage([fauxToolCall("bash", { command: "sleep 60", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("total limit seen"),
+    ]);
+    const conv2 = await th.createConversation();
+    const sub2 = await conv2.submit({ type: "input", content: "go2" }, BACKGROUND_CONTEXT);
+    await sub2.wait(BACKGROUND_CONTEXT);
+    const results2 = await toolResults(conv2);
+    const conv2Bash = results2.filter((entry) => entry.toolName === "bash").reverse();
+    assert.equal(conv2Bash[0]?.isError, false);
+    assert.equal(conv2Bash[1]?.isError, true);
+    assert.match(resultText(conv2Bash[1] as ToolResultEntry), /total active limit/i);
+  } finally {
+    await manager.close();
+    await th.cleanup();
+  }
+});
+
+test("finished history eviction keeps maxFinishedPerConversation and removes evicted log files", async () => {
+  const logRoot = await mkdtemp(join(tmpdir(), "eevee-tasks-evict-"));
+  const manager = new TaskManager({
+    maxFinishedPerConversation: 2,
+    logPath: (conversationId, taskId) => join(logRoot, `${conversationId}-${taskId}.log`),
+  });
+  const th = await createTestHarness({
+    extensions: [createCodingToolsExtension(), createTasksExtension({ manager })],
+  });
+  try {
+    th.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("bash", { command: "echo one", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("s1"),
+      fauxAssistantMessage("n1"),
+    ]);
+    const conv = await th.createConversation();
+    await (await conv.submit({ type: "input", content: "1" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    const rec1 = await waitForRecord(th, conv.id, "task-1", "completed");
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+    assert.ok(rec1.logPath && existsSync(rec1.logPath));
+
+    th.faux.appendResponses([
+      fauxAssistantMessage([fauxToolCall("bash", { command: "echo two", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("s2"),
+      fauxAssistantMessage("n2"),
+    ]);
+    await (await conv.submit({ type: "input", content: "2" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    await waitForRecord(th, conv.id, "task-2", "completed");
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+
+    th.faux.appendResponses([
+      fauxAssistantMessage([fauxToolCall("bash", { command: "echo three", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("s3"),
+      fauxAssistantMessage("n3"),
+    ]);
+    await (await conv.submit({ type: "input", content: "3" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    const rec3 = await waitForRecord(th, conv.id, "task-3", "completed");
+    if (rec3.durableTaskId !== undefined) {
+      await th.harness.waitForTask(rec3.durableTaskId as TaskId, BACKGROUND_CONTEXT);
+    }
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+
+    const remaining = await listConversationTasks(th.harness, conv.id, BACKGROUND_CONTEXT);
+    assert.deepEqual(
+      remaining.map((r) => r.id),
+      ["task-2", "task-3"],
+    );
+    assert.equal(existsSync(rec1.logPath), false, "evicted task log file should be deleted");
+  } finally {
+    await manager.close();
+    await th.cleanup();
+    await rm(logRoot, { recursive: true, force: true });
+  }
+});
+
+test("log cap enforces truncate and fail policies and surfaces log errors", async () => {
+  const truncRoot = await mkdtemp(join(tmpdir(), "eevee-tasks-cap-trunc-"));
+  const truncMgr = new TaskManager({
+    maxLogBytes: 80,
+    logOverflowPolicy: "truncate",
+    logPath: (convId, taskId) => join(truncRoot, `${convId}-${taskId}.log`),
+  });
+  const truncTh = await createTestHarness({
+    extensions: [createCodingToolsExtension(), createTasksExtension({ manager: truncMgr })],
+  });
+  try {
+    truncTh.faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("bash", {
+            command: "node -e \"console.log('x'.repeat(300))\"",
+            background: true,
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("started"),
+      fauxAssistantMessage("noted"),
+    ]);
+    const conv = await truncTh.createConversation();
+    await (await conv.submit({ type: "input", content: "go" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    const rec = await waitForRecord(truncTh, conv.id, "task-1", "completed");
+    assert.equal(rec.logTruncated, true);
+    assert.equal(rec.logError, undefined);
+    assert.ok(rec.logPath);
+    const disk = await readFile(rec.logPath, "utf8");
+    assert.ok(disk.includes("[output truncated at 20 MiB limit]"), disk);
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+    const entries = await conversationEntries(conv);
+    const note = entries.find((e) => e.kind === TASK_NOTIFICATION_ENTRY_KIND);
+    assert.ok(JSON.stringify(note?.model ?? []).includes("truncated"));
+  } finally {
+    await truncMgr.close();
+    await truncTh.cleanup();
+    await rm(truncRoot, { recursive: true, force: true });
+  }
+
+  const failRoot = await mkdtemp(join(tmpdir(), "eevee-tasks-cap-fail-"));
+  const failMgr = new TaskManager({
+    maxLogBytes: 64,
+    logOverflowPolicy: "fail",
+    logPath: (convId, taskId) => join(failRoot, `${convId}-${taskId}.log`),
+  });
+  const failTh = await createTestHarness({
+    extensions: [createCodingToolsExtension(), createTasksExtension({ manager: failMgr })],
+  });
+  try {
+    failTh.faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("bash", {
+            command: "node -e \"setInterval(() => console.log('overflow_chunk_line'), 20)\"",
+            background: true,
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("started"),
+      fauxAssistantMessage("saw overflow failure"),
+    ]);
+    const conv = await failTh.createConversation();
+    await (await conv.submit({ type: "input", content: "go" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    const rec = await waitForRecord(failTh, conv.id, "task-1", "failed");
+    assert.equal(rec.logError, "Output exceeded background log size limit");
+    assert.equal(rec.error, "Output exceeded background log size limit");
+    await waitFor(() => hasNotification(conv), "overflow fail notification");
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+  } finally {
+    await failMgr.close();
+    await failTh.cleanup();
+    await rm(failRoot, { recursive: true, force: true });
+  }
+
+  const errRoot = await mkdtemp(join(tmpdir(), "eevee-tasks-logerr-"));
+  const blockingFile = join(errRoot, "not-a-dir");
+  await writeFile(blockingFile, "x");
+  const errMgr = new TaskManager({
+    logPath: (convId, taskId) => join(blockingFile, `${convId}-${taskId}.log`),
+  });
+  const errTh = await createTestHarness({
+    extensions: [createCodingToolsExtension(), createTasksExtension({ manager: errMgr })],
+  });
+  try {
+    errTh.faux.setResponses([
+      fauxAssistantMessage(
+        [fauxToolCall("bash", { command: "echo log-error-ok", background: true })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("started"),
+      fauxAssistantMessage("noted error"),
+    ]);
+    const conv = await errTh.createConversation();
+    await (await conv.submit({ type: "input", content: "go" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    const rec = await waitForRecord(errTh, conv.id, "task-1", "completed");
+    assert.ok(rec.logError !== undefined && rec.logError.length > 0);
+    await waitFor(() => hasNotification(conv), "log error notification");
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+    const entries = await conversationEntries(conv);
+    const note = entries.find((e) => e.kind === TASK_NOTIFICATION_ENTRY_KIND);
+    assert.ok(JSON.stringify(note?.model ?? []).includes("log write failed"));
+  } finally {
+    await errMgr.close();
+    await errTh.cleanup();
+    await rm(errRoot, { recursive: true, force: true });
+  }
+});
+
+test("tasks list filters by status/limit and tasks read/kill accept prefixes and search filters", async () => {
+  const manager = new TaskManager();
+  const th = await createTestHarness({
+    extensions: [createCodingToolsExtension(), createTasksExtension({ manager })],
+  });
+  try {
+    th.faux.setResponses([
+      fauxAssistantMessage(
+        [fauxToolCall("bash", { command: "echo alpha && echo BETA_HIT", background: true })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("started first"),
+      fauxAssistantMessage("first done"),
+    ]);
+    const conv = await th.createConversation();
+    await (await conv.submit({ type: "input", content: "1" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    await waitForRecord(th, conv.id, "task-1", "completed");
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+
+    th.faux.appendResponses([
+      fauxAssistantMessage([fauxToolCall("bash", { command: "echo two", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("started two"),
+      fauxAssistantMessage("two done"),
+    ]);
+    await (await conv.submit({ type: "input", content: "2" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    await waitForRecord(th, conv.id, "task-2", "completed");
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+
+    th.faux.appendResponses([
+      fauxAssistantMessage([fauxToolCall("bash", { command: "sleep 60", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage(
+        [fauxToolCall("tasks", { action: "list", status: "finished", limit: 1 })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage([fauxToolCall("tasks", { action: "list", status: "active" })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage(
+        [fauxToolCall("tasks", { action: "read", taskId: "1", filter: "beta", contextLines: 1 })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage([fauxToolCall("tasks", { action: "kill", taskId: "3" })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("all done"),
+    ]);
+    await (await conv.submit({ type: "input", content: "3" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    const results = await toolResults(conv);
+    const listFinished = results.find(
+      (r) => r.toolName === "tasks" && resultText(r).includes("1 older finished omitted"),
+    );
+    assert.ok(listFinished);
+    assert.ok(resultText(listFinished).includes("task-2"));
+    assert.equal(resultText(listFinished).includes("task-1"), false);
+
+    const listActive = results.find(
+      (r) =>
+        r.toolName === "tasks" &&
+        resultText(r).includes("task-3") &&
+        !resultText(r).includes("task-2"),
+    );
+    assert.ok(listActive);
+
+    const filteredRead = results.find(
+      (r) => r.toolName === "tasks" && resultText(r).includes("BETA_HIT"),
+    );
+    assert.ok(filteredRead);
+    assert.ok(resultText(filteredRead).includes("1- alpha"), resultText(filteredRead));
+    assert.ok(resultText(filteredRead).includes("2: BETA_HIT"), resultText(filteredRead));
+
+    const killed3 = await waitForRecord(th, conv.id, "task-3", "cancelled");
+    assert.equal(killed3.cancelReason, "tool");
+  } finally {
+    await manager.close();
+    await th.cleanup();
+  }
+});
+
+test("post-compaction active-task reminder is injected once per compaction and not persisted", async () => {
+  const manager = new TaskManager();
+  const capturedRequests: TranscriptContext[] = [];
+  const th = await createTestHarness({
+    extensions: [
+      createCodingToolsExtension(),
+      createTasksExtension({ manager }),
+      createCachedCompactionExtension(),
+    ],
+    settings: {
+      compaction: {
+        enabled: true,
+        keepRecentTokens: 15,
+        reserveTokens: 1000,
+        backgroundTokens: 0,
+      },
+    },
+  });
+  try {
+    let stage = 0;
+    th.faux.setResponses([
+      (ctx) => {
+        capturedRequests.push(ctx);
+        stage += 1;
+        return fauxAssistantMessage("First turn response with plenty of tokens to compact later.");
+      },
+      (ctx) => {
+        capturedRequests.push(ctx);
+        stage += 1;
+        return fauxAssistantMessage(
+          [fauxToolCall("bash", { command: "sleep 60", background: true })],
+          { stopReason: "toolUse" },
+        );
+      },
+      (ctx) => {
+        capturedRequests.push(ctx);
+        stage += 1;
+        return fauxAssistantMessage("Background task started and running.");
+      },
+      () => fauxAssistantMessage("## Goal\nCompacted summary before reminder."),
+      (ctx) => {
+        capturedRequests.push(ctx);
+        stage += 1;
+        return fauxAssistantMessage("Turn after compaction acknowledging reminder.");
+      },
+      (ctx) => {
+        capturedRequests.push(ctx);
+        stage += 1;
+        return fauxAssistantMessage("Second turn after compaction.");
+      },
+    ]);
+
+    const conv = await th.createConversation();
+    await (await conv.submit({ type: "input", content: "turn one" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    await (await conv.submit({ type: "input", content: "start bg" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    await waitForRecord(th, conv.id, "task-1", "running");
+
+    const compactTaskId = await conv.compact(undefined, BACKGROUND_CONTEXT);
+    await th.harness.waitForTask(compactTaskId, BACKGROUND_CONTEXT);
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+
+    await (
+      await conv.submit({ type: "input", content: "continue after compact" }, BACKGROUND_CONTEXT)
+    ).wait(BACKGROUND_CONTEXT);
+    await (
+      await conv.submit({ type: "input", content: "second turn after compact" }, BACKGROUND_CONTEXT)
+    ).wait(BACKGROUND_CONTEXT);
+
+    assert.equal(stage, 5);
+    const firstPostCompact = capturedRequests[3];
+    const secondPostCompact = capturedRequests[4];
+    assert.ok(firstPostCompact);
+    assert.ok(secondPostCompact);
+
+    const hasReminder = (ctx: TranscriptContext) =>
+      ctx.messages.some(
+        (m) =>
+          m.role === "user" &&
+          JSON.stringify(m.content).includes("Active background tasks from before compaction"),
+      );
+    assert.equal(
+      hasReminder(firstPostCompact),
+      true,
+      "first post-compaction request gets reminder",
+    );
+    assert.equal(
+      hasReminder(secondPostCompact),
+      false,
+      "reminder is one-shot per compaction and not persisted in transcript",
+    );
+
+    const transcript = await conversationEntries(conv);
+    assert.equal(
+      transcript.some((e) =>
+        JSON.stringify(e.model ?? []).includes("Active background tasks from before compaction"),
+      ),
+      false,
+      "reminder must not be persisted to transcript",
+    );
+  } finally {
+    await manager.close();
+    await th.cleanup();
+  }
+});
+
+test("TaskManager subscribeOutput streams live chunks and close() drains cleanly", async () => {
+  const manager = new TaskManager();
+  const dir = await mkdtemp(join(tmpdir(), "eevee-tasks-sub-"));
+  const env = new NodeExecutionEnv({ cwd: dir });
+  try {
+    const th = await createTestHarness({
+      env,
+      extensions: [createCodingToolsExtension(), createTasksExtension({ manager })],
+    });
+    try {
+      th.faux.setResponses([
+        fauxAssistantMessage(
+          [
+            fauxToolCall("bash", {
+              command: "node -e \"setTimeout(() => console.log('live-chunk-hello'), 100)\"",
+              background: true,
+            }),
+          ],
+          { stopReason: "toolUse" },
+        ),
+        fauxAssistantMessage("started"),
+        fauxAssistantMessage("done"),
+      ]);
+      const conv = await th.createConversation();
+      await (await conv.submit({ type: "input", content: "go" }, BACKGROUND_CONTEXT)).wait(
+        BACKGROUND_CONTEXT,
+      );
+
+      let chunks = "";
+      const unsub = manager.subscribeOutput(conv.id, "task-1", (chunk) => {
+        chunks += chunk;
+      });
+      assert.ok(unsub !== undefined);
+      await waitForRecord(th, conv.id, "task-1", "completed");
+      await conv.waitForIdle(BACKGROUND_CONTEXT);
+      unsub();
+      assert.ok(chunks.includes("live-chunk-hello"), chunks);
+      assert.equal(
+        manager.subscribeOutput(conv.id, "task-1", () => {}),
+        undefined,
+      );
+    } finally {
+      await manager.close(500);
+      await th.cleanup();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });

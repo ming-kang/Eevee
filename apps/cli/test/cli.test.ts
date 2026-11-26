@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+  aggregateBoardTasks,
   ConversationWatchRenderer,
   formatBoard,
   formatMcpState,
@@ -12,8 +13,10 @@ import {
   formatQuestionAnswered,
   formatRefreshModels,
   formatSettings,
+  formatTaskList,
   formatTaskOutput,
   parseModelFlag,
+  TaskWatchRenderer,
 } from "../src/format.ts";
 import { createProgram } from "../src/index.ts";
 
@@ -70,15 +73,36 @@ test("CLI program registers core metadata and all 4A + 4B subcommands and option
   const taskCmd = program.commands.find((command) => command.name() === "task");
   assert.ok(taskCmd);
   const taskSubcommands = taskCmd.commands.map((command) => command.name());
+  assert.ok(taskSubcommands.includes("list"));
   assert.ok(taskSubcommands.includes("read"));
+  assert.ok(taskSubcommands.includes("watch"));
   assert.ok(taskSubcommands.includes("kill"));
+
+  const taskListCmd = taskCmd.commands.find((command) => command.name() === "list");
+  assert.ok(taskListCmd);
+  assert.equal(taskListCmd.registeredArguments.length, 2);
+  assert.ok(taskListCmd.options.some((opt) => opt.long === "--status"));
+  assert.ok(taskListCmd.options.some((opt) => opt.long === "--limit"));
+  assert.ok(taskListCmd.options.some((opt) => opt.long === "--json"));
 
   const taskReadCmd = taskCmd.commands.find((command) => command.name() === "read");
   assert.ok(taskReadCmd);
   assert.ok(taskReadCmd.options.some((opt) => opt.long === "--mode"));
   assert.ok(taskReadCmd.options.some((opt) => opt.long === "--bytes"));
   assert.ok(taskReadCmd.options.some((opt) => opt.long === "--since-bytes"));
+  assert.ok(taskReadCmd.options.some((opt) => opt.long === "--end-byte"));
+  assert.ok(taskReadCmd.options.some((opt) => opt.long === "--filter"));
+  assert.ok(taskReadCmd.options.some((opt) => opt.long === "--context"));
   assert.ok(taskReadCmd.options.some((opt) => opt.long === "--json"));
+
+  const taskWatchCmd = taskCmd.commands.find((command) => command.name() === "watch");
+  assert.ok(taskWatchCmd);
+  assert.ok(taskWatchCmd.options.some((opt) => opt.long === "--mode"));
+  assert.ok(taskWatchCmd.options.some((opt) => opt.long === "--bytes"));
+  assert.ok(taskWatchCmd.options.some((opt) => opt.long === "--since-bytes"));
+  assert.ok(taskWatchCmd.options.some((opt) => opt.long === "--filter"));
+  assert.ok(taskWatchCmd.options.some((opt) => opt.long === "--context"));
+  assert.ok(taskWatchCmd.options.some((opt) => opt.long === "--json"));
 
   const taskKillCmd = taskCmd.commands.find((command) => command.name() === "kill");
   assert.ok(taskKillCmd);
@@ -499,5 +523,399 @@ test("CLI 4C formatters render readable output and validate incompatible flags",
         tools: {},
       },
     }).includes("mock/m1: totalTokens=15"),
+  );
+});
+
+test("CLI validates task list, read, and watch flags cleanly", async () => {
+  const program = createProgram({ EEVEE_HOME: "/tmp/eevee-cli-test" });
+  program.exitOverride();
+
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "task", "list", "demo", "bad-worker"]),
+    /Invalid worker/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "task", "list", "demo", "--status", "paused"]),
+    /Invalid --status/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "task", "list", "demo", "--limit", "0"]),
+    /Invalid --limit/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "task", "list", "demo", "--limit", "-3"]),
+    /Invalid --limit/,
+  );
+
+  await assert.rejects(
+    program.parseAsync([
+      "node",
+      "eevee",
+      "task",
+      "read",
+      "demo",
+      "w1",
+      "task-1",
+      "--end-byte",
+      "-1",
+    ]),
+    /Invalid --end-byte/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "task", "read", "demo", "w1", "task-1", "--filter", ""]),
+    /Invalid --filter/,
+  );
+  await assert.rejects(
+    program.parseAsync([
+      "node",
+      "eevee",
+      "task",
+      "read",
+      "demo",
+      "w1",
+      "task-1",
+      "--filter",
+      "/[unclosed/",
+    ]),
+    /Invalid filter regular expression/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "task", "read", "demo", "w1", "task-1", "--context", "1"]),
+    /--context requires --filter/,
+  );
+  await assert.rejects(
+    program.parseAsync([
+      "node",
+      "eevee",
+      "task",
+      "read",
+      "demo",
+      "w1",
+      "task-1",
+      "--filter",
+      "err",
+      "--context",
+      "-1",
+    ]),
+    /Invalid --context/,
+  );
+  await assert.rejects(
+    program.parseAsync([
+      "node",
+      "eevee",
+      "task",
+      "read",
+      "demo",
+      "w1",
+      "task-1",
+      "--filter",
+      "err",
+      "--context",
+      "6",
+    ]),
+    /Invalid --context/,
+  );
+  await assert.rejects(
+    program.parseAsync([
+      "node",
+      "eevee",
+      "task",
+      "read",
+      "demo",
+      "w1",
+      "task-1",
+      "--filter",
+      "err",
+      "--context",
+      "1.5",
+    ]),
+    /Invalid --context/,
+  );
+
+  await assert.rejects(
+    program.parseAsync([
+      "node",
+      "eevee",
+      "task",
+      "watch",
+      "demo",
+      "w1",
+      "task-1",
+      "--mode",
+      "middle",
+    ]),
+    /Invalid --mode/,
+  );
+  await assert.rejects(
+    program.parseAsync([
+      "node",
+      "eevee",
+      "task",
+      "watch",
+      "demo",
+      "w1",
+      "task-1",
+      "--since-bytes",
+      "-5",
+    ]),
+    /Invalid --since-bytes/,
+  );
+  await assert.rejects(
+    program.parseAsync([
+      "node",
+      "eevee",
+      "task",
+      "watch",
+      "demo",
+      "w1",
+      "task-1",
+      "--context",
+      "2",
+    ]),
+    /--context requires --filter/,
+  );
+  await assert.rejects(
+    program.parseAsync([
+      "node",
+      "eevee",
+      "task",
+      "watch",
+      "demo",
+      "w1",
+      "task-1",
+      "--filter",
+      "err",
+      "--context",
+      "6",
+    ]),
+    /Invalid --context/,
+  );
+  await assert.rejects(
+    program.parseAsync([
+      "node",
+      "eevee",
+      "task",
+      "watch",
+      "demo",
+      "w1",
+      "task-1",
+      "--filter",
+      "/[bad/",
+    ]),
+    /Invalid filter regular expression/,
+  );
+});
+
+test("formatTaskOutput, formatTaskList, and aggregateBoardTasks format task metadata and filters", () => {
+  const richOutput = formatTaskOutput("w2", {
+    task: {
+      id: "task-3",
+      command: "npm test",
+      status: "cancelled",
+      cancelReason: "user",
+      logTruncated: true,
+      logError: "disk full",
+      startedAt: 100,
+      endedAt: 200,
+    },
+    output: {
+      text: "5: ERR: boom\n",
+      totalBytes: 4096,
+      truncated: true,
+      fromByte: 0,
+      endByte: 4096,
+      matchedLines: 1,
+      totalMatchedLines: 4,
+      scanTruncated: true,
+    },
+  });
+  assert.ok(richOutput.includes("Worker w2 task task-3 [cancelled] (reason user) — npm test"));
+  assert.ok(
+    richOutput.includes(
+      "Bytes 0..4096 of 4096 (truncated) | Matches: 1 of 4 line(s), scan truncated",
+    ),
+  );
+  assert.ok(
+    richOutput.includes(
+      "Warnings: log truncated (output exceeded log size limit); log error: disk full",
+    ),
+  );
+  assert.ok(richOutput.includes("5: ERR: boom"));
+
+  assert.equal(formatTaskList([]), "No tasks.");
+
+  const board = {
+    workers: [
+      {
+        id: "w1",
+        name: "alpha",
+        cwd: "/ws",
+        conversationId: 2,
+        createdAt: 1,
+        status: "running" as const,
+        activeTaskCount: 1,
+        tasks: [
+          {
+            id: "task-1",
+            command: "echo done",
+            status: "completed" as const,
+            exitCode: 0,
+            startedAt: 100,
+            endedAt: 150,
+          },
+          { id: "task-2", command: "npm run dev", status: "running" as const, startedAt: 300 },
+        ],
+      },
+      {
+        id: "w2",
+        name: "beta",
+        cwd: "/ws",
+        conversationId: 3,
+        createdAt: 2,
+        status: "idle" as const,
+        activeTaskCount: 1,
+        tasks: [
+          { id: "task-1", command: "watch logs", status: "queued" as const, startedAt: 200 },
+          {
+            id: "task-2",
+            command: "sleep 60",
+            status: "cancelled" as const,
+            cancelReason: "user" as const,
+            startedAt: 400,
+            endedAt: 420,
+          },
+        ],
+      },
+    ],
+    tickets: [],
+    questions: [],
+  };
+
+  const allAggregated = aggregateBoardTasks(board);
+  assert.deepEqual(
+    allAggregated.map((t) => `${t.workerId}/${t.id}`),
+    ["w2/task-1", "w1/task-2", "w1/task-1", "w2/task-2"],
+  );
+  assert.deepEqual(
+    aggregateBoardTasks(board, { status: "active" }).map((t) => `${t.workerId}/${t.id}`),
+    ["w2/task-1", "w1/task-2"],
+  );
+  assert.deepEqual(
+    aggregateBoardTasks(board, { status: "finished", limit: 1 }).map(
+      (t) => `${t.workerId}/${t.id}`,
+    ),
+    ["w2/task-2"],
+  );
+  assert.deepEqual(
+    aggregateBoardTasks(board, { status: "all", limit: 3 }).map((t) => `${t.workerId}/${t.id}`),
+    ["w2/task-1", "w1/task-2", "w2/task-2"],
+  );
+  assert.deepEqual(
+    aggregateBoardTasks(board, { status: "all", limit: 1 }).map((t) => `${t.workerId}/${t.id}`),
+    ["w1/task-2"],
+  );
+
+  const projectTable = formatTaskList(allAggregated, { showWorker: true });
+  assert.ok(projectTable.includes("w2\ttask-1\tqueued\twatch logs"));
+  assert.ok(projectTable.includes("w1\ttask-2\trunning\tnpm run dev"));
+  assert.ok(projectTable.includes("w1\ttask-1\tcompleted (exit 0)\techo done"));
+  assert.ok(projectTable.includes("w2\ttask-2\tcancelled (reason user)\tsleep 60"));
+
+  const singleWorkerTable = formatTaskList(board.workers[0]?.tasks ?? [], { showWorker: false });
+  assert.equal(
+    singleWorkerTable,
+    "task-1\tcompleted (exit 0)\techo done\ntask-2\trunning\tnpm run dev",
+  );
+});
+
+test("TaskWatchRenderer streams raw and filtered chunks with context and status transitions", () => {
+  const rawChunks: string[] = [];
+  const raw = new TaskWatchRenderer((chunk) => rawChunks.push(chunk), { workerId: "w1" });
+  raw.onSnapshot(
+    { id: "task-1", command: "echo hi", status: "queued", startedAt: 1 },
+    { text: "hello ", totalBytes: 6, truncated: false, fromByte: 0, endByte: 6 },
+  );
+  raw.onStatus({ id: "task-1", command: "echo hi", status: "running", startedAt: 1 });
+  raw.onChunk("world");
+  raw.onStatus({
+    id: "task-1",
+    command: "echo hi",
+    status: "completed",
+    exitCode: 0,
+    logTruncated: true,
+    startedAt: 1,
+    endedAt: 2,
+  });
+  raw.onEnd({ type: "end", reason: "completed" });
+  assert.equal(
+    rawChunks.join(""),
+    [
+      "Worker w1 task task-1 [queued] — echo hi",
+      "hello ",
+      "[status] queued -> running",
+      "world",
+      "[status] running -> completed (exit 0)",
+      "Warning: log truncated (output exceeded log size limit)",
+      "[end] completed",
+      "",
+    ].join("\n"),
+  );
+
+  const filteredChunks: string[] = [];
+  const filtered = new TaskWatchRenderer((chunk) => filteredChunks.push(chunk), {
+    workerId: "w1",
+    filter: "/err|warn/i",
+    contextLines: 1,
+  });
+  filtered.onSnapshot(
+    { id: "task-2", command: "run", status: "running", startedAt: 1 },
+    { text: "a\nb\nERR", totalBytes: 7, truncated: false, fromByte: 0, endByte: 7 },
+  );
+  filtered.onChunk(": one\r\nc\nd\ne\nWARN: two");
+  filtered.onStatus({
+    id: "task-2",
+    command: "run",
+    status: "cancelled",
+    cancelReason: "user",
+    startedAt: 1,
+    endedAt: 2,
+  });
+  filtered.onEnd({ type: "end", reason: "completed" });
+  assert.equal(
+    filteredChunks.join(""),
+    [
+      "Worker w1 task task-2 [running] — run",
+      "2- b",
+      "3: ERR: one",
+      "4- c",
+      "--",
+      "6- e",
+      "7: WARN: two",
+      "[status] running -> cancelled (reason user)",
+      "[end] completed",
+      "",
+    ].join("\n"),
+  );
+
+  const zeroContextChunks: string[] = [];
+  const zeroContext = new TaskWatchRenderer((chunk) => zeroContextChunks.push(chunk), {
+    workerId: "w1",
+    filter: "hit",
+    contextLines: 0,
+  });
+  zeroContext.onSnapshot(
+    { id: "task-3", command: "run", status: "completed", exitCode: 0, startedAt: 1, endedAt: 2 },
+    { text: "hit 1\nmiss\nhit 2\n", totalBytes: 16, truncated: false, fromByte: 0, endByte: 16 },
+  );
+  zeroContext.onEnd({ type: "end", reason: "terminal" });
+  assert.equal(
+    zeroContextChunks.join(""),
+    [
+      "Worker w1 task task-3 [completed] (exit 0) — run",
+      "1: hit 1",
+      "3: hit 2",
+      "[end] terminal",
+      "",
+    ].join("\n"),
   );
 });

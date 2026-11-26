@@ -44,6 +44,8 @@ export {
   type ListEntriesParams,
   type LoginSseFrame,
   type OpenProjectStorage,
+  type WorkerTaskStream,
+  type WorkerTaskStreamCallbacks,
 } from "./engine.ts";
 export {
   type EngineHttpServer,

@@ -43,11 +43,16 @@ import {
   createTasksExtension,
   createToolSearchExtension,
   getConversationTask,
+  isTaskActiveStatus,
+  isTaskTerminalStatus,
+  listConversationTasks,
   type McpHub,
   type ModelChoice,
   type OutputReadOptions,
   type OutputSlice,
+  resolveTaskId,
   TaskManager,
+  TaskRecordDoc,
 } from "@eevee/agent";
 import {
   createMemoryExtension,
@@ -94,9 +99,15 @@ export type {
 } from "@earendil-works/pi-durable";
 export type {
   BackgroundTaskRecord,
+  BackgroundTaskStatus,
   OutputReadOptions,
   OutputSlice,
 } from "@eevee/agent";
+
+export type ListWorkerTasksOptions = {
+  readonly status?: "all" | "active" | "finished";
+  readonly limit?: number;
+};
 
 export const DEFAULT_ROUTER_CONTEXT_TOKENS = 80_000;
 
@@ -174,12 +185,23 @@ export type ProjectHandle = {
     answers: readonly string[],
     context?: Context,
   ): Promise<QuestionRecord>;
+  listWorkerTasks(
+    workerId: WorkerId,
+    options?: ListWorkerTasksOptions,
+    context?: Context,
+  ): Promise<readonly BackgroundTaskRecord[]>;
   readWorkerTaskOutput(
     workerId: WorkerId,
     taskId: string,
     options?: OutputReadOptions,
     context?: Context,
   ): Promise<{ readonly task: BackgroundTaskRecord; readonly output: OutputSlice }>;
+  subscribeWorkerTaskOutput(
+    workerId: WorkerId,
+    taskId: string,
+    listener: (chunk: string) => void,
+    context?: Context,
+  ): Promise<(() => void) | undefined>;
   killWorkerTask(
     workerId: WorkerId,
     taskId: string,
@@ -354,6 +376,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
   const environments = new Map<string, NodeExecutionEnv>();
   const settings: HarnessSettings = {
     ...(deps.settings ?? {}),
+    steeringMode: deps.settings?.steeringMode ?? "all",
     followUpMode: deps.settings?.followUpMode ?? "all",
   };
   let harness: Harness;
@@ -382,7 +405,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     );
   } catch (error) {
     unbindMcp?.();
-    if (ownsTaskManager) taskManager.killAll();
+    if (ownsTaskManager) await taskManager.close().catch(() => undefined);
     if (ownsCodemode) await codemodeHandle?.close().catch(() => undefined);
     throw error;
   }
@@ -409,7 +432,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
       await harness.close(BACKGROUND_CONTEXT);
     } finally {
       unbindMcp?.();
-      if (ownsTaskManager) taskManager.killAll();
+      if (ownsTaskManager) await taskManager.close().catch(() => undefined);
       if (ownsCodemode) await codemodeHandle?.close().catch(() => undefined);
       await Promise.all(
         [...environments.values()].map((environment) =>
@@ -678,39 +701,117 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     },
     answerQuestion: (questionId, answers, context = BACKGROUND_CONTEXT) =>
       submitQuestionAnswer(harness, questionId, answers, context),
+    listWorkerTasks: async (workerId, options, context = BACKGROUND_CONTEXT) => {
+      const worker = await readWorker(harness, workerId, context);
+      if (worker === undefined) {
+        throw new ProjectError("worker_not_found", `Unknown worker ${workerId}`);
+      }
+      const tasks = await listConversationTasks(harness, worker.conversationId, context);
+      const status = options?.status ?? "all";
+      const limit =
+        options?.limit === undefined || !Number.isFinite(options.limit) || options.limit < 0
+          ? undefined
+          : Math.min(100, Math.floor(options.limit));
+      const active = tasks.filter((task) => isTaskActiveStatus(task.status));
+      const finished = tasks.filter((task) => isTaskTerminalStatus(task.status));
+      if (status === "active") {
+        return limit === undefined ? active : limit === 0 ? [] : active.slice(-limit);
+      }
+      const boundedFinished =
+        limit === undefined ? finished : limit === 0 ? [] : finished.slice(-limit);
+      return status === "finished" ? boundedFinished : [...active, ...boundedFinished];
+    },
     readWorkerTaskOutput: async (workerId, taskId, options, context = BACKGROUND_CONTEXT) => {
       const worker = await readWorker(harness, workerId, context);
       if (worker === undefined)
         throw new ProjectError("worker_not_found", `Unknown worker ${workerId}`);
-      const record = await getConversationTask(harness, worker.conversationId, taskId, context);
-      if (record === undefined) {
+      const tasks = await listConversationTasks(harness, worker.conversationId, context);
+      const resolution = resolveTaskId(tasks, taskId);
+      if (resolution.kind === "not_found") {
         throw new ProjectError("task_not_found", `Unknown task ${taskId} on worker ${workerId}`);
       }
+      if (resolution.kind === "ambiguous") {
+        throw new ProjectError(
+          "task_not_found",
+          `Ambiguous task id "${taskId}" on worker ${workerId}`,
+        );
+      }
+      const record = resolution.record;
       return {
         task: record,
-        output: await taskManager.readOutput(worker.conversationId, taskId, record, options),
+        output: await taskManager.readOutput(worker.conversationId, record.id, record, options),
       };
+    },
+    subscribeWorkerTaskOutput: async (workerId, taskId, listener, context = BACKGROUND_CONTEXT) => {
+      const worker = await readWorker(harness, workerId, context);
+      if (worker === undefined) {
+        throw new ProjectError("worker_not_found", `Unknown worker ${workerId}`);
+      }
+      const tasks = await listConversationTasks(harness, worker.conversationId, context);
+      const resolution = resolveTaskId(tasks, taskId);
+      if (resolution.kind === "not_found") {
+        throw new ProjectError("task_not_found", `Unknown task ${taskId} on worker ${workerId}`);
+      }
+      if (resolution.kind === "ambiguous") {
+        throw new ProjectError(
+          "task_not_found",
+          `Ambiguous task id "${taskId}" on worker ${workerId}`,
+        );
+      }
+      return taskManager.subscribeOutput(worker.conversationId, resolution.record.id, listener);
     },
     killWorkerTask: async (workerId, taskId, context = BACKGROUND_CONTEXT) => {
       const worker = await readWorker(harness, workerId, context);
       if (worker === undefined)
         throw new ProjectError("worker_not_found", `Unknown worker ${workerId}`);
-      const record = await getConversationTask(harness, worker.conversationId, taskId, context);
-      if (record === undefined) {
+      const tasks = await listConversationTasks(harness, worker.conversationId, context);
+      const resolution = resolveTaskId(tasks, taskId);
+      if (resolution.kind === "not_found") {
         throw new ProjectError("task_not_found", `Unknown task ${taskId} on worker ${workerId}`);
       }
-      if (record.status !== "running" || record.durableTaskId === undefined) {
+      if (resolution.kind === "ambiguous") {
         throw new ProjectError(
-          "task_not_running",
-          `Task ${taskId} on worker ${workerId} is not running (${record.status})`,
+          "task_not_found",
+          `Ambiguous task id "${taskId}" on worker ${workerId}`,
         );
       }
-      const durableTaskId = record.durableTaskId as TaskId;
-      await harness.abortTask(durableTaskId, context);
-      await harness.waitForTask(durableTaskId, context);
-      const updated = await getConversationTask(harness, worker.conversationId, taskId, context);
+      const record = resolution.record;
+      if (!isTaskActiveStatus(record.status)) {
+        throw new ProjectError(
+          "task_not_running",
+          `Task ${record.id} on worker ${workerId} is not running (${record.status})`,
+        );
+      }
+
+      await harness.commit(async (tx) => {
+        const doc = await tx.doc(TaskRecordDoc, worker.conversationId, record.id, null);
+        if (doc.status === "queued" || doc.status === "running") {
+          doc.status = "stopping";
+        }
+      }, context);
+
+      const hadLive = taskManager.kill(worker.conversationId, record.id, "user");
+      if (hadLive) {
+        if (record.durableTaskId !== undefined) {
+          await harness.waitForTask(record.durableTaskId as TaskId, context);
+        }
+      } else if (record.durableTaskId !== undefined) {
+        await harness.abortTask(record.durableTaskId as TaskId, context);
+        await harness.waitForTask(record.durableTaskId as TaskId, context);
+      } else {
+        await harness.commit(async (tx) => {
+          const doc = await tx.doc(TaskRecordDoc, worker.conversationId, record.id, null);
+          if (isTaskActiveStatus(doc.status)) {
+            doc.status = "cancelled";
+            doc.cancelReason = "user";
+            doc.endedAt = Date.now();
+          }
+        }, context);
+      }
+
+      const updated = await getConversationTask(harness, worker.conversationId, record.id, context);
       if (updated === undefined) {
-        throw new Error(`Task ${taskId} on worker ${workerId} disappeared after kill`);
+        throw new Error(`Task ${record.id} on worker ${workerId} disappeared after kill`);
       }
       return updated;
     },

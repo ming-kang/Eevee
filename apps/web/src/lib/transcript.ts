@@ -1,8 +1,10 @@
 import type {
+  BackgroundTaskStatus,
   BoardViewPayload,
   ConversationViewPayload,
   EntryModelMessagePayload,
   EntryRecordPayload,
+  TaskCancelReason,
   WorkerId,
 } from "@eevee/protocol";
 
@@ -56,6 +58,9 @@ export type NoticeMeta = {
   readonly ticketId?: string;
   readonly questionId?: string;
   readonly taskId?: string;
+  readonly taskStatus?: BackgroundTaskStatus;
+  readonly taskExitCode?: number;
+  readonly taskCancelReason?: TaskCancelReason;
 };
 
 export type DisplayItem =
@@ -495,6 +500,26 @@ function isStepLive(status: ToolStep["status"]): boolean {
   );
 }
 
+const BACKGROUND_TASK_STATUSES: ReadonlySet<string> = new Set<BackgroundTaskStatus>([
+  "queued",
+  "running",
+  "stopping",
+  "completed",
+  "failed",
+  "timed_out",
+  "cancelled",
+  "interrupted",
+]);
+
+function parseTaskStatus(raw: unknown, exitCode: unknown): BackgroundTaskStatus | undefined {
+  if (typeof raw !== "string") return undefined;
+  if (BACKGROUND_TASK_STATUSES.has(raw)) return raw as BackgroundTaskStatus;
+  if (raw === "exited") {
+    return typeof exitCode === "number" && exitCode !== 0 ? "failed" : "completed";
+  }
+  return undefined;
+}
+
 export function buildDisplayItems(
   entries: readonly EntryRecordPayload[],
   live: LiveDocView,
@@ -542,6 +567,14 @@ export function buildDisplayItems(
     }
     if (entry.kind === "eevee.notice" || entry.kind === "eevee.task-notification") {
       const data = isRecord(entry.data) ? entry.data : {};
+      const taskStatus = parseTaskStatus(data.status, data.exitCode);
+      const taskExitCode = typeof data.exitCode === "number" ? data.exitCode : undefined;
+      const taskCancelReason: TaskCancelReason | undefined =
+        data.cancelReason === "user" ||
+        data.cancelReason === "tool" ||
+        data.cancelReason === "abort"
+          ? data.cancelReason
+          : undefined;
       items.push({
         kind: "notice",
         key: `e:${entry.id}`,
@@ -560,6 +593,9 @@ export function buildDisplayItems(
           ...(typeof data.ticketId === "string" ? { ticketId: data.ticketId } : {}),
           ...(typeof data.questionId === "string" ? { questionId: data.questionId } : {}),
           ...(typeof data.taskId === "string" ? { taskId: data.taskId } : {}),
+          ...(taskStatus !== undefined ? { taskStatus } : {}),
+          ...(taskExitCode !== undefined ? { taskExitCode } : {}),
+          ...(taskCancelReason !== undefined ? { taskCancelReason } : {}),
         },
       });
       continue;

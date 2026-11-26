@@ -198,6 +198,12 @@ const PROJECT_ERROR_HTTP: Record<ProjectErrorCode, readonly [status: number, cod
 
 export function toEngineError(error: unknown): unknown {
   if (error instanceof ProjectError) {
+    if (
+      (error.code as string) === "task_ambiguous" ||
+      error.message.startsWith("Ambiguous task id ")
+    ) {
+      return new EngineError(400, "task_ambiguous", error.message);
+    }
     const [status, code] = PROJECT_ERROR_HTTP[error.code];
     return new EngineError(status, code, error.message);
   }

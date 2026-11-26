@@ -19,8 +19,10 @@ import { ENGINE_PROTOCOL_VERSION, ENGINE_VERSION } from "./constants.ts";
 import type { Engine } from "./engine.ts";
 import {
   parseEntriesQuery,
+  parseListWorkerTasksQuery,
   parseModelsQuery,
   parseReadWorkerTaskQuery,
+  parseStreamWorkerTaskQuery,
   parseWindowParams,
   type Route,
   readBody,
@@ -237,6 +239,11 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
   ];
 
   const workerRoutes: readonly Route[] = [
+    route("GET", "/projects/:projectId/workers/:workerId/tasks", async ({ res, url, params }) => {
+      const query = parseListWorkerTasksQuery(url);
+      const { projectId, workerId } = params;
+      sendJson(res, 200, await engine.listWorkerTasks(projectId, workerId, query));
+    }),
     route(
       "GET",
       "/projects/:projectId/workers/:workerId/tasks/:taskId",
@@ -244,6 +251,15 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
         const query = parseReadWorkerTaskQuery(url);
         const { projectId, workerId, taskId } = params;
         sendJson(res, 200, await engine.readWorkerTask(projectId, workerId, taskId, query));
+      },
+    ),
+    route(
+      "GET",
+      "/projects/:projectId/workers/:workerId/tasks/:taskId/stream",
+      async ({ req, res, url, params }) => {
+        const query = parseStreamWorkerTaskQuery(url);
+        const { projectId, workerId, taskId } = params;
+        await streams.handleTaskStream(req, res, projectId, workerId, taskId, query);
       },
     ),
     route(

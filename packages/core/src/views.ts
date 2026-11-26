@@ -11,6 +11,7 @@ import {
 } from "@earendil-works/pi-durable";
 import {
   type BackgroundTaskRecord,
+  isTaskActiveStatus,
   listConversationTasks,
   TaskRecordDoc,
   TasksBoardDoc,
@@ -68,7 +69,7 @@ export async function readBoardView(reader: DocumentReader, context: Context): P
         reader.snapshot(LiveDoc, worker.conversationId, context),
         listConversationTasks(reader, worker.conversationId, context),
       ]);
-      const activeTaskCount = tasks.filter((task) => task.status === "running").length;
+      const activeTaskCount = tasks.filter((task) => isTaskActiveStatus(task.status)).length;
       const status = deriveWorkerStatus({
         worker,
         pendingWorkerIds: pendingIds,

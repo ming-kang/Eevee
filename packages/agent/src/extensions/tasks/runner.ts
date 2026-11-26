@@ -1,17 +1,37 @@
 import { createWriteStream, type WriteStream } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { BACKGROUND_CONTEXT, withCancel } from "@earendil-works/chord/context";
 import { utf8ByteLength } from "@earendil-works/chord/output";
 import type { ConversationId } from "@earendil-works/pi-durable";
-import type { ExecutionEnv, ShellSpillOptions } from "@earendil-works/pi-durable/env";
+import type {
+  ExecutionEnv,
+  ShellExecResult,
+  ShellSpillOptions,
+} from "@earendil-works/pi-durable/env";
+import { type ResolvedPowerShell, resolvePowerShell } from "../../shell/discovery.ts";
 import { normalizePosixBashCommand } from "../../shell/normalize.ts";
 import type { BackgroundTaskRecord } from "./docs.ts";
-import type { OutputReadOptions, OutputSlice } from "./output.ts";
-import { readOutputFileSlice, sliceRetainedOutput, utf8Tail } from "./output.ts";
+import {
+  type OutputReadOptions,
+  type OutputSlice,
+  readOutputFileSlice,
+  sliceRetainedOutput,
+  utf8Tail,
+  validateOutputReadOptions,
+} from "./output.ts";
 
 const RETAINED_OUTPUT_BYTES = 2 * 1024 * 1024;
 const MEMORY_LOG_BYTES = 256 * 1024;
+
+export const DEFAULT_MAX_LOG_BYTES = 20 * 1024 * 1024;
+export const DEFAULT_MAX_ACTIVE_PER_CONVERSATION = 4;
+export const DEFAULT_MAX_ACTIVE_TOTAL = 8;
+export const DEFAULT_MAX_FINISHED_PER_CONVERSATION = 32;
+
+export type TaskShell = "bash" | "powershell";
+export type TaskKillReason = "user" | "tool" | "abort";
+export type LogOverflowPolicy = "truncate" | "fail";
 
 export type CommandOutcome =
   | { readonly kind: "exit"; readonly exitCode: number; readonly spillPath?: string }
@@ -29,27 +49,45 @@ export type CommandOutput = {
 };
 
 export type StartCommandOptions = {
+  readonly shell?: TaskShell;
   readonly command: string;
   readonly cwd?: string;
   readonly env?: Record<string, string>;
+  readonly inheritEnv?: boolean;
   readonly timeoutSeconds?: number;
   readonly spill?: ShellSpillOptions;
   readonly platform?: NodeJS.Platform;
+  readonly powerShell?: ResolvedPowerShell;
+  readonly resolvePowerShell?: () => Promise<ResolvedPowerShell | undefined>;
 };
 
 export type RunningCommand = {
+  readonly shell: TaskShell;
   readonly command: string;
   readonly cwd?: string;
   readonly rewrittenNul: boolean;
   readonly settled: boolean;
   /** Set only by an explicit kill request, never by a shutdown cancellation. */
   readonly killed: boolean;
+  readonly killReason?: TaskKillReason;
   readonly done: Promise<CommandOutcome>;
   output(): CommandOutput;
   /** Listen to live chunks; earlier chunks are not replayed. Returns a detach. */
   onOutput(listener: (chunk: string) => void): () => void;
-  kill(markKilled?: boolean): void;
+  kill(reason?: TaskKillReason | boolean): void;
 };
+
+function utf8AlignedPrefix(text: string, maxBytes: number): Buffer {
+  const buf = Buffer.from(text, "utf8");
+  if (buf.length <= maxBytes) return buf;
+  if (maxBytes <= 0) return buf.subarray(0, 0);
+  let lead = maxBytes - 1;
+  while (lead > 0 && ((buf[lead] ?? 0) & 0xc0) === 0x80) lead -= 1;
+  const first = buf[lead] ?? 0;
+  const seqLen = first < 0x80 ? 1 : first < 0xe0 ? 2 : first < 0xf0 ? 3 : 4;
+  const end = lead + seqLen <= maxBytes ? maxBytes : lead;
+  return buf.subarray(0, end);
+}
 
 /**
  * Start a command detached from any invocation: the process dies only on `kill()`,
@@ -57,7 +95,9 @@ export type RunningCommand = {
  */
 export function startCommand(env: ExecutionEnv, options: StartCommandOptions): RunningCommand {
   const { context, cancel } = withCancel(BACKGROUND_CONTEXT);
+  const shell: TaskShell = options.shell ?? "bash";
   let killed = false;
+  let killReason: TaskKillReason | undefined;
   let settled = false;
   let chunks: string[] = [];
   let retainedBytes = 0;
@@ -84,45 +124,91 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
     }
   };
 
-  const normalized = normalizePosixBashCommand(options.command, options.platform);
-  const done = env
-    .exec(
-      normalized.command,
-      {
-        ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-        env: options.env ?? {},
-        ...(options.timeoutSeconds === undefined ? {} : { timeout: options.timeoutSeconds }),
-        ...(options.spill === undefined ? {} : { spill: options.spill }),
-        onOutput: (text) => push(text),
-      },
-      context,
-    )
-    .then((result): CommandOutcome => {
-      settled = true;
-      if (result.ok) {
-        return {
-          kind: "exit",
-          exitCode: result.value.exitCode,
-          ...(result.value.spillPath === undefined ? {} : { spillPath: result.value.spillPath }),
-        };
+  const normalized =
+    shell === "bash"
+      ? normalizePosixBashCommand(options.command, options.platform)
+      : { command: options.command, rewrittenNul: false };
+
+  const execOptions = {
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    env: options.env ?? {},
+    ...(options.inheritEnv === undefined ? {} : { inheritEnv: options.inheritEnv }),
+    ...(options.timeoutSeconds === undefined ? {} : { timeout: options.timeoutSeconds }),
+    ...(options.spill === undefined ? {} : { spill: options.spill }),
+    onOutput: (text: string) => push(text),
+  };
+
+  const toOutcome = (
+    result:
+      | { readonly ok: true; readonly value: ShellExecResult }
+      | {
+          readonly ok: false;
+          readonly error: { code: string; message: string; spillPath?: string };
+        },
+  ): CommandOutcome => {
+    settled = true;
+    if (result.ok) {
+      return {
+        kind: "exit",
+        exitCode: result.value.exitCode,
+        ...(result.value.spillPath === undefined ? {} : { spillPath: result.value.spillPath }),
+      };
+    }
+    return {
+      kind: "error",
+      code: result.error.code,
+      message: result.error.message,
+      ...(result.error.spillPath === undefined ? {} : { spillPath: result.error.spillPath }),
+    };
+  };
+
+  const startExec = (): Promise<CommandOutcome> => {
+    if (shell === "bash") {
+      return env.exec(normalized.command, execOptions, context).then(toOutcome);
+    }
+    if (options.powerShell !== undefined) {
+      const argv = [
+        options.powerShell.executable,
+        ...options.powerShell.buildArgs(options.command),
+      ];
+      return env.exec(argv, execOptions, context).then(toOutcome);
+    }
+    const resolvePs =
+      options.resolvePowerShell ??
+      (() =>
+        resolvePowerShell({
+          ...(options.platform === undefined ? {} : { platform: options.platform }),
+          ...(options.env === undefined ? {} : { env: { ...process.env, ...options.env } }),
+        }));
+    return resolvePs().then((ps) => {
+      if (context.abortSignal?.aborted) {
+        settled = true;
+        return { kind: "error", code: "aborted", message: "aborted" } satisfies CommandOutcome;
       }
-      return {
-        kind: "error",
-        code: result.error.code,
-        message: result.error.message,
-        ...(result.error.spillPath === undefined ? {} : { spillPath: result.error.spillPath }),
-      };
-    })
-    .catch((error): CommandOutcome => {
-      settled = true;
-      return {
-        kind: "error",
-        code: "unknown",
-        message: error instanceof Error ? error.message : String(error),
-      };
+      if (ps === undefined) {
+        settled = true;
+        return {
+          kind: "error",
+          code: "shell_unavailable",
+          message: "PowerShell executable (pwsh or powershell) is unavailable on this system.",
+        } satisfies CommandOutcome;
+      }
+      const argv = [ps.executable, ...ps.buildArgs(options.command)];
+      return env.exec(argv, execOptions, context).then(toOutcome);
     });
+  };
+
+  const done = startExec().catch((error): CommandOutcome => {
+    settled = true;
+    return {
+      kind: "error",
+      code: "unknown",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  });
 
   return {
+    shell,
     command: options.command,
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
     rewrittenNul: normalized.rewrittenNul,
@@ -131,6 +217,9 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
     },
     get killed() {
       return killed;
+    },
+    get killReason() {
+      return killReason;
     },
     done,
     output: () => ({
@@ -144,32 +233,101 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
         listeners.delete(listener);
       };
     },
-    kill: (markKilled = true) => {
-      if (markKilled) killed = true;
+    kill: (reason: TaskKillReason | boolean = "tool") => {
+      if (typeof reason === "boolean") {
+        if (reason) {
+          killed = true;
+          killReason ??= "tool";
+        } else {
+          killReason ??= "abort";
+        }
+      } else {
+        killed = true;
+        killReason ??= reason;
+      }
       cancel();
     },
   };
 }
 
+export async function cleanupLog(logPath: string): Promise<void> {
+  await rm(logPath, { force: true }).catch(() => undefined);
+}
+
+export type TaskLogStatus = {
+  readonly logTruncated: boolean;
+  readonly logError?: string;
+  readonly overflowFailed?: boolean;
+};
+
+export type ActiveTaskEntry = {
+  readonly conversationId: ConversationId;
+  readonly taskId: string;
+  readonly command: RunningCommand;
+};
+
 export type TaskManagerOptions = {
   readonly logPath?: (conversationId: ConversationId, taskId: string) => string;
+  readonly maxLogBytes?: number;
+  readonly logOverflowPolicy?: LogOverflowPolicy;
+  readonly maxActivePerConversation?: number;
+  readonly maxActiveTotal?: number;
+  readonly maxFinishedPerConversation?: number;
 };
 
 type TaskKey = string;
 
+type MutableLogState = {
+  logTruncated: boolean;
+  logError?: string;
+  overflowFailed: boolean;
+  writtenBytes: number;
+  stopped: boolean;
+};
+
 type LogSink = {
   readonly stream: WriteStream;
   readonly detach: () => void;
+  readonly state: MutableLogState;
 };
+
+type AttachedCommand = {
+  readonly conversationId: ConversationId;
+  readonly taskId: string;
+  readonly running: RunningCommand;
+};
+
+function clampPositiveInt(value: number | undefined, fallback: number, minimum = 1): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.max(minimum, Math.floor(value));
+}
 
 export class TaskManager {
   readonly #logPath: TaskManagerOptions["logPath"];
-  readonly #commands = new Map<TaskKey, RunningCommand>();
+  readonly maxLogBytes: number;
+  readonly logOverflowPolicy: LogOverflowPolicy;
+  readonly maxActivePerConversation: number;
+  readonly maxActiveTotal: number;
+  readonly maxFinishedPerConversation: number;
+  readonly #commands = new Map<TaskKey, AttachedCommand>();
   readonly #sinks = new Map<TaskKey, LogSink>();
+  readonly #logStates = new Map<TaskKey, MutableLogState>();
   readonly #memoryLogs = new Map<TaskKey, CommandOutput>();
 
   constructor(options: TaskManagerOptions = {}) {
     this.#logPath = options.logPath;
+    this.maxLogBytes = clampPositiveInt(options.maxLogBytes, DEFAULT_MAX_LOG_BYTES);
+    this.logOverflowPolicy = options.logOverflowPolicy ?? "truncate";
+    this.maxActivePerConversation = clampPositiveInt(
+      options.maxActivePerConversation,
+      DEFAULT_MAX_ACTIVE_PER_CONVERSATION,
+    );
+    this.maxActiveTotal = clampPositiveInt(options.maxActiveTotal, DEFAULT_MAX_ACTIVE_TOTAL);
+    this.maxFinishedPerConversation = clampPositiveInt(
+      options.maxFinishedPerConversation,
+      DEFAULT_MAX_FINISHED_PER_CONVERSATION,
+      0,
+    );
   }
 
   #key(conversationId: ConversationId, taskId: string): TaskKey {
@@ -181,21 +339,54 @@ export class TaskManager {
   }
 
   attach(conversationId: ConversationId, taskId: string, running: RunningCommand): void {
-    this.#commands.set(this.#key(conversationId, taskId), running);
+    this.#commands.set(this.#key(conversationId, taskId), {
+      conversationId,
+      taskId,
+      running,
+    });
   }
 
   get(conversationId: ConversationId, taskId: string): RunningCommand | undefined {
-    return this.#commands.get(this.#key(conversationId, taskId));
+    return this.#commands.get(this.#key(conversationId, taskId))?.running;
+  }
+
+  activeCount(conversationId?: ConversationId): number {
+    let count = 0;
+    for (const entry of this.#commands.values()) {
+      if (entry.running.settled) continue;
+      if (conversationId === undefined || entry.conversationId === conversationId) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  listActive(conversationId?: ConversationId): ActiveTaskEntry[] {
+    const active: ActiveTaskEntry[] = [];
+    for (const entry of this.#commands.values()) {
+      if (entry.running.settled) continue;
+      if (conversationId === undefined || entry.conversationId === conversationId) {
+        active.push({
+          conversationId: entry.conversationId,
+          taskId: entry.taskId,
+          command: entry.running,
+        });
+      }
+    }
+    return active;
   }
 
   /** Detach the live command, keeping a bounded tail in the memory log unless `retain` is false. */
   delete(conversationId: ConversationId, taskId: string, retain = true): void {
     const key = this.#key(conversationId, taskId);
-    const running = this.#commands.get(key);
-    if (running === undefined) return;
+    const entry = this.#commands.get(key);
+    if (entry === undefined) return;
     this.#commands.delete(key);
-    if (!retain) return;
-    const output = running.output();
+    if (!retain) {
+      this.#logStates.delete(key);
+      return;
+    }
+    const output = entry.running.output();
     if (output.totalBytes === 0) return;
     const tail = utf8Tail(output.text, MEMORY_LOG_BYTES);
     this.#memoryLogs.set(key, {
@@ -205,11 +396,34 @@ export class TaskManager {
     });
   }
 
-  kill(conversationId: ConversationId, taskId: string, markKilled = true): boolean {
-    const running = this.#commands.get(this.#key(conversationId, taskId));
+  kill(
+    conversationId: ConversationId,
+    taskId: string,
+    reason: TaskKillReason | boolean = "tool",
+  ): boolean {
+    const running = this.#commands.get(this.#key(conversationId, taskId))?.running;
     if (running === undefined) return false;
-    running.kill(markKilled);
+    running.kill(reason);
     return true;
+  }
+
+  subscribeOutput(
+    conversationId: ConversationId,
+    taskId: string,
+    listener: (chunk: string) => void,
+  ): (() => void) | undefined {
+    const running = this.get(conversationId, taskId);
+    return running?.onOutput(listener);
+  }
+
+  logStatus(conversationId: ConversationId, taskId: string): TaskLogStatus {
+    const state = this.#logStates.get(this.#key(conversationId, taskId));
+    if (state === undefined) return { logTruncated: false };
+    return {
+      logTruncated: state.logTruncated,
+      ...(state.logError === undefined ? {} : { logError: state.logError }),
+      ...(state.overflowFailed ? { overflowFailed: true } : {}),
+    };
   }
 
   /**
@@ -221,18 +435,64 @@ export class TaskManager {
     if (this.#sinks.has(key)) return;
     const path = this.#logPath?.(conversationId, taskId);
     if (path === undefined) return;
-    await mkdir(dirname(path), { recursive: true });
-    const stream = createWriteStream(path, { flags: "w" });
-    stream.on("error", () => {});
-    const snapshot = running.output();
-    const detach = running.onOutput((chunk) => {
-      if (!stream.destroyed) stream.write(chunk);
-    });
-    if (snapshot.droppedBytes > 0) {
-      stream.write(`[${snapshot.droppedBytes} bytes of earlier output were dropped]\n`);
+
+    const state: MutableLogState = {
+      logTruncated: false,
+      overflowFailed: false,
+      writtenBytes: 0,
+      stopped: false,
+    };
+    this.#logStates.set(key, state);
+
+    let stream: WriteStream;
+    try {
+      await mkdir(dirname(path), { recursive: true });
+      stream = createWriteStream(path, { flags: "w" });
+    } catch (error) {
+      state.logError = error instanceof Error ? error.message : String(error);
+      state.stopped = true;
+      return;
     }
-    stream.write(snapshot.text);
-    this.#sinks.set(key, { stream, detach });
+
+    stream.on("error", (error) => {
+      state.logError ??= error instanceof Error ? error.message : String(error);
+      state.stopped = true;
+    });
+
+    const writeChunk = (chunk: string) => {
+      if (state.stopped || chunk.length === 0) return;
+      const chunkBytes = Buffer.byteLength(chunk, "utf8");
+      if (state.writtenBytes + chunkBytes <= this.maxLogBytes) {
+        state.writtenBytes += chunkBytes;
+        if (!stream.destroyed) stream.write(chunk);
+        return;
+      }
+      const remaining = Math.max(0, this.maxLogBytes - state.writtenBytes);
+      if (remaining > 0) {
+        const prefix = utf8AlignedPrefix(chunk, remaining);
+        if (prefix.length > 0) {
+          state.writtenBytes += prefix.length;
+          if (!stream.destroyed) stream.write(prefix);
+        }
+      }
+      state.stopped = true;
+      if (this.logOverflowPolicy === "truncate") {
+        state.logTruncated = true;
+        if (!stream.destroyed) stream.write("\n[output truncated at 20 MiB limit]\n");
+      } else {
+        state.logError = "Output exceeded background log size limit";
+        state.overflowFailed = true;
+        running.kill("abort");
+      }
+    };
+
+    const snapshot = running.output();
+    const detach = running.onOutput(writeChunk);
+    this.#sinks.set(key, { stream, detach, state });
+    if (snapshot.droppedBytes > 0) {
+      writeChunk(`[${snapshot.droppedBytes} bytes of earlier output were dropped]\n`);
+    }
+    writeChunk(snapshot.text);
   }
 
   async finishLog(conversationId: ConversationId, taskId: string, footer?: string): Promise<void> {
@@ -242,20 +502,34 @@ export class TaskManager {
     this.#sinks.delete(key);
     sink.detach();
     await new Promise<void>((resolve) => {
-      const done = () => {
-        sink.stream.off("error", done);
+      const cleanup = () => {
+        sink.stream.off("error", onError);
         sink.stream.off("finish", done);
+      };
+      const done = () => {
+        cleanup();
         resolve();
       };
-      sink.stream.once("error", done);
+      const onError = (error: unknown) => {
+        sink.state.logError ??= error instanceof Error ? error.message : String(error);
+        sink.state.stopped = true;
+        done();
+      };
+      sink.stream.once("error", onError);
       sink.stream.once("finish", done);
       if (sink.stream.destroyed) {
         done();
         return;
       }
-      if (footer !== undefined) sink.stream.write(footer);
+      if (footer !== undefined && !sink.state.stopped) {
+        sink.stream.write(footer);
+      }
       sink.stream.end();
     });
+  }
+
+  async cleanupLog(logPath: string): Promise<void> {
+    await cleanupLog(logPath);
   }
 
   async readOutput(
@@ -264,8 +538,9 @@ export class TaskManager {
     record: BackgroundTaskRecord,
     options: OutputReadOptions = {},
   ): Promise<OutputSlice> {
+    validateOutputReadOptions(options);
     const key = this.#key(conversationId, taskId);
-    const running = this.#commands.get(key);
+    const running = this.#commands.get(key)?.running;
     if (running !== undefined) {
       const output = running.output();
       return sliceRetainedOutput(
@@ -276,8 +551,11 @@ export class TaskManager {
       );
     }
     if (record.logPath !== undefined) {
-      const slice = await readOutputFileSlice(record.logPath, options).catch(() => undefined);
-      if (slice !== undefined) return slice;
+      try {
+        return await readOutputFileSlice(record.logPath, options);
+      } catch {
+        // Fall through to retained memory log when the disk file is missing or unreadable.
+      }
     }
     const log = this.#memoryLogs.get(key);
     if (log !== undefined) {
@@ -292,13 +570,67 @@ export class TaskManager {
   }
 
   killAll(): void {
-    for (const running of this.#commands.values()) running.kill(false);
+    for (const entry of this.#commands.values()) entry.running.kill(false);
     this.#commands.clear();
     for (const sink of this.#sinks.values()) {
       sink.detach();
       sink.stream.destroy();
     }
     this.#sinks.clear();
+  }
+
+  async close(graceMs = 3_000): Promise<void> {
+    const entries = [...this.#commands.values()];
+    for (const entry of entries) {
+      entry.running.kill(false);
+    }
+    if (entries.length > 0) {
+      const waitDone = Promise.allSettled(entries.map((entry) => entry.running.done));
+      const bounded = Math.max(0, graceMs);
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          waitDone,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, bounded);
+            timer.unref?.();
+          }),
+        ]);
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
+    }
+    this.#commands.clear();
+
+    const sinkKeys = [...this.#sinks.keys()];
+    for (const key of sinkKeys) {
+      const sink = this.#sinks.get(key);
+      if (sink === undefined) continue;
+      this.#sinks.delete(key);
+      sink.detach();
+      if (sink.stream.destroyed) continue;
+      await new Promise<void>((resolve) => {
+        let timer: NodeJS.Timeout | undefined;
+        const done = () => {
+          if (timer !== undefined) clearTimeout(timer);
+          sink.stream.off("error", onError);
+          sink.stream.off("finish", done);
+          resolve();
+        };
+        const onError = (error: unknown) => {
+          sink.state.logError ??= error instanceof Error ? error.message : String(error);
+          done();
+        };
+        timer = setTimeout(() => {
+          sink.stream.destroy();
+          done();
+        }, 500);
+        timer.unref?.();
+        sink.stream.once("error", onError);
+        sink.stream.once("finish", done);
+        sink.stream.end();
+      });
+    }
   }
 }
 
