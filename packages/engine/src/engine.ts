@@ -14,6 +14,7 @@ import {
   createMcpHub,
   getConversationTask,
   isTaskTerminalStatus,
+  type McpHttpServerConfig,
   type McpHub,
   type McpHubOptions,
   McpOAuthCredentialStore,
@@ -554,26 +555,9 @@ export class Engine {
     return getMcpLogs(this.#mcpDeps(), serverName);
   }
 
-  startMcpOAuth(serverName: string): StartMcpOAuthResponse {
+  async startMcpOAuth(serverName: string): Promise<StartMcpOAuthResponse> {
     this.#assertOpen();
-    const servers = getMcpServersRecord(this.store);
-    if (!Object.hasOwn(servers, serverName)) {
-      throw new EngineError(404, "mcp_server_not_found", `Unknown MCP server "${serverName}"`);
-    }
-    const config = validateMcpServerEntry(serverName, servers[serverName]);
-    if (typeof config === "string") {
-      throw new EngineError(400, "invalid_mcp_config", config);
-    }
-    if (!("url" in config)) {
-      throw new EngineError(
-        400,
-        "mcp_oauth_unsupported",
-        `MCP server "${serverName}" does not use HTTP transport`,
-      );
-    }
-    if (config.enabled === false) {
-      throw new EngineError(409, "mcp_server_disabled", `MCP server "${serverName}" is disabled`);
-    }
+    const config = this.#requireGlobalHttpMcpServer(serverName, true);
     return this.#mcpOAuthSessions.start({
       serverName,
       serverUrl: config.url,
@@ -581,6 +565,10 @@ export class Engine {
       ...(config.oauth === undefined ? {} : { settings: config.oauth }),
       env: this.#options.env,
       challenge: this.mcpHub.getAuthChallenge(serverName),
+      beforeStart: () => {
+        this.#assertOpen();
+        this.#requireGlobalHttpMcpServer(serverName, true);
+      },
       onComplete: async (name) => {
         await this.mcpHub.reconnect(name).catch(() => undefined);
         await this.#pool.reconnectServerOnProjectHubs(name);
@@ -616,22 +604,8 @@ export class Engine {
 
   async logoutMcpOAuth(serverName: string): Promise<OkResponse> {
     this.#assertOpen();
-    const servers = getMcpServersRecord(this.store);
-    if (!Object.hasOwn(servers, serverName)) {
-      throw new EngineError(404, "mcp_server_not_found", `Unknown MCP server "${serverName}"`);
-    }
-    const config = validateMcpServerEntry(serverName, servers[serverName]);
-    if (typeof config === "string") {
-      throw new EngineError(400, "invalid_mcp_config", config);
-    }
-    if (!("url" in config)) {
-      throw new EngineError(
-        400,
-        "mcp_oauth_unsupported",
-        `MCP server "${serverName}" does not use HTTP transport`,
-      );
-    }
-    this.#mcpOAuthSessions.cancelForServer(serverName);
+    const config = this.#requireGlobalHttpMcpServer(serverName, false);
+    await this.#mcpOAuthSessions.cancelForServer(serverName);
     await this.oauthStore.remove(serverName, config.url);
     if (config.enabled !== false) {
       await this.mcpHub.reconnect(serverName).catch(() => undefined);
@@ -719,6 +693,9 @@ export class Engine {
         store: this.store,
         modelRuntime: this.modelRuntime,
         mcpHub: this.mcpHub,
+        oauthStore: this.oauthStore,
+        cancelOAuthForServers: (serverNames) =>
+          this.#mcpOAuthSessions.cancelAllForServers(serverNames),
         env: this.#options.env,
         syncProjects: () => this.#pool.reloadGlobalMcpChanges(),
         applySettings: () => this.#pool.applySettingsLive(),
@@ -1281,11 +1258,36 @@ export class Engine {
     };
   }
 
+  #requireGlobalHttpMcpServer(serverName: string, requireEnabled: boolean): McpHttpServerConfig {
+    const servers = getMcpServersRecord(this.store);
+    if (!Object.hasOwn(servers, serverName)) {
+      throw new EngineError(404, "mcp_server_not_found", `Unknown MCP server "${serverName}"`);
+    }
+    const config = validateMcpServerEntry(serverName, servers[serverName]);
+    if (typeof config === "string") {
+      throw new EngineError(400, "invalid_mcp_config", config);
+    }
+    if (!("url" in config)) {
+      throw new EngineError(
+        400,
+        "mcp_oauth_unsupported",
+        `MCP server "${serverName}" does not use HTTP transport`,
+      );
+    }
+    if (requireEnabled && config.enabled === false) {
+      throw new EngineError(409, "mcp_server_disabled", `MCP server "${serverName}" is disabled`);
+    }
+    return config;
+  }
+
   #mcpDeps(): McpDeps {
     return {
       layout: this.layout,
       store: this.store,
       mcpHub: this.mcpHub,
+      oauthStore: this.oauthStore,
+      cancelOAuthForServers: (serverNames) =>
+        this.#mcpOAuthSessions.cancelAllForServers(serverNames),
       globalLogPath: this.#mcpLogPath,
       requireProject: (projectId) => this.getProject(projectId),
       syncProjects: () => this.#pool.reloadGlobalMcpChanges(),

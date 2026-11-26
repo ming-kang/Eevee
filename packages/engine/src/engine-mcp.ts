@@ -4,6 +4,7 @@ import {
   DEFAULT_MCP_EXPOSURE,
   isMcpServerEnabledForRole,
   type McpHub,
+  type McpOAuthCredentialStore,
   type McpServerEntry,
   type McpServerSnapshot,
   parseMcpConfig,
@@ -21,7 +22,15 @@ import type {
   UpsertMcpServerRequest,
 } from "@eevee/protocol";
 import { type DataDirLayout, projectPaths } from "./data-dir.ts";
-import { getMcpServersRecord, KV_MCP_SERVERS, normalizeMcpMap } from "./engine-config.ts";
+import {
+  cleanupRemovedMcpOAuth,
+  findRemovedHttpMcpServers,
+  getMcpServersRecord,
+  httpUrlOfMcpRecord,
+  KV_MCP_SERVERS,
+  normalizeMcpMap,
+  pruneOrphanProjectMcpOverrides,
+} from "./engine-config.ts";
 import { EngineError } from "./engine-error.ts";
 import type { EngineStore } from "./store.ts";
 
@@ -29,6 +38,8 @@ export type McpDeps = {
   readonly layout: DataDirLayout;
   readonly store: EngineStore;
   readonly mcpHub: McpHub;
+  readonly oauthStore: McpOAuthCredentialStore;
+  readonly cancelOAuthForServers: (serverNames: readonly string[]) => Promise<void>;
   readonly globalLogPath: string;
   readonly requireProject: (projectId: string) => ProjectSummary;
   readonly syncProjects: () => Promise<void>;
@@ -228,7 +239,17 @@ async function replaceMcpServers(
   if (parsed.errors.length > 0) {
     throw new EngineError(400, "invalid_mcp_config", parsed.errors.join("; "));
   }
-  deps.store.setKv(KV_MCP_SERVERS, normalizeMcpMap(parsed.servers));
+  const previousGlobal = getMcpServersRecord(deps.store);
+  const nextGlobal = normalizeMcpMap(parsed.servers);
+  const removedHttp = findRemovedHttpMcpServers(previousGlobal, nextGlobal);
+  deps.store.setKv(KV_MCP_SERVERS, nextGlobal);
+  pruneOrphanProjectMcpOverrides(deps.store, nextGlobal);
+  await cleanupRemovedMcpOAuth({
+    store: deps.store,
+    oauthStore: deps.oauthStore,
+    cancelOAuthForServers: deps.cancelOAuthForServers,
+    removed: removedHttp,
+  });
   await deps.mcpHub.reload(parsed.servers);
   await deps.syncProjects();
   return getMcpState(deps);
@@ -317,15 +338,27 @@ async function replaceProjectMcpServers(
 ): Promise<ProjectMcpStateResponse> {
   deps.requireProject(projectId);
   const globalServers = getMcpServersRecord(deps.store);
+  const previousProjectServers = deps.store.getProjectMcpServers(projectId) ?? {};
   const { normalizedProjectServers } = resolveEffectiveProjectMcp(
     globalServers,
     projectServers,
     true,
   );
+  const removedHttp = findRemovedHttpMcpServers(previousProjectServers, normalizedProjectServers);
   deps.store.setProjectMcpServers(
     projectId,
     Object.keys(normalizedProjectServers).length === 0 ? null : normalizedProjectServers,
   );
+  const cancelServerNames = removedHttp
+    .filter((entry) => httpUrlOfMcpRecord(globalServers[entry.name]) === undefined)
+    .map((entry) => entry.name);
+  await cleanupRemovedMcpOAuth({
+    store: deps.store,
+    oauthStore: deps.oauthStore,
+    cancelOAuthForServers: deps.cancelOAuthForServers,
+    removed: removedHttp,
+    cancelServerNames,
+  });
   await deps.syncProjectMcp(projectId);
   return getProjectMcpState(deps, projectId);
 }

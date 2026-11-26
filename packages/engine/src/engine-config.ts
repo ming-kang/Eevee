@@ -1,8 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { McpHub } from "@eevee/agent";
-import { parseMcpConfig } from "@eevee/agent";
+import { isMcpServerOverride } from "@earendil-works/pi-mcp";
+import {
+  type McpHub,
+  type McpOAuthCredentialStore,
+  mcpOAuthStoreKey,
+  parseMcpConfig,
+} from "@eevee/agent";
 import {
   composeProviders,
   type ModelRuntime,
@@ -272,9 +277,121 @@ export async function exportEngineConfig(deps: ExportConfigDeps): Promise<Config
   };
 }
 
+export type RemovedHttpMcpServer = {
+  readonly name: string;
+  readonly url: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function httpUrlOfMcpRecord(raw: unknown): string | undefined {
+  if (!isRecord(raw)) return undefined;
+  if (typeof raw.url !== "string" || !URL.canParse(raw.url)) return undefined;
+  if (raw.type !== undefined && raw.type !== "http" && raw.type !== "streamable-http") {
+    return undefined;
+  }
+  return raw.url;
+}
+
+export function findRemovedHttpMcpServers(
+  previous: Readonly<Record<string, Record<string, unknown>>>,
+  next: Readonly<Record<string, Record<string, unknown>>>,
+): RemovedHttpMcpServer[] {
+  const removed: RemovedHttpMcpServer[] = [];
+  for (const [name, prevRaw] of Object.entries(previous)) {
+    const prevUrl = httpUrlOfMcpRecord(prevRaw);
+    if (prevUrl === undefined) continue;
+    const nextRaw = Object.hasOwn(next, name) ? next[name] : undefined;
+    const nextUrl = httpUrlOfMcpRecord(nextRaw);
+    if (
+      nextUrl === undefined ||
+      mcpOAuthStoreKey(name, prevUrl) !== mcpOAuthStoreKey(name, nextUrl)
+    ) {
+      removed.push({ name, url: prevUrl });
+    }
+  }
+  return removed;
+}
+
+function collectReferencedOAuthKeys(store: EngineStore): Set<string> {
+  const keys = new Set<string>();
+  const addFromMap = (servers: Readonly<Record<string, Record<string, unknown>>>) => {
+    for (const [name, raw] of Object.entries(servers)) {
+      const url = httpUrlOfMcpRecord(raw);
+      if (url !== undefined) {
+        keys.add(mcpOAuthStoreKey(name, url));
+      }
+    }
+  };
+  addFromMap(getMcpServersRecord(store));
+  for (const project of store.listProjects()) {
+    const projectServers = store.getProjectMcpServers(project.id);
+    if (projectServers !== undefined) {
+      addFromMap(projectServers);
+    }
+  }
+  return keys;
+}
+
+export function pruneOrphanProjectMcpOverrides(
+  store: EngineStore,
+  nextGlobalServers: Readonly<Record<string, Record<string, unknown>>>,
+): void {
+  for (const project of store.listProjects()) {
+    const projectServers = store.getProjectMcpServers(project.id);
+    if (projectServers === undefined) continue;
+    let changed = false;
+    const nextProjectServers: Record<string, Record<string, unknown>> = {};
+    for (const [name, raw] of Object.entries(projectServers)) {
+      if (isRecord(raw) && isMcpServerOverride(raw) && !Object.hasOwn(nextGlobalServers, name)) {
+        changed = true;
+        continue;
+      }
+      nextProjectServers[name] = raw;
+    }
+    if (changed) {
+      store.setProjectMcpServers(
+        project.id,
+        Object.keys(nextProjectServers).length === 0 ? null : nextProjectServers,
+      );
+    }
+  }
+}
+
+export type CleanupRemovedMcpOAuthOptions = {
+  readonly store: EngineStore;
+  readonly oauthStore: McpOAuthCredentialStore;
+  readonly cancelOAuthForServers: (serverNames: readonly string[]) => Promise<void>;
+  readonly removed: readonly RemovedHttpMcpServer[];
+  readonly cancelServerNames?: readonly string[];
+};
+
+export async function cleanupRemovedMcpOAuth(
+  options: CleanupRemovedMcpOAuthOptions,
+): Promise<void> {
+  const cancelNames = options.cancelServerNames ?? options.removed.map((entry) => entry.name);
+  if (cancelNames.length > 0) {
+    await options.cancelOAuthForServers(cancelNames);
+  }
+  if (options.removed.length === 0) return;
+
+  const referencedKeys = collectReferencedOAuthKeys(options.store);
+  const removedKeys = new Set<string>();
+  for (const entry of options.removed) {
+    const key = mcpOAuthStoreKey(entry.name, entry.url);
+    if (removedKeys.has(key) || referencedKeys.has(key)) continue;
+    removedKeys.add(key);
+    await options.oauthStore.remove(entry.name, entry.url);
+  }
+}
+
 export type ImportConfigDeps = ExportConfigDeps & {
   readonly modelRuntime: ModelRuntime;
   readonly mcpHub: McpHub;
+  readonly oauthStore: McpOAuthCredentialStore;
+  readonly cancelOAuthForServers: (serverNames: readonly string[]) => Promise<void>;
   readonly env: Readonly<Record<string, string | undefined>> | undefined;
   readonly syncProjects: () => Promise<void>;
   readonly applySettings: () => Promise<void>;
@@ -311,15 +428,25 @@ export async function importEngineConfig(
     await deps.modelRuntime.reload();
   }
 
+  const previousMcp = getMcpServersRecord(deps.store);
   const normalizedMcp = normalizeMcpMap(parsedMcp.servers);
+  const removedHttpMcp = findRemovedHttpMcpServers(previousMcp, normalizedMcp);
   deps.store.setKv(KV_SETTINGS, bundle.settings);
   deps.store.setKv(KV_MODEL_PROFILES, bundle.modelProfiles);
   deps.store.setKv(KV_MCP_SERVERS, normalizedMcp);
+  pruneOrphanProjectMcpOverrides(deps.store, normalizedMcp);
   if (bundle.skillsPolicy !== undefined) {
     deps.store.setKv(KV_SKILLS_POLICY, bundle.skillsPolicy);
   } else {
     deps.store.deleteKv(KV_SKILLS_POLICY);
   }
+
+  await cleanupRemovedMcpOAuth({
+    store: deps.store,
+    oauthStore: deps.oauthStore,
+    cancelOAuthForServers: deps.cancelOAuthForServers,
+    removed: removedHttpMcp,
+  });
 
   await deps.mcpHub.reload(parsedMcp.servers);
   await deps.syncProjects();

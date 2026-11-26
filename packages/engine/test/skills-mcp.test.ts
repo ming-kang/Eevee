@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -78,6 +78,7 @@ async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
 class FakeMcpServer {
   tools: McpTool[];
   hangInitialize = false;
+  openDelayMs = 0;
   openCount = 0;
   closeCount = 0;
   rootsChangedCount = 0;
@@ -101,6 +102,9 @@ class FakeMcpServer {
     return new PipeTransport({
       closeTimeoutMs: 20,
       open: async (handlers) => {
+        if (this.openDelayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, this.openDelayMs));
+        }
         this.openCount += 1;
         let finish = () => {};
         const exited = new Promise<void>((resolve) => {
@@ -1096,6 +1100,340 @@ test("Engine.open starts background connections without blocking on slow server 
       assert.equal(engine.getMcpState().status[0]?.status, "connecting");
     } finally {
       await engine.close();
+    }
+  });
+});
+
+test("concurrent project MCP mutations serialize per project without leaking hubs or transports", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws = join(dir, "ws");
+    await mkdir(ws, { recursive: true });
+
+    const srvA = new FakeMcpServer([mcpTool("tool_a", "Tool A")]);
+    srvA.openDelayMs = 30;
+    const srvB = new FakeMcpServer([mcpTool("tool_b", "Tool B")]);
+    srvB.openDelayMs = 30;
+
+    const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+
+    const foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      userHomeDir: null,
+      models,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+      createMcpTransport: (entry: McpServerEntry) => {
+        if (entry.name === "srva") return srvA.createTransport();
+        if (entry.name === "srvb") return srvB.createTransport();
+        throw new Error(`Unexpected server ${entry.name}`);
+      },
+    });
+
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      const projectId = (await client.createProject({ workspaces: [ws], title: "ConcurrentMcp" }))
+        .project.id;
+      const handle = await foreground.engine.openProject(projectId);
+
+      // Two concurrent upserts on an open project with no prior overrides
+      await Promise.all([
+        client.upsertProjectMcpServer(projectId, "srva", {
+          config: { command: "a-cmd", exposure: "direct" },
+        }),
+        client.upsertProjectMcpServer(projectId, "srvb", {
+          config: { command: "b-cmd", exposure: "direct" },
+        }),
+      ]);
+
+      assert.equal(srvA.openCount, 1, "srvA should open only once without duplicate hub");
+      assert.equal(srvB.openCount, 1, "srvB should open only once");
+      assert.equal(srvA.closeCount, 0, "srvA should remain open on the project hub");
+      assert.equal(srvB.closeCount, 0, "srvB should remain open on the project hub");
+
+      const agentTools = (await handle.root.agent(BACKGROUND_CONTEXT)).tools.map((t) => t.name);
+      assert.equal(agentTools.includes("mcp__srva__tool_a"), true);
+      assert.equal(agentTools.includes("mcp__srvb__tool_b"), true);
+
+      // Concurrent delete of one and then delete of last override while re-adding
+      await client.deleteProjectMcpServer(projectId, "srvb");
+      await Promise.all([
+        client.upsertProjectMcpServer(projectId, "srvb", {
+          config: { command: "b-cmd", exposure: "direct" },
+        }),
+        client.deleteProjectMcpServer(projectId, "srva"),
+      ]);
+      // Now clear remaining server and simultaneously trigger a project add + delete
+      await client.putProjectMcpConfig(projectId, { servers: {} });
+      await Promise.all([
+        client.upsertProjectMcpServer(projectId, "srva", {
+          config: { command: "a-cmd", exposure: "direct" },
+        }),
+        client.deleteProjectMcpServer(projectId, "srva").catch(() => undefined),
+      ]);
+    } finally {
+      await foreground.close();
+    }
+
+    assert.equal(srvA.openCount, srvA.closeCount, "all srvA transports must be closed");
+    assert.equal(srvB.openCount, srvB.closeCount, "all srvB transports must be closed");
+  });
+});
+
+test("global MCP delete, putMcpConfig, and importConfig prune orphan project partial overrides and preserve project-only servers", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws = join(dir, "ws");
+    await mkdir(ws, { recursive: true });
+
+    const s1 = new FakeMcpServer([mcpTool("t1", "Tool 1")]);
+    const s2 = new FakeMcpServer([mcpTool("t2", "Tool 2")]);
+    const s3 = new FakeMcpServer([mcpTool("t3", "Tool 3")]);
+    const projFull = new FakeMcpServer([mcpTool("pf", "Project full")]);
+
+    const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+
+    const foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      userHomeDir: null,
+      models,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+      createMcpTransport: (entry: McpServerEntry) => {
+        if (entry.name === "s1") return s1.createTransport();
+        if (entry.name === "s2") return s2.createTransport();
+        if (entry.name === "s3") return s3.createTransport();
+        if (entry.name === "projfull") return projFull.createTransport();
+        throw new Error(`Unexpected server ${entry.name}`);
+      },
+    });
+
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      await client.putMcpConfig({
+        servers: {
+          s1: { command: "s1-cmd", exposure: "direct" },
+          s2: { command: "s2-cmd", exposure: "direct" },
+        },
+      });
+
+      const projectId = (await client.createProject({ workspaces: [ws], title: "OrphanPrune" }))
+        .project.id;
+      const handle = await foreground.engine.openProject(projectId);
+
+      // Add partial override on s1 AND a project-only full server projfull
+      await client.putProjectMcpConfig(projectId, {
+        servers: {
+          s1: { enabled: false },
+          projfull: { command: "pf-cmd", exposure: "direct" },
+        },
+      });
+
+      // Delete global s1 -> orphan override s1 must be pruned, projfull preserved
+      await client.deleteMcpServer("s1");
+      const stateAfterDelete = await client.getProjectMcpState(projectId);
+      assert.equal(Object.hasOwn(stateAfterDelete.projectServers, "s1"), false);
+      assert.equal(Object.hasOwn(stateAfterDelete.projectServers, "projfull"), true);
+
+      // Subsequent project MCP write must succeed (previously failed with 400 due to orphan s1)
+      await client.upsertProjectMcpServer(projectId, "s2", { config: { enabled: false } });
+      await client.deleteProjectMcpServer(projectId, "projfull");
+
+      // Only partial override s2 remains -> putMcpConfig replacing s2 with s3 prunes last override and rebinds to global hub
+      const s2ClosesBefore = s2.closeCount;
+      await client.putMcpConfig({
+        servers: {
+          s3: { command: "s3-cmd", exposure: "direct" },
+        },
+      });
+      const stateAfterPut = await client.getProjectMcpState(projectId);
+      assert.deepEqual(stateAfterPut.projectServers, {});
+      assert.ok(s2.closeCount > s2ClosesBefore, "project hub torn down on last override prune");
+
+      await waitFor(async () => {
+        const names = (await handle.root.agent(BACKGROUND_CONTEXT)).tools.map((t) => t.name);
+        return names.includes("mcp__s3__t3") && !names.includes("mcp__s2__t2");
+      }, "open project rebound to global hub with s3 after last override pruned");
+
+      // Subsequent upsert on project succeeds
+      await client.upsertProjectMcpServer(projectId, "s3", {
+        config: { roles: { router: false } },
+      });
+
+      // importConfig also prunes orphan overrides
+      const bundle = await client.exportConfig();
+      await client.importConfig({ ...bundle, mcpServers: {} });
+      assert.deepEqual((await client.getProjectMcpState(projectId)).projectServers, {});
+    } finally {
+      await foreground.close();
+    }
+  });
+});
+
+test("HTTP MCP deletion/URL change cleans up OAuth sessions and mcp-auth.json credentials unless still referenced, and re-login cancels prior fixed-port session", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws = join(dir, "ws");
+    await mkdir(ws, { recursive: true });
+    const mock1 = await startMockOAuthMcpServer();
+    const mock2 = await startMockOAuthMcpServer();
+
+    // Reserve a free port for fixed callbackPort test
+    const probeServer = createServer();
+    await new Promise<void>((resolve) => probeServer.listen(0, "127.0.0.1", () => resolve()));
+    const addr = probeServer.address();
+    if (addr === null || typeof addr === "string") throw new Error("Expected TCP port");
+    const fixedPort = addr.port;
+    await new Promise<void>((resolve) => probeServer.close(() => resolve()));
+
+    const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+
+    const foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      userHomeDir: null,
+      models,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+    });
+
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      const projectId = (await client.createProject({ workspaces: [ws], title: "OAuthCleanup" }))
+        .project.id;
+
+      // 1. Re-login with fixed callbackPort cancels prior active session without EADDRINUSE
+      await client.upsertMcpServer("fixed", {
+        config: {
+          type: "http",
+          url: mock1.mcpUrl,
+          exposure: "direct",
+          oauth: { callbackPort: fixedPort },
+        },
+      });
+
+      const firstSession = await client.startMcpOAuth("fixed");
+      const firstEvents: McpOAuthEvent[] = [];
+      let firstGotAuthUrl!: () => void;
+      const firstReady = new Promise<void>((resolve) => {
+        firstGotAuthUrl = resolve;
+      });
+      const firstStreamTask = (async () => {
+        for await (const evt of client.streamMcpOAuth("fixed", firstSession.sessionId)) {
+          firstEvents.push(evt);
+          if (evt.type === "auth_url") {
+            firstGotAuthUrl();
+          }
+        }
+      })();
+
+      await firstReady;
+
+      // Start second session while first is open and bound to fixedPort
+      const secondSession = await client.startMcpOAuth("fixed");
+      await firstStreamTask;
+      const lastFirst = firstEvents.at(-1);
+      assert.equal(lastFirst?.type, "error");
+      if (lastFirst?.type === "error") {
+        assert.equal(lastFirst.code, "login_cancelled");
+      }
+
+      const secondEvents: McpOAuthEvent[] = [];
+      for await (const evt of client.streamMcpOAuth("fixed", secondSession.sessionId)) {
+        secondEvents.push(evt);
+        if (evt.type === "auth_url") {
+          assert.equal(new URL(evt.redirectUrl).port, String(fixedPort));
+          const res = await fetch(evt.url, { redirect: "follow" });
+          assert.equal(res.status, 200);
+        }
+      }
+      assert.equal(secondEvents.at(-1)?.type, "complete");
+      assert.equal(await foreground.engine.oauthStore.hasTokens("fixed", mock1.mcpUrl), true);
+
+      // 2. Deleting a signed-in server removes credentials from mcp-auth.json,
+      // and deleting a server with a pending OAuth session cancels that session.
+      await client.deleteMcpServer("fixed");
+      assert.equal(await foreground.engine.oauthStore.hasTokens("fixed", mock1.mcpUrl), false);
+      const authJsonAfterDelete = JSON.parse(
+        await readFile(foreground.engine.oauthStore.filePath, "utf8"),
+      ) as Record<string, unknown>;
+      assert.equal(Object.keys(authJsonAfterDelete).length, 0);
+
+      await client.upsertMcpServer("pendingauth", {
+        config: { type: "http", url: mock1.mcpUrl, exposure: "direct" },
+      });
+      const thirdSession = await client.startMcpOAuth("pendingauth");
+      const thirdEvents: McpOAuthEvent[] = [];
+      let thirdGotAuthUrl!: () => void;
+      let thirdFailed!: (error: Error) => void;
+      const thirdReady = new Promise<void>((resolve, reject) => {
+        thirdGotAuthUrl = resolve;
+        thirdFailed = reject;
+      });
+      const thirdStreamTask = (async () => {
+        let sawAuthUrl = false;
+        for await (const evt of client.streamMcpOAuth("pendingauth", thirdSession.sessionId)) {
+          thirdEvents.push(evt);
+          if (evt.type === "auth_url") {
+            sawAuthUrl = true;
+            thirdGotAuthUrl();
+          }
+        }
+        if (!sawAuthUrl) {
+          thirdFailed(new Error("Expected auth_url event before stream ended"));
+        }
+      })();
+      await thirdReady;
+
+      await client.deleteMcpServer("pendingauth");
+      await thirdStreamTask;
+      const lastThird = thirdEvents.at(-1);
+      assert.equal(lastThird?.type, "error");
+      if (lastThird?.type === "error") {
+        assert.equal(lastThird.code, "login_cancelled");
+      }
+
+      // 3. Changing global URL removes old URL credentials; deleting global server preserves credentials if a project-only server uses same name+URL
+      await client.upsertMcpServer("sharedhttp", {
+        config: { type: "http", url: mock1.mcpUrl, exposure: "direct" },
+      });
+      const s4 = await client.startMcpOAuth("sharedhttp");
+      for await (const evt of client.streamMcpOAuth("sharedhttp", s4.sessionId)) {
+        if (evt.type === "auth_url") {
+          const res = await fetch(evt.url, { redirect: "follow" });
+          assert.equal(res.status, 200);
+        }
+      }
+      assert.equal(await foreground.engine.oauthStore.hasTokens("sharedhttp", mock1.mcpUrl), true);
+
+      // Add project-only server with exact same name and URL
+      await client.upsertProjectMcpServer(projectId, "sharedhttp", {
+        config: { type: "http", url: mock1.mcpUrl, exposure: "direct" },
+      });
+      // Deleting global server must NOT wipe credentials still referenced by project-only server
+      await client.deleteMcpServer("sharedhttp");
+      assert.equal(await foreground.engine.oauthStore.hasTokens("sharedhttp", mock1.mcpUrl), true);
+
+      // Changing project-only server URL to mock2 removes mock1 credentials
+      await client.upsertProjectMcpServer(projectId, "sharedhttp", {
+        config: { type: "http", url: mock2.mcpUrl, exposure: "direct" },
+      });
+      assert.equal(await foreground.engine.oauthStore.hasTokens("sharedhttp", mock1.mcpUrl), false);
+    } finally {
+      await foreground.close();
+      await mock1.close();
+      await mock2.close();
     }
   });
 });

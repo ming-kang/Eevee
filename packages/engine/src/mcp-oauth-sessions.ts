@@ -16,6 +16,7 @@ export type StartMcpOAuthSessionOptions = {
   readonly settings?: McpOAuthConfig;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly challenge?: OAuthChallenge;
+  readonly beforeStart?: () => void;
   readonly onComplete?: (serverName: string) => Promise<void>;
 };
 
@@ -52,12 +53,42 @@ function toProtocolEvent(event: McpOAuthSignInEvent): McpOAuthEvent {
 
 export class McpOAuthSessionManager {
   readonly #sessions = new Map<string, ManagedOAuthSession>();
+  readonly #startChains = new Map<string, Promise<void>>();
   #closed = false;
 
-  start(options: StartMcpOAuthSessionOptions): StartMcpOAuthResponse {
+  start(options: StartMcpOAuthSessionOptions): Promise<StartMcpOAuthResponse> {
+    if (this.#closed) {
+      return Promise.reject(new EngineError(503, "engine_closed", "Engine is closing"));
+    }
+    return this.#enqueueStart(options.serverName, () => this.#startNow(options));
+  }
+
+  #enqueueStart<T>(serverName: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.#startChains.get(serverName) ?? Promise.resolve();
+    const run = prev.then(() => fn());
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    const cleaned = tail.finally(() => {
+      if (this.#startChains.get(serverName) === cleaned) {
+        this.#startChains.delete(serverName);
+      }
+    });
+    this.#startChains.set(serverName, cleaned);
+    return cleaned.then(() => run);
+  }
+
+  async #startNow(options: StartMcpOAuthSessionOptions): Promise<StartMcpOAuthResponse> {
     if (this.#closed) {
       throw new EngineError(503, "engine_closed", "Engine is closing");
     }
+
+    await this.cancelForServer(options.serverName);
+    if (this.#closed) {
+      throw new EngineError(503, "engine_closed", "Engine is closing");
+    }
+    options.beforeStart?.();
 
     const history: McpOAuthEvent[] = [];
     const subscribers = new Set<(event: McpOAuthEvent) => void>();
@@ -193,16 +224,35 @@ export class McpOAuthSessionManager {
     session.raw.cancel();
   }
 
-  cancelForServer(serverName: string): void {
+  async cancelForServer(serverName: string): Promise<void> {
+    await this.cancelAllForServers([serverName]);
+  }
+
+  async cancelAllForServers(serverNames: Iterable<string>): Promise<void> {
+    const targets = new Set(serverNames);
+    if (targets.size === 0) return;
+    const pending: Promise<void>[] = [];
     for (const session of this.#sessions.values()) {
-      if (session.serverName === serverName && !session.terminal) {
+      if (targets.has(session.serverName) && !session.terminal) {
         session.raw.cancel();
+        pending.push(session.done);
       }
+    }
+    if (pending.length > 0) {
+      await Promise.allSettled(pending);
     }
   }
 
   async close(): Promise<void> {
     this.#closed = true;
+    for (const session of this.#sessions.values()) {
+      if (!session.terminal) {
+        session.raw.cancel();
+      }
+    }
+    while (this.#startChains.size > 0) {
+      await Promise.allSettled([...this.#startChains.values()]);
+    }
     const sessions = [...this.#sessions.values()];
     for (const session of sessions) {
       if (session.cleanupTimer !== undefined) {

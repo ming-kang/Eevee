@@ -138,6 +138,7 @@ export type McpHubStartOptions = {
 type ServerRuntime = {
   entry: McpServerEntry;
   status: McpServerStatus;
+  retired: boolean;
   error?: string;
   authRequired?: boolean;
   lastChallenge?: OAuthChallenge;
@@ -189,6 +190,7 @@ function createRuntime(entry: McpServerEntry): ServerRuntime {
   return {
     entry,
     status: isEnabled(entry) ? "idle" : "disabled",
+    retired: false,
     tools: [],
   };
 }
@@ -519,12 +521,18 @@ export class McpHub implements McpResourceHost {
         next.set(entry.name, existing);
         retained.add(entry.name);
       } else {
-        if (existing !== undefined) closing.push(this.closeRuntime(existing));
+        if (existing !== undefined) {
+          existing.retired = true;
+          closing.push(this.closeRuntime(existing));
+        }
         next.set(entry.name, createRuntime(entry));
       }
     }
     for (const [name, runtime] of previous) {
-      if (!retained.has(name) && !next.has(name)) closing.push(this.closeRuntime(runtime));
+      if (!retained.has(name) && !next.has(name)) {
+        runtime.retired = true;
+        closing.push(this.closeRuntime(runtime));
+      }
     }
 
     await Promise.all(closing);
@@ -552,10 +560,12 @@ export class McpHub implements McpResourceHost {
   }
 
   private async reconnectRuntime(runtime: ServerRuntime): Promise<void> {
+    if (this.closed || runtime.retired) return;
     if (runtime.reconnecting !== undefined) return runtime.reconnecting;
     const run = (async () => {
       await this.closeRuntime(runtime);
-      if (this.closed || this.servers.get(runtime.entry.name) !== runtime) return;
+      if (this.closed || runtime.retired || this.servers.get(runtime.entry.name) !== runtime)
+        return;
       runtime.closePromise = undefined;
       runtime.status = isEnabled(runtime.entry) ? "idle" : "disabled";
       runtime.tools = [];
@@ -754,6 +764,9 @@ export class McpHub implements McpResourceHost {
   close(): Promise<void> {
     if (this.closePromise !== undefined) return this.closePromise;
     this.closed = true;
+    for (const runtime of this.servers.values()) {
+      runtime.retired = true;
+    }
     this.closePromise = (async () => {
       await Promise.all([...this.servers.values()].map((runtime) => this.closeRuntime(runtime)));
       await this.log.close();
@@ -877,7 +890,7 @@ export class McpHub implements McpResourceHost {
   }
 
   private markAuthRequired(runtime: ServerRuntime, error: unknown): void {
-    if (this.closed || runtime.status === "closed") return;
+    if (this.closed || runtime.retired || runtime.status === "closed") return;
     runtime.status = "auth_required";
     runtime.authRequired = true;
     runtime.error = errorMessage(error);
@@ -890,7 +903,7 @@ export class McpHub implements McpResourceHost {
   }
 
   private connectRuntime(runtime: ServerRuntime, force: boolean): Promise<McpClient> {
-    if (this.closed || runtime.status === "closed") {
+    if (this.closed || runtime.retired || runtime.status === "closed") {
       return Promise.reject(new Error(`MCP server "${runtime.entry.name}" is closed`));
     }
     if (!isEnabled(runtime.entry)) {
@@ -926,7 +939,7 @@ export class McpHub implements McpResourceHost {
       try {
         return await this.openRuntimeWithRetry(runtime);
       } catch (error) {
-        if (runtime.status !== "closed" && !this.closed) {
+        if (!runtime.retired && runtime.status !== "closed" && !this.closed) {
           if (isAuthRequiredError(error)) {
             runtime.status = "auth_required";
             runtime.authRequired = true;
@@ -952,7 +965,13 @@ export class McpHub implements McpResourceHost {
     try {
       return await this.openRuntime(runtime);
     } catch (error) {
-      if (!isHttp || !isTransientError(error) || this.closed || runtime.status === "closed") {
+      if (
+        !isHttp ||
+        !isTransientError(error) ||
+        this.closed ||
+        runtime.retired ||
+        runtime.status === "closed"
+      ) {
         throw error;
       }
       this.log.recordDiagnostic(
@@ -963,7 +982,7 @@ export class McpHub implements McpResourceHost {
       if (this.transientRetryDelayMs > 0) {
         await delay(this.transientRetryDelayMs);
       }
-      if (this.closed || (runtime.status as McpServerStatus) === "closed") {
+      if (this.closed || runtime.retired || (runtime.status as McpServerStatus) === "closed") {
         throw new Error(`MCP server "${runtime.entry.name}" is closed`);
       }
       return this.openRuntime(runtime);
@@ -972,12 +991,19 @@ export class McpHub implements McpResourceHost {
 
   private async openRuntime(runtime: ServerRuntime): Promise<McpClient> {
     const entry = runtime.entry;
+    if (this.closed || runtime.retired || runtime.status === "closed") {
+      throw new Error(`MCP server "${entry.name}" is closed`);
+    }
     const timeoutMs = this.timeoutMsOf(entry);
     const client = new McpClient({
       ...this.clientInfo,
       requestTimeoutMs: timeoutMs,
-      capabilities: { roots: { listChanged: true } },
-      roots: () => toMcpRoots(this.getConfiguredRoots(), this.cwd),
+      ...(this.rootsSource === undefined
+        ? {}
+        : {
+            capabilities: { roots: { listChanged: true } },
+            roots: () => toMcpRoots(this.getConfiguredRoots(), this.cwd),
+          }),
     });
     const authProvider = this.authProviderOf(runtime);
     runtime.pendingClient = client;
@@ -987,7 +1013,7 @@ export class McpHub implements McpResourceHost {
         void this.refreshTools(runtime, client);
       });
       client.onNotification("notifications/resources/list_changed", () => {
-        if (runtime.client === client) this.notify();
+        if (!runtime.retired && runtime.client === client) this.notify();
       });
       client.onNotification("notifications/message", (params) => {
         this.log.recordNotification(entry.name, params);
@@ -1002,8 +1028,11 @@ export class McpHub implements McpResourceHost {
             this.log.recordStderr(entry.name, chunk);
           });
       await client.connect(transport);
+      if (runtime.retired || (runtime.status as McpServerStatus) === "closed" || this.closed) {
+        throw new Error(`MCP server "${entry.name}" is closed`);
+      }
       const tools = client.serverCapabilities?.tools ? await client.listTools({ timeoutMs }) : [];
-      if (runtime.status === "closed" || this.closed) {
+      if (runtime.retired || (runtime.status as McpServerStatus) === "closed" || this.closed) {
         throw new Error(`MCP server "${entry.name}" is closed`);
       }
       if (client.connectionState !== "connected") {
@@ -1027,10 +1056,12 @@ export class McpHub implements McpResourceHost {
   }
 
   private async refreshTools(runtime: ServerRuntime, client: McpClient): Promise<void> {
+    if (this.closed || runtime.retired || runtime.client !== client) return;
     let changed = false;
     try {
       const tools = await client.listTools({ timeoutMs: this.timeoutMsOf(runtime.entry) });
       if (
+        runtime.retired ||
         runtime.client !== client ||
         (runtime.status !== "connected" && runtime.status !== "degraded")
       ) {
@@ -1042,6 +1073,7 @@ export class McpHub implements McpResourceHost {
       changed = true;
     } catch (error) {
       if (
+        runtime.retired ||
         runtime.client !== client ||
         (runtime.status !== "connected" && runtime.status !== "degraded")
       ) {
@@ -1062,7 +1094,14 @@ export class McpHub implements McpResourceHost {
 
   private handleClientClose(runtime: ServerRuntime, client: McpClient): void {
     this.log.flushStderr(runtime.entry.name);
-    if (this.closed || runtime.status === "closed" || runtime.client !== client) return;
+    if (
+      this.closed ||
+      runtime.retired ||
+      runtime.status === "closed" ||
+      runtime.client !== client
+    ) {
+      return;
+    }
     runtime.client = undefined;
     if (runtime.status !== "connected" && runtime.status !== "degraded") return;
     runtime.status = "disconnected";
@@ -1078,7 +1117,7 @@ export class McpHub implements McpResourceHost {
     if (!isEnabled(runtime.entry)) {
       throw new Error(`MCP server "${runtime.entry.name}" is disabled`);
     }
-    if (runtime.status === "closed" || this.closed) {
+    if (runtime.retired || runtime.status === "closed" || this.closed) {
       throw new Error(`MCP server "${runtime.entry.name}" is closed`);
     }
     if (
@@ -1123,6 +1162,7 @@ export class McpHub implements McpResourceHost {
         !isTransientError(error) ||
         options.signal?.aborted ||
         this.closed ||
+        runtime.retired ||
         runtime.status === "closed"
       ) {
         throw error;

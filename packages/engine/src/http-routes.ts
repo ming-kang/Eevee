@@ -272,7 +272,7 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     }),
     route("POST", "/mcp/servers/:serverName/oauth/login", async ({ req, res, params }) => {
       await readOptionalJsonBody(req);
-      sendJson(res, 201, engine.startMcpOAuth(params.serverName));
+      sendJson(res, 201, await engine.startMcpOAuth(params.serverName));
     }),
     route(
       "GET",

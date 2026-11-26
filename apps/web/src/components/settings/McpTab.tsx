@@ -39,6 +39,7 @@ import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from 
 import { api } from "../../lib/api.ts";
 import { showToast } from "../../lib/toasts.ts";
 import { type HeaderRow, HeadersEditor, headersToRows, rowsToHeaders } from "./HeadersEditor.tsx";
+import { buildRoleTogglePatch, mergeProjectOverridePatch } from "./mcp-helpers.ts";
 
 const SERVER_NAME_RE = /^[A-Za-z0-9_-]+$/;
 const DEFAULT_EXPOSURE: McpExposure = "codemode";
@@ -572,12 +573,7 @@ export function McpTab({
       return;
     }
 
-    const existingOverride = projectServers[srv.name];
-    const base = existingOverride ?? {};
-    const merged: Record<string, unknown> = { ...base, ...patch };
-    if (isRecord(base.roles) && isRecord(patch.roles)) {
-      merged.roles = { ...base.roles, ...patch.roles };
-    }
+    const merged = mergeProjectOverridePatch(projectServers[srv.name], patch);
     await upsertConfig(srv.name, merged);
   };
 
@@ -590,13 +586,8 @@ export function McpTab({
     role: "router" | "worker",
     checked: boolean,
   ) => {
-    const currentRouter = srv.roles?.router !== false;
-    const currentWorker = srv.roles?.worker !== false;
-    const nextRoles = {
-      router: role === "router" ? checked : currentRouter,
-      worker: role === "worker" ? checked : currentWorker,
-    };
-    void patchServer(srv, { roles: nextRoles });
+    const isProjectOverride = projectId !== undefined && srv.scope !== "project";
+    void patchServer(srv, buildRoleTogglePatch(srv, role, checked, isProjectOverride));
   };
 
   const handleToolExposureChange = async (

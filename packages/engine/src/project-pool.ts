@@ -58,6 +58,7 @@ export class ProjectPool {
   readonly #projects = new Map<string, OpenProjectEntry>();
   readonly #opening = new Map<string, Promise<ProjectHandle>>();
   readonly #closingProjects = new Map<string, Promise<void>>();
+  readonly #projectMcpChains = new Map<string, Promise<void>>();
   readonly #deletingProjects = new Set<string>();
   readonly #streamCounts = new Map<string, number>();
   #hibernateTimer: ReturnType<typeof setInterval> | undefined;
@@ -229,78 +230,39 @@ export class ProjectPool {
   }
 
   async reloadGlobalMcpChanges(): Promise<void> {
-    await Promise.all(
-      [...this.#projects.entries()].map(async ([projectId, entry]) => {
-        if (entry.projectMcpHub !== undefined) {
-          const servers = resolveEffectiveProjectMcpForStore(this.#deps.store, projectId);
-          await entry.projectMcpHub.reload(servers);
-        }
-        await entry.handle.syncMcpExtensions();
-      }),
-    );
+    const projectIds = [...new Set([...this.#projects.keys(), ...this.#opening.keys()])];
+    await Promise.all(projectIds.map((projectId) => this.syncProjectMcp(projectId)));
   }
 
   async syncProjectMcp(projectId: string): Promise<void> {
-    const opening = this.#opening.get(projectId);
-    if (opening !== undefined) {
-      await opening.catch(() => undefined);
-    }
-    const entry = this.#projects.get(projectId);
-    if (entry === undefined) return;
-
-    const hasOverrides = hasProjectMcpOverrides(this.#deps.store, projectId);
-    if (!hasOverrides) {
-      if (entry.projectMcpHub !== undefined) {
-        const oldHub = entry.projectMcpHub;
-        entry.projectMcpHub = undefined;
-        await entry.handle.rebindMcpHub(this.#deps.mcpHub);
-        await oldHub.close().catch(() => undefined);
-      } else {
-        await entry.handle.syncMcpExtensions();
-      }
-      return;
-    }
-
-    const servers = resolveEffectiveProjectMcpForStore(this.#deps.store, projectId);
-    if (entry.projectMcpHub !== undefined) {
-      await entry.projectMcpHub.reload(servers);
-      await entry.handle.syncMcpExtensions();
-      return;
-    }
-
-    const project = this.#requireProject(projectId);
-    const nextHub = this.#createProjectMcpHub(project, servers);
-    try {
-      await nextHub.start();
-      if (this.#closed || this.#projects.get(projectId) !== entry) {
-        await nextHub.close().catch(() => undefined);
-        return;
-      }
-      entry.projectMcpHub = nextHub;
-      await entry.handle.rebindMcpHub(nextHub);
-    } catch (error) {
-      await nextHub.close().catch(() => undefined);
-      throw error;
-    }
+    await this.#enqueueProjectMcp(projectId, () => this.#syncProjectMcpNow(projectId));
   }
 
   async updateProjectMcpRoots(projectId: string, workspaces: readonly string[]): Promise<void> {
-    const entry = this.#projects.get(projectId);
-    if (entry?.projectMcpHub !== undefined) {
-      await entry.projectMcpHub.updateRoots(workspaces);
-    }
+    await this.#enqueueProjectMcp(projectId, async () => {
+      if (this.#closed || this.#deletingProjects.has(projectId)) return;
+      const entry = this.#projects.get(projectId);
+      if (entry?.projectMcpHub !== undefined) {
+        await entry.projectMcpHub.updateRoots(workspaces);
+      }
+    });
   }
 
   async reconnectServerOnProjectHubs(serverName: string): Promise<void> {
+    const projectIds = [...new Set([...this.#projects.keys(), ...this.#opening.keys()])];
     await Promise.all(
-      [...this.#projects.values()].map(async (entry) => {
-        if (
-          entry.projectMcpHub?.status().some((snap) => snap.name === serverName && snap.enabled)
-        ) {
-          await entry.projectMcpHub.reconnect(serverName).catch(() => undefined);
-          await entry.handle.syncMcpExtensions();
-        }
-      }),
+      projectIds.map((projectId) =>
+        this.#enqueueProjectMcp(projectId, async () => {
+          if (this.#closed || this.#deletingProjects.has(projectId)) return;
+          const entry = this.#projects.get(projectId);
+          if (
+            entry?.projectMcpHub?.status().some((snap) => snap.name === serverName && snap.enabled)
+          ) {
+            await entry.projectMcpHub.reconnect(serverName).catch(() => undefined);
+            await entry.handle.syncMcpExtensions();
+          }
+        }),
+      ),
     );
   }
 
@@ -323,6 +285,9 @@ export class ProjectPool {
     }
     await Promise.allSettled([...this.#opening.values()]);
     await Promise.allSettled([...this.#closingProjects.values()]);
+    while (this.#projectMcpChains.size > 0) {
+      await Promise.allSettled([...this.#projectMcpChains.values()]);
+    }
     const entries = [...this.#projects.entries()];
     this.#projects.clear();
     await Promise.allSettled(
@@ -335,6 +300,78 @@ export class ProjectPool {
         }
       }),
     );
+  }
+
+  #enqueueProjectMcp<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.#projectMcpChains.get(projectId) ?? Promise.resolve();
+    const run = prev.then(() => fn());
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    const cleaned = tail.finally(() => {
+      if (this.#projectMcpChains.get(projectId) === cleaned) {
+        this.#projectMcpChains.delete(projectId);
+      }
+    });
+    this.#projectMcpChains.set(projectId, cleaned);
+    return cleaned.then(() => run);
+  }
+
+  async #syncProjectMcpNow(projectId: string): Promise<void> {
+    if (this.#closed || this.#deletingProjects.has(projectId)) return;
+    const opening = this.#opening.get(projectId);
+    if (opening !== undefined) {
+      await opening.catch(() => undefined);
+    }
+    if (this.#closed || this.#deletingProjects.has(projectId)) return;
+    const entry = this.#projects.get(projectId);
+    if (entry === undefined) return;
+
+    const hasOverrides = hasProjectMcpOverrides(this.#deps.store, projectId);
+    if (!hasOverrides) {
+      if (entry.projectMcpHub !== undefined) {
+        const oldHub = entry.projectMcpHub;
+        entry.projectMcpHub = undefined;
+        try {
+          await entry.handle.rebindMcpHub(this.#deps.mcpHub);
+        } finally {
+          await oldHub.close().catch(() => undefined);
+        }
+      } else {
+        await entry.handle.syncMcpExtensions();
+      }
+      return;
+    }
+
+    const servers = resolveEffectiveProjectMcpForStore(this.#deps.store, projectId);
+    if (entry.projectMcpHub !== undefined) {
+      await entry.projectMcpHub.reload(servers);
+      await entry.handle.syncMcpExtensions();
+      return;
+    }
+
+    const project = this.#requireProject(projectId);
+    const nextHub = this.#createProjectMcpHub(project, servers);
+    try {
+      await nextHub.start();
+      if (
+        this.#closed ||
+        this.#deletingProjects.has(projectId) ||
+        this.#projects.get(projectId) !== entry
+      ) {
+        await nextHub.close().catch(() => undefined);
+        return;
+      }
+      entry.projectMcpHub = nextHub;
+      await entry.handle.rebindMcpHub(nextHub);
+    } catch (error) {
+      if (entry.projectMcpHub === nextHub) {
+        entry.projectMcpHub = undefined;
+      }
+      await nextHub.close().catch(() => undefined);
+      throw error;
+    }
   }
 
   #createProjectMcpHub(project: ProjectSummary, servers: readonly McpServerEntry[]): McpHub {
@@ -383,11 +420,17 @@ export class ProjectPool {
     if (entry === undefined) {
       const existingClosing = this.#closingProjects.get(projectId);
       if (existingClosing !== undefined) await existingClosing;
+      while (this.#projectMcpChains.has(projectId)) {
+        await this.#projectMcpChains.get(projectId);
+      }
       return;
     }
     this.#projects.delete(projectId);
     entry.observation.detach();
     const closing = (async () => {
+      while (this.#projectMcpChains.has(projectId)) {
+        await this.#projectMcpChains.get(projectId);
+      }
       try {
         await entry.handle.close();
       } finally {

@@ -32,6 +32,11 @@ class LifecycleFakeMcpServer {
   hangInitialize = false;
   failToolsList = false;
   rootsChangedCount = 0;
+  openCount = 0;
+  closeCount = 0;
+  lastInitializeCapabilities: unknown;
+  closeDelayPromise?: Promise<void>;
+  onCloseStart?: () => void;
   readonly encoder = new TextEncoder();
   readonly decoder = new TextDecoder();
   private link?: {
@@ -49,9 +54,10 @@ class LifecycleFakeMcpServer {
   }
 
   createTransport(): McpTransport {
-    return new PipeTransport({
+    const inner = new PipeTransport({
       closeTimeoutMs: 20,
       open: async (handlers) => {
+        this.openCount += 1;
         let finish = () => {};
         const exited = new Promise<void>((resolve) => {
           finish = resolve;
@@ -71,6 +77,7 @@ class LifecycleFakeMcpServer {
         const close = () => {
           if (link.closed) return;
           link.closed = true;
+          this.closeCount += 1;
           for (const pending of link.pendingRequests.values()) {
             pending.reject(new Error("closed"));
           }
@@ -97,6 +104,23 @@ class LifecycleFakeMcpServer {
         };
       },
     });
+    if (this.closeDelayPromise === undefined && this.onCloseStart === undefined) {
+      return inner;
+    }
+    return {
+      start: () => inner.start(),
+      send: (message) => inner.send(message),
+      onMessage: (listener) => inner.onMessage(listener),
+      onError: (listener) => inner.onError(listener),
+      onClose: (listener) => inner.onClose(listener),
+      close: async () => {
+        this.onCloseStart?.();
+        if (this.closeDelayPromise !== undefined) {
+          await this.closeDelayPromise;
+        }
+        await inner.close();
+      },
+    };
   }
 
   pushToolsChanged(): void {
@@ -158,6 +182,8 @@ class LifecycleFakeMcpServer {
     const method = msg.method;
     if (method === "initialize") {
       if (this.hangInitialize) return;
+      const params = (msg.params ?? {}) as { capabilities?: unknown };
+      this.lastInitializeCapabilities = params.capabilities;
       this.send(link, {
         jsonrpc: "2.0",
         id,
@@ -604,5 +630,98 @@ test("tool_search discovers deferred MCP tools via server namespace description 
     unbind();
     await hub.close();
     await th.cleanup();
+  }
+});
+
+test("concurrent reconnect and reload replacing server config does not reconnect retired runtime", async () => {
+  const oldServer = new LifecycleFakeMcpServer([
+    { name: "old_tool", description: "Old", inputSchema: { type: "object", properties: {} } },
+  ]);
+  const newServer = new LifecycleFakeMcpServer([
+    { name: "new_tool", description: "New", inputSchema: { type: "object", properties: {} } },
+  ]);
+
+  let releaseClose!: () => void;
+  oldServer.closeDelayPromise = new Promise<void>((resolve) => {
+    releaseClose = resolve;
+  });
+  let closeStarted = false;
+  oldServer.onCloseStart = () => {
+    closeStarted = true;
+  };
+
+  const hub = createMcpHub({
+    servers: [{ name: "srv", config: { command: "old-cmd", exposure: "direct" } }],
+    createTransport: (entry) => {
+      if ("command" in entry.config && entry.config.command === "old-cmd") {
+        return oldServer.createTransport();
+      }
+      return newServer.createTransport();
+    },
+  });
+
+  try {
+    await hub.start();
+    assert.equal(oldServer.openCount, 1);
+    assert.equal(newServer.openCount, 0);
+
+    const reconnectPromise = hub.reconnect("srv");
+    await waitFor(() => closeStarted, "reconnect close start");
+
+    const reloadPromise = hub.reload([
+      { name: "srv", config: { command: "new-cmd", exposure: "direct" } },
+    ]);
+
+    await new Promise((r) => setTimeout(r, 20));
+    releaseClose();
+
+    await Promise.all([reconnectPromise, reloadPromise]);
+
+    assert.equal(oldServer.openCount, 1, "retired old config must never reconnect");
+    assert.equal(oldServer.closeCount, 1, "old transport must be closed");
+    assert.equal(newServer.openCount, 1, "new config must connect once");
+    assert.equal(newServer.closeCount, 0, "new transport must remain open");
+
+    const snap = hub.status().find((s) => s.name === "srv");
+    assert.equal(snap?.status, "connected");
+    assert.deepEqual(
+      snap?.tools?.map((t) => t.name),
+      ["new_tool"],
+    );
+  } finally {
+    await hub.close();
+  }
+});
+
+test("hub without roots does not advertise roots capability while hub with roots advertises listChanged", async () => {
+  const noRootsServer = new LifecycleFakeMcpServer();
+  const withRootsServer = new LifecycleFakeMcpServer();
+  const dir = await mkdtemp(join(tmpdir(), "eevee-mcp-cap-roots-"));
+
+  const hubWithoutRoots = createMcpHub({
+    servers: [{ name: "noroots", config: { command: "fake" } }],
+    createTransport: () => noRootsServer.createTransport(),
+  });
+  const hubWithRoots = createMcpHub({
+    servers: [{ name: "withroots", config: { command: "fake" } }],
+    roots: [dir],
+    createTransport: () => withRootsServer.createTransport(),
+  });
+
+  try {
+    await hubWithoutRoots.start();
+    assert.deepEqual(noRootsServer.lastInitializeCapabilities, {});
+    await assert.rejects(noRootsServer.requestRoots(), /Method not found/);
+
+    await hubWithRoots.start();
+    assert.deepEqual(withRootsServer.lastInitializeCapabilities, {
+      roots: { listChanged: true },
+    });
+    const rootsRes = await withRootsServer.requestRoots();
+    assert.deepEqual(rootsRes.roots, [{ uri: pathToFileURL(dir).href, name: basename(dir) }]);
+  } finally {
+    await hubWithoutRoots.close();
+    await hubWithRoots.close();
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
