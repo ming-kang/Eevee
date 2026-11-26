@@ -7,7 +7,7 @@ Eevee 是基于 [Pi Durable](https://github.com/earendil-works/pi) 构建的主�
 ## 文档
 
 - [设计文档](DESIGN.md) — 愿景、原则与核心概念
-- [架构文档](docs/architecture.md) — Monorepo 划分、依赖边界、角色能力矩阵与实施路线
+- [架构文档](docs/architecture.md) — 包划分、依赖边界、角色扩展装配与构建方式
 
 ## 开发命令
 
