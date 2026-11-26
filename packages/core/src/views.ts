@@ -17,6 +17,7 @@ import {
 } from "@eevee/agent";
 import { MemoryMetaDoc } from "@eevee/memory";
 import {
+  CompactionUsageDoc,
   ProjectBoardDoc,
   QuestionDoc,
   type QuestionRecord,
@@ -121,7 +122,7 @@ export function formatBoardOverview(view: BoardView): string {
   return lines.join("\n");
 }
 
-function addUsage(total: JsonRepresentation<Usage>, usage: JsonRepresentation<Usage>): void {
+export function addUsage(total: JsonRepresentation<Usage>, usage: JsonRepresentation<Usage>): void {
   total.input += usage.input;
   total.output += usage.output;
   total.cacheRead += usage.cacheRead;
@@ -140,27 +141,16 @@ function addUsage(total: JsonRepresentation<Usage>, usage: JsonRepresentation<Us
   total.cost.total += usage.cost.total;
 }
 
-export async function projectUsage(
-  harness: Harness,
-  routerConversationId: ConversationId,
-  context: Context,
-): Promise<UsageState> {
-  const [total, memoryMeta] = await Promise.all([
-    harness.usage(context),
-    harness.snapshot(MemoryMetaDoc, routerConversationId, context),
-  ]);
-  const combined: UsageState = {
-    models: structuredClone(total.models),
-    tools: structuredClone(total.tools),
-  };
-  for (const [modelKey, usage] of Object.entries(memoryMeta?.usage ?? {})) {
-    const existing = Object.hasOwn(combined.models, modelKey)
-      ? combined.models[modelKey]
-      : undefined;
+function mergeModelUsage(
+  models: Record<string, JsonRepresentation<Usage>>,
+  extra: Readonly<Record<string, JsonRepresentation<Usage>>>,
+): void {
+  for (const [modelKey, usage] of Object.entries(extra)) {
+    const existing = Object.hasOwn(models, modelKey) ? models[modelKey] : undefined;
     if (existing !== undefined) {
       addUsage(existing, usage);
     } else {
-      Object.defineProperty(combined.models, modelKey, {
+      Object.defineProperty(models, modelKey, {
         value: structuredClone(usage),
         enumerable: true,
         writable: true,
@@ -168,6 +158,24 @@ export async function projectUsage(
       });
     }
   }
+}
+
+export async function projectUsage(
+  harness: Harness,
+  routerConversationId: ConversationId,
+  context: Context,
+): Promise<UsageState> {
+  const [total, memoryMeta, compactionUsage] = await Promise.all([
+    harness.usage(context),
+    harness.snapshot(MemoryMetaDoc, routerConversationId, context),
+    harness.snapshot(CompactionUsageDoc, context),
+  ]);
+  const combined: UsageState = {
+    models: structuredClone(total.models),
+    tools: structuredClone(total.tools),
+  };
+  mergeModelUsage(combined.models, memoryMeta?.usage ?? {});
+  mergeModelUsage(combined.models, compactionUsage?.models ?? {});
   return combined;
 }
 

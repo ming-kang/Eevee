@@ -42,7 +42,7 @@ export type RouterProjectInfo = {
 };
 
 export type RouterExtensionDeps = {
-  readonly cwd: string;
+  readonly cwd: string | (() => string);
   readonly workerModel?: ModelChoice | (() => ModelChoice | undefined);
   readonly workerInstructions?: string;
   readonly project?: () => RouterProjectInfo;
@@ -73,6 +73,7 @@ function errorResult(message: string): ToolExecutionResult {
 }
 
 export function createRouterExtension(deps: RouterExtensionDeps) {
+  const resolveCwd = (): string => (typeof deps.cwd === "function" ? deps.cwd() : deps.cwd);
   const spawnWorker = defineTool({
     name: "spawn_worker",
     description:
@@ -113,7 +114,7 @@ export function createRouterExtension(deps: RouterExtensionDeps) {
           );
         }
       }
-      const cwd = resolve(deps.cwd, args.cwd ?? ".");
+      const cwd = resolve(resolveCwd(), args.cwd ?? ".");
       const thinkingLevel: ModelThinkingLevel | undefined =
         args.thinkingLevel ?? defaultWorkerModel?.thinkingLevel;
       const effectiveModel =
@@ -542,11 +543,12 @@ export function createRouterExtension(deps: RouterExtensionDeps) {
   });
 
   const projectSection = section("project", () => {
+    const cwd = resolveCwd();
     const info = deps.project?.() ?? {
-      title: basename(deps.cwd) || deps.cwd,
-      workspaces: [deps.cwd],
+      title: basename(cwd) || cwd,
+      workspaces: [cwd],
     };
-    const dirs = info.workspaces.length > 0 ? info.workspaces : [deps.cwd];
+    const dirs = info.workspaces.length > 0 ? info.workspaces : [cwd];
     return [`Project: ${info.title}`, "Workspaces:", ...dirs.map((dir) => `- ${dir}`)].join("\n");
   });
 

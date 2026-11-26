@@ -1,4 +1,6 @@
 import type { Context } from "@earendil-works/chord/context";
+import type { JsonRepresentation } from "@earendil-works/chord/json";
+import type { Usage } from "@earendil-works/pi-ai";
 import {
   type ConversationId,
   type DocumentReader,
@@ -132,6 +134,18 @@ export const QuestionDoc = defineDocFamily<QuestionDocState, null>({
     askedAt: 0,
   }),
   checkpointWhen: () => true,
+});
+
+export type CompactionUsageState = {
+  models: Record<string, JsonRepresentation<Usage>>;
+};
+
+export const CompactionUsageDoc = defineDoc<CompactionUsageState>({
+  kind: "eevee.compaction-usage",
+  version: 1,
+  scope: "session",
+  initial: () => ({ models: {} }),
+  checkpointWhen: (_value, _ops, info) => info.deltasSinceBase >= 20,
 });
 
 export async function readBoard(

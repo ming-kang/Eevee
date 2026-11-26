@@ -1,6 +1,7 @@
 import { basename, resolve } from "node:path";
 import { BACKGROUND_CONTEXT, type Context, withAbortSignal } from "@earendil-works/chord/context";
-import type { Models } from "@earendil-works/pi-ai";
+import { copyJson, type JsonRepresentation } from "@earendil-works/chord/json";
+import type { Models, Usage } from "@earendil-works/pi-ai";
 import {
   type CompactionSettings,
   type Conversation,
@@ -30,8 +31,11 @@ import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import {
   type BackgroundTaskRecord,
   type BaseExtensionOptions,
+  type CodemodeHandle,
+  type CodemodeHandleOptions,
   createBaseExtension,
   createCachedCompactionExtension,
+  createCodemodeHandle,
   createCodingToolsExtension,
   createReadonlyToolsExtension,
   createShellPathsExtension,
@@ -56,6 +60,7 @@ import {
   type Summarize,
 } from "@eevee/memory";
 import {
+  CompactionUsageDoc,
   ProjectBoardDoc,
   type QuestionId,
   type QuestionRecord,
@@ -83,7 +88,7 @@ import {
 } from "./roles.ts";
 import { SerialPass } from "./serial-pass.ts";
 import { resolveWorkerStatus } from "./status.ts";
-import { BoardFeed, type BoardView, projectUsage, readBoardView } from "./views.ts";
+import { addUsage, BoardFeed, type BoardView, projectUsage, readBoardView } from "./views.ts";
 
 export type {
   Cursor,
@@ -117,6 +122,7 @@ export type OpenProjectDeps = {
   readonly modelProfiles?: () => string | undefined | Promise<string | undefined>;
   readonly memorySummarizer?: () => Summarize | undefined;
   readonly memoryBudget?: () => RecallBudget;
+  readonly codemode?: CodemodeHandleOptions | CodemodeHandle | false;
   readonly mcpHub?: McpHub;
   readonly taskManager?: TaskManager;
   readonly taskLogPath?: (conversationId: ConversationId, taskId: string) => string;
@@ -192,9 +198,14 @@ export type ProjectHandle = {
   usage(context?: Context): Promise<UsageState>;
   syncMcpExtensions(context?: Context): Promise<void>;
   reconfigureRouterModel(model: ModelChoice | undefined, context?: Context): Promise<void>;
+  reconfigureWorkspaces(workspaces: readonly string[], context?: Context): Promise<void>;
   requestPump(): void;
   close(): Promise<void>;
 };
+
+function isCodemodeHandle(value: CodemodeHandleOptions | CodemodeHandle): value is CodemodeHandle {
+  return "extension" in value && "sandbox" in value && "close" in value;
+}
 
 function sameExtensionOrder(current: readonly Extension[], desired: readonly Extension[]): boolean {
   return (
@@ -207,9 +218,10 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
   const living = new AbortController();
   const livingContext = withAbortSignal(living.signal, BACKGROUND_CONTEXT);
   const projectRoot = resolve(deps.cwd);
-  const workspaces = (
+  let currentWorkspaces: readonly string[] = (
     deps.workspaces !== undefined && deps.workspaces.length > 0 ? deps.workspaces : [projectRoot]
   ).map((dir) => resolve(projectRoot, dir));
+  const getPrimaryWorkspace = () => currentWorkspaces[0] ?? projectRoot;
   const title = deps.title ?? (basename(projectRoot) || projectRoot);
   const getModels = typeof deps.models === "function" ? deps.models : () => deps.models as Models;
   const modelSlotsOption = deps.modelSlots;
@@ -228,6 +240,17 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     new TaskManager(deps.taskLogPath === undefined ? {} : { logPath: deps.taskLogPath });
   const workerInstructions = deps.workerInstructions ?? DEFAULT_WORKER_INSTRUCTIONS;
 
+  let codemodeHandle: CodemodeHandle | undefined;
+  let ownsCodemode = false;
+  if (deps.codemode !== false) {
+    if (deps.codemode !== undefined && isCodemodeHandle(deps.codemode)) {
+      codemodeHandle = deps.codemode;
+    } else {
+      codemodeHandle = createCodemodeHandle(deps.codemode);
+      ownsCodemode = true;
+    }
+  }
+
   let harnessRef: Harness | undefined;
   let memoryBinding: MemoryBinding | undefined;
   const getHarness = (): Harness => {
@@ -235,8 +258,49 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     return harnessRef;
   };
 
+  const pendingCompactionUsage: { modelKey: string; usage: Usage }[] = [];
+  const compactionUsagePass = new SerialPass(
+    async () => {
+      while (pendingCompactionUsage.length > 0) {
+        const batch = pendingCompactionUsage.splice(0, pendingCompactionUsage.length);
+        await getHarness().commit(async (tx) => {
+          const doc = await tx.doc(CompactionUsageDoc);
+          for (const item of batch) {
+            const existing = Object.hasOwn(doc.models, item.modelKey)
+              ? doc.models[item.modelKey]
+              : undefined;
+            if (existing === undefined) {
+              doc.models[item.modelKey] = copyJson(item.usage, {
+                omitUndefinedProperties: true,
+              }) as JsonRepresentation<Usage>;
+            } else {
+              addUsage(
+                existing,
+                copyJson(item.usage, {
+                  omitUndefinedProperties: true,
+                }) as JsonRepresentation<Usage>,
+              );
+            }
+          }
+        }, BACKGROUND_CONTEXT);
+      }
+    },
+    {
+      ...(deps.onPumpError === undefined
+        ? {}
+        : {
+            onError: (error) => {
+              if (!living.signal.aborted) deps.onPumpError?.(error);
+            },
+          }),
+    },
+  );
+
   const extensions: Extension[] = [
-    createBaseExtension(deps.baseExtensionOptions),
+    createBaseExtension({
+      ...deps.baseExtensionOptions,
+      workspaces: deps.baseExtensionOptions?.workspaces ?? (() => currentWorkspaces),
+    }),
     createReadonlyToolsExtension(),
     createCodingToolsExtension(),
     createShellPathsExtension(),
@@ -247,19 +311,28 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
         : { backgroundAfterMs: deps.backgroundAfterMs }),
     }),
     createToolSearchExtension(),
-    createCachedCompactionExtension(),
+    createCachedCompactionExtension({
+      onCompact: (event) => {
+        pendingCompactionUsage.push({
+          modelKey: `${event.model.provider}/${event.model.modelId}`,
+          usage: event.usage,
+        });
+        compactionUsagePass.request();
+      },
+    }),
+    ...(codemodeHandle === undefined ? [] : [codemodeHandle.extension]),
     createMemoryExtension({
       resolve: (conversationId) =>
         conversationId === ROOT_CONVERSATION_ID ? memoryBinding : undefined,
     }),
     createRouterExtension({
-      cwd: projectRoot,
+      cwd: getPrimaryWorkspace,
       workerModel: () => {
         const slots = getModelSlots();
         return slots.worker ?? slots.router;
       },
       workerInstructions,
-      project: () => deps.projectMeta?.() ?? { title, workspaces },
+      project: () => deps.projectMeta?.() ?? { title, workspaces: currentWorkspaces },
       ...(deps.projectMemory === undefined ? {} : { projectMemory: deps.projectMemory }),
       ...(deps.modelProfiles === undefined ? {} : { modelProfiles: deps.modelProfiles }),
       tasks: taskManager,
@@ -294,7 +367,10 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
         settings,
         ...(deps.onReport === undefined ? {} : { onReport: deps.onReport }),
         env: (target) => {
-          const cwd = target.cwd === undefined ? projectRoot : resolve(projectRoot, target.cwd);
+          const cwd =
+            target.cwd === undefined
+              ? getPrimaryWorkspace()
+              : resolve(getPrimaryWorkspace(), target.cwd);
           let environment = environments.get(cwd);
           if (environment === undefined) {
             environment = new NodeExecutionEnv({ cwd });
@@ -308,6 +384,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
   } catch (error) {
     unbindMcp?.();
     if (ownsTaskManager) taskManager.killAll();
+    if (ownsCodemode) await codemodeHandle?.close().catch(() => undefined);
     throw error;
   }
   harnessRef = harness;
@@ -326,11 +403,15 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     pump?.close();
     await pump?.idle();
     await dreamer?.close();
+    if (pendingCompactionUsage.length > 0) compactionUsagePass.request();
+    await compactionUsagePass.idle();
+    compactionUsagePass.close();
     try {
       await harness.close(BACKGROUND_CONTEXT);
     } finally {
       unbindMcp?.();
       if (ownsTaskManager) taskManager.killAll();
+      if (ownsCodemode) await codemodeHandle?.close().catch(() => undefined);
       await Promise.all(
         [...environments.values()].map((environment) =>
           environment.cleanup(BACKGROUND_CONTEXT).catch(() => undefined),
@@ -653,7 +734,10 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
       const board = await readBoard(harness, context);
       return readQuestions(harness, context, board);
     },
-    usage: (context = BACKGROUND_CONTEXT) => projectUsage(harness, root.id, context),
+    usage: async (context = BACKGROUND_CONTEXT) => {
+      await compactionUsagePass.idle();
+      return projectUsage(harness, root.id, context);
+    },
     syncMcpExtensions: async (context = BACKGROUND_CONTEXT) => {
       context.abortSignal?.throwIfAborted();
       activeMcpSyncPass.request();
@@ -680,6 +764,18 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
         },
         context,
       );
+    },
+    reconfigureWorkspaces: async (workspaces, context = BACKGROUND_CONTEXT) => {
+      if (workspaces.length === 0) {
+        throw new RangeError("reconfigureWorkspaces requires at least one workspace");
+      }
+      const previousPrimary = getPrimaryWorkspace();
+      const next = workspaces.map((dir) => resolve(previousPrimary, dir));
+      currentWorkspaces = next;
+      const nextPrimary = next[0] ?? projectRoot;
+      if (nextPrimary !== previousPrimary) {
+        await root.configure({ cwd: nextPrimary }, context);
+      }
     },
     requestPump: () => activePump.request(),
     close: () => {
