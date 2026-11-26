@@ -179,3 +179,57 @@ export function useConversationStream(
     error,
   };
 }
+
+export function useProjectBoards(projectIds: readonly string[], enabled: boolean) {
+  const [boards, setBoards] = useState<Record<string, BoardViewPayload>>({});
+  const key = projectIds.join("\0");
+
+  useEffect(() => {
+    const ids = key === "" ? [] : key.split("\0");
+    if (!enabled || ids.length === 0) {
+      setBoards({});
+      return;
+    }
+    let active = true;
+    const controllers = ids.map((pid) => {
+      const controller = new AbortController();
+      const run = async () => {
+        let delayMs = 800;
+        while (active && !controller.signal.aborted) {
+          try {
+            for await (const event of api.streamBoard(pid, { signal: controller.signal })) {
+              if (!active) return;
+              delayMs = 800;
+              if (event.type === "board") {
+                setBoards((prev) => ({ ...prev, [pid]: event.board }));
+              }
+            }
+          } catch {
+            if (!active || controller.signal.aborted) return;
+          }
+          if (!active || controller.signal.aborted) return;
+          await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+          delayMs = Math.min(delayMs * 2, 10_000);
+        }
+      };
+      void run();
+      return controller;
+    });
+
+    setBoards((prev) => {
+      const keep = new Set(ids);
+      const next: Record<string, BoardViewPayload> = {};
+      for (const [id, b] of Object.entries(prev)) {
+        if (keep.has(id)) next[id] = b;
+      }
+      return next;
+    });
+
+    return () => {
+      active = false;
+      for (const c of controllers) c.abort();
+    };
+  }, [key, enabled]);
+
+  return boards;
+}

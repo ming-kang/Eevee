@@ -5,7 +5,63 @@
 @import "@earendil-works/design-tokens/pi.css";
 @import "@earendil-works/elanor-react/elanor.min.css";
 
-:root {
+/* Unlayered token overrides placed AFTER design-tokens/pi.css so they always win */
+:root,
+:root[data-theme="light"],
+:root[data-color-scheme="light"] {
+  --ev-bg: #ffffff;
+  --ev-sidebar: #f7f7f8;
+  --ev-surface: #ffffff;
+  --ev-surface-2: #f1f1f3;
+  --ev-fg: #202024;
+  --ev-fg-muted: #51515b;
+  --ev-fg-subtle: #686873;
+  --ev-border: rgb(16 24 40 / 0.1);
+  --ev-border-strong: rgb(16 24 40 / 0.16);
+  --ev-separator: color-mix(in oklab, var(--ev-fg) 7%, transparent);
+  --ev-hover: color-mix(in oklab, var(--ev-fg) 5%, transparent);
+  --ev-selected: color-mix(in oklab, var(--ev-fg) 8%, transparent);
+  --ev-accent: #184f95;
+  --ev-accent-fg: #ffffff;
+  --ev-danger: #b8323e;
+  --ev-success: #14704a;
+  --ev-warning: #d99520;
+  --ev-warning-fg: #965600;
+  --ev-accent-soft: color-mix(in oklab, var(--ev-accent) 10%, transparent);
+  --ev-danger-soft: color-mix(in oklab, var(--ev-danger) 10%, transparent);
+  --ev-success-soft: color-mix(in oklab, var(--ev-success) 10%, transparent);
+  --ev-warning-soft: color-mix(in oklab, var(--ev-warning) 14%, transparent);
+  --ev-glass: color-mix(in srgb, var(--ev-surface) 88%, transparent);
+  --ev-scrollbar: color-mix(in oklab, var(--ev-fg) 18%, transparent);
+  --ev-scrollbar-hover: color-mix(in oklab, var(--ev-fg) 30%, transparent);
+  --ev-shadow-strength: 1;
+  --ev-hairline: 0.5px;
+  --ev-shadow-stroke: 0 0 0 var(--ev-hairline) var(--ev-border);
+  --ev-shadow-soft:
+    var(--ev-shadow-stroke),
+    0 1px 2px rgb(0 0 0 / calc(0.03 * var(--ev-shadow-strength))),
+    0 8px 20px rgb(0 0 0 / calc(0.04 * var(--ev-shadow-strength)));
+  --ev-shadow-panel:
+    var(--ev-shadow-stroke),
+    0 1px 2px rgb(0 0 0 / calc(0.04 * var(--ev-shadow-strength))),
+    0 4px 12px rgb(0 0 0 / calc(0.04 * var(--ev-shadow-strength)));
+  --ev-shadow-prominent:
+    var(--ev-shadow-stroke),
+    0 2px 6px rgb(0 0 0 / calc(0.06 * var(--ev-shadow-strength))),
+    0 16px 32px -8px rgb(0 0 0 / calc(0.08 * var(--ev-shadow-strength)));
+  --ev-shadow-focus: 0 0 0 2px var(--ev-accent);
+  --ev-shadow-focus-inset: inset 0 0 0 2px var(--ev-accent);
+  --ev-dur-fast: 120ms;
+  --ev-dur-base: 200ms;
+  --ev-dur-slow: 300ms;
+  --ev-ease-out: cubic-bezier(0.165, 0.84, 0.44, 1);
+
+  --ev-header-h: 48px;
+  --ev-chat-max: 720px;
+  --ev-gutter: 28px;
+  --ev-control-inset: 12px;
+  --ev-titlebar-clear: 48px;
+
   --primitive-font-family-mono:
     "Maple Mono NF CN", "Maple Mono NF", "Commit Mono", ui-monospace, "Cascadia Code",
     "Consolas", monospace;
@@ -13,6 +69,61 @@
     "LXGW WenKai", "LXGW WenKai Screen", "Mallos Serif", "Georgia", serif;
   --primitive-font-family-sans-serif:
     "LXGW WenKai", "LXGW WenKai Screen", "Inter", system-ui, -apple-system, sans-serif;
+  --semantic-font-family-ui: var(--primitive-font-family-sans-serif);
+  --semantic-font-family-prose: var(--primitive-font-family-sans-serif);
+
+  --semantic-color-background-canvas: var(--ev-bg);
+  --semantic-color-background-surface: var(--ev-surface);
+  --semantic-color-background-fill-secondary: var(--ev-surface-2);
+  --semantic-color-text-primary: var(--ev-fg);
+  --semantic-color-text-secondary: var(--ev-fg-muted);
+  --semantic-color-border-secondary: var(--ev-border);
+  --semantic-color-border-primary: var(--ev-border-strong);
+  --semantic-color-background-fill-primary: var(--ev-fg);
+  --semantic-color-background-fill-primary-hover: color-mix(in oklab, var(--ev-fg) 86%, var(--ev-bg));
+  --semantic-color-background-fill-primary-active: color-mix(in oklab, var(--ev-fg) 78%, var(--ev-bg));
+  --semantic-color-text-on-primary-fill: var(--ev-bg);
+  --semantic-color-border-information: var(--ev-border-strong);
+  --semantic-color-text-information: var(--ev-fg);
+  --semantic-color-background-fill-ghost-hover: var(--ev-hover);
+  --semantic-color-background-fill-ghost-active: var(--ev-selected);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"],
+:root[data-color-scheme="dark"] {
+  --ev-bg: #19191c;
+  --ev-sidebar: #141416;
+  --ev-surface: #202024;
+  --ev-surface-2: #2b2b30;
+  --ev-fg: #eeeeef;
+  --ev-fg-muted: #c4c4cc;
+  --ev-fg-subtle: #a2a2ae;
+  --ev-border: rgb(255 255 255 / 0.12);
+  --ev-border-strong: rgb(255 255 255 / 0.2);
+  --ev-accent: #6da7ec;
+  --ev-danger: #ff7a7c;
+  --ev-success: #3dd68c;
+  --ev-warning: #ffb224;
+  --ev-warning-fg: #ffca5c;
+  --ev-shadow-strength: 2;
+
+  --semantic-color-background-canvas: var(--ev-bg);
+  --semantic-color-background-surface: var(--ev-surface);
+  --semantic-color-background-fill-secondary: var(--ev-surface-2);
+  --semantic-color-text-primary: var(--ev-fg);
+  --semantic-color-text-secondary: var(--ev-fg-muted);
+  --semantic-color-border-secondary: var(--ev-border);
+  --semantic-color-border-primary: var(--ev-border-strong);
+  --semantic-color-background-fill-primary: var(--ev-fg);
+  --semantic-color-background-fill-primary-hover: color-mix(in oklab, var(--ev-fg) 88%, var(--ev-bg));
+  --semantic-color-background-fill-primary-active: color-mix(in oklab, var(--ev-fg) 80%, var(--ev-bg));
+  --semantic-color-text-on-primary-fill: var(--ev-bg);
+  --semantic-color-border-information: var(--ev-border-strong);
+  --semantic-color-text-information: var(--ev-fg);
+  --semantic-color-background-fill-ghost-hover: var(--ev-hover);
+  --semantic-color-background-fill-ghost-active: var(--ev-selected);
+  color-scheme: dark;
 }
 
 @layer eevee-reset {
@@ -30,10 +141,87 @@
   }
 
   body {
-    background: var(--semantic-color-background-canvas);
-    color: var(--semantic-color-text-primary);
-    font-family: var(--semantic-font-family-ui);
+    background: var(--ev-bg);
+    color: var(--ev-fg);
+    font-family: var(--primitive-font-family-sans-serif);
+    font-size: 15px;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+  }
+
+  code,
+  pre,
+  .ev-mono {
+    font-family: var(--primitive-font-family-mono);
+    font-feature-settings: "calt";
+  }
+
+  ::selection {
+    background: var(--ev-accent-soft);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  @media (hover: hover) {
+    *:hover {
+      scrollbar-color: var(--ev-scrollbar) transparent;
+    }
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 999px;
+  }
+
+  @media (hover: hover) {
+    *:hover::-webkit-scrollbar-thumb {
+      background: var(--ev-scrollbar);
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background: var(--ev-scrollbar-hover);
+    }
+  }
+
+  ::highlight(ev-find) {
+    color: inherit;
+    background-color: color-mix(in oklab, var(--ev-warning) 30%, transparent);
+  }
+
+  ::highlight(ev-find-active) {
+    color: inherit;
+    background-color: color-mix(in oklab, var(--ev-warning) 58%, transparent);
+  }
+
+  :root.ev-sash-drag {
+    cursor: col-resize;
+  }
+
+  :root.ev-sash-drag * {
+    user-select: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

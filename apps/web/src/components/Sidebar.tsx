@@ -1,234 +1,254 @@
 import {
   AddIcon,
-  ChevronRightIcon,
+  CloseIcon,
   DarkModeIcon,
-  ExpandMoreIcon,
-  ForumIcon,
+  KeyboardIcon,
   LightModeIcon,
   LogoutIcon,
-  SettingsIcon,
-  SmartToyIcon,
+  MoreHorizIcon,
+  SearchIcon,
 } from "@earendil-works/elanor-icons-react";
-import { IconButton, Stack } from "@earendil-works/elanor-react";
-import type { BoardViewPayload, ConversationRef, ProjectSummary } from "@eevee/protocol";
-import { useState } from "react";
-import { workerStatusLabel } from "../lib/format.ts";
+import { IconButton, Menu } from "@earendil-works/elanor-react";
+import type { BoardViewPayload, ProjectId, ProjectSummary } from "@eevee/protocol";
+import { useMemo, useRef, useState } from "react";
+import type { Route } from "../lib/router.ts";
+import { modLabel } from "../lib/shortcuts.ts";
 import type { ThemePreference, ThemeScheme } from "../lib/theme.ts";
+import { deriveBoardSummary } from "../lib/transcript.ts";
+import { BrandLogo } from "./BrandLogo.tsx";
 
 export type SidebarProps = {
   readonly projects: readonly ProjectSummary[];
-  readonly selectedProjectId: string | undefined;
-  readonly activeView: "workspace" | "settings";
-  readonly activeRef: ConversationRef;
-  readonly board: BoardViewPayload | undefined;
+  readonly boards: Readonly<Record<string, BoardViewPayload>>;
+  readonly route: Route;
   readonly themePreference: ThemePreference;
   readonly themeScheme: ThemeScheme;
-  readonly onSelectProject: (projectId: string) => void;
-  readonly onOpenCreateProject: () => void;
-  readonly onSelectConversation: (ref: ConversationRef) => void;
-  readonly onOpenSettings: () => void;
+  readonly onOpenOverview: () => void;
+  readonly onOpenProject: (pid: ProjectId, view?: "chat" | "memory" | "usage") => void;
+  readonly onNewProject: () => void;
+  readonly onRenameProject: (project: ProjectSummary) => void;
+  readonly onDeleteProject: (project: ProjectSummary) => void;
+  readonly onOpenPalette: () => void;
+  readonly onOpenControl: () => void;
+  readonly onOpenShortcuts: () => void;
   readonly onCycleTheme: () => void;
   readonly onLogout: () => void;
 };
 
 export function Sidebar({
   projects,
-  selectedProjectId,
-  activeView,
-  activeRef,
-  board,
+  boards,
+  route,
   themePreference,
   themeScheme,
-  onSelectProject,
-  onOpenCreateProject,
-  onSelectConversation,
-  onOpenSettings,
+  onOpenOverview,
+  onOpenProject,
+  onNewProject,
+  onRenameProject,
+  onDeleteProject,
+  onOpenPalette,
+  onOpenControl,
+  onOpenShortcuts,
   onCycleTheme,
   onLogout,
 }: SidebarProps) {
-  const [showClosed, setShowClosed] = useState(false);
+  const [filter, setFilter] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const workers = board?.workers ?? [];
-  const ticketsById = new Map((board?.tickets ?? []).map((t) => [t.id, t]));
-  const activeWorkers = workers.filter((w) => w.status !== "closed");
-  const closedWorkers = workers.filter((w) => w.status === "closed");
-  const pendingQuestions = (board?.questions ?? []).filter(
-    (q) => q.answeredAt === undefined && q.withdrawnAt === undefined,
-  ).length;
+  const filtered = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return projects;
+    return projects.filter((p) => `${p.title} ${p.id}`.toLowerCase().includes(q));
+  }, [projects, filter]);
+
+  const totalPending = useMemo(
+    () => projects.reduce((sum, p) => sum + deriveBoardSummary(boards[p.id]).pendingQuestions, 0),
+    [projects, boards],
+  );
+
+  const currentPid = route.name === "project" ? route.pid : undefined;
 
   return (
-    <aside className="eevee-sidebar">
-      <div className="eevee-sidebar-header">
-        <div className="eevee-brand-row">
-          <div className="eevee-brand">
-            <SmartToyIcon width={18} height={18} />
-            <span>Eevee</span>
-          </div>
-          <IconButton aria-label="新建项目" title="新建项目" onClick={onOpenCreateProject}>
-            <AddIcon width={18} height={18} />
-          </IconButton>
-        </div>
-
-        <select
-          aria-label="切换项目"
-          className="eevee-project-select"
-          value={selectedProjectId ?? ""}
-          onChange={(event) => {
-            if (event.target.value) onSelectProject(event.target.value);
-          }}
-        >
-          {projects.length === 0 && <option value="">暂无项目</option>}
-          {projects.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.title}
-            </option>
-          ))}
-        </select>
+    <>
+      <div className="ev-side-head">
+        <button type="button" className="ev-brand" onClick={onOpenOverview}>
+          <BrandLogo size={20} />
+          <span>Eevee</span>
+        </button>
       </div>
 
-      <div className="eevee-sidebar-scroll">
-        {selectedProjectId && (
-          <>
-            <div className="eevee-nav-label">主入口</div>
+      <div className="ev-side-search-wrap">
+        <div className="ev-side-search">
+          <SearchIcon width={14} height={14} />
+          <input
+            ref={inputRef}
+            className="ev-raw-input"
+            type="search"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && filter) {
+                event.preventDefault();
+                setFilter("");
+              }
+            }}
+            placeholder="筛选项目…"
+            aria-label="筛选项目"
+          />
+          {filter ? (
             <button
               type="button"
-              className="eevee-nav-item"
-              data-active={activeView === "workspace" && activeRef === "router"}
-              onClick={() => onSelectConversation("router")}
+              style={{
+                border: 0,
+                background: "transparent",
+                color: "var(--ev-fg-subtle)",
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                width: 20,
+                height: 20,
+              }}
+              aria-label="清空筛选"
+              onClick={() => {
+                setFilter("");
+                inputRef.current?.focus();
+              }}
             >
-              <ForumIcon width={17} height={17} style={{ marginTop: 2, flexShrink: 0 }} />
-              <div className="eevee-nav-body">
-                <div className="eevee-nav-title">
-                  <span className="eevee-nav-title-text">Router</span>
-                  {pendingQuestions > 0 && (
-                    <span className="eevee-badge" data-tone="warning">
-                      {pendingQuestions} 问
-                    </span>
-                  )}
-                </div>
-                <span className="eevee-nav-meta">全局统筹 · 二叉森林记忆</span>
-              </div>
+              <CloseIcon width={13} height={13} />
             </button>
+          ) : (
+            <button
+              type="button"
+              className="ev-kbd-pill"
+              title={`打开命令面板（${modLabel()} K）`}
+              onClick={onOpenPalette}
+            >
+              {modLabel()} K
+            </button>
+          )}
+        </div>
 
-            <div className="eevee-nav-label">
-              <span>Workers ({activeWorkers.length})</span>
-            </div>
-            {activeWorkers.length === 0 ? (
-              <div
-                style={{
-                  padding: "6px 10px",
-                  fontSize: "0.82rem",
-                  color: "var(--semantic-color-text-secondary)",
-                }}
-              >
-                暂无活跃 Worker
-              </div>
-            ) : (
-              activeWorkers.map((worker) => {
-                const ticket =
-                  worker.activeTicketId !== undefined
-                    ? ticketsById.get(worker.activeTicketId)
-                    : undefined;
-                return (
-                  <button
-                    key={worker.id}
-                    type="button"
-                    className="eevee-nav-item"
-                    data-active={activeView === "workspace" && activeRef === worker.id}
-                    onClick={() => onSelectConversation(worker.id)}
-                  >
-                    <span className="eevee-dot" data-status={worker.status} />
-                    <div className="eevee-nav-body">
-                      <div className="eevee-nav-title">
-                        <span className="eevee-nav-title-text">
-                          {worker.id} · {worker.name}
-                        </span>
-                        {worker.activeTaskCount > 0 && (
-                          <span className="eevee-badge" data-tone="info">
-                            {worker.activeTaskCount} 任务
-                          </span>
-                        )}
-                      </div>
-                      <span className="eevee-nav-meta">
-                        {ticket
-                          ? `${ticket.id}: ${ticket.title}`
-                          : workerStatusLabel(worker.status)}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-
-            {closedWorkers.length > 0 && (
-              <>
-                <button
-                  type="button"
-                  className="eevee-nav-label"
-                  style={{ border: 0, background: "transparent", cursor: "pointer", width: "100%" }}
-                  onClick={() => setShowClosed((prev) => !prev)}
-                >
-                  <span>已关闭 Workers ({closedWorkers.length})</span>
-                  {showClosed ? (
-                    <ExpandMoreIcon width={15} height={15} />
-                  ) : (
-                    <ChevronRightIcon width={15} height={15} />
-                  )}
-                </button>
-                {showClosed &&
-                  closedWorkers.map((worker) => (
-                    <button
-                      key={worker.id}
-                      type="button"
-                      className="eevee-nav-item"
-                      data-active={activeView === "workspace" && activeRef === worker.id}
-                      onClick={() => onSelectConversation(worker.id)}
-                    >
-                      <span className="eevee-dot" data-status="closed" />
-                      <div className="eevee-nav-body">
-                        <div className="eevee-nav-title">
-                          <span className="eevee-nav-title-text">
-                            {worker.id} · {worker.name}
-                          </span>
-                        </div>
-                        <span className="eevee-nav-meta">已关闭</span>
-                      </div>
-                    </button>
-                  ))}
-              </>
-            )}
-          </>
+        {filter.trim() === "" && (
+          <div className="ev-nav-row" data-active={route.name === "overview"}>
+            <button type="button" className="ev-nav-row-btn" onClick={onOpenOverview}>
+              <span className="ev-truncate" style={{ flex: 1 }}>
+                概览
+              </span>
+              {totalPending > 0 && (
+                <span className="ev-count-badge" data-tone="warning">
+                  {totalPending > 99 ? "99+" : totalPending}
+                </span>
+              )}
+            </button>
+          </div>
         )}
       </div>
 
-      <div className="eevee-sidebar-footer">
+      <div className="ev-side-section">
+        <span>项目 ({projects.length})</span>
+        <IconButton aria-label="新建项目" title="新建项目" onClick={onNewProject}>
+          <AddIcon width={16} height={16} />
+        </IconButton>
+      </div>
+
+      <div className="ev-side-list">
+        {filtered.map((project) => {
+          const summary = deriveBoardSummary(boards[project.id]);
+          const pending = summary.pendingQuestions;
+          const active = currentPid === project.id;
+          return (
+            <div key={project.id} className="ev-nav-row" data-active={active}>
+              <button
+                type="button"
+                className="ev-nav-row-btn"
+                title={project.workspaces.join(" · ")}
+                onClick={() => onOpenProject(project.id, "chat")}
+              >
+                <span className="ev-dot" data-stage={summary.stage} />
+                <span className="ev-truncate" style={{ flex: 1 }}>
+                  {project.title}
+                </span>
+              </button>
+
+              <div className="ev-nav-row-end">
+                {pending > 0 && (
+                  <span
+                    className="ev-count-badge ev-row-badge-hide"
+                    data-tone="warning"
+                    style={{ position: "absolute", pointerEvents: "none" }}
+                  >
+                    {pending > 99 ? "99+" : pending}
+                  </span>
+                )}
+                <Menu.Root>
+                  <Menu.Trigger
+                    render={
+                      <IconButton
+                        className="ev-row-menu-btn"
+                        aria-label={`${project.title} 操作`}
+                        title="项目操作"
+                      >
+                        <MoreHorizIcon width={16} height={16} />
+                      </IconButton>
+                    }
+                  />
+                  <Menu.Portal>
+                    <Menu.Positioner align="end" sideOffset={4}>
+                      <Menu.Popup>
+                        <Menu.Item onClick={() => onOpenProject(project.id, "memory")}>
+                          项目记忆
+                        </Menu.Item>
+                        <Menu.Item onClick={() => onOpenProject(project.id, "usage")}>
+                          用量统计
+                        </Menu.Item>
+                        <Menu.Separator />
+                        <Menu.Item onClick={() => onRenameProject(project)}>
+                          重命名 / 工作目录
+                        </Menu.Item>
+                        <Menu.Item onClick={() => onDeleteProject(project)}>删除项目</Menu.Item>
+                      </Menu.Popup>
+                    </Menu.Positioner>
+                  </Menu.Portal>
+                </Menu.Root>
+              </div>
+            </div>
+          );
+        })}
+
+        {projects.length > 0 && filtered.length === 0 && (
+          <div style={{ padding: "8px 10px", fontSize: 12.5, color: "var(--ev-fg-subtle)" }}>
+            没有匹配的项目
+          </div>
+        )}
+      </div>
+
+      <div className="ev-side-footer">
         <button
           type="button"
-          className="eevee-nav-item"
-          style={{ padding: "6px 8px" }}
-          data-active={activeView === "settings"}
-          onClick={onOpenSettings}
+          className="ev-nav-row-btn"
+          style={{ padding: "6px 10px", fontSize: 13.5, color: "var(--ev-fg-muted)" }}
+          onClick={onOpenControl}
         >
-          <SettingsIcon width={17} height={17} style={{ marginTop: 1, flexShrink: 0 }} />
-          <span style={{ fontSize: "0.88rem" }}>Engine 设置</span>
+          Engine 设置
         </button>
-        <Stack direction="row" gap="xxSmall" align="center">
-          <IconButton
-            aria-label={`切换主题（当前：${themePreference}）`}
-            title={`主题：${themePreference}（点击切换）`}
-            onClick={onCycleTheme}
-          >
-            {themeScheme === "dark" ? (
-              <LightModeIcon width={17} height={17} />
-            ) : (
-              <DarkModeIcon width={17} height={17} />
-            )}
-          </IconButton>
-          <IconButton aria-label="退出登录" title="退出登录" onClick={onLogout}>
-            <LogoutIcon width={17} height={17} />
-          </IconButton>
-        </Stack>
+        <IconButton aria-label="快捷键" title="快捷键（?）" onClick={onOpenShortcuts}>
+          <KeyboardIcon width={16} height={16} />
+        </IconButton>
+        <IconButton
+          aria-label={`切换主题（当前：${themePreference}）`}
+          title={`主题：${themePreference}`}
+          onClick={onCycleTheme}
+        >
+          {themeScheme === "dark" ? (
+            <LightModeIcon width={16} height={16} />
+          ) : (
+            <DarkModeIcon width={16} height={16} />
+          )}
+        </IconButton>
+        <IconButton aria-label="退出登录" title="退出登录" onClick={onLogout}>
+          <LogoutIcon width={16} height={16} />
+        </IconButton>
       </div>
-    </aside>
+    </>
   );
 }

@@ -1,13 +1,5 @@
 import { DownloadIcon, UploadIcon } from "@earendil-works/elanor-icons-react";
-import {
-  Button,
-  Field,
-  Heading,
-  Input,
-  Separator,
-  Stack,
-  TextArea,
-} from "@earendil-works/elanor-react";
+import { Button, Field, Heading, Input, Separator, TextArea } from "@earendil-works/elanor-react";
 import type { ConfigBundle, EngineSettings, ModelChoice } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api.ts";
@@ -136,105 +128,110 @@ export function ConfigTab() {
   };
 
   return (
-    <Stack direction="column" gap="large">
-      {error && <div className="eevee-error-banner">{error}</div>}
+    <div className="ev-settings-section" style={{ gap: 22 }}>
+      {error && <div className="ev-error-banner">{error}</div>}
       {notice && (
-        <span className="eevee-badge" data-tone="positive" style={{ alignSelf: "flex-start" }}>
-          {notice}
-        </span>
+        <div>
+          <span className="eevee-badge" data-tone="positive">
+            {notice}
+          </span>
+        </div>
       )}
 
-      <Stack direction="column" gap="small">
+      <div className="ev-settings-section">
         <Heading level={2} size={5}>
-          全局运行策略与默认模型
+          运行策略
         </Heading>
 
-        <Stack direction="row" gap="small" style={{ flexWrap: "wrap" }}>
-          <Field.Root style={{ flex: 1, minWidth: 180 }}>
-            <Field.Label>最大并发 Worker 数</Field.Label>
-            <Input type="text" value={maxActiveWorkers} onValueChange={setMaxActiveWorkers} />
-          </Field.Root>
-          <Field.Root style={{ flex: 1, minWidth: 180 }}>
-            <Field.Label>前台超时切后台 (ms)</Field.Label>
-            <Input type="text" value={backgroundAfterMs} onValueChange={setBackgroundAfterMs} />
-          </Field.Root>
-          <Field.Root style={{ flex: 1, minWidth: 180 }}>
-            <Field.Label>Router 记忆阈值 (tokens)</Field.Label>
-            <Input type="text" value={routerContextTokens} onValueChange={setRouterContextTokens} />
-          </Field.Root>
-          <Field.Root style={{ flex: 1, minWidth: 180 }}>
-            <Field.Label>空闲休眠时间 (ms, 0 关闭)</Field.Label>
-            <Input type="text" value={idleHibernateMs} onValueChange={setIdleHibernateMs} />
-          </Field.Root>
-        </Stack>
+        <div className="ev-settings-card">
+          <div className="ev-settings-grid-2">
+            <Field.Root>
+              <Field.Label>并发 Worker 上限</Field.Label>
+              <Input type="text" value={maxActiveWorkers} onValueChange={setMaxActiveWorkers} />
+            </Field.Root>
+            <Field.Root>
+              <Field.Label>命令转后台阈值 (ms)</Field.Label>
+              <Input type="text" value={backgroundAfterMs} onValueChange={setBackgroundAfterMs} />
+            </Field.Root>
+            <Field.Root>
+              <Field.Label>Router 记忆阈值 (tokens)</Field.Label>
+              <Input
+                type="text"
+                value={routerContextTokens}
+                onValueChange={setRouterContextTokens}
+              />
+            </Field.Root>
+            <Field.Root>
+              <Field.Label>空闲休眠 (ms)</Field.Label>
+              <Input type="text" value={idleHibernateMs} onValueChange={setIdleHibernateMs} />
+            </Field.Root>
+          </div>
 
-        <Stack direction="row" gap="small" style={{ flexWrap: "wrap" }}>
-          <Field.Root style={{ flex: 1, minWidth: 220 }}>
-            <Field.Label>默认 Router 模型 (provider/model[:thinking])</Field.Label>
-            <Input
-              type="text"
-              value={routerModel}
-              onValueChange={setRouterModel}
-              placeholder="anthropic/claude-sonnet-4-5:medium"
-            />
-          </Field.Root>
-          <Field.Root style={{ flex: 1, minWidth: 220 }}>
-            <Field.Label>默认 Worker 模型</Field.Label>
-            <Input
-              type="text"
-              value={workerModel}
-              onValueChange={setWorkerModel}
-              placeholder="留空则跟随 Router"
-            />
-          </Field.Root>
-          <Field.Root style={{ flex: 1, minWidth: 220 }}>
-            <Field.Label>默认 Dreamer 模型</Field.Label>
-            <Input
-              type="text"
-              value={dreamerModel}
-              onValueChange={setDreamerModel}
-              placeholder="留空则暂不后台摘要"
-            />
-          </Field.Root>
-        </Stack>
+          <Separator />
 
-        <Stack direction="row" gap="xSmall" align="center">
-          <Button
-            hierarchy="primary"
-            density="compact"
-            pending={saving}
-            onClick={() => void saveSettings()}
-          >
-            保存设置
-          </Button>
-          {saved && (
-            <span className="eevee-badge" data-tone="positive">
-              已保存
-            </span>
-          )}
-        </Stack>
-      </Stack>
+          <div className="ev-settings-grid-3">
+            <Field.Root>
+              <Field.Label>Router 模型</Field.Label>
+              <Input
+                type="text"
+                value={routerModel}
+                onValueChange={setRouterModel}
+                placeholder="provider/model"
+              />
+            </Field.Root>
+            <Field.Root>
+              <Field.Label>Worker 模型</Field.Label>
+              <Input
+                type="text"
+                value={workerModel}
+                onValueChange={setWorkerModel}
+                placeholder="跟随 Router"
+              />
+            </Field.Root>
+            <Field.Root>
+              <Field.Label>Dreamer 模型</Field.Label>
+              <Input
+                type="text"
+                value={dreamerModel}
+                onValueChange={setDreamerModel}
+                placeholder="未启用"
+              />
+            </Field.Root>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Button
+              hierarchy="primary"
+              density="compact"
+              pending={saving}
+              onClick={() => void saveSettings()}
+            >
+              保存
+            </Button>
+            {saved && (
+              <span className="eevee-badge" data-tone="positive">
+                已保存
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
 
       <Separator />
 
-      <Stack direction="column" gap="small">
-        <Stack
-          direction="row"
-          gap="small"
-          align="center"
-          style={{ justifyContent: "space-between" }}
-        >
+      <div className="ev-settings-section">
+        <div className="ev-settings-head">
           <Heading level={2} size={5}>
-            配置导入导出（JSON Bundle）
+            配置导入导出
           </Heading>
-          <Stack direction="row" gap="xSmall">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Button
               hierarchy="secondary"
               density="compact"
               iconStart={<DownloadIcon width={15} height={15} />}
               onClick={() => void handleExport()}
             >
-              导出到下方
+              导出
             </Button>
             <Button
               hierarchy="primary"
@@ -244,18 +241,18 @@ export function ConfigTab() {
               pending={importing}
               onClick={() => void handleImport()}
             >
-              导入应用
+              导入
             </Button>
-          </Stack>
-        </Stack>
+          </div>
+        </div>
         <TextArea
           monospace
           rows={10}
           value={bundleJson}
           onValueChange={setBundleJson}
-          placeholder="点击「导出到下方」查看完整配置 JSON，或粘贴 ConfigBundle JSON 后点击「导入应用」..."
+          placeholder="ConfigBundle JSON"
         />
-      </Stack>
-    </Stack>
+      </div>
+    </div>
   );
 }

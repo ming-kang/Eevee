@@ -1,14 +1,5 @@
 import { KeyIcon, LogoutIcon, RefreshIcon } from "@earendil-works/elanor-icons-react";
-import {
-  Button,
-  Card,
-  Field,
-  Heading,
-  Input,
-  Link,
-  Stack,
-  Text,
-} from "@earendil-works/elanor-react";
+import { Button, Field, Heading, Input, Link, Text } from "@earendil-works/elanor-react";
 import type { LoginAuthEvent, LoginPromptEvent, ProviderSummary } from "@eevee/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
@@ -156,10 +147,10 @@ export function ProvidersTab() {
   };
 
   return (
-    <Stack direction="column" gap="medium">
-      <Stack direction="row" gap="small" align="center" style={{ justifyContent: "space-between" }}>
+    <div className="ev-settings-section">
+      <div className="ev-settings-head">
         <Heading level={2} size={5}>
-          Providers 与凭据
+          Providers
         </Heading>
         <Button
           hierarchy="secondary"
@@ -170,180 +161,177 @@ export function ProvidersTab() {
         >
           刷新
         </Button>
-      </Stack>
+      </div>
 
-      {error && <div className="eevee-error-banner">{error}</div>}
+      {error && <div className="ev-error-banner">{error}</div>}
 
       {login && (
-        <Card>
-          <Stack direction="column" gap="small">
-            <Stack
-              direction="row"
-              gap="small"
-              align="center"
-              style={{ justifyContent: "space-between" }}
-            >
-              <Heading level={3} size={6}>
-                OAuth 登录 · {login.providerId}
-              </Heading>
-              <Button hierarchy="secondary" density="compact" onClick={() => void cancelLogin()}>
-                关闭
-              </Button>
-            </Stack>
-            {login.authEvents.map(({ id, event: ev }) => (
-              <div key={id} style={{ fontSize: "0.86rem" }}>
-                {ev.type === "auth_url" && (
-                  <Stack direction="column" gap="xxSmall">
-                    {ev.instructions && <Text style={{ margin: 0 }}>{ev.instructions}</Text>}
-                    <Link href={ev.url} target="_blank" rel="noreferrer noopener">
-                      {ev.url}
-                    </Link>
-                  </Stack>
-                )}
-                {ev.type === "device_code" && (
-                  <Stack direction="column" gap="xxSmall">
-                    <Text style={{ margin: 0 }}>
-                      授权码：<strong className="eevee-mono">{ev.userCode}</strong>
-                    </Text>
-                    <Link href={ev.verificationUri} target="_blank" rel="noreferrer noopener">
-                      {ev.verificationUri}
-                    </Link>
-                  </Stack>
-                )}
-                {(ev.type === "info" || ev.type === "progress") && (
-                  <Text style={{ margin: 0 }}>{ev.message}</Text>
-                )}
-              </div>
-            ))}
-            {login.prompt && (
-              <Stack direction="column" gap="xSmall">
-                <Text style={{ margin: 0, fontWeight: 500 }}>{login.prompt.message}</Text>
-                {login.prompt.type === "select" ? (
-                  <select
-                    className="eevee-project-select"
-                    value={promptInput}
-                    onChange={(event) => setPromptInput(event.target.value)}
-                  >
-                    {login.prompt.options.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <Input
-                    type={login.prompt.type === "secret" ? "password" : "text"}
-                    value={promptInput}
-                    onValueChange={(value) => setPromptInput(value)}
-                    placeholder={login.prompt.placeholder}
-                  />
-                )}
+        <div className="ev-settings-card">
+          <div className="ev-settings-head">
+            <Heading level={3} size={6}>
+              OAuth 登录 · {login.providerId}
+            </Heading>
+            <Button hierarchy="secondary" density="compact" onClick={() => void cancelLogin()}>
+              关闭
+            </Button>
+          </div>
+          {login.authEvents.map(({ id, event: ev }) => (
+            <div key={id} style={{ fontSize: "13.5px" }}>
+              {ev.type === "auth_url" && (
+                <div className="ev-form-stack" style={{ gap: 4 }}>
+                  {ev.instructions && <Text style={{ margin: 0 }}>{ev.instructions}</Text>}
+                  <Link href={ev.url} target="_blank" rel="noreferrer noopener">
+                    {ev.url}
+                  </Link>
+                </div>
+              )}
+              {ev.type === "device_code" && (
+                <div className="ev-form-stack" style={{ gap: 4 }}>
+                  <Text style={{ margin: 0 }}>
+                    授权码：<strong className="ev-mono">{ev.userCode}</strong>
+                  </Text>
+                  <Link href={ev.verificationUri} target="_blank" rel="noreferrer noopener">
+                    {ev.verificationUri}
+                  </Link>
+                </div>
+              )}
+              {(ev.type === "info" || ev.type === "progress") && (
+                <Text style={{ margin: 0 }}>{ev.message}</Text>
+              )}
+            </div>
+          ))}
+          {login.prompt && (
+            <div className="ev-form-stack" style={{ gap: 8 }}>
+              <Text style={{ margin: 0, fontWeight: 500 }}>{login.prompt.message}</Text>
+              {login.prompt.type === "select" ? (
+                <select
+                  className="ev-select"
+                  value={promptInput}
+                  onChange={(event) => setPromptInput(event.target.value)}
+                >
+                  {login.prompt.options.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <Input
+                  type={login.prompt.type === "secret" ? "password" : "text"}
+                  value={promptInput}
+                  onValueChange={(value) => setPromptInput(value)}
+                  placeholder={login.prompt.placeholder}
+                />
+              )}
+              <div>
                 <Button hierarchy="primary" density="compact" onClick={() => void submitPrompt()}>
                   提交
                 </Button>
-              </Stack>
-            )}
-            {login.done && (
+              </div>
+            </div>
+          )}
+          {login.done && (
+            <div>
               <span className="eevee-badge" data-tone="positive">
                 {login.done}
               </span>
-            )}
-            {login.error && <div className="eevee-error-banner">{login.error}</div>}
-          </Stack>
-        </Card>
+            </div>
+          )}
+          {login.error && <div className="ev-error-banner">{login.error}</div>}
+        </div>
       )}
 
-      <Stack direction="column" gap="xSmall">
+      <div className="ev-settings-list">
         {providers.map((provider) => (
-          <Card key={provider.id} style={{ padding: 12 }}>
-            <Stack direction="column" gap="xSmall">
-              <Stack
-                direction="row"
-                gap="small"
-                align="center"
-                style={{ justifyContent: "space-between", flexWrap: "wrap" }}
+          <div key={provider.id} className="ev-settings-row">
+            <div className="ev-settings-row-main">
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  minWidth: 0,
+                }}
               >
-                <Stack direction="row" gap="xSmall" align="center">
-                  <strong>{provider.name}</strong>
-                  <span
-                    className="eevee-mono"
-                    style={{ fontSize: "0.78rem", color: "var(--semantic-color-text-secondary)" }}
-                  >
-                    {provider.id} · {provider.modelCount} 模型
-                  </span>
-                  <span
-                    className="eevee-badge"
-                    data-tone={provider.configured ? "positive" : "neutral"}
-                  >
-                    {provider.configured
-                      ? `已配置 (${provider.authType ?? provider.authSource ?? "auth"})`
-                      : "未配置"}
-                  </span>
-                </Stack>
-                <Stack direction="row" gap="xSmall">
-                  {provider.authMethods.apiKey && (
-                    <Button
-                      hierarchy="secondary"
-                      density="compact"
-                      iconStart={<KeyIcon width={14} height={14} />}
-                      onClick={() => {
-                        setEditingProvider(
-                          editingProvider === provider.id ? undefined : provider.id,
-                        );
-                        setApiKeyInput("");
-                      }}
-                    >
-                      设置 Key
-                    </Button>
-                  )}
-                  {provider.authMethods.oauth && (
-                    <Button
-                      hierarchy="secondary"
-                      density="compact"
-                      onClick={() => void startOAuth(provider.id)}
-                    >
-                      {provider.authMethods.oauthLabel ?? "OAuth 登录"}
-                    </Button>
-                  )}
-                  {provider.configured && (
-                    <Button
-                      hierarchy="tertiary"
-                      semantic="negative"
-                      density="compact"
-                      iconStart={<LogoutIcon width={14} height={14} />}
-                      onClick={() => void logout(provider.id)}
-                    >
-                      清除
-                    </Button>
-                  )}
-                </Stack>
-              </Stack>
-
-              {editingProvider === provider.id && (
-                <Stack direction="row" gap="xSmall" align="end">
-                  <Field.Root style={{ flex: 1 }}>
-                    <Field.Label>API Key</Field.Label>
-                    <Input
-                      type="password"
-                      value={apiKeyInput}
-                      onValueChange={(value) => setApiKeyInput(value)}
-                      placeholder="输入 API Key（或 $ENV_VAR）"
-                    />
-                  </Field.Root>
+                <span className="ev-dot" data-stage={provider.configured ? "done" : "idle"} />
+                <strong style={{ fontWeight: 500 }}>{provider.name}</strong>
+                <span
+                  className="ev-mono"
+                  style={{ fontSize: "12px", color: "var(--ev-fg-subtle)" }}
+                >
+                  {provider.id} · {provider.modelCount} 模型
+                </span>
+                <span
+                  className="eevee-badge"
+                  data-tone={provider.configured ? "positive" : "neutral"}
+                >
+                  {provider.configured
+                    ? `已配置 (${provider.authType ?? provider.authSource ?? "auth"})`
+                    : "未配置"}
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                {provider.authMethods.apiKey && (
                   <Button
-                    hierarchy="primary"
+                    hierarchy="secondary"
                     density="compact"
-                    pending={savingKey}
-                    onClick={() => void saveApiKey(provider.id)}
+                    iconStart={<KeyIcon width={14} height={14} />}
+                    onClick={() => {
+                      setEditingProvider(editingProvider === provider.id ? undefined : provider.id);
+                      setApiKeyInput("");
+                    }}
                   >
-                    保存
+                    设置 Key
                   </Button>
-                </Stack>
-              )}
-            </Stack>
-          </Card>
+                )}
+                {provider.authMethods.oauth && (
+                  <Button
+                    hierarchy="secondary"
+                    density="compact"
+                    onClick={() => void startOAuth(provider.id)}
+                  >
+                    {provider.authMethods.oauthLabel ?? "OAuth 登录"}
+                  </Button>
+                )}
+                {provider.configured && (
+                  <Button
+                    hierarchy="tertiary"
+                    semantic="negative"
+                    density="compact"
+                    iconStart={<LogoutIcon width={14} height={14} />}
+                    onClick={() => void logout(provider.id)}
+                  >
+                    清除
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {editingProvider === provider.id && (
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 8, width: "100%" }}>
+                <Field.Root style={{ flex: 1 }}>
+                  <Field.Label>API Key</Field.Label>
+                  <Input
+                    type="password"
+                    value={apiKeyInput}
+                    onValueChange={(value) => setApiKeyInput(value)}
+                    placeholder="输入 API Key（或 $ENV_VAR）"
+                  />
+                </Field.Root>
+                <Button
+                  hierarchy="primary"
+                  density="compact"
+                  pending={savingKey}
+                  onClick={() => void saveApiKey(provider.id)}
+                >
+                  保存
+                </Button>
+              </div>
+            )}
+          </div>
         ))}
-      </Stack>
-    </Stack>
+      </div>
+    </div>
   );
 }

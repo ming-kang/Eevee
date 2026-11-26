@@ -1,12 +1,10 @@
 import { AddIcon, DeleteIcon, RefreshIcon } from "@earendil-works/elanor-icons-react";
 import {
   Button,
-  Card,
   Field,
   Heading,
   IconButton,
   Input,
-  Stack,
   Text,
   TextArea,
 } from "@earendil-works/elanor-react";
@@ -105,19 +103,19 @@ export function McpTab() {
   const statuses = state?.status ?? [];
 
   return (
-    <Stack direction="column" gap="medium">
-      <Stack direction="row" gap="small" align="center" style={{ justifyContent: "space-between" }}>
+    <div className="ev-settings-section">
+      <div className="ev-settings-head">
         <Heading level={2} size={5}>
-          共享 MCP 服务（{statuses.length}）
+          MCP
         </Heading>
-        <Stack direction="row" gap="xSmall">
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Button
             hierarchy="secondary"
             density="compact"
             iconStart={<AddIcon width={15} height={15} />}
             onClick={() => setShowAdd((prev) => !prev)}
           >
-            添加服务
+            添加
           </Button>
           <Button
             hierarchy="secondary"
@@ -126,113 +124,114 @@ export function McpTab() {
             pending={reconnecting || loading}
             onClick={() => void reconnect()}
           >
-            全部重连
+            重连
           </Button>
-        </Stack>
-      </Stack>
+        </div>
+      </div>
 
-      {error && <div className="eevee-error-banner">{error}</div>}
+      {error && <div className="ev-error-banner">{error}</div>}
 
       {showAdd && (
-        <Card>
-          <form onSubmit={(event) => void handleAdd(event)}>
-            <Stack direction="column" gap="small">
-              <Stack direction="row" gap="small" style={{ flexWrap: "wrap" }}>
-                <Field.Root style={{ flex: 1, minWidth: 160 }}>
-                  <Field.Label>服务名</Field.Label>
-                  <Input
-                    type="text"
-                    value={name}
-                    onValueChange={(value) => setName(value)}
-                    placeholder="例如：github"
-                  />
-                </Field.Root>
-                <Field.Root style={{ width: 130 }}>
-                  <Field.Label>传输类型</Field.Label>
-                  <select
-                    className="eevee-project-select"
-                    value={transport}
-                    onChange={(event) =>
-                      setTransport(event.target.value === "http" ? "http" : "stdio")
-                    }
-                  >
-                    <option value="stdio">stdio</option>
-                    <option value="http">HTTP</option>
-                  </select>
-                </Field.Root>
-                <Field.Root style={{ width: 140 }}>
-                  <Field.Label>暴露方式</Field.Label>
-                  <select
-                    className="eevee-project-select"
-                    value={exposure}
-                    onChange={(event) =>
-                      setExposure(
-                        event.target.value as "deferred" | "direct" | "codemode" | "hidden",
-                      )
-                    }
-                  >
-                    <option value="deferred">deferred</option>
-                    <option value="direct">direct</option>
-                    <option value="codemode">codemode</option>
-                    <option value="hidden">hidden</option>
-                  </select>
-                </Field.Root>
-              </Stack>
-              <Field.Root>
-                <Field.Label>{transport === "stdio" ? "可执行命令" : "服务 URL"}</Field.Label>
+        <div className="ev-settings-card">
+          <form onSubmit={(event) => void handleAdd(event)} className="ev-form-stack">
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", width: "100%" }}>
+              <Field.Root style={{ flex: 1, minWidth: 160 }}>
+                <Field.Label>服务名</Field.Label>
                 <Input
                   type="text"
-                  value={commandOrUrl}
-                  onValueChange={(value) => setCommandOrUrl(value)}
-                  placeholder={transport === "stdio" ? "npx" : "https://mcp.example.com/mcp"}
+                  value={name}
+                  onValueChange={(value) => setName(value)}
+                  placeholder="例如：github"
                 />
               </Field.Root>
-              {transport === "stdio" && (
-                <Field.Root>
-                  <Field.Label>参数（每行一个，可选）</Field.Label>
-                  <TextArea
-                    monospace
-                    rows={3}
-                    value={argsText}
-                    onValueChange={(value) => setArgsText(value)}
-                    placeholder={"-y\n@modelcontextprotocol/server-filesystem"}
-                  />
-                </Field.Root>
-              )}
-              <Stack direction="row" gap="xSmall">
-                <Button type="submit" hierarchy="primary" density="compact" pending={saving}>
-                  保存并连接
-                </Button>
-                <Button
-                  type="button"
-                  hierarchy="secondary"
-                  density="compact"
-                  onClick={() => setShowAdd(false)}
+              <Field.Root style={{ width: 130 }}>
+                <Field.Label>传输类型</Field.Label>
+                <select
+                  className="ev-select"
+                  value={transport}
+                  onChange={(event) =>
+                    setTransport(event.target.value === "http" ? "http" : "stdio")
+                  }
                 >
-                  取消
-                </Button>
-              </Stack>
-            </Stack>
+                  <option value="stdio">stdio</option>
+                  <option value="http">HTTP</option>
+                </select>
+              </Field.Root>
+              <Field.Root style={{ width: 140 }}>
+                <Field.Label>暴露方式</Field.Label>
+                <select
+                  className="ev-select"
+                  value={exposure}
+                  onChange={(event) =>
+                    setExposure(event.target.value as "deferred" | "direct" | "codemode" | "hidden")
+                  }
+                >
+                  <option value="deferred">deferred</option>
+                  <option value="direct">direct</option>
+                  <option value="codemode">codemode</option>
+                  <option value="hidden">hidden</option>
+                </select>
+              </Field.Root>
+            </div>
+            <Field.Root>
+              <Field.Label>{transport === "stdio" ? "可执行命令" : "服务 URL"}</Field.Label>
+              <Input
+                type="text"
+                value={commandOrUrl}
+                onValueChange={(value) => setCommandOrUrl(value)}
+                placeholder={transport === "stdio" ? "npx" : "https://mcp.example.com/mcp"}
+              />
+            </Field.Root>
+            {transport === "stdio" && (
+              <Field.Root>
+                <Field.Label>参数（每行一个，可选）</Field.Label>
+                <TextArea
+                  monospace
+                  rows={3}
+                  value={argsText}
+                  onValueChange={(value) => setArgsText(value)}
+                  placeholder={"-y\n@modelcontextprotocol/server-filesystem"}
+                />
+              </Field.Root>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button type="submit" hierarchy="primary" density="compact" pending={saving}>
+                保存并连接
+              </Button>
+              <Button
+                type="button"
+                hierarchy="secondary"
+                density="compact"
+                onClick={() => setShowAdd(false)}
+              >
+                取消
+              </Button>
+            </div>
           </form>
-        </Card>
+        </div>
       )}
 
       {statuses.length === 0 ? (
-        <Text style={{ color: "var(--semantic-color-text-secondary)" }}>
-          尚未配置共享 MCP 服务。添加后会实时同步到所有已打开的项目。
-        </Text>
+        <div className="ev-settings-card" style={{ alignItems: "center", padding: "24px 16px" }}>
+          <Text style={{ color: "var(--ev-fg-subtle)", margin: 0 }}>未配置 MCP 服务</Text>
+        </div>
       ) : (
-        statuses.map((srv) => (
-          <Card key={srv.name} style={{ padding: 12 }}>
-            <Stack direction="column" gap="xxSmall">
-              <Stack
-                direction="row"
-                gap="small"
-                align="center"
-                style={{ justifyContent: "space-between" }}
-              >
-                <Stack direction="row" gap="xSmall" align="center">
-                  <strong className="eevee-mono">{srv.name}</strong>
+        <div className="ev-settings-list">
+          {statuses.map((srv) => (
+            <div key={srv.name} className="ev-settings-row">
+              <div className="ev-settings-row-main">
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span
+                    className="ev-dot"
+                    data-stage={
+                      srv.status === "connected"
+                        ? "done"
+                        : srv.status === "failed"
+                          ? "blocked"
+                          : "queued"
+                    }
+                  />
+                  <strong className="ev-mono">{srv.name}</strong>
                   <span
                     className="eevee-badge"
                     data-tone={
@@ -246,8 +245,8 @@ export function McpTab() {
                     {srv.status}
                   </span>
                   <span className="eevee-badge">{srv.toolCount} tools</span>
-                </Stack>
-                <Stack direction="row" gap="xxSmall">
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <Button
                     hierarchy="secondary"
                     density="compact"
@@ -258,13 +257,13 @@ export function McpTab() {
                   <IconButton aria-label={`删除 ${srv.name}`} onClick={() => void remove(srv.name)}>
                     <DeleteIcon width={16} height={16} />
                   </IconButton>
-                </Stack>
-              </Stack>
-              {srv.error && <div className="eevee-error-banner">{srv.error}</div>}
-            </Stack>
-          </Card>
-        ))
+                </div>
+              </div>
+              {srv.error && <div className="ev-error-banner">{srv.error}</div>}
+            </div>
+          ))}
+        </div>
       )}
-    </Stack>
+    </div>
   );
 }

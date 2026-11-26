@@ -7,15 +7,29 @@ export function formatTime(ms: number | undefined): string {
   });
 }
 
+export function formatDurationMs(ms: number | undefined): string {
+  if (ms === undefined || !Number.isFinite(ms) || ms < 0) return "";
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return sec === 0 ? `${min}m` : `${min}m ${sec}s`;
+}
+
+export function formatClock(ms: number | undefined): string {
+  if (ms === undefined || !Number.isFinite(ms)) return "";
+  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export function formatRelativeTime(ms: number | undefined): string {
   if (ms === undefined || !Number.isFinite(ms)) return "";
   const diffSec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (diffSec < 60) return `${diffSec}s ago`;
+  if (diffSec < 60) return `${diffSec}s 前`;
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 60) return `${diffMin}m 前`;
   const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  return `${Math.floor(diffHr / 24)}d ago`;
+  if (diffHr < 24) return `${diffHr}h 前`;
+  return `${Math.floor(diffHr / 24)}d 前`;
 }
 
 export function formatTokens(count: number): string {

@@ -1,13 +1,11 @@
 import { AddIcon, DeleteIcon, RefreshIcon } from "@earendil-works/elanor-icons-react";
 import {
   Button,
-  Card,
   Field,
   Heading,
   IconButton,
   Input,
   Separator,
-  Stack,
   Table,
   TextArea,
 } from "@earendil-works/elanor-react";
@@ -139,27 +137,22 @@ export function ModelsTab() {
   });
 
   return (
-    <Stack direction="column" gap="large">
-      {error && <div className="eevee-error-banner">{error}</div>}
+    <div className="ev-settings-section" style={{ gap: 22 }}>
+      {error && <div className="ev-error-banner">{error}</div>}
 
-      <Stack direction="column" gap="small">
-        <Stack
-          direction="row"
-          gap="small"
-          align="center"
-          style={{ justifyContent: "space-between" }}
-        >
+      <div className="ev-settings-section">
+        <div className="ev-settings-head">
           <Heading level={2} size={5}>
-            模型画像（供 Router 为 Worker 选型）
+            模型画像
           </Heading>
-          <Stack direction="row" gap="xSmall" align="center">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Button
               hierarchy="secondary"
               density="compact"
               iconStart={<AddIcon width={15} height={15} />}
               onClick={addProfile}
             >
-              添加画像
+              添加
             </Button>
             <Button
               hierarchy="primary"
@@ -167,93 +160,99 @@ export function ModelsTab() {
               pending={savingProfiles}
               onClick={() => void saveProfiles()}
             >
-              保存画像
+              保存
             </Button>
             {savedNotice && (
               <span className="eevee-badge" data-tone="positive">
                 已保存
               </span>
             )}
-          </Stack>
-        </Stack>
+          </div>
+        </div>
 
         {profiles.map(({ uid, profile }) => (
-          <Card key={uid} style={{ padding: 12 }}>
-            <Stack direction="column" gap="xSmall">
-              <Stack direction="row" gap="xSmall" align="end" style={{ flexWrap: "wrap" }}>
-                <Field.Root style={{ width: 150 }}>
-                  <Field.Label>画像 ID</Field.Label>
-                  <Input
-                    type="text"
-                    value={profile.id}
-                    onValueChange={(value) => updateProfile(uid, { ...profile, id: value })}
-                  />
-                </Field.Root>
-                <Field.Root style={{ width: 150 }}>
-                  <Field.Label>Provider</Field.Label>
-                  <Input
-                    type="text"
-                    value={profile.model.provider}
-                    onValueChange={(value) =>
-                      updateProfile(uid, {
-                        ...profile,
-                        model: { ...profile.model, provider: value },
-                      })
-                    }
-                  />
-                </Field.Root>
-                <Field.Root style={{ flex: 1, minWidth: 180 }}>
-                  <Field.Label>Model ID</Field.Label>
-                  <Input
-                    type="text"
-                    value={profile.model.modelId}
-                    onValueChange={(value) =>
-                      updateProfile(uid, {
-                        ...profile,
-                        model: { ...profile.model, modelId: value },
-                      })
-                    }
-                  />
-                </Field.Root>
-                <Field.Root style={{ width: 120 }}>
-                  <Field.Label>Thinking</Field.Label>
-                  <select
-                    className="eevee-project-select"
-                    value={profile.model.thinkingLevel ?? ""}
-                    onChange={(event) => {
-                      const val = event.target.value as "" | ThinkingLevel;
-                      const { thinkingLevel: _old, ...rest } = profile.model;
-                      updateProfile(uid, {
-                        ...profile,
-                        model: val ? { ...rest, thinkingLevel: val } : rest,
-                      });
-                    }}
-                  >
-                    {THINKING_OPTIONS.map((level) => (
-                      <option key={level || "default"} value={level}>
-                        {level || "默认"}
-                      </option>
-                    ))}
-                  </select>
-                </Field.Root>
-                <IconButton aria-label="删除画像" onClick={() => removeProfile(uid)}>
-                  <DeleteIcon width={16} height={16} />
-                </IconButton>
-              </Stack>
-              <Field.Root>
-                <Field.Label>用途描述</Field.Label>
+          <div key={uid} className="ev-settings-card">
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-end",
+                gap: 10,
+                flexWrap: "wrap",
+                width: "100%",
+              }}
+            >
+              <Field.Root style={{ width: 150 }}>
+                <Field.Label>画像 ID</Field.Label>
                 <Input
                   type="text"
-                  value={profile.description}
-                  onValueChange={(value) => updateProfile(uid, { ...profile, description: value })}
+                  value={profile.id}
+                  onValueChange={(value) => updateProfile(uid, { ...profile, id: value })}
                 />
               </Field.Root>
-            </Stack>
-          </Card>
+              <Field.Root style={{ width: 150 }}>
+                <Field.Label>Provider</Field.Label>
+                <Input
+                  type="text"
+                  value={profile.model.provider}
+                  onValueChange={(value) =>
+                    updateProfile(uid, {
+                      ...profile,
+                      model: { ...profile.model, provider: value },
+                    })
+                  }
+                />
+              </Field.Root>
+              <Field.Root style={{ flex: 1, minWidth: 180 }}>
+                <Field.Label>Model ID</Field.Label>
+                <Input
+                  type="text"
+                  value={profile.model.modelId}
+                  onValueChange={(value) =>
+                    updateProfile(uid, {
+                      ...profile,
+                      model: { ...profile.model, modelId: value },
+                    })
+                  }
+                />
+              </Field.Root>
+              <Field.Root style={{ width: 120 }}>
+                <Field.Label>Thinking</Field.Label>
+                <select
+                  className="ev-select"
+                  value={profile.model.thinkingLevel ?? ""}
+                  onChange={(event) => {
+                    const val = event.target.value as "" | ThinkingLevel;
+                    const { thinkingLevel: _old, ...rest } = profile.model;
+                    updateProfile(uid, {
+                      ...profile,
+                      model: val ? { ...rest, thinkingLevel: val } : rest,
+                    });
+                  }}
+                >
+                  {THINKING_OPTIONS.map((level) => (
+                    <option key={level || "default"} value={level}>
+                      {level || "默认"}
+                    </option>
+                  ))}
+                </select>
+              </Field.Root>
+              <IconButton aria-label="删除画像" onClick={() => removeProfile(uid)}>
+                <DeleteIcon width={16} height={16} />
+              </IconButton>
+            </div>
+            <Field.Root>
+              <Field.Label>用途描述</Field.Label>
+              <Input
+                type="text"
+                value={profile.description}
+                onValueChange={(value) => updateProfile(uid, { ...profile, description: value })}
+              />
+            </Field.Root>
+          </div>
         ))}
 
-        <Field.Root>
-          <Field.Label>选型补充说明（Notes）</Field.Label>
+        <Field.Root style={{ width: "100%" }}>
+          <Field.Label>补充说明</Field.Label>
           <TextArea
             rows={3}
             value={notes}
@@ -261,36 +260,39 @@ export function ModelsTab() {
               setNotes(value);
               setSavedNotice(false);
             }}
-            placeholder="例如：日常编码优先用主力模型，快速脚本/文档校对用轻量模型..."
+            placeholder="各模型适用场景与优先级…"
           />
         </Field.Root>
-      </Stack>
+      </div>
 
       <Separator />
 
-      <Stack direction="column" gap="small">
-        <Stack
-          direction="row"
-          gap="small"
-          align="center"
-          style={{ justifyContent: "space-between", flexWrap: "wrap" }}
-        >
+      <div className="ev-settings-section">
+        <div className="ev-settings-head">
           <Heading level={2} size={5}>
-            模型目录（{visibleModels.length}）
+            模型目录
+            <span
+              className="ev-num"
+              style={{ marginLeft: 8, fontSize: 13, fontWeight: 400, color: "var(--ev-fg-subtle)" }}
+            >
+              {visibleModels.length}
+            </span>
           </Heading>
-          <Stack direction="row" gap="xSmall" align="center">
-            <Input
-              type="text"
-              value={filter}
-              onValueChange={(value) => setFilter(value)}
-              placeholder="筛选 provider/model..."
-            />
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ width: 220 }}>
+              <Input
+                type="text"
+                value={filter}
+                onValueChange={(value) => setFilter(value)}
+                placeholder="筛选模型…"
+              />
+            </div>
             <Button
               hierarchy="secondary"
               density="compact"
               onClick={() => setOnlyAvailable((prev) => !prev)}
             >
-              {onlyAvailable ? "仅可用" : "全部模型"}
+              {onlyAvailable ? "仅可用" : "全部"}
             </Button>
             <Button
               hierarchy="secondary"
@@ -299,45 +301,60 @@ export function ModelsTab() {
               pending={refreshing}
               onClick={() => void refreshCatalog()}
             >
-              刷新目录
+              刷新
             </Button>
-          </Stack>
-        </Stack>
+          </div>
+        </div>
 
-        <Table.Container>
+        <Table.Container className="ev-table-frame">
           <Table.Root>
             <Table.Head>
               <Table.Row>
-                <Table.HeaderCell>Provider / Model</Table.HeaderCell>
+                <Table.HeaderCell>模型</Table.HeaderCell>
                 <Table.HeaderCell align="end">上下文</Table.HeaderCell>
-                <Table.HeaderCell align="end">输出上限</Table.HeaderCell>
-                <Table.HeaderCell>状态</Table.HeaderCell>
+                <Table.HeaderCell align="end">输出</Table.HeaderCell>
+                <Table.HeaderCell align="end">状态</Table.HeaderCell>
               </Table.Row>
             </Table.Head>
             <Table.Body>
-              {visibleModels.slice(0, 80).map((model) => (
-                <Table.Row key={`${model.provider}/${model.id}`}>
-                  <Table.Cell>
-                    <span className="eevee-mono">
-                      {model.provider}/{model.id}
-                    </span>
-                  </Table.Cell>
-                  <Table.Cell align="end">{formatTokens(model.contextWindow)}</Table.Cell>
-                  <Table.Cell align="end">{formatTokens(model.maxTokens)}</Table.Cell>
-                  <Table.Cell>
-                    <span
-                      className="eevee-badge"
-                      data-tone={model.available ? "positive" : "neutral"}
-                    >
-                      {model.available ? "可用" : "未认证"}
-                    </span>
+              {visibleModels.length === 0 ? (
+                <Table.Row>
+                  <Table.Cell
+                    colSpan={4}
+                    style={{ color: "var(--ev-fg-subtle)", textAlign: "center", paddingBlock: 24 }}
+                  >
+                    {onlyAvailable ? "无可用模型" : "无匹配模型"}
                   </Table.Cell>
                 </Table.Row>
-              ))}
+              ) : (
+                visibleModels.slice(0, 80).map((model) => (
+                  <Table.Row key={`${model.provider}/${model.id}`}>
+                    <Table.Cell>
+                      <span className="ev-mono">
+                        {model.provider}/{model.id}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell align="end" className="ev-num">
+                      {formatTokens(model.contextWindow)}
+                    </Table.Cell>
+                    <Table.Cell align="end" className="ev-num">
+                      {formatTokens(model.maxTokens)}
+                    </Table.Cell>
+                    <Table.Cell align="end">
+                      <span
+                        className="eevee-badge"
+                        data-tone={model.available ? "positive" : "neutral"}
+                      >
+                        {model.available ? "可用" : "未认证"}
+                      </span>
+                    </Table.Cell>
+                  </Table.Row>
+                ))
+              )}
             </Table.Body>
           </Table.Root>
         </Table.Container>
-      </Stack>
-    </Stack>
+      </div>
+    </div>
   );
 }

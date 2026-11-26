@@ -1,4 +1,4 @@
-import { Button, Field, Input, Modal, Stack, Text, TextArea } from "@earendil-works/elanor-react";
+import { Button, Field, Input, Modal, TextArea } from "@earendil-works/elanor-react";
 import type { ProjectSummary } from "@eevee/protocol";
 import { type FormEvent, useState } from "react";
 import { api } from "../lib/api.ts";
@@ -53,53 +53,41 @@ export function ProjectModal({ open, onOpenChange, onCreated }: ProjectModalProp
         <Modal.Viewport>
           <Modal.Popup>
             <Modal.Title>新建项目</Modal.Title>
-            <Modal.Description>
-              每个项目拥有独立持久会话库，可绑定一个或多个本地工作目录。
-            </Modal.Description>
-            <form onSubmit={(event) => void handleSubmit(event)}>
+            <form onSubmit={(event) => void handleSubmit(event)} className="ev-form-stack">
               <Modal.Body>
-                <Stack direction="column" gap="small">
-                  {error && <div className="eevee-error-banner">{error}</div>}
+                <div className="ev-form-stack">
+                  {error && <div className="ev-error-banner">{error}</div>}
                   <Field.Root>
-                    <Field.Label>项目名称（可选）</Field.Label>
+                    <Field.Label>名称</Field.Label>
                     <Input
                       type="text"
                       value={title}
                       onValueChange={(value) => setTitle(value)}
-                      placeholder="例如：光学论文 / Eevee"
+                      placeholder="可选"
                     />
                   </Field.Root>
                   <Field.Root>
-                    <Field.Label>工作目录（每行一个路径）</Field.Label>
+                    <Field.Label>工作目录</Field.Label>
                     <TextArea
                       monospace
                       rows={3}
                       value={workspacesText}
                       onValueChange={(value) => setWorkspacesText(value)}
-                      placeholder={"/path/to/repo\n/path/to/docs"}
+                      placeholder={"/path/to/repo"}
                     />
                   </Field.Root>
                   <Field.Root>
-                    <Field.Label>初始项目记忆（可选）</Field.Label>
+                    <Field.Label>项目记忆</Field.Label>
                     <TextArea
                       rows={3}
                       value={memory}
                       onValueChange={(value) => setMemory(value)}
-                      placeholder="写下项目背景、约定或偏好，将注入 Router 与 Worker..."
+                      placeholder="可选"
                     />
                   </Field.Root>
-                  <Text
-                    style={{
-                      fontSize: "0.78rem",
-                      color: "var(--semantic-color-text-secondary)",
-                      margin: 0,
-                    }}
-                  >
-                    删除项目仅清理 Eevee 内部数据，绝不触碰工作目录中的文件。
-                  </Text>
-                </Stack>
+                </div>
               </Modal.Body>
-              <Modal.Actions>
+              <Modal.Actions style={{ marginTop: 12 }}>
                 <Modal.Close
                   render={
                     <Button type="button" hierarchy="secondary">
@@ -108,7 +96,7 @@ export function ProjectModal({ open, onOpenChange, onCreated }: ProjectModalProp
                   }
                 />
                 <Button type="submit" hierarchy="primary" pending={submitting}>
-                  创建项目
+                  创建
                 </Button>
               </Modal.Actions>
             </form>

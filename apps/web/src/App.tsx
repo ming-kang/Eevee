@@ -1,48 +1,72 @@
 import {
-  AddIcon,
-  ChevronLeftIcon,
-  MenuIcon,
+  LeftPanelCloseIcon,
+  LeftPanelOpenIcon,
   RightPanelCloseIcon,
   RightPanelOpenIcon,
 } from "@earendil-works/elanor-icons-react";
-import { Button, EmptyState, Heading, IconButton, Stack } from "@earendil-works/elanor-react";
-import type { ConversationRef, ProjectSummary, WhenBusy, WorkerId } from "@eevee/protocol";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Composer } from "./components/Composer.tsx";
-import { InspectorPanel } from "./components/InspectorPanel.tsx";
+import { Heading, IconButton } from "@earendil-works/elanor-react";
+import type { ProjectId, ProjectSummary, WorkerId } from "@eevee/protocol";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChatPage } from "./components/ChatPage.tsx";
+import { CommandPalette, type PaletteItem } from "./components/CommandPalette.tsx";
 import { LoginView } from "./components/LoginView.tsx";
+import { MemoryPage } from "./components/MemoryPage.tsx";
+import { OverviewPage } from "./components/OverviewPage.tsx";
+import { DeleteProjectModal, EditProjectModal } from "./components/ProjectDialogs.tsx";
 import { ProjectModal } from "./components/ProjectModal.tsx";
-import { QuestionBanner } from "./components/QuestionBanner.tsx";
+import { RightRail } from "./components/RightRail.tsx";
+import { Sash } from "./components/Sash.tsx";
 import { SettingsView } from "./components/SettingsView.tsx";
+import { ShortcutSheet } from "./components/ShortcutSheet.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
-import { TranscriptView } from "./components/TranscriptView.tsx";
+import { ToastHost } from "./components/ToastHost.tsx";
+import { UsagePage } from "./components/UsagePage.tsx";
 import { api, consumeTicketFromHash } from "./lib/api.ts";
-import { shortPath, workerStatusLabel, workerStatusTone } from "./lib/format.ts";
-import { useBoardStream, useConversationStream } from "./lib/hooks.ts";
+import { useProjectBoards } from "./lib/hooks.ts";
+import { useShellLayout } from "./lib/layout.ts";
+import {
+  navigate,
+  type ProjectSubView,
+  parseRoute,
+  type Route,
+  type SettingsSection,
+} from "./lib/router.ts";
+import { modLabel } from "./lib/shortcuts.ts";
 import { useTheme } from "./lib/theme.ts";
-import { parseAgentDoc, parseInbox, parseLiveDoc } from "./lib/transcript.ts";
+import { deriveBoardSummary } from "./lib/transcript.ts";
 
 type AuthState =
   | { readonly kind: "checking" }
   | { readonly kind: "unauthenticated"; readonly error?: string }
   | { readonly kind: "authenticated" };
 
-const LAST_PROJECT_KEY = "eevee-last-project";
-
 export function App() {
   const theme = useTheme();
   const [auth, setAuth] = useState<AuthState>({ kind: "checking" });
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined);
-  const [activeView, setActiveView] = useState<"workspace" | "settings">("workspace");
-  const [activeRef, setActiveRef] = useState<ConversationRef>("router");
-  const [sidebarOpen, setSidebarOpen] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth > 900 : true,
+  const [route, setRoute] = useState<Route>(() =>
+    typeof window !== "undefined" ? parseRoute(window.location.hash) : { name: "overview" },
   );
-  const [inspectorOpen, setInspectorOpen] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth > 1120 : true,
-  );
-  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const bgRouteRef = useRef<Exclude<Route, { name: "control" }>>({ name: "overview" });
+
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<ProjectSummary | undefined>(undefined);
+  const [deletingProject, setDeletingProject] = useState<ProjectSummary | undefined>(undefined);
+
+  // Hash routing sync + preserve background route behind Control overlay.
+  useEffect(() => {
+    const sync = () => {
+      const next = parseRoute(window.location.hash);
+      if (next.name !== "control") bgRouteRef.current = next;
+      setRoute(next);
+    };
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -86,17 +110,6 @@ export function App() {
   const loadProjects = useCallback(async () => {
     const res = await api.listProjects();
     setProjects(res.projects);
-    setSelectedProjectId((prev) => {
-      if (prev && res.projects.some((p) => p.id === prev)) return prev;
-      let saved: string | null = null;
-      try {
-        saved = window.localStorage.getItem(LAST_PROJECT_KEY);
-      } catch {
-        // Ignore storage errors.
-      }
-      if (saved && res.projects.some((p) => p.id === saved)) return saved;
-      return res.projects[0]?.id;
-    });
   }, []);
 
   useEffect(() => {
@@ -104,50 +117,176 @@ export function App() {
     void loadProjects();
   }, [auth.kind, loadProjects]);
 
-  const selectProject = (projectId: string) => {
-    setSelectedProjectId(projectId);
-    setActiveRef("router");
-    setActiveView("workspace");
-    try {
-      window.localStorage.setItem(LAST_PROJECT_KEY, projectId);
-    } catch {
-      // Ignore storage errors.
-    }
-  };
+  const projectIds = useMemo(() => projects.map((p) => p.id), [projects]);
+  const boards = useProjectBoards(projectIds, auth.kind === "authenticated");
 
-  const selectedProject = useMemo(
-    () => projects.find((project) => project.id === selectedProjectId),
-    [projects, selectedProjectId],
-  );
+  const surfaceRoute: Exclude<Route, { name: "control" }> =
+    route.name === "control" ? bgRouteRef.current : route;
 
-  const boardStream = useBoardStream(auth.kind === "authenticated" ? selectedProjectId : undefined);
-  const convStream = useConversationStream(
-    auth.kind === "authenticated" && activeView === "workspace" ? selectedProjectId : undefined,
-    activeRef,
-  );
-
-  const live = useMemo(() => parseLiveDoc(convStream.view), [convStream.view]);
-  const inbox = useMemo(() => parseInbox(convStream.view), [convStream.view]);
-  const agentInfo = useMemo(() => parseAgentDoc(convStream.view), [convStream.view]);
-
-  const activeWorker = useMemo(
+  const activeProject = useMemo(
     () =>
-      activeRef === "router"
-        ? undefined
-        : boardStream.board?.workers.find((w) => w.id === activeRef),
-    [activeRef, boardStream.board],
+      surfaceRoute.name === "project" ? projects.find((p) => p.id === surfaceRoute.pid) : undefined,
+    [projects, surfaceRoute],
   );
+
+  const activeWorkerId = surfaceRoute.name === "project" ? surfaceRoute.workerId : undefined;
+  const withRail = surfaceRoute.name === "project" && activeProject !== undefined;
+  const layout = useShellLayout(activeWorkerId !== undefined);
+
+  // Close find bar when switching projects or views.
+  const routeKey =
+    surfaceRoute.name === "project" ? `${surfaceRoute.pid}:${surfaceRoute.view}` : "overview";
+  useEffect(() => {
+    void routeKey;
+    setFindOpen(false);
+  }, [routeKey]);
+
+  const openOverview = useCallback(() => {
+    layout.closeDrawer();
+    navigate({ name: "overview" });
+  }, [layout]);
+
+  const openProject = useCallback(
+    (pid: ProjectId, view: ProjectSubView = "chat", workerId?: WorkerId) => {
+      layout.closeDrawer();
+      navigate({ name: "project", pid, view, ...(workerId ? { workerId } : {}) });
+      if (workerId) layout.openRail();
+    },
+    [layout],
+  );
+
+  const openControl = useCallback(
+    (section: SettingsSection = "providers") => {
+      layout.closeDrawer();
+      navigate({ name: "control", section });
+    },
+    [layout],
+  );
+
+  const closeControl = useCallback(() => {
+    navigate(bgRouteRef.current);
+  }, []);
+
+  // Global keyboard shortcuts.
+  useEffect(() => {
+    if (auth.kind !== "authenticated") return;
+    const onKey = (event: KeyboardEvent) => {
+      const mod = event.metaKey || event.ctrlKey;
+      const lower = event.key.toLowerCase();
+      if (mod && lower === "k") {
+        event.preventDefault();
+        setPaletteOpen((prev) => !prev);
+        return;
+      }
+      if (mod && !event.altKey && lower === "b") {
+        event.preventDefault();
+        layout.toggleSide();
+        return;
+      }
+      if (mod && event.altKey && lower === "b" && withRail) {
+        event.preventDefault();
+        layout.toggleRail();
+        return;
+      }
+      if (mod && lower === "f" && surfaceRoute.name === "project" && surfaceRoute.view === "chat") {
+        event.preventDefault();
+        setFindOpen(true);
+        return;
+      }
+      if (!mod && !event.altKey && event.key === "?") {
+        const target = event.target;
+        if (
+          target instanceof HTMLElement &&
+          target.closest("input, textarea, select, [contenteditable]")
+        ) {
+          return;
+        }
+        event.preventDefault();
+        setShortcutsOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [auth.kind, layout, withRail, surfaceRoute]);
+
+  const paletteItems = useMemo<PaletteItem[]>(() => {
+    const mod = modLabel();
+    const list: PaletteItem[] = [
+      {
+        id: "nav:overview",
+        group: "导航",
+        label: "概览（全局分诊看板）",
+        run: openOverview,
+      },
+      {
+        id: "act:new-project",
+        group: "操作",
+        label: "新建项目",
+        run: () => setCreateOpen(true),
+      },
+      {
+        id: "act:settings",
+        group: "操作",
+        label: "打开 Engine 设置",
+        run: () => openControl("providers"),
+      },
+      {
+        id: "act:theme",
+        group: "操作",
+        label: `切换主题（当前：${theme.preference}）`,
+        run: theme.cycle,
+      },
+      {
+        id: "act:shortcuts",
+        group: "操作",
+        label: "查看快捷键",
+        keys: ["?"],
+        run: () => setShortcutsOpen(true),
+      },
+      {
+        id: "act:toggle-side",
+        group: "操作",
+        label: "折叠 / 展开左侧栏",
+        keys: [mod, "B"],
+        run: layout.toggleSide,
+      },
+    ];
+
+    for (const p of projects) {
+      const summary = deriveBoardSummary(boards[p.id]);
+      list.push({
+        id: `proj:${p.id}`,
+        group: "项目",
+        label: p.title,
+        meta: p.id,
+        stage: summary.stage,
+        run: () => openProject(p.id, "chat"),
+      });
+      const b = boards[p.id];
+      for (const w of b?.workers ?? []) {
+        if (w.status === "closed") continue;
+        list.push({
+          id: `worker:${p.id}:${w.id}`,
+          group: "Workers",
+          label: `${w.id} · ${w.name}`,
+          meta: p.title,
+          stage: w.status === "running" ? "working" : w.status === "queued" ? "queued" : "idle",
+          run: () => openProject(p.id, "chat", w.id),
+        });
+      }
+    }
+    return list;
+  }, [projects, boards, openOverview, openControl, openProject, theme, layout]);
 
   const handleLogout = async () => {
     await api.logoutWebSession().catch(() => undefined);
     setProjects([]);
-    setSelectedProjectId(undefined);
     setAuth({ kind: "unauthenticated" });
   };
 
   if (auth.kind === "checking") {
     return (
-      <div className="eevee-login-page">
+      <div className="ev-login-page">
         <Heading level={2} size={5}>
           正在连接本机 Eevee Engine…
         </Heading>
@@ -164,211 +303,247 @@ export function App() {
     );
   }
 
-  const handleSelectWorker = (workerId: WorkerId) => {
-    setActiveRef(workerId);
-    setActiveView("workspace");
-  };
+  const activeBoard = activeProject ? boards[activeProject.id] : undefined;
+  const activeSummary = deriveBoardSummary(activeBoard);
+  const railPills: { key: string; tone: "warning" | "accent"; count: number; label: string }[] = [];
+  if (activeSummary.pendingQuestions > 0) {
+    railPills.push({
+      key: "q",
+      tone: "warning",
+      count: activeSummary.pendingQuestions,
+      label: `${activeSummary.pendingQuestions} 待回答`,
+    });
+  }
+  if (activeSummary.activeWorkers > 0) {
+    railPills.push({
+      key: "w",
+      tone: "accent",
+      count: activeSummary.activeWorkers,
+      label: `${activeSummary.activeWorkers} 活跃 Worker`,
+    });
+  }
+
+  const frameStyle = {
+    "--ev-side-w": `${layout.sideWidth}px`,
+    "--ev-rail-w": `${layout.railWidth}px`,
+    "--ev-rail-pills": String(layout.railCollapsed ? railPills.length : 0),
+  } as CSSProperties;
 
   return (
-    <div className="eevee-app" data-sidebar-open={sidebarOpen}>
-      <Sidebar
-        projects={projects}
-        selectedProjectId={selectedProjectId}
-        activeView={activeView}
-        activeRef={activeRef}
-        board={boardStream.board}
-        themePreference={theme.preference}
-        themeScheme={theme.scheme}
-        onSelectProject={selectProject}
-        onOpenCreateProject={() => setCreateModalOpen(true)}
-        onSelectConversation={(ref) => {
-          setActiveRef(ref);
-          setActiveView("workspace");
-          if (window.innerWidth <= 900) setSidebarOpen(false);
-        }}
-        onOpenSettings={() => {
-          setActiveView("settings");
-          if (window.innerWidth <= 900) setSidebarOpen(false);
-        }}
-        onCycleTheme={theme.cycle}
-        onLogout={() => void handleLogout()}
-      />
+    <div className="ev-viewport">
+      <div className="ev-side-trigger-anchor">
+        <IconButton
+          aria-label={layout.sideCollapsed ? "展开左侧栏" : "折叠左侧栏"}
+          title={`左侧栏（${modLabel()} B）`}
+          onClick={layout.toggleSide}
+        >
+          {layout.sideCollapsed ? (
+            <LeftPanelOpenIcon width={17} height={17} />
+          ) : (
+            <LeftPanelCloseIcon width={17} height={17} />
+          )}
+        </IconButton>
+      </div>
 
-      {activeView === "settings" ? (
-        <SettingsView onBack={() => setActiveView("workspace")} />
-      ) : !selectedProject ? (
-        <main className="eevee-main">
-          <header className="eevee-topbar">
-            <div className="eevee-topbar-left">
-              <IconButton aria-label="切换侧栏" onClick={() => setSidebarOpen((p) => !p)}>
-                <MenuIcon width={18} height={18} />
-              </IconButton>
-              <Heading level={1} size={5}>
-                Eevee
-              </Heading>
-            </div>
-          </header>
-          <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 24 }}>
-            <EmptyState.Root>
-              <EmptyState.Body>
-                <EmptyState.Copy>
-                  <EmptyState.Title level={2}>还没有项目</EmptyState.Title>
-                  <EmptyState.Description>
-                    创建一个项目并绑定本地工作目录，Router 与 Workers 就可以开始工作。
-                  </EmptyState.Description>
-                </EmptyState.Copy>
-                <EmptyState.Actions>
-                  <Button
-                    hierarchy="primary"
-                    iconStart={<AddIcon width={16} height={16} />}
-                    onClick={() => setCreateModalOpen(true)}
+      {withRail && (
+        <div className="ev-rail-trigger-anchor">
+          <div className="ev-rail-toggle-wrap">
+            {layout.railCollapsed && railPills.length > 0 && (
+              <div className="ev-rail-pills">
+                {railPills.map((pill) => (
+                  <button
+                    key={pill.key}
+                    type="button"
+                    className="ev-rail-pill"
+                    data-tone={pill.tone}
+                    title={pill.label}
+                    onClick={layout.openRail}
                   >
-                    新建项目
-                  </Button>
-                </EmptyState.Actions>
-              </EmptyState.Body>
-            </EmptyState.Root>
-          </div>
-        </main>
-      ) : (
-        <>
-          <main className="eevee-main">
-            <header className="eevee-topbar">
-              <div className="eevee-topbar-left">
-                <IconButton aria-label="切换侧栏" onClick={() => setSidebarOpen((p) => !p)}>
-                  <MenuIcon width={18} height={18} />
-                </IconButton>
-                {activeRef !== "router" && (
-                  <Button
-                    hierarchy="tertiary"
-                    density="compact"
-                    iconStart={<ChevronLeftIcon width={16} height={16} />}
-                    onClick={() => setActiveRef("router")}
-                  >
-                    Router
-                  </Button>
-                )}
-                <div className="eevee-topbar-title">
-                  <Stack direction="row" gap="xSmall" align="center">
-                    <Heading level={1} size={5} style={{ margin: 0 }}>
-                      {activeRef === "router"
-                        ? `${selectedProject.title} · Router`
-                        : `${activeRef} · ${activeWorker?.name ?? "Worker"}`}
-                    </Heading>
-                    {activeWorker && (
-                      <span
-                        className="eevee-badge"
-                        data-tone={workerStatusTone(activeWorker.status)}
-                      >
-                        {workerStatusLabel(activeWorker.status)}
-                      </span>
-                    )}
-                    {live.busy && (
-                      <span className="eevee-badge" data-tone="info">
-                        执行中
-                      </span>
-                    )}
-                  </Stack>
-                  <span className="eevee-topbar-sub">
-                    {agentInfo.modelLabel ?? "默认模型"}
-                    {agentInfo.thinkingLevel && agentInfo.thinkingLevel !== "off"
-                      ? ` (${agentInfo.thinkingLevel})`
-                      : ""}
-                    {agentInfo.cwd ? ` · ${shortPath(agentInfo.cwd)}` : ""}
-                  </span>
-                </div>
-              </div>
-
-              <div className="eevee-topbar-actions">
-                <span
-                  className="eevee-badge"
-                  data-tone={convStream.connected ? "positive" : "warning"}
-                >
-                  {convStream.connected ? "实时已连接" : "重连中…"}
-                </span>
-                <IconButton
-                  aria-label={inspectorOpen ? "隐藏右侧面板" : "展开右侧面板"}
-                  title={inspectorOpen ? "隐藏右侧面板" : "展开右侧面板"}
-                  onClick={() => setInspectorOpen((prev) => !prev)}
-                >
-                  {inspectorOpen ? (
-                    <RightPanelCloseIcon width={18} height={18} />
-                  ) : (
-                    <RightPanelOpenIcon width={18} height={18} />
-                  )}
-                </IconButton>
-              </div>
-            </header>
-
-            {convStream.error && (
-              <div style={{ padding: "8px 16px 0" }}>
-                <div className="eevee-error-banner">对话流异常：{convStream.error}</div>
+                    <span
+                      className="ev-dot"
+                      data-stage={pill.tone === "warning" ? "answer" : "working"}
+                    />
+                    <span>{pill.count}</span>
+                  </button>
+                ))}
               </div>
             )}
-
-            <QuestionBanner
-              projectId={selectedProject.id}
-              questions={boardStream.board?.questions ?? []}
-            />
-
-            <TranscriptView
-              activeRef={activeRef}
-              entries={convStream.entries}
-              live={live}
-              inbox={inbox}
-              hasMoreOlder={convStream.hasMoreOlder}
-              loadingOlder={convStream.loadingOlder}
-              onLoadOlder={() => void convStream.loadOlder()}
-              onSelectWorker={handleSelectWorker}
-            />
-
-            <Composer
-              activeRef={activeRef}
-              busy={live.busy}
-              hasRunFailure={live.runFailure !== undefined}
-              disabled={activeWorker?.status === "closed"}
-              onSend={async (text: string, whenBusy: WhenBusy) => {
-                await api.sendMessage(selectedProject.id, activeRef, { text, whenBusy });
-              }}
-              onInterrupt={async () => {
-                await api.interrupt(selectedProject.id, activeRef);
-              }}
-              onRetry={async () => {
-                await api.retry(selectedProject.id, activeRef);
-              }}
-            />
-          </main>
-
-          <InspectorPanel
-            open={inspectorOpen}
-            onOpenChange={setInspectorOpen}
-            project={selectedProject}
-            board={boardStream.board}
-            activeRef={activeRef}
-            onSelectWorker={handleSelectWorker}
-            onProjectUpdated={(updated) =>
-              setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
-            }
-            onProjectDeleted={(deletedId) => {
-              setProjects((prev) => {
-                const rest = prev.filter((p) => p.id !== deletedId);
-                setSelectedProjectId(rest[0]?.id);
-                return rest;
-              });
-              setActiveRef("router");
-            }}
-          />
-        </>
+            <IconButton
+              aria-label={layout.railCollapsed ? "展开右侧面板" : "折叠右侧面板"}
+              title={`Workers 面板（${modLabel()} Alt B）`}
+              onClick={layout.toggleRail}
+            >
+              {layout.railCollapsed ? (
+                <RightPanelOpenIcon width={17} height={17} />
+              ) : (
+                <RightPanelCloseIcon width={17} height={17} />
+              )}
+            </IconButton>
+          </div>
+        </div>
       )}
 
+      <div
+        className={`ev-frame${withRail ? " with-rail" : ""}${layout.sideCollapsed ? " side-collapsed" : ""}${layout.railCollapsed ? " rail-collapsed" : ""}${layout.railMaximized ? " rail-maximized" : ""}`}
+        style={frameStyle}
+      >
+        <nav
+          className={`ev-sidebar${layout.drawer === "side" ? " drawer-open" : ""}`}
+          aria-label="主导航"
+        >
+          <div className="ev-sidebar-inner">
+            <Sidebar
+              projects={projects}
+              boards={boards}
+              route={route}
+              themePreference={theme.preference}
+              themeScheme={theme.scheme}
+              onOpenOverview={openOverview}
+              onOpenProject={(pid, view) => openProject(pid, view)}
+              onNewProject={() => setCreateOpen(true)}
+              onRenameProject={setEditingProject}
+              onDeleteProject={setDeletingProject}
+              onOpenPalette={() => setPaletteOpen(true)}
+              onOpenControl={() => openControl("providers")}
+              onOpenShortcuts={() => setShortcutsOpen(true)}
+              onCycleTheme={theme.cycle}
+              onLogout={() => void handleLogout()}
+            />
+          </div>
+        </nav>
+
+        <main className="ev-main">
+          {surfaceRoute.name === "overview" || !activeProject ? (
+            <OverviewPage
+              projects={projects}
+              boards={boards}
+              onNewProject={() => setCreateOpen(true)}
+              onOpenProject={(pid, wid) => openProject(pid, "chat", wid)}
+            />
+          ) : surfaceRoute.view === "memory" ? (
+            <MemoryPage
+              project={activeProject}
+              onSelectView={(v) => openProject(activeProject.id, v)}
+              onEditProject={() => setEditingProject(activeProject)}
+              onProjectUpdated={(updated) =>
+                setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+              }
+            />
+          ) : surfaceRoute.view === "usage" ? (
+            <UsagePage
+              project={activeProject}
+              onSelectView={(v) => openProject(activeProject.id, v)}
+              onEditProject={() => setEditingProject(activeProject)}
+            />
+          ) : (
+            <ChatPage
+              project={activeProject}
+              board={activeBoard}
+              findOpen={findOpen}
+              onOpenFind={() => setFindOpen(true)}
+              onCloseFind={() => setFindOpen(false)}
+              onSelectView={(v) => openProject(activeProject.id, v)}
+              onEditProject={() => setEditingProject(activeProject)}
+              onOpenWorker={(wid) => openProject(activeProject.id, "chat", wid)}
+            />
+          )}
+        </main>
+
+        {withRail && activeProject && (
+          <aside
+            className={`ev-rail${layout.drawer === "rail" ? " drawer-open" : ""}`}
+            aria-label="Workers 与后台任务"
+          >
+            <div className="ev-rail-inner">
+              <RightRail
+                projectId={activeProject.id}
+                board={activeBoard}
+                activeWorkerId={activeWorkerId}
+                maximized={layout.railMaximized}
+                onOpenWorker={(wid) => openProject(activeProject.id, "chat", wid)}
+                onCloseWorker={() => openProject(activeProject.id, "chat")}
+                onToggleMaximize={layout.toggleRailMaximize}
+              />
+            </div>
+          </aside>
+        )}
+
+        {!layout.sideCollapsed && (
+          <Sash
+            side="left"
+            label="调整左侧栏宽度"
+            min={200}
+            max={400}
+            now={layout.sideWidth}
+            onResize={layout.setSideWidth}
+            onReset={layout.resetSideWidth}
+          />
+        )}
+
+        {withRail && !layout.railCollapsed && !layout.railMaximized && (
+          <Sash
+            side="right"
+            label="调整右侧 Workers 面板宽度"
+            min={320}
+            max={820}
+            now={layout.railWidth}
+            onResize={layout.setRailWidth}
+            onReset={layout.resetRailWidth}
+          />
+        )}
+      </div>
+
+      <div
+        className={`ev-drawer-backdrop${layout.drawer !== null ? " on" : ""}`}
+        aria-hidden="true"
+        onClick={layout.closeDrawer}
+      />
+
+      {route.name === "control" && (
+        <SettingsView
+          section={route.section}
+          onSelectSection={(sec) => openControl(sec)}
+          onClose={closeControl}
+        />
+      )}
+
+      <CommandPalette
+        open={paletteOpen}
+        items={paletteItems}
+        onClose={() => setPaletteOpen(false)}
+      />
+
+      <ShortcutSheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+
       <ProjectModal
-        open={createModalOpen}
-        onOpenChange={setCreateModalOpen}
+        open={createOpen}
+        onOpenChange={setCreateOpen}
         onCreated={(created) => {
           setProjects((prev) => [created, ...prev]);
-          selectProject(created.id);
+          openProject(created.id, "chat");
         }}
       />
+
+      <EditProjectModal
+        project={editingProject}
+        onClose={() => setEditingProject(undefined)}
+        onUpdated={(updated) =>
+          setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+        }
+      />
+
+      <DeleteProjectModal
+        project={deletingProject}
+        onClose={() => setDeletingProject(undefined)}
+        onDeleted={(id) => {
+          setProjects((prev) => prev.filter((p) => p.id !== id));
+          if (surfaceRoute.name === "project" && surfaceRoute.pid === id) {
+            navigate({ name: "overview" });
+          }
+        }}
+      />
+
+      <ToastHost />
     </div>
   );
 }

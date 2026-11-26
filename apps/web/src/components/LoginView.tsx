@@ -1,4 +1,4 @@
-import { Button, Card, Field, Heading, Input, Stack, Text } from "@earendil-works/elanor-react";
+import { Button, Card, Field, Heading, Input, Text } from "@earendil-works/elanor-react";
 import { type FormEvent, useState } from "react";
 import { api } from "../lib/api.ts";
 
@@ -32,39 +32,44 @@ export function LoginView({ initialError, onAuthenticated }: LoginViewProps) {
   };
 
   return (
-    <div className="eevee-login-page">
-      <Card className="eevee-login-card">
-        <Stack direction="column" gap="medium">
-          <Stack direction="column" gap="xSmall">
+    <div className="ev-login-page">
+      <Card
+        className="ev-login-card"
+        style={{
+          boxShadow: "var(--ev-shadow-panel)",
+          borderRadius: 12,
+          background: "var(--ev-surface)",
+        }}
+      >
+        <div className="ev-form-stack" style={{ gap: 16 }}>
+          <div className="ev-form-stack" style={{ gap: 6 }}>
             <Heading level={1} size={3}>
               Eevee
             </Heading>
-            <Text style={{ color: "var(--semantic-color-text-secondary)", margin: 0 }}>
-              运行 <code className="eevee-mono">eevee web</code> 获取一次性免密链接，或粘贴本机{" "}
-              <code className="eevee-mono">engine.token</code> 登录。
+            <Text style={{ color: "var(--ev-fg-muted)", margin: 0 }}>
+              使用 <code className="ev-mono">eevee web</code> 链接或粘贴{" "}
+              <code className="ev-mono">engine.token</code>
             </Text>
-          </Stack>
+          </div>
 
-          {error && <div className="eevee-error-banner">{error}</div>}
+          {error && <div className="ev-error-banner">{error}</div>}
 
-          <form onSubmit={(event) => void handleSubmit(event)}>
-            <Stack direction="column" gap="small">
-              <Field.Root>
-                <Field.Label>Engine Token</Field.Label>
-                <Input
-                  type="password"
-                  value={token}
-                  onValueChange={(value) => setToken(value)}
-                  placeholder="粘贴 engine.token 内容"
-                  autoFocus
-                />
-              </Field.Root>
-              <Button type="submit" hierarchy="primary" pending={submitting}>
-                登录
-              </Button>
-            </Stack>
+          <form onSubmit={(event) => void handleSubmit(event)} className="ev-form-stack">
+            <Field.Root>
+              <Field.Label>Engine Token</Field.Label>
+              <Input
+                type="password"
+                value={token}
+                onValueChange={(value) => setToken(value)}
+                placeholder="粘贴 engine.token 内容"
+                autoFocus
+              />
+            </Field.Root>
+            <Button type="submit" hierarchy="primary" pending={submitting}>
+              登录
+            </Button>
           </form>
-        </Stack>
+        </div>
       </Card>
     </div>
   );

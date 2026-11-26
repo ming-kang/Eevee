@@ -1,65 +1,75 @@
-import { ChevronLeftIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Heading, Stack, Tabs } from "@earendil-works/elanor-react";
-import { useState } from "react";
+import { CloseIcon } from "@earendil-works/elanor-icons-react";
+import { Heading, IconButton } from "@earendil-works/elanor-react";
+import { useEffect } from "react";
+import type { SettingsSection } from "../lib/router.ts";
 import { ConfigTab } from "./settings/ConfigTab.tsx";
 import { McpTab } from "./settings/McpTab.tsx";
 import { ModelsTab } from "./settings/ModelsTab.tsx";
 import { ProvidersTab } from "./settings/ProvidersTab.tsx";
 
-type SettingsTab = "providers" | "models" | "mcp" | "config";
+const SECTIONS: readonly { readonly id: SettingsSection; readonly label: string }[] = [
+  { id: "providers", label: "Providers" },
+  { id: "models", label: "模型" },
+  { id: "mcp", label: "MCP" },
+  { id: "config", label: "配置" },
+];
 
-export function SettingsView({ onBack }: { readonly onBack: () => void }) {
-  const [tab, setTab] = useState<SettingsTab>("providers");
+export function SettingsView({
+  section,
+  onSelectSection,
+  onClose,
+}: {
+  readonly section: SettingsSection;
+  readonly onSelectSection: (section: SettingsSection) => void;
+  readonly onClose: () => void;
+}) {
+  useEffect(() => {
+    const onEsc = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("input, textarea, select")) return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [onClose]);
 
   return (
-    <main className="eevee-main">
-      <header className="eevee-topbar">
-        <div className="eevee-topbar-left">
-          <Button
-            hierarchy="tertiary"
-            density="compact"
-            iconStart={<ChevronLeftIcon width={16} height={16} />}
-            onClick={onBack}
-          >
-            返回工作台
-          </Button>
-          <Heading level={1} size={5}>
-            Engine 设置
-          </Heading>
-        </div>
-        <Tabs.Root
-          value={tab}
-          onValueChange={(value) => {
-            if (
-              value === "providers" ||
-              value === "models" ||
-              value === "mcp" ||
-              value === "config"
-            ) {
-              setTab(value);
-            }
-          }}
-        >
-          <Tabs.List>
-            <Tabs.Tab value="providers">Providers & Auth</Tabs.Tab>
-            <Tabs.Tab value="models">Models & 画像</Tabs.Tab>
-            <Tabs.Tab value="mcp">MCP</Tabs.Tab>
-            <Tabs.Tab value="config">全局配置</Tabs.Tab>
-            <Tabs.Indicator />
-          </Tabs.List>
-        </Tabs.Root>
+    <div className="ev-control-overlay" role="dialog" aria-modal="true" aria-label="Engine 设置">
+      <header className="ev-page-header" style={{ paddingLeft: 20, paddingRight: 16 }}>
+        <Heading level={1} size={6} className="ev-page-title">
+          Engine 设置
+        </Heading>
+        <span className="ev-header-divider" aria-hidden="true" />
+        <nav className="ev-header-nav" aria-label="设置分组">
+          {SECTIONS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className="ev-tab-link"
+              data-active={section === item.id}
+              aria-current={section === item.id ? "page" : undefined}
+              onClick={() => onSelectSection(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        <span style={{ flex: 1 }} />
+        <IconButton aria-label="关闭设置" title="关闭（Esc）" onClick={onClose}>
+          <CloseIcon width={18} height={18} />
+        </IconButton>
       </header>
 
-      <div className="eevee-settings-page">
-        <div className="eevee-settings-inner">
-          <Stack direction="column" gap="medium">
-            {tab === "providers" && <ProvidersTab />}
-            {tab === "models" && <ModelsTab />}
-            {tab === "mcp" && <McpTab />}
-            {tab === "config" && <ConfigTab />}
-          </Stack>
+      <div className="ev-page-scroll">
+        <div className="ev-page-narrow" style={{ maxWidth: 880 }}>
+          {section === "providers" && <ProvidersTab />}
+          {section === "models" && <ModelsTab />}
+          {section === "mcp" && <McpTab />}
+          {section === "config" && <ConfigTab />}
         </div>
       </div>
-    </main>
+    </div>
   );
 }
