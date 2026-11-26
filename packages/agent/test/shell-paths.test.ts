@@ -249,3 +249,19 @@ test("beforeTool rewrites drive letters only when no bash resolves", async () =>
   const drive = await beforeTool({ name: "read", arguments: { path: "/e/work" } });
   assert.equal(drive?.arguments?.path, "E:\\work");
 });
+
+test("resolveWindowsBash via shell-paths discovers Git Bash from PATH git.exe before ProgramFiles", async () => {
+  const existing = new Set([
+    "D:\\PortableGit\\cmd\\git.exe",
+    "D:\\PortableGit\\bin\\bash.exe",
+    "C:\\Program Files\\Git\\bin\\bash.exe",
+  ]);
+  const shell = await resolveWindowsBash({
+    env: {
+      PATH: "D:\\PortableGit\\cmd",
+      ProgramFiles: "C:\\Program Files",
+    },
+    pathExists: async (path) => existing.has(path),
+  });
+  assert.equal(shell, "D:\\PortableGit\\bin\\bash.exe");
+});

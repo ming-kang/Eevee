@@ -10,6 +10,7 @@ import {
 } from "@earendil-works/pi-durable";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { arr, bool, num, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
+import { getToolPromptMeta, withToolPromptMeta } from "../../context/tool-meta.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from "../../shared/truncate.ts";
 import {
   type BackgroundTaskRecord,
@@ -196,6 +197,13 @@ export function createTasksExtension(options: TasksExtensionOptions = {}) {
         ? {}
         : { spill: { afterBytes: DEFAULT_MAX_BYTES, afterLines: DEFAULT_MAX_LINES } }),
     });
+    if (running.rewrittenNul) {
+      api.diagnostic({
+        severity: "info",
+        code: "normalized_nul_redirect",
+        message: "Normalized Windows CMD nul redirection to /dev/null for POSIX bash.",
+      });
+    }
     const detach = running.onOutput((chunk) => {
       try {
         api.output(chunk);
@@ -285,16 +293,84 @@ export function createTasksExtension(options: TasksExtensionOptions = {}) {
 
   const bashWrap: Wrap = {
     tool: "bash",
-    wrap: (base: ToolRegistration): ToolRegistration => ({
-      ...base,
+    wrap: (base: ToolRegistration): ToolRegistration => {
+      const inherited = getToolPromptMeta(base);
+      const wrapped: ToolRegistration = {
+        ...base,
+        parameters: obj(
+          {
+            command: str({ description: "Bash command to execute" }),
+            timeout: opt(num({ description: "Timeout in seconds (optional, no default timeout)" })),
+            background: opt(
+              bool({
+                description:
+                  "Run in the background immediately and return a taskId instead of waiting for the command",
+              }),
+            ),
+          },
+          { open: true },
+        ),
+        structuredOutputSchema: obj(
+          {
+            output: str({
+              description: "Combined stdout and stderr: the retained tail, as the model sees it",
+            }),
+            truncated: bool({ description: "Whether earlier output was dropped" }),
+            fullOutputPath: opt(
+              str({ description: "File with the complete output, when it was spilled" }),
+            ),
+            exitCode: opt(num()),
+            taskId: opt(str({ description: "Background task id, when moved to background" })),
+            status: opt(str()),
+          },
+          { open: true },
+        ),
+        execute: (args: unknown, api: ToolExecutionApi, context: Context) =>
+          executeBash(args as BashArgs, api, context),
+      };
+      return withToolPromptMeta(
+        wrapped,
+        {
+          promptSnippet: "Execute bash commands, foreground or background",
+          promptGuidelines: [
+            ...(inherited === undefined
+              ? [
+                  "Use bash for builds, tests, and system commands. Quote paths with spaces, prefer non-interactive commands, and use POSIX shell syntax (/dev/null, not NUL or $null).",
+                ]
+              : []),
+            "Choose foreground (default) when your next step needs the output; use background: true for long-running work (builds, servers, watchers, large test suites) or when you have independent work to continue.",
+            "Foreground commands exceeding the handoff timeout move to a background task automatically; do not poll, wait for the completion notice or inspect with tasks.",
+          ],
+        },
+        base,
+      );
+    },
+  };
+
+  const tasksTool = withToolPromptMeta(
+    defineTool({
+      name: TASKS_TOOL_NAME,
+      description: `Inspect and control background tasks started by bash. list shows every background task of this conversation; read returns a task's output (${TASK_READ_MIN_BYTES}..${TASK_READ_MAX_BYTES} bytes, default ${TASK_READ_DEFAULT_BYTES}, tail mode, with a sinceBytes cursor for incremental reads); kill stops a running task.`,
       parameters: obj(
         {
-          command: str({ description: "Bash command to execute" }),
-          timeout: opt(num({ description: "Timeout in seconds (optional, no default timeout)" })),
-          background: opt(
-            bool({
+          action: oneOf(["list", "read", "kill"], {
+            description: "list tasks, read a task's output, or kill a running task",
+          }),
+          taskId: opt(str({ description: "Task id (required for read and kill)" })),
+          mode: opt(
+            oneOf(["head", "tail"], {
+              description: "Read from the start (head) or the end (tail, default)",
+            }),
+          ),
+          bytes: opt(
+            num({
+              description: `Bytes of output to return (default ${TASK_READ_DEFAULT_BYTES}, clamped to ${TASK_READ_MIN_BYTES}..${TASK_READ_MAX_BYTES})`,
+            }),
+          ),
+          sinceBytes: opt(
+            num({
               description:
-                "Run in the background immediately and return a taskId instead of waiting for the command",
+                "Incremental cursor: read output starting at this byte offset (a previous read's endByte)",
             }),
           ),
         },
@@ -302,175 +378,138 @@ export function createTasksExtension(options: TasksExtensionOptions = {}) {
       ),
       structuredOutputSchema: obj(
         {
-          output: str({
-            description: "Combined stdout and stderr: the retained tail, as the model sees it",
-          }),
-          truncated: bool({ description: "Whether earlier output was dropped" }),
-          fullOutputPath: opt(
-            str({ description: "File with the complete output, when it was spilled" }),
+          tasks: opt(
+            arr(
+              obj(
+                {
+                  id: str(),
+                  durableTaskId: opt(num()),
+                  command: str(),
+                  cwd: opt(str()),
+                  status: str(),
+                  exitCode: opt(num()),
+                  error: opt(str()),
+                  logPath: opt(str()),
+                  startedAt: num(),
+                  endedAt: opt(num()),
+                },
+                { open: true },
+              ),
+            ),
           ),
-          exitCode: opt(num()),
-          taskId: opt(str({ description: "Background task id, when moved to background" })),
+          taskId: opt(str()),
           status: opt(str()),
+          output: opt(str()),
+          fromByte: opt(num()),
+          endByte: opt(num()),
+          totalBytes: opt(num()),
+          truncated: opt(bool()),
+          sinceBytes: opt(num()),
+          logPath: opt(str()),
         },
         { open: true },
       ),
-      execute: (args: unknown, api: ToolExecutionApi, context: Context) =>
-        executeBash(args as BashArgs, api, context),
-    }),
-  };
-
-  const tasksTool = defineTool({
-    name: TASKS_TOOL_NAME,
-    description: `Inspect and control background tasks started by bash. list shows every background task of this conversation; read returns a task's output (${TASK_READ_MIN_BYTES}..${TASK_READ_MAX_BYTES} bytes, default ${TASK_READ_DEFAULT_BYTES}, tail mode, with a sinceBytes cursor for incremental reads); kill stops a running task.`,
-    parameters: obj(
-      {
-        action: oneOf(["list", "read", "kill"], {
-          description: "list tasks, read a task's output, or kill a running task",
-        }),
-        taskId: opt(str({ description: "Task id (required for read and kill)" })),
-        mode: opt(
-          oneOf(["head", "tail"], {
-            description: "Read from the start (head) or the end (tail, default)",
-          }),
-        ),
-        bytes: opt(
-          num({
-            description: `Bytes of output to return (default ${TASK_READ_DEFAULT_BYTES}, clamped to ${TASK_READ_MIN_BYTES}..${TASK_READ_MAX_BYTES})`,
-          }),
-        ),
-        sinceBytes: opt(
-          num({
-            description:
-              "Incremental cursor: read output starting at this byte offset (a previous read's endByte)",
-          }),
-        ),
-      },
-      { open: true },
-    ),
-    structuredOutputSchema: obj(
-      {
-        tasks: opt(
-          arr(
-            obj(
-              {
-                id: str(),
-                durableTaskId: opt(num()),
-                command: str(),
-                cwd: opt(str()),
-                status: str(),
-                exitCode: opt(num()),
-                error: opt(str()),
-                logPath: opt(str()),
-                startedAt: num(),
-                endedAt: opt(num()),
-              },
-              { open: true },
-            ),
-          ),
-        ),
-        taskId: opt(str()),
-        status: opt(str()),
-        output: opt(str()),
-        fromByte: opt(num()),
-        endByte: opt(num()),
-        totalBytes: opt(num()),
-        truncated: opt(bool()),
-        sinceBytes: opt(num()),
-        logPath: opt(str()),
-      },
-      { open: true },
-    ),
-    execute: async (args, api, context): Promise<ToolExecutionResult> => {
-      if (args.action === "list") {
-        const board = await api.snapshot(TasksBoardDoc, api.conversationId, context);
-        const records: BackgroundTaskRecord[] = [];
-        for (const taskId of board?.order ?? []) {
-          const record = await api.snapshot(TaskRecordDoc, api.conversationId, taskId, context);
-          if (record !== undefined) records.push({ ...record });
-        }
-        const text =
-          records.length === 0
-            ? "No background tasks."
-            : `Background tasks (${records.length}):\n` +
-              records
-                .map((record) => `${record.id}\t${describeTaskOutcome(record)}\t${record.command}`)
-                .join("\n");
-        return {
-          output: [{ type: "text", text }],
-          structuredOutput: { tasks: records },
-        };
-      }
-
-      const taskId = args.taskId;
-      if (taskId === undefined || taskId === "") {
-        return textResult(`tasks ${args.action} requires a taskId`, true);
-      }
-      const record = await api.snapshot(TaskRecordDoc, api.conversationId, taskId, context);
-      if (record === undefined) {
-        return textResult(`Unknown task ${taskId}`, true);
-      }
-
-      if (args.action === "read") {
-        const slice = await manager.readOutput(api.conversationId, taskId, record, {
-          ...(args.mode === undefined ? {} : { mode: args.mode }),
-          ...(args.bytes === undefined ? {} : { bytes: args.bytes }),
-          ...(args.sinceBytes === undefined ? {} : { sinceBytes: args.sinceBytes }),
-        });
-        const lines = [`task ${record.id} — ${describeTaskOutcome(record)}`];
-        if (slice.totalBytes === 0) {
-          lines.push("(no output recorded)");
-        } else {
-          lines.push(
-            `bytes ${slice.fromByte}..${slice.endByte} of ${slice.totalBytes}` +
-              (slice.truncated ? " (truncated)" : ""),
-            slice.text === "" ? "(empty)" : slice.text,
-          );
-        }
-        lines.push(`next sinceBytes: ${slice.endByte}`);
-        return {
-          output: [{ type: "text", text: lines.join("\n") }],
-          structuredOutput: {
-            taskId: record.id,
-            status: record.status,
-            output: slice.text,
-            fromByte: slice.fromByte,
-            endByte: slice.endByte,
-            totalBytes: slice.totalBytes,
-            truncated: slice.truncated,
-            sinceBytes: slice.endByte,
-            ...(record.logPath === undefined ? {} : { logPath: record.logPath }),
-          },
-        };
-      }
-
-      if (record.status !== "running") {
-        return textResult(`task ${record.id} already ${describeTaskOutcome(record)}`, true);
-      }
-      const hadLive = manager.kill(api.conversationId, taskId);
-      if (!hadLive) {
-        // The process is already gone; mark the record so a still-live durable
-        // task ends quietly instead of reporting an interruption.
-        await api.commit(async (tx) => {
-          const doc = await tx.doc(TaskRecordDoc, api.conversationId, taskId, null);
-          if (doc.status === "running") {
-            doc.status = "killed";
-            doc.endedAt = api.now();
+      execute: async (args, api, context): Promise<ToolExecutionResult> => {
+        if (args.action === "list") {
+          const board = await api.snapshot(TasksBoardDoc, api.conversationId, context);
+          const records: BackgroundTaskRecord[] = [];
+          for (const taskId of board?.order ?? []) {
+            const record = await api.snapshot(TaskRecordDoc, api.conversationId, taskId, context);
+            if (record !== undefined) records.push({ ...record });
           }
-        }, context);
-      }
-      let status: string = "killed";
-      if (record.durableTaskId !== undefined) {
-        await api.waitForTask(record.durableTaskId as TaskId, context).catch(() => undefined);
-        const after = await api.snapshot(TaskRecordDoc, api.conversationId, taskId, context);
-        status = after?.status ?? status;
-      }
-      return {
-        output: [{ type: "text", text: `task ${taskId}: ${status}` }],
-        structuredOutput: { taskId, status },
-      };
+          const text =
+            records.length === 0
+              ? "No background tasks."
+              : `Background tasks (${records.length}):\n` +
+                records
+                  .map(
+                    (record) => `${record.id}\t${describeTaskOutcome(record)}\t${record.command}`,
+                  )
+                  .join("\n");
+          return {
+            output: [{ type: "text", text }],
+            structuredOutput: { tasks: records },
+          };
+        }
+
+        const taskId = args.taskId;
+        if (taskId === undefined || taskId === "") {
+          return textResult(`tasks ${args.action} requires a taskId`, true);
+        }
+        const record = await api.snapshot(TaskRecordDoc, api.conversationId, taskId, context);
+        if (record === undefined) {
+          return textResult(`Unknown task ${taskId}`, true);
+        }
+
+        if (args.action === "read") {
+          const slice = await manager.readOutput(api.conversationId, taskId, record, {
+            ...(args.mode === undefined ? {} : { mode: args.mode }),
+            ...(args.bytes === undefined ? {} : { bytes: args.bytes }),
+            ...(args.sinceBytes === undefined ? {} : { sinceBytes: args.sinceBytes }),
+          });
+          const lines = [`task ${record.id} — ${describeTaskOutcome(record)}`];
+          if (slice.totalBytes === 0) {
+            lines.push("(no output recorded)");
+          } else {
+            lines.push(
+              `bytes ${slice.fromByte}..${slice.endByte} of ${slice.totalBytes}` +
+                (slice.truncated ? " (truncated)" : ""),
+              slice.text === "" ? "(empty)" : slice.text,
+            );
+          }
+          lines.push(`next sinceBytes: ${slice.endByte}`);
+          return {
+            output: [{ type: "text", text: lines.join("\n") }],
+            structuredOutput: {
+              taskId: record.id,
+              status: record.status,
+              output: slice.text,
+              fromByte: slice.fromByte,
+              endByte: slice.endByte,
+              totalBytes: slice.totalBytes,
+              truncated: slice.truncated,
+              sinceBytes: slice.endByte,
+              ...(record.logPath === undefined ? {} : { logPath: record.logPath }),
+            },
+          };
+        }
+
+        if (record.status !== "running") {
+          return textResult(`task ${record.id} already ${describeTaskOutcome(record)}`, true);
+        }
+        const hadLive = manager.kill(api.conversationId, taskId);
+        if (!hadLive) {
+          // The process is already gone; mark the record so a still-live durable
+          // task ends quietly instead of reporting an interruption.
+          await api.commit(async (tx) => {
+            const doc = await tx.doc(TaskRecordDoc, api.conversationId, taskId, null);
+            if (doc.status === "running") {
+              doc.status = "killed";
+              doc.endedAt = api.now();
+            }
+          }, context);
+        }
+        let status: string = "killed";
+        if (record.durableTaskId !== undefined) {
+          await api.waitForTask(record.durableTaskId as TaskId, context).catch(() => undefined);
+          const after = await api.snapshot(TaskRecordDoc, api.conversationId, taskId, context);
+          status = after?.status ?? status;
+        }
+        return {
+          output: [{ type: "text", text: `task ${taskId}: ${status}` }],
+          structuredOutput: { taskId, status },
+        };
+      },
+    }),
+    {
+      promptSnippet: "List, read, or stop background tasks",
+      promptGuidelines: [
+        "tasks cannot start work: start background work with bash (background: true), then continue independent work while it runs.",
+        "Never poll tasks with repeated list or read calls. End your turn or continue independent work while background tasks run; you are notified automatically when a task finishes.",
+        "Use tasks to read output with mode (head or tail), bytes, or sinceBytes (byte cursor) instead of reloading whole logs.",
+      ],
     },
-  });
+  );
 
   return defineExtension<ToolRegistration>({
     name: TASKS_EXTENSION,

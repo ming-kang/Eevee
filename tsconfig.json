@@ -15,6 +15,9 @@
       "@eevee/agent/extensions": [
         "./packages/agent/src/extensions/index.ts"
       ],
+      "@eevee/agent/shell": [
+        "./packages/agent/src/shell/index.ts"
+      ],
       "@eevee/memory": [
         "./packages/memory/src/index.ts"
       ],

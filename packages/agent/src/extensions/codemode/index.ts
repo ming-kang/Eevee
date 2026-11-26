@@ -1,3 +1,4 @@
+import type { Context } from "@earendil-works/chord/context";
 import type {
   CodemodeSandboxOptions,
   InlineCodemodeSandboxOptions,
@@ -8,11 +9,13 @@ import {
   InlineCodemodeSandbox,
   loadQuickJSWasm,
 } from "@earendil-works/pi-codemode";
-import { defineExtension, type Extension } from "@earendil-works/pi-durable";
+import { defineExtension, type Extension, type PromptInput } from "@earendil-works/pi-durable";
 import {
+  CODEMODE_TOOL_NAME,
   type CodemodeToolOptions,
   createCodemodeExtension as createUpstreamCodemodeExtension,
 } from "@earendil-works/pi-durable/codemode";
+import { resolveToolPromptMeta, withToolPromptMeta } from "../../context/tool-meta.ts";
 
 export const CODEMODE_EXTENSION = "eevee.codemode";
 
@@ -20,7 +23,39 @@ export type CodemodeExtensionOptions = CodemodeToolOptions;
 
 export function createCodemodeExtension(options: CodemodeExtensionOptions): Extension {
   const upstream = createUpstreamCodemodeExtension(options);
-  return defineExtension({ ...upstream, name: CODEMODE_EXTENSION });
+  const tools = (upstream.tools ?? []).map((tool) =>
+    tool.name === CODEMODE_TOOL_NAME
+      ? withToolPromptMeta(tool, {
+          promptSnippet: "Run JavaScript that calls other tools",
+          promptGuidelines: [
+            "Use codemode to batch independent tool calls (Promise.allSettled), chain them, or filter large output, instead of many separate calls.",
+          ],
+        })
+      : tool,
+  );
+  const sections = (upstream.sections ?? []).map((entry) => {
+    if (entry.key !== "codemode") return entry;
+    return {
+      ...entry,
+      render: (input: PromptInput, context: Context) => {
+        const callable = input.agent.callable.map((tool) => {
+          const guidelines =
+            resolveToolPromptMeta(tool, input.agent.extensions)?.promptGuidelines ?? [];
+          const bullets = guidelines
+            .map((guideline) => guideline.trim())
+            .filter((guideline) => guideline !== "")
+            .map((guideline) => `- ${guideline}`);
+          if (bullets.length === 0) return tool;
+          return {
+            ...tool,
+            description: `${tool.description.trim()}\n\n${bullets.join("\n")}`,
+          };
+        });
+        return entry.render({ ...input, agent: { ...input.agent, callable } }, context);
+      },
+    };
+  });
+  return defineExtension({ ...upstream, name: CODEMODE_EXTENSION, tools, sections });
 }
 
 export type CodemodeHandleOptions = Omit<CodemodeToolOptions, "sandbox"> & {

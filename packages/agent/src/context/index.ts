@@ -6,6 +6,7 @@ export {
 export {
   AGENTS_SKILLS_DIR,
   CONTEXT_FILE,
+  CONTEXT_FILENAMES,
   type ContextDiscovery,
   type ContextFile,
   discoverContext,
@@ -18,4 +19,11 @@ export {
   SKILLS_DIR,
   type SkillInfo,
 } from "./discovery.ts";
-export { guidelinesForTools, type ToolGuideline } from "./prompt-meta.ts";
+export {
+  getToolPromptMeta,
+  renderRulesSection,
+  renderToolsSection,
+  resolveToolPromptMeta,
+  type ToolPromptMeta,
+  withToolPromptMeta,
+} from "./tool-meta.ts";

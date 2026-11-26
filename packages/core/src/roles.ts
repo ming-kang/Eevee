@@ -21,8 +21,8 @@ export const ROUTER_EXTENSIONS = [
   AGENT_EXTENSIONS.shellPaths,
   AGENT_EXTENSIONS.codemode,
   AGENT_EXTENSIONS.toolSearch,
-  AGENT_EXTENSIONS.mcp,
   MEMORY_EXTENSION,
+  AGENT_EXTENSIONS.mcp,
   ROUTER_EXTENSION,
 ] as const;
 
@@ -32,9 +32,9 @@ export const WORKER_EXTENSIONS = [
   AGENT_EXTENSIONS.tasks,
   AGENT_EXTENSIONS.codemode,
   AGENT_EXTENSIONS.toolSearch,
-  AGENT_EXTENSIONS.mcp,
   AGENT_EXTENSIONS.cachedCompaction,
   WORKER_EXTENSION,
+  AGENT_EXTENSIONS.mcp,
 ] as const;
 
 export const ROUTER_COLLAB_TOOLS = [
@@ -61,9 +61,17 @@ export type RoleAgentOptions = {
   readonly compaction?: CompactionSettings;
 };
 
-export const DEFAULT_ROUTER_INSTRUCTIONS = `You are the Eevee Router, the user's primary conversation. Delegate substantial implementation, investigation, and multi-step work to Workers with spawn_worker instead of doing it yourself. Use message_worker to reply, steer, or assign a new ticket to an existing Worker, close_ticket to close finished work, stop_worker to interrupt or close a Worker, inspect_worker to check status/transcripts/tasks, and ask_user to ask the user non-blocking structured questions. When a Worker or user-answer notice arrives as an eevee.notice, use its result and continue the user's work.`;
+export const ROUTER_PREAMBLE =
+  "You are Eevee Router, the user's primary coordinator. Inspect code read-only, delegate implementation and multi-step investigation to Workers, and only interrupt the user when decisions or results need their attention.";
 
-export const DEFAULT_WORKER_INSTRUCTIONS = `You are an Eevee Worker, a reusable background conversation owned by the Router. Work autonomously in your configured workspace and use your coding tools to complete the ticket. Use message_router to send progress updates, ask the Router for missing information, or report conclusions immediately. When your run ends with no active background tasks and the last tool round did not call message_router, your final reply is automatically handed off to the Router, so make it a concise report of what changed, what was verified, and anything still blocked.`;
+export const WORKER_PREAMBLE =
+  "You are an Eevee Worker, an autonomous background coding agent running in your assigned workspace. Complete the ticket using your coding tools, verify changes, and report concisely to the Router.";
+
+export const DEFAULT_ROUTER_INSTRUCTIONS =
+  "Delegate substantial implementation, investigation, and multi-step work to Workers with spawn_worker instead of doing it yourself. Use message_worker to reply, steer, or assign a new ticket to an existing Worker, close_ticket to close finished work, stop_worker to interrupt or close a Worker, inspect_worker to check status, transcripts, or tasks, and ask_user to ask the user non-blocking structured questions. When a Worker or user-answer notice arrives as an eevee.notice, use its result and continue the user's work.";
+
+export const DEFAULT_WORKER_INSTRUCTIONS =
+  "Use message_router to send progress updates, ask the Router for missing decisions or information, or report conclusions immediately. When your run ends with no active background tasks and the last tool round did not call message_router, your final reply is automatically handed off to the Router, so make it a concise report of what changed, what was verified, and anything still blocked.";
 
 export function parseModelSpec(spec: string, models: Models): ModelChoice | undefined {
   const separator = spec.indexOf("/");

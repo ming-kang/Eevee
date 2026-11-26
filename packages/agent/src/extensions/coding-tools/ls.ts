@@ -1,5 +1,6 @@
 import { defineTool } from "@earendil-works/pi-durable";
 import { arr, bool, int, num, obj, opt, str } from "@earendil-works/pi-schema";
+import { withToolPromptMeta } from "../../context/tool-meta.ts";
 import { DEFAULT_MAX_BYTES, formatSize, truncateHead } from "../../shared/truncate.ts";
 
 const DEFAULT_LIMIT = 500;
@@ -19,79 +20,87 @@ function errorResult(text: string) {
   return { output: [{ type: "text" as const, text }], isError: true };
 }
 
-export const lsTool = defineTool({
-  name: "ls",
-  description:
-    "List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to 500 entries or 50KB (whichever is hit first).",
-  parameters: obj({
-    path: opt(str({ description: "Directory to list (default: current directory)" })),
-    limit: opt(
-      int({ minimum: 1, description: "Maximum number of entries to return (default: 500)" }),
-    ),
-  }),
-  replay: "safe",
-  structuredOutputSchema: lsStructuredOutput,
-  execute: async (args, api, context) => {
-    const env = api.env;
-    if (env === undefined) {
-      return errorResult(
-        "This tool needs a workspace environment, which this conversation does not have.",
-      );
-    }
-    const effectiveLimit = Math.max(1, Math.floor(args.limit ?? DEFAULT_LIMIT));
-    const resolved = await env.absolutePath(args.path ?? ".", context);
-    if (!resolved.ok) return errorResult(resolved.error.message);
-    const info = await env.fileInfo(resolved.value, context);
-    if (!info.ok) return errorResult(`Path not found: ${resolved.value}`);
-    if (info.value.kind !== "directory") return errorResult(`Not a directory: ${resolved.value}`);
-    const listing = await env.listDir(resolved.value, context);
-    if (!listing.ok) return errorResult(`Cannot read directory: ${listing.error.message}`);
-
-    const names = [...listing.value].sort((a, b) =>
-      a.name.toLowerCase().localeCompare(b.name.toLowerCase()),
-    );
-    const entries: string[] = [];
-    let entryLimitReached = false;
-    for (const entry of names) {
-      if (entries.length >= effectiveLimit) {
-        entryLimitReached = true;
-        break;
+export const lsTool = withToolPromptMeta(
+  defineTool({
+    name: "ls",
+    description:
+      "List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to 500 entries or 50KB (whichever is hit first).",
+    parameters: obj({
+      path: opt(str({ description: "Directory to list (default: current directory)" })),
+      limit: opt(
+        int({ minimum: 1, description: "Maximum number of entries to return (default: 500)" }),
+      ),
+    }),
+    replay: "safe",
+    structuredOutputSchema: lsStructuredOutput,
+    execute: async (args, api, context) => {
+      const env = api.env;
+      if (env === undefined) {
+        return errorResult(
+          "This tool needs a workspace environment, which this conversation does not have.",
+        );
       }
-      entries.push(entry.kind === "directory" ? `${entry.name}/` : entry.name);
-    }
+      const effectiveLimit = Math.max(1, Math.floor(args.limit ?? DEFAULT_LIMIT));
+      const resolved = await env.absolutePath(args.path ?? ".", context);
+      if (!resolved.ok) return errorResult(resolved.error.message);
+      const info = await env.fileInfo(resolved.value, context);
+      if (!info.ok) return errorResult(`Path not found: ${resolved.value}`);
+      if (info.value.kind !== "directory") return errorResult(`Not a directory: ${resolved.value}`);
+      const listing = await env.listDir(resolved.value, context);
+      if (!listing.ok) return errorResult(`Cannot read directory: ${listing.error.message}`);
 
-    const details: {
-      truncation?: ReturnType<typeof truncateHead>;
-      entryLimitReached?: number;
-    } = {};
-    if (entries.length === 0) {
-      return {
-        output: [{ type: "text" as const, text: "(empty directory)" }],
-        structuredOutput: { entries: [], truncated: false },
-      };
-    }
-    const truncation = truncateHead(entries.join("\n"), { maxLines: Number.MAX_SAFE_INTEGER });
-    let output = truncation.content;
-    const notices: string[] = [];
-    if (entryLimitReached) {
-      notices.push(
-        `${effectiveLimit} entries limit reached. Use limit=${effectiveLimit * 2} for more`,
+      const names = [...listing.value].sort((a, b) =>
+        a.name.toLowerCase().localeCompare(b.name.toLowerCase()),
       );
-      details.entryLimitReached = effectiveLimit;
-    }
-    if (truncation.truncated) {
-      notices.push(`${formatSize(DEFAULT_MAX_BYTES)} limit reached`);
-      details.truncation = truncation;
-    }
-    if (notices.length > 0) output += `\n\n[${notices.join(". ")}]`;
-    return {
-      output: [{ type: "text" as const, text: output }],
-      structuredOutput: {
-        entries,
-        truncated: truncation.truncated,
-        ...(entryLimitReached ? { entryLimitReached: effectiveLimit } : {}),
-      },
-      ...(Object.keys(details).length > 0 ? { details } : {}),
-    };
+      const entries: string[] = [];
+      let entryLimitReached = false;
+      for (const entry of names) {
+        if (entries.length >= effectiveLimit) {
+          entryLimitReached = true;
+          break;
+        }
+        entries.push(entry.kind === "directory" ? `${entry.name}/` : entry.name);
+      }
+
+      const details: {
+        truncation?: ReturnType<typeof truncateHead>;
+        entryLimitReached?: number;
+      } = {};
+      if (entries.length === 0) {
+        return {
+          output: [{ type: "text" as const, text: "(empty directory)" }],
+          structuredOutput: { entries: [], truncated: false },
+        };
+      }
+      const truncation = truncateHead(entries.join("\n"), { maxLines: Number.MAX_SAFE_INTEGER });
+      let output = truncation.content;
+      const notices: string[] = [];
+      if (entryLimitReached) {
+        notices.push(
+          `${effectiveLimit} entries limit reached. Use limit=${effectiveLimit * 2} for more`,
+        );
+        details.entryLimitReached = effectiveLimit;
+      }
+      if (truncation.truncated) {
+        notices.push(`${formatSize(DEFAULT_MAX_BYTES)} limit reached`);
+        details.truncation = truncation;
+      }
+      if (notices.length > 0) output += `\n\n[${notices.join(". ")}]`;
+      return {
+        output: [{ type: "text" as const, text: output }],
+        structuredOutput: {
+          entries,
+          truncated: truncation.truncated,
+          ...(entryLimitReached ? { entryLimitReached: effectiveLimit } : {}),
+        },
+        ...(Object.keys(details).length > 0 ? { details } : {}),
+      };
+    },
+  }),
+  {
+    promptSnippet: "List directory contents",
+    promptGuidelines: [
+      "Use ls to orient in a directory; it lists entries alphabetically with a '/' suffix for directories.",
+    ],
   },
-});
+);

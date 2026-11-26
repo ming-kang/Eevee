@@ -1,7 +1,16 @@
-import { readdir, readFile, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import type { Stats } from "node:fs";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { basename, dirname, join, resolve, sep } from "node:path";
+import { stripBom } from "../shared/json.ts";
 
 export const CONTEXT_FILE = "AGENTS.md";
+export const CONTEXT_FILENAMES = [
+  "AGENTS.override.md",
+  "AGENTS.md",
+  "AGENTS.MD",
+  "CLAUDE.md",
+  "CLAUDE.MD",
+] as const;
 export const SKILL_FILE = "SKILL.md";
 export const SKILLS_DIR = "skills";
 export const PI_SKILLS_DIR = ".pi/skills";
@@ -10,6 +19,7 @@ export const AGENTS_SKILLS_DIR = ".agents/skills";
 export type ContextFile = {
   readonly path: string;
   readonly content: string;
+  readonly workspace?: string;
 };
 
 export type SkillInfo = {
@@ -46,6 +56,39 @@ async function isFile(path: string): Promise<boolean> {
   }
 }
 
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function canonicalizePath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+function pathKey(path: string): string {
+  const resolved = resolve(path);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function pathsEqual(left: string, right: string): boolean {
+  return pathKey(left) === pathKey(right);
+}
+
+function isPathWithin(parent: string, child: string): boolean {
+  const parentKey = pathKey(parent);
+  const childKey = pathKey(child);
+  if (childKey === parentKey) return true;
+  return childKey.startsWith(parentKey.endsWith(sep) ? parentKey : `${parentKey}${sep}`);
+}
+
 function ancestorsOf(dir: string): string[] {
   const chain: string[] = [];
   let current = resolve(dir);
@@ -58,28 +101,134 @@ function ancestorsOf(dir: string): string[] {
   return chain.reverse();
 }
 
+async function loadContextFileFromDir(
+  dir: string,
+): Promise<{ path: string; content: string } | undefined> {
+  for (const filename of CONTEXT_FILENAMES) {
+    const candidate = join(dir, filename);
+    if (!(await isFile(candidate))) continue;
+    const raw = await readTextFile(candidate);
+    if (raw !== undefined) {
+      return { path: candidate, content: stripBom(raw) };
+    }
+  }
+  return undefined;
+}
+
+type GitPaths = {
+  readonly repoDir: string;
+  readonly commonGitDir: string;
+};
+
+async function findGitPaths(cwd: string): Promise<GitPaths | undefined> {
+  let dir = resolve(cwd);
+  while (true) {
+    const gitPath = join(dir, ".git");
+    let info: Stats | undefined;
+    try {
+      info = await stat(gitPath);
+    } catch {
+      info = undefined;
+    }
+    if (info !== undefined) {
+      try {
+        if (info.isFile()) {
+          const content = (await readTextFile(gitPath))?.trim() ?? "";
+          const match = /^gitdir:\s*(.+)$/im.exec(content);
+          if (match?.[1] !== undefined) {
+            const gitDir = resolve(dir, match[1].trim());
+            if (!(await pathExists(join(gitDir, "HEAD")))) return undefined;
+            const commonDirRaw = await readTextFile(join(gitDir, "commondir"));
+            const commonGitDir =
+              commonDirRaw !== undefined && commonDirRaw.trim() !== ""
+                ? resolve(gitDir, commonDirRaw.trim())
+                : gitDir;
+            return { repoDir: dir, commonGitDir };
+          }
+        } else if (info.isDirectory()) {
+          if (!(await pathExists(join(gitPath, "HEAD")))) return undefined;
+          return { repoDir: dir, commonGitDir: gitPath };
+        }
+      } catch {
+        return undefined;
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
+async function findShadowedContextFile(cwd: string): Promise<string | undefined> {
+  const gitPaths = await findGitPaths(cwd);
+  if (gitPaths === undefined) return undefined;
+  const commonGitDir = await canonicalizePath(gitPaths.commonGitDir);
+  const worktreeRoot = await canonicalizePath(gitPaths.repoDir);
+  const mainRepoRoot = dirname(commonGitDir);
+  if (!isPathWithin(mainRepoRoot, worktreeRoot) || pathsEqual(worktreeRoot, mainRepoRoot)) {
+    return undefined;
+  }
+  if (!pathsEqual(await canonicalizePath(join(mainRepoRoot, ".git")), commonGitDir)) {
+    return undefined;
+  }
+  const worktreeContextFile = await loadContextFileFromDir(worktreeRoot);
+  return worktreeContextFile === undefined
+    ? undefined
+    : join(mainRepoRoot, basename(worktreeContextFile.path));
+}
+
 export async function discoverContextFiles(options: PromptContextOptions): Promise<ContextFile[]> {
   const found: ContextFile[] = [];
   const seen = new Set<string>();
 
   if (options.globalDir !== undefined) {
-    const globalFile = join(options.globalDir, CONTEXT_FILE);
-    const content = await readTextFile(globalFile);
-    if (content !== undefined) {
-      found.push({ path: globalFile, content });
-      seen.add(globalFile);
+    const globalFile = await loadContextFileFromDir(options.globalDir);
+    if (globalFile !== undefined) {
+      seen.add(pathKey(await canonicalizePath(globalFile.path)));
+      found.push(globalFile);
     }
   }
 
+  const workspaces: { resolved: string; canonical: string }[] = [];
+  const seenWorkspaces = new Set<string>();
   for (const workspace of options.workspaces ?? []) {
-    for (const dir of ancestorsOf(workspace)) {
-      const candidate = join(dir, CONTEXT_FILE);
-      if (seen.has(candidate)) continue;
-      const content = await readTextFile(candidate);
-      if (content !== undefined) {
-        found.push({ path: candidate, content });
-        seen.add(candidate);
+    const resolved = resolve(workspace);
+    const canonical = await canonicalizePath(resolved);
+    const key = pathKey(canonical);
+    if (seenWorkspaces.has(key)) continue;
+    seenWorkspaces.add(key);
+    workspaces.push({ resolved, canonical });
+  }
+  const multipleWorkspaces = workspaces.length > 1;
+
+  for (const workspace of workspaces) {
+    const shadowedContextFile = await findShadowedContextFile(workspace.resolved);
+    for (const dir of ancestorsOf(workspace.resolved)) {
+      const candidate = await loadContextFileFromDir(dir);
+      if (candidate === undefined) continue;
+      const canonicalDir = await canonicalizePath(dir);
+      // Compare the directory's real path: a worktree context file symlinked to the main repo resolves to the shadowed path.
+      const isShadowed =
+        shadowedContextFile !== undefined &&
+        pathsEqual(join(canonicalDir, basename(candidate.path)), shadowedContextFile);
+      if (isShadowed) continue;
+
+      const canonical = pathKey(await canonicalizePath(candidate.path));
+      if (seen.has(canonical)) continue;
+      seen.add(canonical);
+
+      if (!multipleWorkspaces) {
+        found.push(candidate);
+        continue;
       }
+      const matchingWorkspaces = workspaces.filter((ws) =>
+        isPathWithin(canonicalDir, ws.canonical),
+      );
+      found.push(
+        matchingWorkspaces.length === 1
+          ? { ...candidate, workspace: workspace.resolved }
+          : candidate,
+      );
     }
   }
 
@@ -91,7 +240,7 @@ export function parseSkillFrontmatter(text: string): {
   description?: string;
   disableModelInvocation?: boolean;
 } {
-  const normalized = text.replace(/^﻿/, "").replace(/\r\n/g, "\n");
+  const normalized = stripBom(text).replace(/\r\n/g, "\n");
   if (!normalized.startsWith("---\n")) return {};
   const end = normalized.indexOf("\n---", 4);
   if (end < 0) return {};

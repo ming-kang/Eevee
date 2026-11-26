@@ -5,6 +5,7 @@ import { BACKGROUND_CONTEXT, withCancel } from "@earendil-works/chord/context";
 import { utf8ByteLength } from "@earendil-works/chord/output";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import type { ExecutionEnv, ShellSpillOptions } from "@earendil-works/pi-durable/env";
+import { normalizePosixBashCommand } from "../../shell/normalize.ts";
 import type { BackgroundTaskRecord } from "./docs.ts";
 import type { OutputReadOptions, OutputSlice } from "./output.ts";
 import { readOutputFileSlice, sliceRetainedOutput, utf8Tail } from "./output.ts";
@@ -33,11 +34,13 @@ export type StartCommandOptions = {
   readonly env?: Record<string, string>;
   readonly timeoutSeconds?: number;
   readonly spill?: ShellSpillOptions;
+  readonly platform?: NodeJS.Platform;
 };
 
 export type RunningCommand = {
   readonly command: string;
   readonly cwd?: string;
+  readonly rewrittenNul: boolean;
   readonly settled: boolean;
   /** Set only by an explicit kill request, never by a shutdown cancellation. */
   readonly killed: boolean;
@@ -81,9 +84,10 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
     }
   };
 
+  const normalized = normalizePosixBashCommand(options.command, options.platform);
   const done = env
     .exec(
-      options.command,
+      normalized.command,
       {
         ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
         env: options.env ?? {},
@@ -121,6 +125,7 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
   return {
     command: options.command,
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    rewrittenNul: normalized.rewrittenNul,
     get settled() {
       return settled;
     },

@@ -1,11 +1,12 @@
 import { defineExtension, type PromptInput, section } from "@earendil-works/pi-durable";
 import {
   type ContextDiscovery,
+  type ContextFile,
   discoverContext,
   type PromptContextOptions,
   type SkillInfo,
 } from "./discovery.ts";
-import { guidelinesForTools } from "./prompt-meta.ts";
+import { renderRulesSection, renderToolsSection } from "./tool-meta.ts";
 
 export const BASE_EXTENSION = "eevee.base";
 
@@ -17,15 +18,20 @@ function escapeXml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function renderContextFiles(
-  files: readonly { path: string; content: string }[],
-): string | undefined {
+function escapeXmlAttr(text: string): string {
+  return escapeXml(text).replace(/"/g, "&quot;");
+}
+
+function renderContextFiles(files: readonly ContextFile[]): string | undefined {
   const parts = files
     .map((file) => {
       const trimmed = file.content.trim();
-      return trimmed === ""
-        ? undefined
-        : `<context-file path="${file.path}">\n${trimmed}\n</context-file>`;
+      if (trimmed === "") return undefined;
+      const attrs =
+        file.workspace === undefined
+          ? `path="${escapeXmlAttr(file.path)}"`
+          : `path="${escapeXmlAttr(file.path)}" workspace="${escapeXmlAttr(file.workspace)}"`;
+      return `<context-file ${attrs}>\n${trimmed}\n</context-file>`;
     })
     .filter((part): part is string => part !== undefined);
   if (parts.length === 0) return undefined;
@@ -86,6 +92,10 @@ export function createBaseExtension(options: BaseExtensionOptions = {}) {
           "You are an Eevee agent, a coding assistant built on pi-durable. Help the user inspect files, run commands, and modify code.",
         { tag: false },
       ),
+      section("tools", (input) => renderToolsSection(input.agent.tools, input.agent.extensions)),
+      section("rules", (input) =>
+        renderRulesSection(input.agent.tools, undefined, input.agent.extensions),
+      ),
       section("cwd", async (input) => input.agent.cwd?.replace(/\\/g, "/")),
       section("agent-context", async (input) => {
         const discovery = await discoverOnce(input);
@@ -95,9 +105,6 @@ export function createBaseExtension(options: BaseExtensionOptions = {}) {
         const discovery = await discoverOnce(input);
         const reader = skillReader(input.agent.tools.map((tool) => tool.name));
         return renderSkills(discovery.skills, reader);
-      }),
-      section("tool-guidelines", async (input) => {
-        return guidelinesForTools(input.agent.tools.map((tool) => tool.name));
       }),
     ],
   });

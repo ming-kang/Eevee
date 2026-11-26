@@ -14,11 +14,12 @@ import {
   section,
   type TaskRuntime,
   type ToolExecutionResult,
+  wrapSection,
 } from "@earendil-works/pi-durable";
 import { lit, obj, opt, str } from "@earendil-works/pi-schema";
-import { TaskRecordDoc, TasksBoardDoc } from "@eevee/agent";
+import { TaskRecordDoc, TasksBoardDoc, withToolPromptMeta } from "@eevee/agent";
 import { NOTICE_ENTRY_KIND, ProjectBoardDoc, WorkerDoc, type WorkerDocState } from "../docs.ts";
-import { WORKER_EXTENSION } from "../roles.ts";
+import { DEFAULT_WORKER_INSTRUCTIONS, WORKER_EXTENSION, WORKER_PREAMBLE } from "../roles.ts";
 
 export const HANDOFF_TASK_NAME = "eevee.worker-handoff";
 export const HANDOFF_MAX_CHARS = 4000;
@@ -170,83 +171,87 @@ export function createWorkerHandoffTask() {
 
 export type WorkerExtensionDeps = {
   readonly projectMemory?: () => string | undefined;
+  readonly workerInstructions?: string;
 };
 
 export function createWorkerExtension(deps: WorkerExtensionDeps = {}) {
   const handoffTask = createWorkerHandoffTask();
-  const messageRouter = defineTool({
-    name: "message_router",
-    description:
-      "Send a progress update, question, or conclusion to the Router and return immediately. Use this instead of waiting for the automatic end-of-run handoff when the Router should act now.",
-    parameters: obj({
-      message: str({ minLength: 1, description: "Message for the Router" }),
-    }),
-    structuredOutputSchema: obj({
-      delivered: lit(true),
-      workerId: str(),
-      ticketId: opt(str()),
-    }),
-    execute: async (args, api, context): Promise<ToolExecutionResult> => {
-      const router = await api.conversation(ROOT_CONVERSATION_ID, context);
-      if (router === undefined) return errorResult("The Router conversation is unavailable.");
-      const delivered = await api.commit(async (tx): Promise<MessageRouterCommit> => {
-        const board = await tx.doc(ProjectBoardDoc);
-        let worker: WorkerDocState | undefined;
-        for (const workerId of board.workerOrder) {
-          const candidate = await tx.doc(WorkerDoc, workerId, null);
-          if (candidate.conversationId === api.conversationId) {
-            worker = { ...candidate };
-            break;
+  const messageRouter = withToolPromptMeta(
+    defineTool({
+      name: "message_router",
+      description:
+        "Send a progress update, question, or conclusion to the Router and return immediately. Use this instead of waiting for the automatic end-of-run handoff when the Router should act now.",
+      parameters: obj({
+        message: str({ minLength: 1, description: "Message for the Router" }),
+      }),
+      structuredOutputSchema: obj({
+        delivered: lit(true),
+        workerId: str(),
+        ticketId: opt(str()),
+      }),
+      execute: async (args, api, context): Promise<ToolExecutionResult> => {
+        const router = await api.conversation(ROOT_CONVERSATION_ID, context);
+        if (router === undefined) return errorResult("The Router conversation is unavailable.");
+        const delivered = await api.commit(async (tx): Promise<MessageRouterCommit> => {
+          const board = await tx.doc(ProjectBoardDoc);
+          let worker: WorkerDocState | undefined;
+          for (const workerId of board.workerOrder) {
+            const candidate = await tx.doc(WorkerDoc, workerId, null);
+            if (candidate.conversationId === api.conversationId) {
+              worker = { ...candidate };
+              break;
+            }
           }
-        }
-        if (worker === undefined) {
-          return { error: "This conversation is not registered as a Worker." };
-        }
-        if (worker.closedAt !== undefined) {
-          return { error: `Worker ${worker.id} is closed.` };
-        }
-        const ticketId = worker.activeTicketId;
-        await router.submit(tx, {
-          type: "input",
-          content: `Worker ${worker.name} (${worker.id}) sent a message:\n\n${args.message}`,
-          whenBusy: "followUp",
-          onAbort: "keep",
-          requestId: `eevee.message-router:${api.taskId}`,
-          entry: {
-            kind: NOTICE_ENTRY_KIND,
-            data: {
-              type: "worker_message",
-              workerId: worker.id,
-              workerName: worker.name,
-              ...(ticketId === undefined ? {} : { ticketId }),
+          if (worker === undefined) {
+            return { error: "This conversation is not registered as a Worker." };
+          }
+          if (worker.closedAt !== undefined) {
+            return { error: `Worker ${worker.id} is closed.` };
+          }
+          const ticketId = worker.activeTicketId;
+          await router.submit(tx, {
+            type: "input",
+            content: `Worker ${worker.name} (${worker.id}) sent a message:\n\n${args.message}`,
+            whenBusy: "followUp",
+            onAbort: "keep",
+            requestId: `eevee.message-router:${api.taskId}`,
+            entry: {
+              kind: NOTICE_ENTRY_KIND,
+              data: {
+                type: "worker_message",
+                workerId: worker.id,
+                workerName: worker.name,
+                ...(ticketId === undefined ? {} : { ticketId }),
+              },
             },
-          },
-        });
+          });
+          return {
+            workerId: worker.id,
+            ...(ticketId === undefined ? {} : { ticketId }),
+          };
+        }, context);
+        if ("error" in delivered) return errorResult(delivered.error);
         return {
-          workerId: worker.id,
-          ...(ticketId === undefined ? {} : { ticketId }),
+          output: [{ type: "text", text: "Delivered to the Router." }],
+          structuredOutput: {
+            delivered: true,
+            workerId: delivered.workerId,
+            ...(delivered.ticketId === undefined ? {} : { ticketId: delivered.ticketId }),
+          },
         };
-      }, context);
-      if ("error" in delivered) return errorResult(delivered.error);
-      return {
-        output: [{ type: "text", text: "Delivered to the Router." }],
-        structuredOutput: {
-          delivered: true,
-          workerId: delivered.workerId,
-          ...(delivered.ticketId === undefined ? {} : { ticketId: delivered.ticketId }),
-        },
-      };
+      },
+    }),
+    {
+      promptSnippet: "Send a progress update, question, or conclusion to the Router",
+      promptGuidelines: [
+        "Use message_router to send progress updates, ask the Router for missing decisions or information, or report conclusions immediately without waiting for run completion.",
+      ],
     },
-  });
+  );
 
-  const workerRoleSection = section("worker-role", (input) => {
-    const lines = [
-      "You are an autonomous Eevee Worker assigned by the Router.",
-      ...(input.agent.cwd === undefined ? [] : [`Workspace: ${input.agent.cwd}`]),
-      "- Use message_router to send progress updates, ask for missing decisions/data, or deliver results immediately.",
-      "- When your run ends with no active background tasks and your last tool round did not call message_router, your final reply is automatically handed off to the Router.",
-    ];
-    return lines.join("\n");
+  const workerRoleSection = section("worker-role", () => {
+    const text = (deps.workerInstructions ?? DEFAULT_WORKER_INSTRUCTIONS).trim();
+    return text ? text : undefined;
   });
 
   const projectMemorySection = section("project-memory", () => {
@@ -258,6 +263,12 @@ export function createWorkerExtension(deps: WorkerExtensionDeps = {}) {
     name: WORKER_EXTENSION,
     tools: [messageRouter],
     sections: [workerRoleSection, projectMemorySection],
+    wraps: [
+      wrapSection("preamble", (base) => ({
+        ...base,
+        render: () => WORKER_PREAMBLE,
+      })),
+    ],
     tasks: [handoffTask],
     hooks: [
       hook(GenerationTask, {

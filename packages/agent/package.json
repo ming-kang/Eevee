@@ -24,6 +24,11 @@
       "eevee-source": "./src/extensions/index.ts",
       "types": "./dist/extensions/index.d.ts",
       "import": "./dist/extensions/index.js"
+    },
+    "./shell": {
+      "eevee-source": "./src/shell/index.ts",
+      "types": "./dist/shell/index.d.ts",
+      "import": "./dist/shell/index.js"
     }
   },
   "scripts": {

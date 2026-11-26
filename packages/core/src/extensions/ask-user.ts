@@ -6,6 +6,7 @@ import {
   type ToolExecutionResult,
 } from "@earendil-works/pi-durable";
 import { arr, int, lit, obj, opt, str } from "@earendil-works/pi-schema";
+import { withToolPromptMeta } from "@eevee/agent";
 import {
   NOTICE_ENTRY_KIND,
   ProjectBoardDoc,
@@ -32,64 +33,74 @@ export function formatQuestionAnswerNotice(
 }
 
 export function createAskUserTool() {
-  return defineTool({
-    name: "ask_user",
-    description:
-      "Ask the user one or more structured questions without blocking. Returns immediately so you can keep coordinating work; the user's answers will arrive as a notice once submitted.",
-    parameters: obj({
-      questions: arr(
-        obj({
-          question: str({ minLength: 1, description: "Clear question for the user" }),
-          options: opt(
-            arr(str({ minLength: 1 }), {
-              minItems: 1,
-              description: "Optional suggested choices",
-            }),
-          ),
-          recommended: opt(str({ minLength: 1, description: "Optional recommended choice" })),
-        }),
-        { minItems: 1, maxItems: 6, description: "Structured questions for the user" },
-      ),
-    }),
-    structuredOutputSchema: obj({
-      questionId: str(),
-      count: int({ minimum: 1 }),
-      status: lit("pending"),
-    }),
-    execute: async (args, api, context): Promise<ToolExecutionResult> => {
-      const items: QuestionItem[] = args.questions.map((item) => ({
-        question: item.question,
-        ...(item.options === undefined ? {} : { options: [...item.options] }),
-        ...(item.recommended === undefined ? {} : { recommended: item.recommended }),
-      }));
+  return withToolPromptMeta(
+    defineTool({
+      name: "ask_user",
+      description:
+        "Ask the user one or more structured questions without blocking. Returns immediately so you can keep coordinating work; the user's answers will arrive as a notice once submitted.",
+      parameters: obj({
+        questions: arr(
+          obj({
+            question: str({ minLength: 1, description: "Clear question for the user" }),
+            options: opt(
+              arr(str({ minLength: 1 }), {
+                minItems: 1,
+                description: "Optional suggested choices",
+              }),
+            ),
+            recommended: opt(str({ minLength: 1, description: "Optional recommended choice" })),
+          }),
+          { minItems: 1, maxItems: 6, description: "Structured questions for the user" },
+        ),
+      }),
+      structuredOutputSchema: obj({
+        questionId: str(),
+        count: int({ minimum: 1 }),
+        status: lit("pending"),
+      }),
+      execute: async (args, api, context): Promise<ToolExecutionResult> => {
+        const items: QuestionItem[] = args.questions.map((item) => ({
+          question: item.question,
+          ...(item.options === undefined ? {} : { options: [...item.options] }),
+          ...(item.recommended === undefined ? {} : { recommended: item.recommended }),
+        }));
 
-      const questionId = await api.commit(async (tx) => {
-        const board = await tx.doc(ProjectBoardDoc);
-        const id = `q${board.nextQuestionSeq}` as QuestionId;
-        board.nextQuestionSeq += 1;
-        board.questionOrder.push(id);
-        const doc = await tx.doc(QuestionDoc, id, null);
-        doc.id = id;
-        doc.items = items;
-        doc.askedAt = api.now();
-        return id;
-      }, context);
+        const questionId = await api.commit(async (tx) => {
+          const board = await tx.doc(ProjectBoardDoc);
+          const id = `q${board.nextQuestionSeq}` as QuestionId;
+          board.nextQuestionSeq += 1;
+          board.questionOrder.push(id);
+          const doc = await tx.doc(QuestionDoc, id, null);
+          doc.id = id;
+          doc.items = items;
+          doc.askedAt = api.now();
+          return id;
+        }, context);
 
-      return {
-        output: [
-          {
-            type: "text",
-            text: `Recorded user question ${questionId} (${items.length} item${items.length === 1 ? "" : "s"}). You do not need to wait; the user's answer will arrive automatically when submitted.`,
+        return {
+          output: [
+            {
+              type: "text",
+              text: `Recorded user question ${questionId} (${items.length} item${items.length === 1 ? "" : "s"}). You do not need to wait; the user's answer will arrive automatically when submitted.`,
+            },
+          ],
+          structuredOutput: {
+            questionId,
+            count: items.length,
+            status: "pending",
           },
-        ],
-        structuredOutput: {
-          questionId,
-          count: items.length,
-          status: "pending",
-        },
-      };
+        };
+      },
+    }),
+    {
+      promptSnippet: "Ask the user non-blocking structured questions",
+      promptGuidelines: [
+        "Use ask_user only for decisions you cannot resolve from the request, the code, or sensible defaults (direction, preference, permissions, destructive choices); otherwise pick a reasonable default and state it.",
+        "Batch related decisions into one ask_user call (1-6 questions); it returns immediately so you can keep coordinating until the answer arrives.",
+        "Treat ask_user answers as final decisions: act on them without re-litigating, and do not re-ask unless circumstances change.",
+      ],
     },
-  });
+  );
 }
 
 export async function answerQuestion(

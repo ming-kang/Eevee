@@ -27,7 +27,7 @@ import {
   type UsageState,
   UserEntry,
 } from "@earendil-works/pi-durable";
-import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
+import type { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import {
   type BackgroundTaskRecord,
   type BaseExtensionOptions,
@@ -37,6 +37,7 @@ import {
   createCachedCompactionExtension,
   createCodemodeHandle,
   createCodingToolsExtension,
+  createManagedExecutionEnv,
   createReadonlyToolsExtension,
   createShellPathsExtension,
   createTasksExtension,
@@ -79,13 +80,7 @@ import { answerQuestion as submitQuestionAnswer } from "./extensions/ask-user.ts
 import { createRouterExtension, type RouterProjectInfo } from "./extensions/router.ts";
 import { createWorkerExtension } from "./extensions/worker.ts";
 import { ProjectPump } from "./pump.ts";
-import {
-  buildRouterAgent,
-  DEFAULT_ROUTER_INSTRUCTIONS,
-  DEFAULT_WORKER_INSTRUCTIONS,
-  type ModelSlots,
-  resolveRoleExtensions,
-} from "./roles.ts";
+import { buildRouterAgent, type ModelSlots, resolveRoleExtensions } from "./roles.ts";
 import { SerialPass } from "./serial-pass.ts";
 import { resolveWorkerStatus } from "./status.ts";
 import { addUsage, BoardFeed, type BoardView, projectUsage, readBoardView } from "./views.ts";
@@ -238,7 +233,6 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
   const taskManager =
     deps.taskManager ??
     new TaskManager(deps.taskLogPath === undefined ? {} : { logPath: deps.taskLogPath });
-  const workerInstructions = deps.workerInstructions ?? DEFAULT_WORKER_INSTRUCTIONS;
 
   let codemodeHandle: CodemodeHandle | undefined;
   let ownsCodemode = false;
@@ -331,7 +325,9 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
         const slots = getModelSlots();
         return slots.worker ?? slots.router;
       },
-      workerInstructions,
+      ...(deps.routerInstructions === undefined
+        ? {}
+        : { routerInstructions: deps.routerInstructions }),
       project: () => deps.projectMeta?.() ?? { title, workspaces: currentWorkspaces },
       ...(deps.projectMemory === undefined ? {} : { projectMemory: deps.projectMemory }),
       ...(deps.modelProfiles === undefined ? {} : { modelProfiles: deps.modelProfiles }),
@@ -343,9 +339,12 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
         return [...page.items].reverse();
       },
     }),
-    createWorkerExtension(
-      deps.projectMemory === undefined ? {} : { projectMemory: deps.projectMemory },
-    ),
+    createWorkerExtension({
+      ...(deps.projectMemory === undefined ? {} : { projectMemory: deps.projectMemory }),
+      ...(deps.workerInstructions === undefined
+        ? {}
+        : { workerInstructions: deps.workerInstructions }),
+    }),
     ...(deps.extensions ?? []),
   ];
   for (const extension of extensions) registry.install(extension);
@@ -373,7 +372,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
               : resolve(getPrimaryWorkspace(), target.cwd);
           let environment = environments.get(cwd);
           if (environment === undefined) {
-            environment = new NodeExecutionEnv({ cwd });
+            environment = createManagedExecutionEnv({ cwd });
             environments.set(cwd, environment);
           }
           return environment;
@@ -444,7 +443,6 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     const routerAgent = buildRouterAgent({
       snapshot: registry.snapshot(),
       ...(initialRouterModel === undefined ? {} : { model: initialRouterModel }),
-      instructions: deps.routerInstructions ?? DEFAULT_ROUTER_INSTRUCTIONS,
       cwd: projectRoot,
       ...(initialCompaction === undefined ? {} : { compaction: initialCompaction }),
     });
@@ -461,7 +459,10 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
             : initialRouterModel.thinkingLevel === undefined
               ? ({ thinkingLevel: null } as const)
               : {};
-      await root.configure({ ...routerAgent, ...clearModelFields }, BACKGROUND_CONTEXT);
+      await root.configure(
+        { ...routerAgent, ...clearModelFields, instructions: null },
+        BACKGROUND_CONTEXT,
+      );
     }
 
     memoryStore = await MemoryStore.open(harness, root.id, livingContext);
