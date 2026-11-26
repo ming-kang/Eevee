@@ -511,13 +511,9 @@ const BACKGROUND_TASK_STATUSES: ReadonlySet<string> = new Set<BackgroundTaskStat
   "interrupted",
 ]);
 
-function parseTaskStatus(raw: unknown, exitCode: unknown): BackgroundTaskStatus | undefined {
+function parseTaskStatus(raw: unknown): BackgroundTaskStatus | undefined {
   if (typeof raw !== "string") return undefined;
-  if (BACKGROUND_TASK_STATUSES.has(raw)) return raw as BackgroundTaskStatus;
-  if (raw === "exited") {
-    return typeof exitCode === "number" && exitCode !== 0 ? "failed" : "completed";
-  }
-  return undefined;
+  return BACKGROUND_TASK_STATUSES.has(raw) ? (raw as BackgroundTaskStatus) : undefined;
 }
 
 export function buildDisplayItems(
@@ -567,7 +563,7 @@ export function buildDisplayItems(
     }
     if (entry.kind === "eevee.notice" || entry.kind === "eevee.task-notification") {
       const data = isRecord(entry.data) ? entry.data : {};
-      const taskStatus = parseTaskStatus(data.status, data.exitCode);
+      const taskStatus = parseTaskStatus(data.status);
       const taskExitCode = typeof data.exitCode === "number" ? data.exitCode : undefined;
       const taskCancelReason: TaskCancelReason | undefined =
         data.cancelReason === "user" ||

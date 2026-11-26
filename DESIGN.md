@@ -56,7 +56,8 @@ Eevee 是一个基于 `pi-durable` 构建的 Proactive Agent，Router 与 Worker
 | `auth.json` | `agent` / `engine` | Provider API Key 与 OAuth 凭据（与 Pi 发行版格式对齐） |
 | `models.json` | `agent` / `engine` | 自定义 Provider、Model 定义与覆盖（与 Pi 发行版格式对齐） |
 | `models-store.json` | `agent` / `engine` | 动态刷新的模型目录缓存 |
-| `engine.sqlite` | `engine` | 项目列表（含多目录工作区）、项目记忆、模型画像、MCP 服务配置与全局策略 |
+| `mcp-auth.json` | `agent` / `engine` | MCP OAuth 凭据与客户端注册信息 |
+| `engine.sqlite` | `engine` | 项目列表（含多目录工作区）、项目记忆、模型画像、MCP 服务配置、全局策略与项目级工具/Skills/MCP 覆盖 |
 | `projects/<id>/session.sqlite` | `core` | 单个项目的全部会话、Worker、Ticket、Question、后台任务与二叉森林记忆 |
 | `projects/<id>/logs/` | `engine` | 后台任务持久化输出日志 |
 

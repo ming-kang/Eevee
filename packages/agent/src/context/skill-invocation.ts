@@ -26,12 +26,6 @@ export type ExpandSkillsResult = {
 
 export type SkillInvocationResult = ExpandSkillsResult;
 
-export type SkillAutocompleteToken = {
-  readonly query: string;
-  readonly start: number;
-  readonly end: number;
-};
-
 type CodeRange = {
   readonly start: number;
   readonly end: number;
@@ -47,7 +41,6 @@ const SKILL_PREFIX = "/skill:";
 const CJK_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const IDENT_OR_PATH_LEFT_RE = /[\p{L}\p{N}_./\\-]/u;
 const IDENT_RIGHT_RE = /[\p{L}\p{N}_-]/u;
-const AUTOCOMPLETE_STOP_RE = /[\s,.;:!?()[\]{}<>"'`/\\，。；：！？、（）【】「」『』《》“”‘’]/;
 
 function escapeXmlAttr(text: string): string {
   return text
@@ -218,40 +211,6 @@ function isValidRightBoundary(text: string, endIndex: number): boolean {
     return true;
   }
   return !IDENT_RIGHT_RE.test(next);
-}
-
-function isAutocompleteStopChar(ch: string): boolean {
-  return AUTOCOMPLETE_STOP_RE.test(ch) || CJK_RE.test(ch);
-}
-
-export function extractSkillAutocompleteToken(
-  text: string,
-  cursorOffset: number,
-): SkillAutocompleteToken | undefined {
-  const cursor = Math.max(0, Math.min(cursorOffset, text.length));
-  const beforeCursor = text.slice(0, cursor);
-  const prefixIndex = beforeCursor.lastIndexOf(SKILL_PREFIX);
-  if (prefixIndex < 0) return undefined;
-  if (!isValidLeftBoundary(text, prefixIndex)) return undefined;
-
-  const queryStart = prefixIndex + SKILL_PREFIX.length;
-  const query = text.slice(queryStart, cursor);
-  for (let i = 0; i < query.length; i++) {
-    const ch = query[i];
-    if (ch !== undefined && isAutocompleteStopChar(ch)) return undefined;
-  }
-
-  let end = cursor;
-  while (end < text.length) {
-    const ch = text[end];
-    if (ch === undefined || isAutocompleteStopChar(ch)) break;
-    end++;
-  }
-
-  const codeRanges = findCodeRanges(text);
-  if (overlapsCodeRange(prefixIndex, Math.max(end, queryStart), codeRanges)) return undefined;
-
-  return { query, start: prefixIndex, end };
 }
 
 function findSkillMatches(

@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { connectLocalEngine } from "@eevee/engine";
-import type { UpdateProjectRequest } from "@eevee/protocol";
+import type { ModelSlotsOverride, ToolsSettings, UpdateProjectRequest } from "@eevee/protocol";
 import type { Command } from "commander";
 import {
   collectRepeatedFlag,
@@ -10,6 +10,40 @@ import {
   readTextInput,
 } from "../args.ts";
 import { formatProjectUsage } from "../format.ts";
+
+export function mergeProjectModels(
+  existing: ModelSlotsOverride | undefined,
+  incoming: ModelSlotsOverride,
+): ModelSlotsOverride {
+  return {
+    ...(existing ?? {}),
+    ...incoming,
+  };
+}
+
+export function mergeToolsSettings(
+  existing: ToolsSettings | undefined,
+  incoming: ToolsSettings,
+): ToolsSettings {
+  const router =
+    existing?.router !== undefined || incoming.router !== undefined
+      ? { ...(existing?.router ?? {}), ...(incoming.router ?? {}) }
+      : undefined;
+  const worker =
+    existing?.worker !== undefined || incoming.worker !== undefined
+      ? { ...(existing?.worker ?? {}), ...(incoming.worker ?? {}) }
+      : undefined;
+  const codemode =
+    existing?.codemode !== undefined || incoming.codemode !== undefined
+      ? { ...(existing?.codemode ?? {}), ...(incoming.codemode ?? {}) }
+      : undefined;
+
+  return {
+    ...(router === undefined ? {} : { router }),
+    ...(worker === undefined ? {} : { worker }),
+    ...(codemode === undefined ? {} : { codemode }),
+  };
+}
 
 export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv): void {
   const projectCommand = program.command("project").description("Manage Eevee projects");
@@ -144,6 +178,7 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
         }
         const tools = parseToolsSettingsFlags(options);
 
+        const incomingModels = hasModelFlag ? parseModelSlotFlags(options) : undefined;
         const patch: UpdateProjectRequest = {};
         if (options.title !== undefined) patch.title = options.title;
         if (options.workspace !== undefined) {
@@ -154,8 +189,8 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
 
         if (options.clearModels) {
           patch.models = null;
-        } else if (hasModelFlag) {
-          patch.models = parseModelSlotFlags(options);
+        } else if (incomingModels !== undefined) {
+          patch.models = incomingModels;
         }
         if (options.clearTools) {
           patch.tools = null;
@@ -168,6 +203,15 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
         }
 
         const { client } = await connectLocalEngine(env);
+        if (incomingModels !== undefined || (tools !== undefined && !options.clearTools)) {
+          const { project: existing } = await client.getProject(projectId);
+          if (incomingModels !== undefined) {
+            patch.models = mergeProjectModels(existing.models, incomingModels);
+          }
+          if (tools !== undefined && !options.clearTools) {
+            patch.tools = mergeToolsSettings(existing.tools, tools);
+          }
+        }
         const response = await client.updateProject(projectId, patch);
         if (options.json) {
           console.log(JSON.stringify(response, null, 2));

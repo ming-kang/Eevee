@@ -7,7 +7,6 @@ import {
   createBaseExtension,
   discoverSkills,
   expandSkillReferences,
-  extractSkillAutocompleteToken,
   resolveSkillTriggerMode,
   type SkillInfo,
   type SkillPolicyMap,
@@ -281,38 +280,4 @@ test("expandSkillReferences handles leading prefixes, multiple skills, prose, co
     assert.equal(readErr.errors.length, 1);
     assert.equal(readErr.errors[0]?.name, "ghost");
   });
-});
-
-test("extractSkillAutocompleteToken extracts token at cursor and respects boundaries and code spans", () => {
-  assert.deepEqual(extractSkillAutocompleteToken("/skill:", 7), {
-    query: "",
-    start: 0,
-    end: 7,
-  });
-  assert.deepEqual(extractSkillAutocompleteToken("/skill:pd", 9), {
-    query: "pd",
-    start: 0,
-    end: 9,
-  });
-  assert.deepEqual(extractSkillAutocompleteToken("please /skill:pd now", 16), {
-    query: "pd",
-    start: 7,
-    end: 16,
-  });
-  assert.deepEqual(extractSkillAutocompleteToken("请用/skill:pd处理", 11), {
-    query: "pd",
-    start: 2,
-    end: 11,
-  });
-  assert.deepEqual(extractSkillAutocompleteToken("/skill:pdf-tools", 10), {
-    query: "pdf",
-    start: 0,
-    end: 16,
-  });
-
-  assert.equal(extractSkillAutocompleteToken("/skill:pdf more", 15), undefined);
-  assert.equal(extractSkillAutocompleteToken("src/skill:pdf", 13), undefined);
-  assert.equal(extractSkillAutocompleteToken("`/skill:pdf`", 10), undefined);
-  assert.equal(extractSkillAutocompleteToken("```\n/skill:pdf\n```", 13), undefined);
-  assert.equal(extractSkillAutocompleteToken("/skill:pdf", 3), undefined);
 });

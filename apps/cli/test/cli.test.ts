@@ -6,6 +6,8 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import type { Command } from "commander";
 import { parseToolOverridesFlag, parseToolsSettingsFlags } from "../src/args.ts";
+import { mergeMcpAddConfig } from "../src/commands/mcp.ts";
+import { mergeProjectModels, mergeToolsSettings } from "../src/commands/project.ts";
 import {
   aggregateBoardTasks,
   ConversationWatchRenderer,
@@ -1510,6 +1512,7 @@ test("CLI registers skills and upgraded MCP subcommands and options", () => {
     "--no-worker",
     "--disabled",
     "--no-disabled",
+    "--replace",
   ]) {
     assert.ok(
       mcpAdd.options.some((o) => o.long === flag),
@@ -1813,6 +1816,8 @@ test("skills and MCP CLI commands dispatch expected API requests and handle OAut
   let projectPolicy: Record<string, "model" | "user" | "disabled"> | undefined = {
     "proj-skill": "disabled",
   };
+  let globalMcpServers: Record<string, Record<string, unknown>> = {};
+  let projectMcpServers: Record<string, Record<string, unknown>> = {};
   let oauthMode: "complete" | "error" | "hang" = "complete";
 
   const server = createServer(async (req, res) => {
@@ -1879,9 +1884,9 @@ test("skills and MCP CLI commands dispatch expected API requests and handle OAut
       calls.push({ method, url });
       writeHttpJson(res, 200, {
         globalServers: { docs: { url: "https://docs.example/mcp" } },
-        projectServers: { docs: { roles: { router: false, worker: false } } },
+        projectServers: projectMcpServers,
         effectiveServers: {
-          docs: { url: "https://docs.example/mcp", roles: { router: false, worker: false } },
+          docs: { url: "https://docs.example/mcp", ...(projectMcpServers.docs ?? {}) },
         },
         status: [
           {
@@ -1892,7 +1897,7 @@ test("skills and MCP CLI commands dispatch expected API requests and handle OAut
             transport: "http",
             exposure: "codemode",
             roles: { router: false, worker: false },
-            scope: "override",
+            scope: Object.hasOwn(projectMcpServers, "docs") ? "override" : "global",
           },
         ],
       });
@@ -1910,9 +1915,13 @@ test("skills and MCP CLI commands dispatch expected API requests and handle OAut
     if (method === "PUT" && url === "/projects/demo/mcp/servers/docs") {
       const body = await readHttpJson(req);
       calls.push({ method, url, body });
+      projectMcpServers = {
+        ...projectMcpServers,
+        docs: body.config as Record<string, unknown>,
+      };
       writeHttpJson(res, 200, {
         globalServers: { docs: { url: "https://docs.example/mcp" } },
-        projectServers: { docs: body.config },
+        projectServers: projectMcpServers,
         effectiveServers: { docs: body.config },
         status: [{ name: "docs", status: "connected", enabled: true, toolCount: 1 }],
       });
@@ -1921,20 +1930,24 @@ test("skills and MCP CLI commands dispatch expected API requests and handle OAut
     if (method === "PUT" && url === "/projects/demo/mcp") {
       const body = await readHttpJson(req);
       calls.push({ method, url, body });
+      projectMcpServers = body.servers as Record<string, Record<string, unknown>>;
       writeHttpJson(res, 200, {
         globalServers: {},
-        projectServers: body.servers,
-        effectiveServers: body.servers,
+        projectServers: projectMcpServers,
+        effectiveServers: projectMcpServers,
         status: [{ name: "docs", status: "connected", enabled: true, toolCount: 1 }],
       });
       return;
     }
     if (method === "DELETE" && url === "/projects/demo/mcp/servers/docs") {
       calls.push({ method, url });
+      const next = { ...projectMcpServers };
+      delete next.docs;
+      projectMcpServers = next;
       writeHttpJson(res, 200, {
-        globalServers: {},
-        projectServers: {},
-        effectiveServers: {},
+        globalServers: { docs: { url: "https://docs.example/mcp" } },
+        projectServers: projectMcpServers,
+        effectiveServers: { docs: { url: "https://docs.example/mcp" } },
         status: [],
       });
       return;
@@ -1952,7 +1965,7 @@ test("skills and MCP CLI commands dispatch expected API requests and handle OAut
     if (method === "GET" && url === "/mcp") {
       calls.push({ method, url });
       writeHttpJson(res, 200, {
-        servers: { local: { command: "npx" } },
+        servers: globalMcpServers,
         status: [
           {
             name: "local",
@@ -1980,8 +1993,12 @@ test("skills and MCP CLI commands dispatch expected API requests and handle OAut
     if (method === "PUT" && url === "/mcp/servers/local") {
       const body = await readHttpJson(req);
       calls.push({ method, url, body });
+      globalMcpServers = {
+        ...globalMcpServers,
+        local: body.config as Record<string, unknown>,
+      };
       writeHttpJson(res, 200, {
-        servers: { local: body.config },
+        servers: globalMcpServers,
         status: [{ name: "local", status: "connected", enabled: true, toolCount: 0 }],
       });
       return;
@@ -2288,6 +2305,405 @@ test("skills and MCP CLI commands dispatch expected API requests and handle OAut
         (c) => c.method === "DELETE" && c.url === "/projects/demo/mcp/servers/oauth-srv/oauth",
       ),
     );
+  } finally {
+    console.log = originalLog;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("merge helpers combine project models, tool settings, and MCP add configs cleanly", () => {
+  assert.deepEqual(
+    mergeProjectModels(
+      {
+        worker: { provider: "anthropic", modelId: "claude-sonnet" },
+        dreamer: { provider: "openai", modelId: "gpt-4o-mini" },
+      },
+      { router: { provider: "openai", modelId: "gpt-4o" } },
+    ),
+    {
+      router: { provider: "openai", modelId: "gpt-4o" },
+      worker: { provider: "anthropic", modelId: "claude-sonnet" },
+      dreamer: { provider: "openai", modelId: "gpt-4o-mini" },
+    },
+  );
+
+  assert.deepEqual(
+    mergeToolsSettings(
+      {
+        router: { ls: false },
+        worker: { bash: false },
+        codemode: { mode: "on", inlineBudget: 800 },
+      },
+      {
+        worker: { powershell: true },
+        codemode: { mode: "only" },
+      },
+    ),
+    {
+      router: { ls: false },
+      worker: { bash: false, powershell: true },
+      codemode: { mode: "only", inlineBudget: 800 },
+    },
+  );
+
+  assert.deepEqual(mergeToolsSettings(undefined, { worker: { powershell: true } }), {
+    worker: { powershell: true },
+  });
+
+  // Brand-new full server defaults missing role to true; partial override does not.
+  assert.deepEqual(
+    mergeMcpAddConfig(
+      undefined,
+      { command: "npx", roles: { router: false } },
+      { isPartialOverride: false, switchTransport: false },
+    ),
+    { command: "npx", roles: { router: false, worker: true } },
+  );
+  assert.deepEqual(
+    mergeMcpAddConfig(
+      undefined,
+      { roles: { worker: false } },
+      { isPartialOverride: true, switchTransport: false },
+    ),
+    { roles: { worker: false } },
+  );
+
+  // Merging stdio -> http and http -> stdio drops old transport fields while preserving shared ones.
+  assert.deepEqual(
+    mergeMcpAddConfig(
+      {
+        type: "http",
+        url: "https://old.example/mcp",
+        headers: { Authorization: "Bearer secret" },
+        oauth: { clientId: "cid" },
+        exposure: "direct",
+        toolExposure: { search: "hidden" },
+        description: "Docs",
+        timeout: 30,
+        enabled: false,
+        roles: { router: false, worker: true },
+      },
+      { command: "npx", args: ["-y", "docs-mcp"], env: { LOG: "1" } },
+      { isPartialOverride: false, switchTransport: true },
+    ),
+    {
+      command: "npx",
+      args: ["-y", "docs-mcp"],
+      env: { LOG: "1" },
+      exposure: "direct",
+      toolExposure: { search: "hidden" },
+      description: "Docs",
+      timeout: 30,
+      enabled: false,
+      roles: { router: false, worker: true },
+    },
+  );
+
+  assert.deepEqual(
+    mergeMcpAddConfig(
+      {
+        type: "stdio",
+        command: "npx",
+        args: ["-y", "docs-mcp"],
+        cwd: "/repo",
+        env: { LOG: "1" },
+        exposure: "deferred",
+        roles: { router: true, worker: false },
+      },
+      { url: "https://new.example/mcp", headers: { "X-Team": "ai" } },
+      { isPartialOverride: false, switchTransport: true },
+    ),
+    {
+      url: "https://new.example/mcp",
+      headers: { "X-Team": "ai" },
+      exposure: "deferred",
+      roles: { router: true, worker: false },
+    },
+  );
+});
+
+test("project update and mcp add merge existing configuration by default and support --replace", async () => {
+  const calls: Array<{ method: string; url: string; body?: Record<string, unknown> }> = [];
+
+  let project = {
+    id: "demo",
+    title: "Demo",
+    workspaces: ["/ws/demo"],
+    models: {
+      router: { provider: "openai", modelId: "gpt-4o-mini" },
+      worker: { provider: "anthropic", modelId: "claude-sonnet" },
+      dreamer: { provider: "openai", modelId: "gpt-4o-mini" },
+    },
+    tools: {
+      router: { ls: false, grep: true },
+      worker: { bash: false },
+      codemode: { mode: "on", inlineBudget: 1200 },
+    },
+    createdAt: 1,
+    updatedAt: 1,
+  };
+
+  let globalServers: Record<string, Record<string, unknown>> = {
+    docs: {
+      url: "https://docs.example/mcp",
+      headers: { Authorization: "Bearer old", "X-Keep": "1" },
+      oauth: { clientId: "cid-1", scope: "read" },
+      exposure: "direct",
+      toolExposure: { query: "hidden" },
+      roles: { router: true, worker: false },
+      description: "Docs server",
+      timeout: 45,
+      enabled: true,
+    },
+    stdio: {
+      type: "stdio",
+      command: "npx",
+      args: ["-y", "mcp-stdio"],
+      cwd: "/ws/demo",
+      env: { NODE_ENV: "production", DEBUG: "0" },
+      exposure: "deferred",
+      roles: { router: false, worker: true },
+    },
+  };
+
+  let projectServers: Record<string, Record<string, unknown>> = {
+    docs: {
+      exposure: "direct",
+      roles: { router: false },
+    },
+  };
+
+  const server = createServer(async (req, res) => {
+    const method = req.method ?? "GET";
+    const url = req.url ?? "/";
+
+    if (method === "GET" && url === "/projects/demo") {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, { project });
+      return;
+    }
+    if (method === "PATCH" && url === "/projects/demo") {
+      const body = await readHttpJson(req);
+      calls.push({ method, url, body });
+      project = {
+        ...project,
+        ...(body.models === null
+          ? {}
+          : body.models !== undefined
+            ? { models: body.models as typeof project.models }
+            : {}),
+        ...(body.tools === null
+          ? {}
+          : body.tools !== undefined
+            ? { tools: body.tools as typeof project.tools }
+            : {}),
+      };
+      writeHttpJson(res, 200, { project });
+      return;
+    }
+    if (method === "GET" && url === "/mcp") {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, {
+        servers: globalServers,
+        status: Object.keys(globalServers).map((name) => ({
+          name,
+          status: "connected",
+          enabled: true,
+          toolCount: 0,
+        })),
+      });
+      return;
+    }
+    if (method === "PUT" && url.startsWith("/mcp/servers/")) {
+      const name = decodeURIComponent(url.slice("/mcp/servers/".length));
+      const body = await readHttpJson(req);
+      calls.push({ method, url, body });
+      globalServers = {
+        ...globalServers,
+        [name]: body.config as Record<string, unknown>,
+      };
+      writeHttpJson(res, 200, {
+        servers: globalServers,
+        status: Object.keys(globalServers).map((serverName) => ({
+          name: serverName,
+          status: "connected",
+          enabled: true,
+          toolCount: 0,
+        })),
+      });
+      return;
+    }
+    if (method === "GET" && url === "/projects/demo/mcp") {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, {
+        globalServers,
+        projectServers,
+        effectiveServers: globalServers,
+        status: [],
+      });
+      return;
+    }
+    if (method === "PUT" && url.startsWith("/projects/demo/mcp/servers/")) {
+      const name = decodeURIComponent(url.slice("/projects/demo/mcp/servers/".length));
+      const body = await readHttpJson(req);
+      calls.push({ method, url, body });
+      projectServers = {
+        ...projectServers,
+        [name]: body.config as Record<string, unknown>,
+      };
+      writeHttpJson(res, 200, {
+        globalServers,
+        projectServers,
+        effectiveServers: globalServers,
+        status: [],
+      });
+      return;
+    }
+    writeHttpJson(res, 404, { code: "not_found", message: `Unhandled ${method} ${url}` });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const env: NodeJS.ProcessEnv = {
+    EEVEE_HOME: "/tmp/eevee-cli-merge-test",
+    EEVEE_URL: `http://127.0.0.1:${address.port}`,
+    EEVEE_TOKEN: "test-token",
+  };
+
+  const logs: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+
+  try {
+    const run = (argv: string[]) => createProgram(env).parseAsync(["node", "eevee", ...argv]);
+
+    // 1. project update --router-model preserves existing worker & dreamer slots
+    await run(["project", "update", "demo", "--router-model", "openai/gpt-5"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PATCH",
+      url: "/projects/demo",
+      body: {
+        models: {
+          router: { provider: "openai", modelId: "gpt-5" },
+          worker: { provider: "anthropic", modelId: "claude-sonnet" },
+          dreamer: { provider: "openai", modelId: "gpt-4o-mini" },
+        },
+      },
+    });
+
+    // 2. project update --worker-tools +powershell preserves router tools & codemode settings
+    await run(["project", "update", "demo", "--worker-tools", "+powershell"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PATCH",
+      url: "/projects/demo",
+      body: {
+        tools: {
+          router: { ls: false, grep: true },
+          worker: { bash: false, powershell: true },
+          codemode: { mode: "on", inlineBudget: 1200 },
+        },
+      },
+    });
+
+    // 3. project update --codemode-mode preserves inlineBudget & tool maps
+    await run(["project", "update", "demo", "--codemode-mode", "only"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PATCH",
+      url: "/projects/demo",
+      body: {
+        tools: {
+          router: { ls: false, grep: true },
+          worker: { bash: false, powershell: true },
+          codemode: { mode: "only", inlineBudget: 1200 },
+        },
+      },
+    });
+
+    // 4. mcp add on existing global HTTP server preserves headers, oauth, roles, exposure, toolExposure
+    await run([
+      "mcp",
+      "add",
+      "docs",
+      "--url",
+      "https://docs.example/v2",
+      "--header",
+      "Authorization=Bearer new",
+      "--no-router",
+    ]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PUT",
+      url: "/mcp/servers/docs",
+      body: {
+        config: {
+          url: "https://docs.example/v2",
+          headers: { Authorization: "Bearer new", "X-Keep": "1" },
+          oauth: { clientId: "cid-1", scope: "read" },
+          exposure: "direct",
+          toolExposure: { query: "hidden" },
+          roles: { router: false, worker: false },
+          description: "Docs server",
+          timeout: 45,
+          enabled: true,
+        },
+      },
+    });
+
+    // 5. mcp add --replace replaces existing global server wholesale without fetching GET /mcp
+    const callsBeforeReplace = calls.length;
+    await run([
+      "mcp",
+      "add",
+      "docs",
+      "--url",
+      "https://docs.example/fresh",
+      "--header",
+      "X-Only=yes",
+      "--replace",
+    ]);
+    assert.equal(
+      calls.slice(callsBeforeReplace).some((c) => c.method === "GET" && c.url === "/mcp"),
+      false,
+    );
+    assert.deepEqual(calls.at(-1), {
+      method: "PUT",
+      url: "/mcp/servers/docs",
+      body: {
+        config: {
+          url: "https://docs.example/fresh",
+          headers: { "X-Only": "yes" },
+        },
+      },
+    });
+
+    // 6. mcp add switching stdio -> http drops command/args/cwd/env/type while keeping exposure & roles
+    await run(["mcp", "add", "stdio", "--url", "https://stdio-now-http.example/mcp"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PUT",
+      url: "/mcp/servers/stdio",
+      body: {
+        config: {
+          url: "https://stdio-now-http.example/mcp",
+          exposure: "deferred",
+          roles: { router: false, worker: true },
+        },
+      },
+    });
+
+    // 7. mcp add --project demo docs --no-worker preserves existing exposure & roles.router
+    await run(["mcp", "add", "docs", "--project", "demo", "--no-worker"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PUT",
+      url: "/projects/demo/mcp/servers/docs",
+      body: {
+        config: {
+          exposure: "direct",
+          roles: { router: false, worker: false },
+        },
+      },
+    });
   } finally {
     console.log = originalLog;
     await new Promise<void>((resolve) => server.close(() => resolve()));

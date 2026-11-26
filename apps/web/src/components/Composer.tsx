@@ -12,6 +12,11 @@ import {
   useState,
 } from "react";
 import { api } from "../lib/api.ts";
+import {
+  draftStorageKey,
+  restoreFailedDraft,
+  restoreFailedDraftToStorage,
+} from "../lib/composer-draft.ts";
 import { formatTokens } from "../lib/format.ts";
 import {
   applySkillAutocomplete,
@@ -58,11 +63,16 @@ export function Composer({
 }: ComposerProps) {
   const [text, setText] = useState(() => {
     try {
-      return window.localStorage.getItem(`eevee.draft.${draftKey}`) ?? "";
+      return window.localStorage.getItem(draftStorageKey(draftKey)) ?? "";
     } catch {
       return "";
     }
   });
+  const textRef = useRef(text);
+  textRef.current = text;
+  const draftKeyRef = useRef(draftKey);
+  draftKeyRef.current = draftKey;
+  const mountedRef = useRef(true);
   const [whenBusy, setWhenBusy] = useState<WhenBusy>("followUp");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -84,12 +94,14 @@ export function Composer({
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
+    draftKeyRef.current = draftKey;
     let nextDraft = "";
     try {
-      nextDraft = window.localStorage.getItem(`eevee.draft.${draftKey}`) ?? "";
+      nextDraft = window.localStorage.getItem(draftStorageKey(draftKey)) ?? "";
     } catch {
       nextDraft = "";
     }
+    textRef.current = nextDraft;
     setText(nextDraft);
     setCursorOffset(nextDraft.length);
     setDismissedTokenKey(undefined);
@@ -105,17 +117,21 @@ export function Composer({
   }, [cacheKey]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       skillsAbortRef.current?.abort();
     };
   }, []);
 
   const updateText = useCallback(
     (next: string) => {
+      textRef.current = next;
       setText(next);
       try {
-        if (next) window.localStorage.setItem(`eevee.draft.${draftKey}`, next);
-        else window.localStorage.removeItem(`eevee.draft.${draftKey}`);
+        const key = draftStorageKey(draftKey);
+        if (next) window.localStorage.setItem(key, next);
+        else window.localStorage.removeItem(key);
       } catch {
         // Ignore storage errors.
       }
@@ -213,17 +229,35 @@ export function Composer({
   const submit = async (overrideMode?: WhenBusy) => {
     const trimmed = text.trim();
     if (!trimmed || submitting || disabled) return;
+    const submittedText = text;
+    const submittedDraftKey = draftKey;
     setSubmitting(true);
     setError(undefined);
+    updateText("");
+    setCursorOffset(0);
+    setDismissedTokenKey(undefined);
     try {
       await onSend(trimmed, overrideMode ?? whenBusy);
-      updateText("");
-      setCursorOffset(0);
-      setDismissedTokenKey(undefined);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (mountedRef.current && draftKeyRef.current === submittedDraftKey) {
+        setError(err instanceof Error ? err.message : String(err));
+        const wasEmpty = textRef.current === "";
+        const restored = restoreFailedDraft(submittedText, textRef.current);
+        updateText(restored);
+        if (wasEmpty) {
+          setCursorOffset(restored.length);
+        }
+      } else {
+        try {
+          restoreFailedDraftToStorage(window.localStorage, submittedDraftKey, submittedText);
+        } catch {
+          // Ignore storage errors.
+        }
+      }
     } finally {
-      setSubmitting(false);
+      if (mountedRef.current) {
+        setSubmitting(false);
+      }
     }
   };
 

@@ -19,7 +19,7 @@
 | `@eevee/memory` | `packages/memory` | 会话级二叉森林记忆（`zoom` / `search`）与独立静默 Dreamer | 无 |
 | `@eevee/core` | `packages/core` | 存储无关的编排逻辑：Project、Router、Worker、Ticket、Question | `agent`, `memory` |
 | `@eevee/protocol` | `packages/protocol` | 运行时无关的 HTTP/SSE Schema 与契约（基于 `pi-schema`） | 无 |
-| `@eevee/engine` | `packages/engine` | 本地 Engine 与 Supervisor：`engine.sqlite`、多项目托管、共享 MCP Hub、HTTP/SSE、Web 鉴权与静态托管、崩溃重启与优雅退出 | `agent`, `memory`, `core`, `protocol` |
+| `@eevee/engine` | `packages/engine` | 本地 Engine 与 Supervisor：`engine.sqlite`、多项目托管、共享与项目级 MCP Hub（含 MCP OAuth）、HTTP/SSE、Web 鉴权与静态托管、崩溃重启与优雅退出 | `agent`, `memory`, `core`, `protocol` |
 | `@eevee/cli` | `apps/cli` | 命令行客户端 | `protocol`, `engine` |
 | `@eevee/web` | `apps/web` | 浏览器端工作台（React + Elanor），构建后由 Engine 同源托管 | `protocol` |
 
@@ -45,7 +45,7 @@ Router 与 Worker 共享同一 Agent 底座，差异体现在挂载的扩展：
 | 扩展 | Router | Worker |
 |---|:---:|:---:|
 | `eevee.readonly-tools`（`read` / `ls` / `find` / `grep`） | ✓ | — |
-| `eevee.coding-tools`（`read` / `write` / `edit` / `bash`） | — | ✓ |
+| `eevee.coding-tools`（`read` / `write` / `edit` / `bash`，可选 `powershell`；工具支持全局与项目级开关） | — | ✓ |
 | `eevee.shell-paths` / `codemode` / `tool-search` / `mcp` | ✓ | ✓ |
 | `eevee.tasks`（显式后台 + 超时转后台） | — | ✓ |
 | `eevee.cached-compaction` | — | ✓ |

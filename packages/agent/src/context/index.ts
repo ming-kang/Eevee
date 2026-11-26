@@ -28,9 +28,7 @@ export {
 export {
   type ExpandSkillsResult,
   expandSkillReferences,
-  extractSkillAutocompleteToken,
   type InvokedSkill,
-  type SkillAutocompleteToken,
   type SkillInvocationResult,
 } from "./skill-invocation.ts";
 export {

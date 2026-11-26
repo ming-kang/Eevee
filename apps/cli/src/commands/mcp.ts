@@ -31,6 +31,58 @@ function parseNonEmptyServerName(raw: string): string {
   return raw;
 }
 
+export type MergeMcpAddOptions = {
+  readonly isPartialOverride: boolean;
+  readonly switchTransport: boolean;
+};
+
+export function mergeMcpAddConfig(
+  existing: Record<string, unknown> | undefined,
+  incoming: Record<string, unknown>,
+  options: MergeMcpAddOptions,
+): Record<string, unknown> {
+  if (existing === undefined) {
+    const created: Record<string, unknown> = { ...incoming };
+    if (!options.isPartialOverride && isRecord(incoming.roles)) {
+      created.roles = {
+        router: incoming.roles.router ?? true,
+        worker: incoming.roles.worker ?? true,
+      };
+    }
+    return created;
+  }
+
+  const base: Record<string, unknown> = { ...existing };
+  if (options.switchTransport) {
+    if (incoming.command !== undefined) {
+      delete base.url;
+      delete base.headers;
+      delete base.oauth;
+      delete base.type;
+    } else if (incoming.url !== undefined) {
+      delete base.command;
+      delete base.args;
+      delete base.cwd;
+      delete base.env;
+      delete base.type;
+    }
+  }
+
+  const merged: Record<string, unknown> = { ...base, ...incoming };
+  if (isRecord(base.env) && isRecord(incoming.env)) {
+    merged.env = { ...base.env, ...incoming.env };
+  }
+  if (isRecord(base.headers) && isRecord(incoming.headers)) {
+    merged.headers = { ...base.headers, ...incoming.headers };
+  }
+  if (isRecord(incoming.roles)) {
+    merged.roles = isRecord(base.roles)
+      ? { ...base.roles, ...incoming.roles }
+      : { ...incoming.roles };
+  }
+  return merged;
+}
+
 export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): void {
   const mcpCommand = program
     .command("mcp")
@@ -164,6 +216,7 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
     .option("--no-router", "Disable MCP tools for Router")
     .option("--worker", "Enable MCP tools for Workers")
     .option("--no-worker", "Disable MCP tools for Workers")
+    .option("--replace", "Replace an existing server or override wholesale instead of merging")
     .option("--json", "Output JSON")
     .action(
       async (
@@ -182,6 +235,7 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
           disabled?: boolean;
           router?: boolean;
           worker?: boolean;
+          replace?: boolean;
           json?: boolean;
         },
       ) => {
@@ -212,22 +266,15 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
         const isPartialOverride =
           projectId !== undefined && options.command === undefined && options.url === undefined;
 
-        let roles: { router?: boolean; worker?: boolean } | undefined;
-        if (options.router !== undefined || options.worker !== undefined) {
-          if (isPartialOverride) {
-            roles = {
-              ...(options.router === undefined ? {} : { router: options.router }),
-              ...(options.worker === undefined ? {} : { worker: options.worker }),
-            };
-          } else {
-            roles = {
-              router: options.router ?? true,
-              worker: options.worker ?? true,
-            };
-          }
-        }
+        const explicitRoles =
+          options.router !== undefined || options.worker !== undefined
+            ? {
+                ...(options.router === undefined ? {} : { router: options.router }),
+                ...(options.worker === undefined ? {} : { worker: options.worker }),
+              }
+            : undefined;
 
-        const config: Record<string, unknown> = {
+        const incoming: Record<string, unknown> = {
           ...(options.command === undefined ? {} : { command: options.command }),
           ...(options.url === undefined ? {} : { url: options.url }),
           ...(options.args === undefined ? {} : { args: options.args }),
@@ -238,16 +285,45 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
           ...(options.description === undefined ? {} : { description: options.description }),
           ...(timeout === undefined ? {} : { timeout }),
           ...(options.disabled === undefined ? {} : { enabled: !options.disabled }),
-          ...(roles === undefined ? {} : { roles }),
+          ...(explicitRoles === undefined ? {} : { roles: explicitRoles }),
         };
 
-        if (isPartialOverride && Object.keys(config).length === 0) {
+        if (isPartialOverride && Object.keys(incoming).length === 0) {
           throw new Error(
             "Specify --command, --url, or at least one override flag (--exposure, --description, --timeout, --disabled, --router/--no-router, --worker/--no-worker)",
           );
         }
 
         const { client } = await connectLocalEngine(env);
+        let existing: Record<string, unknown> | undefined;
+        let switchTransport = false;
+        if (!options.replace) {
+          if (projectId === undefined) {
+            const state = await client.getMcpState();
+            const found = state.servers[name];
+            existing = isRecord(found) ? found : undefined;
+          } else {
+            const state = await client.getProjectMcpState(projectId);
+            const found = state.projectServers[name];
+            existing = isRecord(found) ? found : undefined;
+          }
+          if (existing !== undefined) {
+            const existingIsHttp =
+              typeof existing.url === "string" ||
+              existing.type === "http" ||
+              existing.type === "streamable-http";
+            const existingIsStdio =
+              typeof existing.command === "string" || existing.type === "stdio";
+            switchTransport =
+              (options.command !== undefined && existingIsHttp) ||
+              (options.url !== undefined && existingIsStdio);
+          }
+        }
+        const config = mergeMcpAddConfig(existing, incoming, {
+          isPartialOverride,
+          switchTransport,
+        });
+
         if (projectId === undefined) {
           const state = await client.upsertMcpServer(name, { config });
           if (options.json) {

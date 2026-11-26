@@ -139,7 +139,7 @@ export function EditProjectModal({
             </div>
 
             <Modal.Body className="ev-project-edit-body">
-              {error && isFieldsTab && <div className="ev-error-banner">{error}</div>}
+              {error && <div className="ev-error-banner">{error}</div>}
 
               <form
                 id={formId}
