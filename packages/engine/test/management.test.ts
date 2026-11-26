@@ -341,11 +341,11 @@ test("providers list, API key login/logout, and interactive OAuth & cancel flows
       const unauthProviders = await fetch(`${foreground.url}/providers`);
       assert.equal(unauthProviders.status, 401);
       const wrongMethodProviders = await fetch(`${foreground.url}/providers`, {
-        method: "POST",
+        method: "PUT",
         headers: authHeader,
       });
       assert.equal(wrongMethodProviders.status, 405);
-      assert.equal(wrongMethodProviders.headers.get("allow"), "GET");
+      assert.equal(wrongMethodProviders.headers.get("allow"), "GET, POST");
       parseWithSchema(ProblemSchema, await wrongMethodProviders.json());
 
       // List providers initially unconfigured

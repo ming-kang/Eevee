@@ -1,19 +1,26 @@
+import type { IncomingMessage } from "node:http";
 import {
   AnswerQuestionRequestSchema,
+  BuiltinModelMatchRequestSchema,
   ConfigBundleSchema,
   CreateProjectRequestSchema,
   EngineSettingsSchema,
+  ImportProviderModelsRequestSchema,
   LoginInputRequestSchema,
   ModelProfilesDocumentSchema,
+  ProbeProviderRequestSchema,
   PutMcpConfigRequestSchema,
   PutProjectMemoryRequestSchema,
   ReconnectMcpRequestSchema,
   RefreshModelsRequestSchema,
   SendMessageRequestSchema,
   SetApiKeyRequestSchema,
+  SmokeTestModelRequestSchema,
   StartLoginRequestSchema,
   UpdateProjectRequestSchema,
   UpsertMcpServerRequestSchema,
+  UpsertProviderModelRequestSchema,
+  UpsertProviderRequestSchema,
 } from "@eevee/protocol";
 import { ENGINE_PROTOCOL_VERSION, ENGINE_VERSION } from "./constants.ts";
 import type { Engine } from "./engine.ts";
@@ -33,6 +40,22 @@ import {
 } from "./http-io.ts";
 import type { SseStreamHandlers } from "./http-sse.ts";
 import type { WebAuthManager } from "./web-auth.ts";
+
+async function withDisconnectSignal(
+  req: IncomingMessage,
+  run: (signal: AbortSignal) => Promise<void>,
+): Promise<void> {
+  const controller = new AbortController();
+  const disconnect = () => {
+    if (req.aborted || req.socket.destroyed) controller.abort(new Error("Client disconnected"));
+  };
+  req.on("close", disconnect);
+  try {
+    await run(controller.signal);
+  } finally {
+    req.off("close", disconnect);
+  }
+}
 
 export type EngineRoutesOptions = {
   readonly onShutdown?: () => void;
@@ -65,6 +88,100 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
   const providerRoutes: readonly Route[] = [
     route("GET", "/providers", async ({ res }) => {
       sendJson(res, 200, await engine.listProviders());
+    }),
+    route("GET", "/providers/catalog", async ({ res }) => {
+      sendJson(res, 200, await engine.getProviderCatalog());
+    }),
+    route("POST", "/providers/probe", async ({ req, res }) => {
+      await withDisconnectSignal(req, async (signal) => {
+        const input = await readBody(req, ProbeProviderRequestSchema, "ProbeProviderRequest");
+        sendJson(res, 200, await engine.probeDraftProvider(input, signal));
+      });
+    }),
+    route("POST", "/providers", async ({ req, res }) => {
+      const input = await readBody(req, UpsertProviderRequestSchema, "UpsertProviderRequest");
+      sendJson(res, 201, await engine.createProvider(input));
+    }),
+    route("GET", "/providers/:providerId", async ({ res, params }) => {
+      sendJson(res, 200, await engine.getProviderDetail(params.providerId));
+    }),
+    route("PATCH", "/providers/:providerId", async ({ req, res, params }) => {
+      const input = await readBody(req, UpsertProviderRequestSchema, "UpsertProviderRequest");
+      sendJson(res, 200, await engine.updateProvider(params.providerId, input));
+    }),
+    route("DELETE", "/providers/:providerId", async ({ res, params }) => {
+      sendJson(res, 200, await engine.deleteProvider(params.providerId));
+    }),
+    route("POST", "/providers/:providerId/models", async ({ req, res, params }) => {
+      const input = await readBody(
+        req,
+        UpsertProviderModelRequestSchema,
+        "UpsertProviderModelRequest",
+      );
+      sendJson(res, 201, await engine.createProviderModel(params.providerId, input));
+    }),
+    route("POST", "/providers/:providerId/models/import", async ({ req, res, params }) => {
+      const input = await readBody(
+        req,
+        ImportProviderModelsRequestSchema,
+        "ImportProviderModelsRequest",
+      );
+      sendJson(res, 200, await engine.importProviderModels(params.providerId, input));
+    }),
+    route("PATCH", "/providers/:providerId/models/:modelId", async ({ req, res, params }) => {
+      const input = await readBody(
+        req,
+        UpsertProviderModelRequestSchema,
+        "UpsertProviderModelRequest",
+      );
+      sendJson(
+        res,
+        200,
+        await engine.updateProviderModel(params.providerId, params.modelId, input),
+      );
+    }),
+    route("DELETE", "/providers/:providerId/models/:modelId", async ({ res, params }) => {
+      sendJson(res, 200, await engine.deleteProviderModel(params.providerId, params.modelId));
+    }),
+    route("POST", "/providers/:providerId/probe", async ({ req, res, params }) => {
+      await withDisconnectSignal(req, async (signal) => {
+        const input = await readOptionalBody(
+          req,
+          ProbeProviderRequestSchema,
+          "ProbeProviderRequest",
+        );
+        sendJson(res, 200, await engine.probeProvider(params.providerId, input, signal));
+      });
+    }),
+    route(
+      "POST",
+      "/providers/:providerId/models/:modelId/builtin-match",
+      async ({ req, res, params }) => {
+        const input = await readOptionalBody(
+          req,
+          BuiltinModelMatchRequestSchema,
+          "BuiltinModelMatchRequest",
+        );
+        sendJson(
+          res,
+          200,
+          await engine.matchBuiltinModel(params.providerId, params.modelId, input),
+        );
+      },
+    ),
+    route("POST", "/providers/:providerId/models/:modelId/test", async ({ req, res, params }) => {
+      await withDisconnectSignal(req, async (signal) => {
+        const input = await readOptionalBody(
+          req,
+          SmokeTestModelRequestSchema,
+          "SmokeTestModelRequest",
+        );
+        sendJson(
+          res,
+          200,
+          await engine.testProviderModel(params.providerId, params.modelId, input, signal),
+        );
+      });
     }),
     route("PUT", "/providers/:providerId/auth/api-key", async ({ req, res, params }) => {
       const input = await readBody(req, SetApiKeyRequestSchema, "SetApiKeyRequest");
@@ -105,6 +222,10 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     route("POST", "/models/refresh", async ({ req, res }) => {
       const input = await readOptionalBody(req, RefreshModelsRequestSchema, "RefreshModelsRequest");
       sendJson(res, 200, await engine.refreshModels(input));
+    }),
+    route("POST", "/models/reload", async ({ req, res }) => {
+      await readOptionalJsonBody(req);
+      sendJson(res, 200, await engine.reloadModels());
     }),
     route("GET", "/models/profiles", ({ res }) => {
       sendJson(res, 200, engine.getModelProfiles());

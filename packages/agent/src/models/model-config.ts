@@ -7,7 +7,7 @@ import type {
   SamplingParamsByThinkingLevel,
   ThinkingLevelMap,
 } from "@earendil-works/pi-ai";
-import { stripBom, stripJsonComments } from "../shared/json.ts";
+import { stripBom, stripJsonComments, stripJsonTrailingCommas } from "../shared/json.ts";
 
 export type CompatConfig = Record<string, unknown>;
 
@@ -404,7 +404,7 @@ function parseProviderConfig(value: unknown, path: string): ProviderConfig {
 export function parseModelsConfig(text: string): ModelsConfig {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(stripJsonComments(stripBom(text)));
+    parsed = JSON.parse(stripJsonTrailingCommas(stripJsonComments(stripBom(text))));
   } catch (error) {
     throw new ModelsConfigError(
       "",

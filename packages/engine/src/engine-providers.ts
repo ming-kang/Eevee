@@ -1,5 +1,10 @@
-import type { CredentialStore, Models } from "@earendil-works/pi-ai";
+import {
+  type CredentialStore,
+  getSupportedThinkingLevels,
+  type Models,
+} from "@earendil-works/pi-ai";
 import { ConversationBusy, type Cursor, StorageRequestError } from "@earendil-works/pi-durable";
+import { isBuiltinProviderId, type ModelRuntime, ModelsConfigError } from "@eevee/agent/models";
 import { ProjectError, type ProjectErrorCode } from "@eevee/core";
 import type {
   ListModelsResponse,
@@ -15,13 +20,20 @@ import { EngineError } from "./engine-error.ts";
 export type ProviderDeps = {
   readonly models: () => Models;
   readonly credentials: () => CredentialStore | undefined;
+  readonly runtime?: () => ModelRuntime;
+  readonly modelsFile?: () => string;
+  readonly fetch?: typeof globalThis.fetch;
 };
 
 export async function listProviders(deps: ProviderDeps): Promise<ListProvidersResponse> {
   const models = deps.models();
+  const runtime = deps.runtime?.();
+  const config = runtime?.config();
   const providers = await Promise.all(
     models.getProviders().map(async (provider) => {
       const check = await models.checkAuth(provider.id);
+      const auth = runtime ? await runtime.getAuthSummary(provider.id) : undefined;
+      const providerConfig = config?.providers[provider.id];
       let modelCount = 0;
       try {
         modelCount = provider.getModels().length;
@@ -43,14 +55,26 @@ export async function listProviders(deps: ProviderDeps): Promise<ListProvidersRe
             ? {}
             : { oauthLabel: provider.auth.oauth.loginLabel }),
         },
-        configured: check !== undefined,
-        ...(check === undefined ? {} : { authType: check.type }),
-        ...(check?.source === undefined ? {} : { authSource: check.source }),
+        configured: auth?.configured ?? check !== undefined,
+        ...((auth?.type ?? check?.type) === undefined
+          ? {}
+          : { authType: auth?.type ?? check?.type }),
+        ...((auth?.source ?? check?.source) === undefined
+          ? {}
+          : { authSource: auth?.source ?? check?.source }),
         modelCount,
+        kind: isBuiltinProviderId(provider.id) ? ("builtin" as const) : ("custom" as const),
+        ...(providerConfig?.api === undefined ? {} : { api: providerConfig.api }),
+        hasConfigOverride: providerConfig !== undefined,
+        customModelCount: providerConfig?.models?.length ?? 0,
+        overrideCount: Object.keys(providerConfig?.modelOverrides ?? {}).length,
+        ...(auth?.preview === undefined ? {} : { authPreview: auth.preview }),
+        ...(auth?.accountLabel === undefined ? {} : { authAccountLabel: auth.accountLabel }),
+        ...(auth?.expiresAt === undefined ? {} : { authExpiresAt: auth.expiresAt }),
       };
     }),
   );
-  return { providers };
+  return { providers, diagnostics: [...(runtime?.configDiagnostics() ?? [])] };
 }
 
 export async function setProviderApiKey(
@@ -124,6 +148,7 @@ export async function listModels(
     models.getAvailable(opts?.provider),
   ]);
   const availableKeys = new Set(availableModels.map((model) => `${model.provider}\0${model.id}`));
+  const config = deps.runtime?.().config();
   const items: ModelInfo[] = [];
   for (const model of catalog) {
     const available = availableKeys.has(`${model.provider}\0${model.id}`);
@@ -138,6 +163,11 @@ export async function listModels(
       maxTokens: model.maxTokens,
       cost: model.cost,
       available,
+      input: [...model.input],
+      supportedThinkingLevels: getSupportedThinkingLevels(model),
+      isCustom:
+        config?.providers[model.provider]?.models?.some((entry) => entry.id === model.id) ?? false,
+      hasOverride: config?.providers[model.provider]?.modelOverrides?.[model.id] !== undefined,
     });
   }
   return { models: items };
@@ -147,6 +177,7 @@ export async function refreshModels(
   deps: ProviderDeps,
   input: RefreshModelsRequest = {},
 ): Promise<RefreshModelsResponse> {
+  await deps.runtime?.().reload();
   const result = await deps.models().refresh({
     ...(input.providers === undefined ? {} : { providers: input.providers }),
     ...(input.force === undefined ? {} : { force: input.force }),
@@ -197,6 +228,9 @@ const PROJECT_ERROR_HTTP: Record<ProjectErrorCode, readonly [status: number, cod
 };
 
 export function toEngineError(error: unknown): unknown {
+  if (error instanceof ModelsConfigError) {
+    return new EngineError(400, "invalid_request", error.message);
+  }
   if (error instanceof ProjectError) {
     if (
       (error.code as string) === "task_ambiguous" ||

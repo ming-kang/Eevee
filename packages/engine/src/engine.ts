@@ -1,4 +1,5 @@
 import { mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { CredentialStore, Models } from "@earendil-works/pi-ai";
 import type {
@@ -21,7 +22,7 @@ import {
   TASK_READ_MAX_BYTES,
   validateOutputReadOptions,
 } from "@eevee/agent";
-import { ModelRuntime } from "@eevee/agent/models";
+import { MODELS_FILE, ModelRuntime } from "@eevee/agent/models";
 import type {
   BoardView,
   ListWorkerTasksOptions as CoreListWorkerTasksOptions,
@@ -39,6 +40,8 @@ import {
   type AnswerQuestionResponse,
   type BackgroundTaskRecordPayload,
   type BackgroundTaskStatus,
+  type BuiltinModelMatchRequest,
+  type BuiltinModelMatchResponse,
   type ConfigBundle,
   type ConversationRef,
   type CreateProjectRequest,
@@ -47,6 +50,8 @@ import {
   EngineSettingsSchema,
   type EntryRecordPayload,
   type GetProjectResponse,
+  type ImportProviderModelsRequest,
+  type ImportProviderModelsResponse,
   type KillWorkerTaskResponse,
   type ListEntriesResponse,
   type ListModelsResponse,
@@ -57,9 +62,13 @@ import {
   type ModelProfilesDocument,
   ModelProfilesDocumentSchema,
   type OkResponse,
+  type ProbeProviderRequest,
+  type ProbeProviderResponse,
   type ProjectMemoryResponse,
   type ProjectSummary,
   type ProjectUsageResponse,
+  type ProviderCatalogResponse,
+  type ProviderDetailResponse,
   type PutMcpConfigRequest,
   type PutProjectMemoryRequest,
   parseWithSchema,
@@ -69,15 +78,20 @@ import {
   type ReconnectMcpResponse,
   type RefreshModelsRequest,
   type RefreshModelsResponse,
+  type ReloadModelsResponse,
   type ScanOrder,
   type SendMessageRequest,
   type SendMessageResponse,
   type SetApiKeyRequest,
+  type SmokeTestModelRequest,
+  type SmokeTestModelResponse,
   type StartLoginRequest,
   type StartLoginResponse,
   type TaskStreamChunkEvent,
   type UpdateProjectRequest,
   type UpsertMcpServerRequest,
+  type UpsertProviderModelRequest,
+  type UpsertProviderRequest,
   type WorkerId,
 } from "@eevee/protocol";
 import { type DataDirLayout, dataDirLayout, projectPaths, resolveDataDir } from "./data-dir.ts";
@@ -113,6 +127,22 @@ import {
   setProviderApiKey,
   toEngineError,
 } from "./engine-providers.ts";
+import {
+  createProvider,
+  createProviderModel,
+  deleteProvider,
+  deleteProviderModel,
+  getProviderCatalog,
+  getProviderDetail,
+  importProviderModels,
+  matchBuiltinModel,
+  probeDraftProvider,
+  probeProvider,
+  reloadModels,
+  testProviderModel,
+  updateProvider,
+  updateProviderModel,
+} from "./engine-providers-manage.ts";
 import { LoginSessionManager, type LoginSseFrame } from "./login-sessions.ts";
 import { type OpenProjectStorage, ProjectPool } from "./project-pool.ts";
 import { EngineStore } from "./store.ts";
@@ -168,6 +198,7 @@ export type EngineOptions = {
   readonly backgroundAfterMs?: number;
   readonly routerContextTokens?: number;
   readonly idleHibernateMs?: number;
+  readonly fetch?: typeof globalThis.fetch;
   readonly onReport?: (projectId: string, report: Report) => void;
   readonly onPumpError?: (projectId: string, error: unknown) => void;
 };
@@ -264,9 +295,103 @@ export class Engine {
     return this.modelRuntime.models();
   }
 
-  async reloadModels(): Promise<void> {
+  async reloadModels(): Promise<ReloadModelsResponse> {
     this.#assertOpen();
-    await this.modelRuntime.reload();
+    return reloadModels(this.#providerDeps());
+  }
+
+  async getProviderCatalog(): Promise<ProviderCatalogResponse> {
+    this.#assertOpen();
+    return getProviderCatalog(this.#providerDeps());
+  }
+
+  async getProviderDetail(providerId: string): Promise<ProviderDetailResponse> {
+    this.#assertOpen();
+    return getProviderDetail(this.#providerDeps(), providerId);
+  }
+
+  async createProvider(input: UpsertProviderRequest): Promise<ProviderDetailResponse> {
+    this.#assertOpen();
+    return createProvider(this.#providerDeps(), input);
+  }
+
+  async updateProvider(
+    providerId: string,
+    input: UpsertProviderRequest,
+  ): Promise<ProviderDetailResponse> {
+    this.#assertOpen();
+    return updateProvider(this.#providerDeps(), providerId, input);
+  }
+
+  async deleteProvider(providerId: string): Promise<OkResponse> {
+    this.#assertOpen();
+    return deleteProvider(this.#providerDeps(), providerId);
+  }
+
+  async createProviderModel(
+    providerId: string,
+    input: UpsertProviderModelRequest,
+  ): Promise<ProviderDetailResponse> {
+    this.#assertOpen();
+    return createProviderModel(this.#providerDeps(), providerId, input);
+  }
+
+  async updateProviderModel(
+    providerId: string,
+    modelId: string,
+    input: UpsertProviderModelRequest,
+  ): Promise<ProviderDetailResponse> {
+    this.#assertOpen();
+    return updateProviderModel(this.#providerDeps(), providerId, modelId, input);
+  }
+
+  async deleteProviderModel(providerId: string, modelId: string): Promise<ProviderDetailResponse> {
+    this.#assertOpen();
+    return deleteProviderModel(this.#providerDeps(), providerId, modelId);
+  }
+
+  async probeDraftProvider(
+    input: ProbeProviderRequest,
+    signal?: AbortSignal,
+  ): Promise<ProbeProviderResponse> {
+    this.#assertOpen();
+    return probeDraftProvider(this.#providerDeps(), input, signal);
+  }
+
+  async probeProvider(
+    providerId: string,
+    input: ProbeProviderRequest = {},
+    signal?: AbortSignal,
+  ): Promise<ProbeProviderResponse> {
+    this.#assertOpen();
+    return probeProvider(this.#providerDeps(), providerId, input, signal);
+  }
+
+  async importProviderModels(
+    providerId: string,
+    input: ImportProviderModelsRequest,
+  ): Promise<ImportProviderModelsResponse> {
+    this.#assertOpen();
+    return importProviderModels(this.#providerDeps(), providerId, input);
+  }
+
+  async matchBuiltinModel(
+    providerId: string,
+    modelId: string,
+    input: BuiltinModelMatchRequest = {},
+  ): Promise<BuiltinModelMatchResponse> {
+    this.#assertOpen();
+    return matchBuiltinModel(this.#providerDeps(), providerId, modelId, input);
+  }
+
+  async testProviderModel(
+    providerId: string,
+    modelId: string,
+    input: SmokeTestModelRequest = {},
+    signal?: AbortSignal,
+  ): Promise<SmokeTestModelResponse> {
+    this.#assertOpen();
+    return testProviderModel(this.#providerDeps(), providerId, modelId, input, signal);
   }
 
   async listProviders(): Promise<ListProvidersResponse> {
@@ -929,6 +1054,13 @@ export class Engine {
   #providerDeps(): ProviderDeps {
     return {
       models: () => this.models(),
+      ...(this.#options.models === undefined
+        ? {
+            runtime: () => this.modelRuntime,
+            modelsFile: () => join(this.layout.root, MODELS_FILE),
+          }
+        : {}),
+      ...(this.#options.fetch === undefined ? {} : { fetch: this.#options.fetch }),
       credentials: () => {
         if (this.#options.credentials !== undefined) return this.#options.credentials;
         if (this.#options.models === undefined) return this.modelRuntime.credentials;

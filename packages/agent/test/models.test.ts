@@ -627,6 +627,163 @@ test("FileModelsStore round-trips provider catalog entries", async () => {
   });
 });
 
+test("ModelRuntime degrades invalid models.json to builtins with diagnostics", async () => {
+  await withTempDir(async (dir) => {
+    const file = join(dir, "models.json");
+    await writeFile(file, '{\n  "providers": { bad json\n}');
+    const runtime = await ModelRuntime.open({ dir, env: {} });
+    assert.deepEqual(runtime.config(), { providers: {} });
+    assert.ok(runtime.models().getModels("anthropic").length > 0);
+    assert.ok(runtime.configDiagnostics().length > 0);
+    assert.ok(runtime.configDiagnostics()[0]?.message.includes("invalid JSON"));
+    assert.ok(runtime.configDiagnostics()[0]?.line);
+    await assert.rejects(ModelRuntime.open({ dir, env: {}, strict: true }), ModelsConfigError);
+
+    await writeFile(file, "{}");
+    await runtime.reload();
+    assert.deepEqual(runtime.configDiagnostics(), []);
+  });
+});
+
+test("ModelRuntime reload degrades compose errors without throwing", async () => {
+  await withTempDir(async (dir) => {
+    const file = join(dir, "models.json");
+    await writeFile(file, "{}");
+    const runtime = await ModelRuntime.open({ dir, env: {} });
+    await writeFile(
+      file,
+      JSON.stringify({
+        providers: {
+          broken: { baseUrl: "http://localhost:1/v1", api: "bad-api", models: [{ id: "x" }] },
+        },
+      }),
+    );
+    await runtime.reload();
+    assert.deepEqual(runtime.config(), { providers: {} });
+    assert.match(runtime.configDiagnostics()[0]?.message ?? "", /unknown api/);
+    await assert.rejects(runtime.reload({ strict: true }), /unknown api/);
+  });
+});
+
+test("ModelRuntime restores cached remote catalogs offline during open", async () => {
+  await withTempDir(async (dir) => {
+    await writeFile(
+      join(dir, "models.json"),
+      JSON.stringify({
+        providers: { radius: { oauth: "radius", baseUrl: "https://radius.test" } },
+      }),
+    );
+    const store = new FileModelsStore(join(dir, "models-store.json"));
+    const cached = modelForStore("radius", "cached-offline-model");
+    await store.write("radius", { models: [cached], checkedAt: Date.now() });
+    const runtime = await ModelRuntime.open({ dir, env: {} });
+    assert.ok(runtime.resolveModel({ provider: "radius", modelId: "cached-offline-model" }));
+    const hydrated = await runtime.hydrateStoredCatalogs();
+    assert.equal(hydrated.aborted, false);
+  });
+});
+
+test("ModelRuntime reports masked auth summaries and strict header failures", async () => {
+  await withTempDir(async (dir) => {
+    await writeFile(
+      join(dir, "models.json"),
+      JSON.stringify({
+        providers: {
+          anthropic: { apiKey: "sk-config-secret" },
+          local: {
+            baseUrl: "http://localhost:1/v1",
+            api: "openai-completions",
+            apiKey: "local-key",
+            headers: { "X-Required": "$MISSING_HEADER" },
+            models: [{ id: "m" }],
+          },
+        },
+      }),
+    );
+    const runtime = await ModelRuntime.open({ dir, env: {} });
+    const summary = await runtime.getAuthSummary("anthropic");
+    assert.equal(summary.configured, true);
+    assert.equal(summary.source, "models.json");
+    assert.equal(summary.type, "api_key");
+    assert.equal(summary.preview, "sk-c...cret");
+    assert.ok(!summary.preview?.includes("config-secret"));
+    const local = runtime.resolveModel({ provider: "local", modelId: "m" });
+    assert.ok(local);
+    await assert.rejects(runtime.models().getAuth(local), /X-Required.*MISSING_HEADER/);
+  });
+});
+
+test("AuthStorage credential changes invalidate cached !command values", async () => {
+  await withTempDir(async (dir) => {
+    const command = 'node -e "console.log(process.hrtime.bigint().toString())"';
+    await writeFile(
+      join(dir, "auth.json"),
+      JSON.stringify({ dynamic: { type: "api_key", key: `!${command}` } }),
+    );
+    const storage = new AuthStorage(join(dir, "auth.json"));
+    const first = await storage.read("dynamic");
+    const second = await storage.read("dynamic");
+    assert.equal(
+      first?.type === "api_key" ? first.key : undefined,
+      second?.type === "api_key" ? second.key : undefined,
+    );
+    await storage.modify("other", async () => ({ type: "api_key", key: "saved" }));
+    const third = await storage.read("dynamic");
+    assert.notEqual(
+      first?.type === "api_key" ? first.key : undefined,
+      third?.type === "api_key" ? third.key : undefined,
+    );
+    await storage.delete("other");
+    const fourth = await storage.read("dynamic");
+    assert.notEqual(
+      third?.type === "api_key" ? third.key : undefined,
+      fourth?.type === "api_key" ? fourth.key : undefined,
+    );
+  });
+});
+
+test("models.json !command apiKey bypasses the process cache", async () => {
+  await withTempDir(async (dir) => {
+    const command = 'node -e "console.log(process.hrtime.bigint().toString())"';
+    await writeFile(
+      join(dir, "models.json"),
+      JSON.stringify({
+        providers: {
+          local: {
+            baseUrl: "http://localhost:1/v1",
+            api: "openai-completions",
+            apiKey: `!${command}`,
+            models: [{ id: "m" }],
+          },
+        },
+      }),
+    );
+    const runtime = await ModelRuntime.open({ dir, env: {} });
+    const model = runtime.resolveModel({ provider: "local", modelId: "m" });
+    assert.ok(model);
+    const first = await runtime.models().getAuth(model);
+    const second = await runtime.models().getAuth(model);
+    assert.ok(first?.auth.apiKey);
+    assert.ok(second?.auth.apiKey);
+    assert.notEqual(first.auth.apiKey, second.auth.apiKey);
+  });
+});
+
+function modelForStore(provider: string, id: string): ModelsStoreEntry["models"][number] {
+  return {
+    id,
+    name: id,
+    api: "openai-completions",
+    provider,
+    baseUrl: "https://openrouter.ai/api/v1",
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    reasoning: false,
+    contextWindow: 1000,
+    maxTokens: 100,
+  };
+}
+
 test("!command apiKey executes at resolution time", async () => {
   await withTempDir(async (dir) => {
     await writeFile(

@@ -6,7 +6,12 @@ import {
 } from "@eevee/protocol";
 import type { Command } from "commander";
 import { readJsonInput } from "../args.ts";
-import { formatModelProfiles, formatModels, formatRefreshModels } from "../format.ts";
+import {
+  formatModelProfiles,
+  formatModels,
+  formatRefreshModels,
+  formatReloadModels,
+} from "../format.ts";
 
 export function registerModelsCommands(program: Command, env: NodeJS.ProcessEnv): void {
   const modelsCommand = program.command("models").description("Inspect and manage models");
@@ -47,6 +52,20 @@ export function registerModelsCommands(program: Command, env: NodeJS.ProcessEnv)
         return;
       }
       console.log(formatRefreshModels(response));
+    });
+
+  modelsCommand
+    .command("reload")
+    .description("Reload models.json and report diagnostics")
+    .option("--json", "Output JSON")
+    .action(async (options: { json?: boolean }) => {
+      const { client } = await connectLocalEngine(env);
+      const response = await client.reloadModels();
+      if (options.json) {
+        console.log(JSON.stringify(response, null, 2));
+        return;
+      }
+      console.log(formatReloadModels(response));
     });
 
   const profilesCommand = modelsCommand

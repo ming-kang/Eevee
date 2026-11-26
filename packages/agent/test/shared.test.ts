@@ -10,6 +10,7 @@ import {
   isConfigValueConfigured,
   resolveConfigValue,
   resolveHeaders,
+  resolveHeadersStrict,
 } from "../src/shared/config-value.ts";
 import { withFileLock, writeFileAtomic } from "../src/shared/file-lock.ts";
 import { stripBom, stripJsonComments } from "../src/shared/json.ts";
@@ -113,6 +114,33 @@ test("resolveHeaders drops entries whose value does not resolve", () => {
   });
   assert.equal(resolveHeaders({ "X-Skip": "$MISSING" }, env), undefined);
   assert.equal(resolveHeaders(undefined, env), undefined);
+});
+
+test("resolveConfigValue can bypass the !command cache for models.json values", () => {
+  clearConfigValueCache();
+  const command = '!node -e "console.log(process.hrtime.bigint().toString())"';
+  const cachedFirst = resolveConfigValue(command, {});
+  const cachedSecond = resolveConfigValue(command, {});
+  assert.equal(cachedFirst, cachedSecond);
+  const freshFirst = resolveConfigValue(command, {}, { cacheCommands: false });
+  const freshSecond = resolveConfigValue(command, {}, { cacheCommands: false });
+  assert.ok(freshFirst);
+  assert.ok(freshSecond);
+  assert.notEqual(freshFirst, freshSecond);
+});
+
+test("resolveHeadersStrict names unresolved headers and environment variables", () => {
+  assert.deepEqual(resolveHeadersStrict({ Authorization: "Bearer $TOKEN" }, { TOKEN: "abc" }), {
+    Authorization: "Bearer abc",
+  });
+  assert.throws(
+    () => resolveHeadersStrict({ "X-Token": "$FIRST-$SECOND" }, { FIRST: "one" }),
+    /X-Token.*SECOND/,
+  );
+  assert.throws(
+    () => resolveHeadersStrict({ "X-Command": "!definitely-not-a-real-command-eevee" }, {}),
+    /X-Command.*!command/,
+  );
 });
 
 test("formatSize formats bytes, kilobytes, and megabytes", () => {

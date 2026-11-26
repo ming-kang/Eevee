@@ -429,6 +429,7 @@ type PathParams = {
   readonly questionId: QuestionId;
   readonly workerId: WorkerId;
   readonly providerId: string;
+  readonly modelId: string;
   readonly sessionId: string;
   readonly serverName: string;
   readonly taskId: string;
@@ -440,6 +441,7 @@ const PATH_PARAM_PARSERS: { readonly [K in keyof PathParams]: (raw: string) => P
   questionId: (raw) => parseWithSchema(QuestionIdSchema, raw, "questionId"),
   workerId: (raw) => parseWithSchema(WorkerIdSchema, raw, "workerId"),
   providerId: (raw) => parseNonEmptySegment(raw, "providerId"),
+  modelId: (raw) => parseNonEmptySegment(raw, "modelId"),
   sessionId: (raw) => parseNonEmptySegment(raw, "sessionId"),
   serverName: (raw) => parseNonEmptySegment(raw, "serverName"),
   taskId: (raw) => parseNonEmptySegment(raw, "taskId"),

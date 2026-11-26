@@ -2,6 +2,38 @@ export function stripBom(text: string): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
+export function stripJsonTrailingCommas(text: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < text.length; index++) {
+    const ch = text[index];
+    if (inString) {
+      out += ch;
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === ",") {
+      let next = index + 1;
+      while (next < text.length && /\s/.test(text[next] ?? "")) next++;
+      if (text[next] === "}" || text[next] === "]") continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
 export function stripJsonComments(text: string): string {
   let out = "";
   let inString = false;

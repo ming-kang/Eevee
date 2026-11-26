@@ -8,6 +8,9 @@ import {
   BackgroundTaskStatusSchema,
   type BoardStreamEvent,
   BoardViewSchema,
+  BuiltinModelMatchRequestSchema,
+  BuiltinModelMatchResponseSchema,
+  CompatFieldInfoSchema,
   ConfigBundleSchema,
   ConversationFailedEventSchema,
   ConversationPatchEventSchema,
@@ -23,6 +26,8 @@ import {
   EngineSettingsSchema,
   GetProjectResponseSchema,
   HealthResponseSchema,
+  ImportProviderModelsRequestSchema,
+  ImportProviderModelsResponseSchema,
   KillWorkerTaskResponseSchema,
   ListEntriesResponseSchema,
   ListModelsResponseSchema,
@@ -38,18 +43,24 @@ import {
   McpServerSnapshotSchema,
   McpStateResponseSchema,
   ModelChoiceSchema,
+  ModelDetailSchema,
   ModelInfoSchema,
   ModelProfileSchema,
   ModelProfilesDocumentSchema,
   ModelSlotsOverrideSchema,
+  ModelsConfigDiagnosticSchema,
   OkResponseSchema,
   OutputSliceSchema,
   PROTOCOL_VERSION,
+  ProbeProviderRequestSchema,
+  ProbeProviderResponseSchema,
   ProblemSchema,
   ProjectIdSchema,
   ProjectMemoryResponseSchema,
   ProjectSummarySchema,
   ProjectUsageResponseSchema,
+  ProviderCatalogResponseSchema,
+  ProviderDetailResponseSchema,
   ProviderSummarySchema,
   PutMcpConfigRequestSchema,
   PutProjectMemoryRequestSchema,
@@ -62,12 +73,15 @@ import {
   ReconnectMcpResponseSchema,
   RefreshModelsRequestSchema,
   RefreshModelsResponseSchema,
+  ReloadModelsResponseSchema,
   ROUTER_TOGGLEABLE_TOOLS,
   ScanOrderSchema,
   SchemaValidationError,
   SendMessageRequestSchema,
   SendMessageResponseSchema,
   SetApiKeyRequestSchema,
+  SmokeTestModelRequestSchema,
+  SmokeTestModelResponseSchema,
   StartLoginRequestSchema,
   StartLoginResponseSchema,
   StreamEndEventSchema,
@@ -81,6 +95,7 @@ import {
   type TaskStreamEvent,
   TaskStreamSnapshotEventSchema,
   TaskStreamStatusEventSchema,
+  ThinkingLevelConfigSchema,
   ThinkingLevelSchema,
   TicketIdSchema,
   TicketRecordSchema,
@@ -88,6 +103,8 @@ import {
   ToolsSettingsSchema,
   UpdateProjectRequestSchema,
   UpsertMcpServerRequestSchema,
+  UpsertProviderModelRequestSchema,
+  UpsertProviderRequestSchema,
   UsageMetricsSchema,
   UsageStateSchema,
   WhenBusySchema,
@@ -1189,4 +1206,198 @@ test("protocol 4C schemas and EeveeClient methods validate providers, auth, mode
     projectId: "demo",
     usage: usageState,
   });
+});
+
+test("protocol 3B model management schemas and client methods preserve typed payloads and escaped model ids", async () => {
+  const thinkingLevels = {
+    off: { enabled: true, mappedTo: "none" },
+    minimal: { enabled: true },
+    low: { enabled: true },
+    medium: { enabled: true },
+    high: { enabled: true },
+    xhigh: { enabled: true },
+    max: { enabled: false },
+  };
+  assert.equal(compile(ThinkingLevelConfigSchema).check(thinkingLevels), true);
+  assert.equal(
+    compile(ModelsConfigDiagnosticSchema).check({ path: "providers.x", message: "bad", line: 1 }),
+    true,
+  );
+  assert.equal(compile(CompatFieldInfoSchema).check({ key: "store", kind: "boolean" }), true);
+  assert.equal(
+    compile(UpsertProviderRequestSchema).check({
+      id: "custom",
+      baseUrl: "http://localhost:1234/v1",
+      apiKey: null,
+      compat: { supportsUsage: true },
+    }),
+    true,
+  );
+  assert.equal(
+    compile(UpsertProviderModelRequestSchema).check({
+      id: "vendor/model",
+      thinkingLevels,
+      input: ["text", "image"],
+      contextWindow: 0,
+    }),
+    true,
+  );
+  assert.equal(compile(ProbeProviderRequestSchema).check({ authHeader: true }), true);
+  assert.equal(compile(BuiltinModelMatchRequestSchema).check({ limit: 51 }), false);
+  assert.equal(compile(SmokeTestModelRequestSchema).check({ timeoutMs: 999 }), false);
+
+  const summary = {
+    id: "custom",
+    name: "Custom",
+    baseUrl: "http://localhost:1234/v1",
+    authMethods: { apiKey: true, apiKeyLogin: true, oauth: false },
+    configured: true,
+    authType: "api_key" as const,
+    modelCount: 1,
+    kind: "custom" as const,
+    hasConfigOverride: true,
+    customModelCount: 1,
+    overrideCount: 0,
+  };
+  const detailModel = {
+    provider: "custom",
+    id: "vendor/model",
+    name: "Vendor Model",
+    api: "openai-responses",
+    baseUrl: "http://localhost:1234/v1",
+    reasoning: true,
+    input: ["text"],
+    contextWindow: 1000,
+    maxTokens: 100,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    available: true,
+    isCustom: true,
+    isBuiltin: false,
+    hasOverride: false,
+    supportedThinkingLevels: ["off", "high", "xhigh"],
+    thinkingLevels,
+    compat: { supportsUsage: true },
+  };
+  const provider = {
+    ...summary,
+    config: { hasApiKey: true, apiKeyRef: "$CUSTOM_KEY" },
+    models: [detailModel],
+  };
+  const detail = { provider };
+  const catalog = {
+    providers: [
+      {
+        id: "openai",
+        name: "OpenAI",
+        apis: ["openai-responses"],
+        modelCount: 1,
+        configured: false,
+        hasConfigOverride: false,
+        authMethods: { apiKey: true, apiKeyLogin: true, oauth: false },
+      },
+    ],
+    supportedApis: ["openai-responses"],
+    compatSchemas: { "openai-responses": [{ key: "store", kind: "boolean" }] },
+  };
+  const probe = {
+    ok: true,
+    catalogUrl: "http://localhost:1234/v1/models",
+    models: [{ id: "vendor/model", exists: true }],
+    truncated: false,
+  };
+  const match = {
+    candidates: [
+      {
+        providerId: "openai",
+        modelId: "gpt-test",
+        name: "GPT Test",
+        api: "openai-responses",
+        reasoning: true,
+        contextWindow: 1000,
+        maxTokens: 100,
+        input: ["text"],
+        tier: "fuzzy",
+        diffs: [
+          {
+            field: "name",
+            applicable: true,
+            checked: false,
+            same: false,
+            currentText: "Vendor Model",
+            referenceText: "GPT Test",
+            value: "GPT Test",
+          },
+        ],
+      },
+    ],
+  };
+  const smoke = {
+    ok: true,
+    totalMs: 12,
+    sawReasoning: false,
+    sawToolCall: false,
+    usage: { input: 2, output: 1, totalTokens: 3 },
+    replyPreview: "OK",
+  };
+  const reload = { reloaded: true, providerCount: 1, modelCount: 1, diagnostics: [] };
+
+  assert.equal(compile(ModelDetailSchema).check(detailModel), true);
+  assert.equal(compile(ProviderDetailResponseSchema).check(detail), true);
+  assert.equal(compile(ProviderCatalogResponseSchema).check(catalog), true);
+  assert.equal(compile(ProbeProviderResponseSchema).check(probe), true);
+  assert.equal(compile(ImportProviderModelsRequestSchema).check({ models: [{ id: "a/b" }] }), true);
+  assert.equal(compile(ImportProviderModelsResponseSchema).check({ imported: 1, provider }), true);
+  assert.equal(compile(BuiltinModelMatchResponseSchema).check(match), true);
+  assert.equal(compile(SmokeTestModelResponseSchema).check(smoke), true);
+  assert.equal(compile(ReloadModelsResponseSchema).check(reload), true);
+
+  const calls: { method: string; pathname: string; body?: string }[] = [];
+  const client = new EeveeClient({
+    baseUrl: "http://localhost:4173",
+    fetch: async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? "GET";
+      calls.push({
+        method,
+        pathname: url.pathname,
+        body: typeof init?.body === "string" ? init.body : undefined,
+      });
+      if (url.pathname === "/providers/catalog") return Response.json(catalog);
+      if (url.pathname === "/providers/probe") return Response.json(probe);
+      if (url.pathname.endsWith("/probe")) return Response.json(probe);
+      if (url.pathname.endsWith("/models/import")) {
+        return Response.json({ imported: 1, provider });
+      }
+      if (url.pathname.endsWith("/builtin-match")) return Response.json(match);
+      if (url.pathname.endsWith("/test")) return Response.json(smoke);
+      if (url.pathname === "/models/reload") return Response.json(reload);
+      if (url.pathname === "/providers" && method === "POST") return Response.json(detail);
+      if (url.pathname === "/providers/custom" && method === "DELETE") {
+        return Response.json({ ok: true });
+      }
+      return Response.json(detail);
+    },
+  });
+
+  assert.deepEqual(await client.getProviderCatalog(), catalog);
+  assert.deepEqual(await client.getProviderDetail("custom"), detail);
+  assert.deepEqual(await client.createProvider({ id: "custom" }), detail);
+  assert.deepEqual(await client.updateProvider("custom", { name: "Custom" }), detail);
+  assert.deepEqual(await client.deleteProvider("custom"), { ok: true });
+  assert.deepEqual(await client.createProviderModel("custom", { id: "vendor/model" }), detail);
+  await client.updateProviderModel("custom", "vendor/model", { name: "Vendor Model" });
+  assert.equal(calls.at(-1)?.pathname, "/providers/custom/models/vendor%2Fmodel");
+  await client.deleteProviderModel("custom", "vendor/model");
+  assert.equal(calls.at(-1)?.pathname, "/providers/custom/models/vendor%2Fmodel");
+  assert.deepEqual(await client.probeDraftProvider({ baseUrl: "http://localhost:1234/v1" }), probe);
+  assert.deepEqual(await client.probeProvider("custom"), probe);
+  assert.deepEqual(
+    await client.importProviderModels("custom", { models: [{ id: "vendor/model" }] }),
+    { imported: 1, provider },
+  );
+  assert.deepEqual(await client.matchBuiltinModel("custom", "vendor/model"), match);
+  assert.equal(calls.at(-1)?.pathname, "/providers/custom/models/vendor%2Fmodel/builtin-match");
+  assert.deepEqual(await client.testProviderModel("custom", "vendor/model"), smoke);
+  assert.equal(calls.at(-1)?.pathname, "/providers/custom/models/vendor%2Fmodel/test");
+  assert.deepEqual(await client.reloadModels(), reload);
 });

@@ -7,6 +7,9 @@ import {
   type BackgroundTaskRecordPayload,
   type BoardViewPayload,
   BoardViewSchema,
+  type BuiltinModelMatchRequest,
+  type BuiltinModelMatchResponse,
+  BuiltinModelMatchResponseSchema,
   type ConfigBundle,
   ConfigBundleSchema,
   ConversationFailedEventSchema,
@@ -28,6 +31,9 @@ import {
   GetProjectResponseSchema,
   type HealthResponse,
   HealthResponseSchema,
+  type ImportProviderModelsRequest,
+  type ImportProviderModelsResponse,
+  ImportProviderModelsResponseSchema,
   type KillWorkerTaskResponse,
   KillWorkerTaskResponseSchema,
   type ListEntriesResponse,
@@ -56,12 +62,19 @@ import {
   type OkResponse,
   OkResponseSchema,
   type OutputSlice,
+  type ProbeProviderRequest,
+  type ProbeProviderResponse,
+  ProbeProviderResponseSchema,
   type Problem,
   ProblemSchema,
   type ProjectMemoryResponse,
   ProjectMemoryResponseSchema,
   type ProjectUsageResponse,
   ProjectUsageResponseSchema,
+  type ProviderCatalogResponse,
+  ProviderCatalogResponseSchema,
+  type ProviderDetailResponse,
+  ProviderDetailResponseSchema,
   type PutMcpConfigRequest,
   type PutProjectMemoryRequest,
   parseWithSchema,
@@ -74,11 +87,16 @@ import {
   type RefreshModelsRequest,
   type RefreshModelsResponse,
   RefreshModelsResponseSchema,
+  type ReloadModelsResponse,
+  ReloadModelsResponseSchema,
   type ScanOrder,
   type SendMessageRequest,
   type SendMessageResponse,
   SendMessageResponseSchema,
   type SetApiKeyRequest,
+  type SmokeTestModelRequest,
+  type SmokeTestModelResponse,
+  SmokeTestModelResponseSchema,
   type StartLoginRequest,
   type StartLoginResponse,
   StartLoginResponseSchema,
@@ -91,6 +109,8 @@ import {
   TaskStreamStatusEventSchema,
   type UpdateProjectRequest,
   type UpsertMcpServerRequest,
+  type UpsertProviderModelRequest,
+  type UpsertProviderRequest,
   type WebSessionResponse,
   WebSessionResponseSchema,
   type WorkerId,
@@ -125,6 +145,13 @@ const loginCompleteValidator = compile(LoginCompleteEventSchema);
 const loginErrorValidator = compile(LoginErrorEventSchema);
 const listModelsValidator = compile(ListModelsResponseSchema);
 const refreshModelsValidator = compile(RefreshModelsResponseSchema);
+const providerCatalogValidator = compile(ProviderCatalogResponseSchema);
+const providerDetailValidator = compile(ProviderDetailResponseSchema);
+const probeProviderValidator = compile(ProbeProviderResponseSchema);
+const importProviderModelsValidator = compile(ImportProviderModelsResponseSchema);
+const builtinModelMatchValidator = compile(BuiltinModelMatchResponseSchema);
+const smokeTestModelValidator = compile(SmokeTestModelResponseSchema);
+const reloadModelsValidator = compile(ReloadModelsResponseSchema);
 const modelProfilesValidator = compile(ModelProfilesDocumentSchema);
 const mcpStateValidator = compile(McpStateResponseSchema);
 const reconnectMcpValidator = compile(ReconnectMcpResponseSchema);
@@ -603,6 +630,125 @@ export class EeveeClient {
     return parseWithSchema(listProvidersValidator, data, "GET /providers response");
   }
 
+  async getProviderCatalog(signal?: AbortSignal): Promise<ProviderCatalogResponse> {
+    const data = await this.#requestJson("GET", "/providers/catalog", undefined, signal);
+    return parseWithSchema(providerCatalogValidator, data, "GET /providers/catalog response");
+  }
+
+  async getProviderDetail(
+    providerId: string,
+    signal?: AbortSignal,
+  ): Promise<ProviderDetailResponse> {
+    const path = `/providers/${encodeURIComponent(providerId)}`;
+    const data = await this.#requestJson("GET", path, undefined, signal);
+    return parseWithSchema(providerDetailValidator, data, `GET ${path} response`);
+  }
+
+  async createProvider(
+    input: UpsertProviderRequest,
+    signal?: AbortSignal,
+  ): Promise<ProviderDetailResponse> {
+    const data = await this.#requestJson("POST", "/providers", input, signal);
+    return parseWithSchema(providerDetailValidator, data, "POST /providers response");
+  }
+
+  async updateProvider(
+    providerId: string,
+    input: UpsertProviderRequest,
+    signal?: AbortSignal,
+  ): Promise<ProviderDetailResponse> {
+    const path = `/providers/${encodeURIComponent(providerId)}`;
+    const data = await this.#requestJson("PATCH", path, input, signal);
+    return parseWithSchema(providerDetailValidator, data, `PATCH ${path} response`);
+  }
+
+  async deleteProvider(providerId: string, signal?: AbortSignal): Promise<OkResponse> {
+    const path = `/providers/${encodeURIComponent(providerId)}`;
+    const data = await this.#requestJson("DELETE", path, undefined, signal);
+    return parseWithSchema(okValidator, data, `DELETE ${path} response`);
+  }
+
+  async createProviderModel(
+    providerId: string,
+    input: UpsertProviderModelRequest,
+    signal?: AbortSignal,
+  ): Promise<ProviderDetailResponse> {
+    const path = `/providers/${encodeURIComponent(providerId)}/models`;
+    const data = await this.#requestJson("POST", path, input, signal);
+    return parseWithSchema(providerDetailValidator, data, `POST ${path} response`);
+  }
+
+  async updateProviderModel(
+    providerId: string,
+    modelId: string,
+    input: UpsertProviderModelRequest,
+    signal?: AbortSignal,
+  ): Promise<ProviderDetailResponse> {
+    const path = `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`;
+    const data = await this.#requestJson("PATCH", path, input, signal);
+    return parseWithSchema(providerDetailValidator, data, `PATCH ${path} response`);
+  }
+
+  async deleteProviderModel(
+    providerId: string,
+    modelId: string,
+    signal?: AbortSignal,
+  ): Promise<ProviderDetailResponse> {
+    const path = `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`;
+    const data = await this.#requestJson("DELETE", path, undefined, signal);
+    return parseWithSchema(providerDetailValidator, data, `DELETE ${path} response`);
+  }
+
+  async probeDraftProvider(
+    input: ProbeProviderRequest,
+    signal?: AbortSignal,
+  ): Promise<ProbeProviderResponse> {
+    const data = await this.#requestJson("POST", "/providers/probe", input, signal);
+    return parseWithSchema(probeProviderValidator, data, "POST /providers/probe response");
+  }
+
+  async probeProvider(
+    providerId: string,
+    input: ProbeProviderRequest = {},
+    signal?: AbortSignal,
+  ): Promise<ProbeProviderResponse> {
+    const path = `/providers/${encodeURIComponent(providerId)}/probe`;
+    const data = await this.#requestJson("POST", path, input, signal);
+    return parseWithSchema(probeProviderValidator, data, `POST ${path} response`);
+  }
+
+  async importProviderModels(
+    providerId: string,
+    input: ImportProviderModelsRequest,
+    signal?: AbortSignal,
+  ): Promise<ImportProviderModelsResponse> {
+    const path = `/providers/${encodeURIComponent(providerId)}/models/import`;
+    const data = await this.#requestJson("POST", path, input, signal);
+    return parseWithSchema(importProviderModelsValidator, data, `POST ${path} response`);
+  }
+
+  async matchBuiltinModel(
+    providerId: string,
+    modelId: string,
+    input: BuiltinModelMatchRequest = {},
+    signal?: AbortSignal,
+  ): Promise<BuiltinModelMatchResponse> {
+    const path = `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}/builtin-match`;
+    const data = await this.#requestJson("POST", path, input, signal);
+    return parseWithSchema(builtinModelMatchValidator, data, `POST ${path} response`);
+  }
+
+  async testProviderModel(
+    providerId: string,
+    modelId: string,
+    input: SmokeTestModelRequest = {},
+    signal?: AbortSignal,
+  ): Promise<SmokeTestModelResponse> {
+    const path = `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}/test`;
+    const data = await this.#requestJson("POST", path, input, signal);
+    return parseWithSchema(smokeTestModelValidator, data, `POST ${path} response`);
+  }
+
   async setProviderApiKey(
     providerId: string,
     input: SetApiKeyRequest,
@@ -696,6 +842,11 @@ export class EeveeClient {
   ): Promise<RefreshModelsResponse> {
     const data = await this.#requestJson("POST", "/models/refresh", input, signal);
     return parseWithSchema(refreshModelsValidator, data, "POST /models/refresh response");
+  }
+
+  async reloadModels(signal?: AbortSignal): Promise<ReloadModelsResponse> {
+    const data = await this.#requestJson("POST", "/models/reload", undefined, signal);
+    return parseWithSchema(reloadModelsValidator, data, "POST /models/reload response");
   }
 
   async getModelProfiles(signal?: AbortSignal): Promise<ModelProfilesDocument> {

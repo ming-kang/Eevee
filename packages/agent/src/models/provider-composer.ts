@@ -26,7 +26,7 @@ import { radiusProvider } from "@earendil-works/pi-ai/providers/radius";
 import {
   isConfigValueConfigured,
   resolveConfigValue,
-  resolveHeaders,
+  resolveHeadersStrict,
 } from "../shared/config-value.ts";
 import {
   type CompatConfig,
@@ -36,6 +36,7 @@ import {
   ModelsConfigError,
   type ProviderConfig,
 } from "./model-config.ts";
+import { normalizeThinkingLevelMapForRuntime } from "./thinking-map.ts";
 
 export type ComposeEnvironment = Readonly<Record<string, string | undefined>>;
 
@@ -47,7 +48,7 @@ const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const DEFAULT_MAX_TOKENS = 16_384;
 
-const CHAT_API_STREAMS: Readonly<Record<string, () => ProviderStreams>> = {
+export const CHAT_API_STREAMS: Readonly<Record<string, () => ProviderStreams>> = {
   "openai-completions": openAICompletionsApi,
   "openai-responses": openAIResponsesApi,
   "azure-openai-responses": azureOpenAIResponsesApi,
@@ -151,7 +152,7 @@ function resolveProviderConfigHeaders(
   config: ProviderConfig,
   env?: ComposeEnvironment,
 ): Record<string, string> | undefined {
-  return resolveHeaders(config.headers, env);
+  return resolveHeadersStrict(config.headers, env, { cacheCommands: false });
 }
 
 function withConfigHeaders(
@@ -230,7 +231,9 @@ function wrapApiKeyAuth(
         );
       }
       const configKey =
-        config.apiKey === undefined ? undefined : resolveConfigValue(config.apiKey, env);
+        config.apiKey === undefined
+          ? undefined
+          : resolveConfigValue(config.apiKey, env, { cacheCommands: false });
       if (configKey !== undefined) {
         return apiKeyAuthResult(config, configKey, "models.json", undefined, env);
       }
@@ -316,7 +319,8 @@ function buildEntryModel(
     maxTokens: entry.maxTokens ?? DEFAULT_MAX_TOKENS,
   };
   if (entry.inputLimits !== undefined) model.inputLimits = entry.inputLimits;
-  if (entry.thinkingLevelMap !== undefined) model.thinkingLevelMap = entry.thinkingLevelMap;
+  const thinkingLevelMap = normalizeThinkingLevelMapForRuntime(undefined, entry.thinkingLevelMap);
+  if (thinkingLevelMap !== undefined) model.thinkingLevelMap = thinkingLevelMap;
   if (entry.promptCache !== undefined) model.promptCache = entry.promptCache;
   if (entry.samplingParams !== undefined) model.samplingParams = entry.samplingParams;
   if (entry.samplingParamsByThinkingLevel !== undefined) {
@@ -371,9 +375,9 @@ function applyModelOverride(
     );
   }
   if (override.thinkingLevelMap !== undefined) {
-    merged.thinkingLevelMap = mergeDefined(
-      (model as { thinkingLevelMap?: object }).thinkingLevelMap as never,
-      override.thinkingLevelMap as never,
+    merged.thinkingLevelMap = normalizeThinkingLevelMapForRuntime(
+      (model as { thinkingLevelMap?: Model<Api>["thinkingLevelMap"] }).thinkingLevelMap,
+      override.thinkingLevelMap,
     );
   }
   if (isChatModel(model)) {
@@ -436,7 +440,7 @@ function resolveModelConfigHeaders(
   const entry = config.models?.find((candidate) => candidate.id === modelId);
   const override = config.modelOverrides?.[modelId];
   const raw = mergeHeaders(entry?.headers, override?.headers);
-  return resolveHeaders(raw, env);
+  return resolveHeadersStrict(raw, env, { cacheCommands: false });
 }
 
 function wrapProvider(base: Provider, config: ProviderConfig, env?: ComposeEnvironment): Provider {

@@ -343,6 +343,36 @@ export const ProviderAuthMethodsSchema = obj({
   oauthLabel: opt(str()),
 });
 
+export const ThinkingLevelRuleSchema = obj({
+  enabled: bool(),
+  mappedTo: opt(str()),
+  inherited: opt(bool()),
+});
+
+export const ThinkingLevelConfigSchema = obj({
+  off: ThinkingLevelRuleSchema,
+  minimal: ThinkingLevelRuleSchema,
+  low: ThinkingLevelRuleSchema,
+  medium: ThinkingLevelRuleSchema,
+  high: ThinkingLevelRuleSchema,
+  xhigh: ThinkingLevelRuleSchema,
+  max: ThinkingLevelRuleSchema,
+});
+
+export const ModelsConfigDiagnosticSchema = obj({
+  path: str(),
+  message: str(),
+  line: opt(int({ minimum: 1 })),
+  column: opt(int({ minimum: 1 })),
+});
+
+export const CompatFieldInfoSchema = obj({
+  key: str({ minLength: 1 }),
+  kind: oneOf(["boolean", "enum", "number", "stringMap", "json"]),
+  options: opt(arr(str())),
+  note: opt(str()),
+});
+
 export const ProviderSummarySchema = obj({
   id: str({ minLength: 1 }),
   name: str({ minLength: 1 }),
@@ -352,10 +382,19 @@ export const ProviderSummarySchema = obj({
   authType: opt(AuthTypeSchema),
   authSource: opt(str()),
   modelCount: int({ minimum: 0 }),
+  kind: opt(oneOf(["builtin", "custom"])),
+  api: opt(str()),
+  hasConfigOverride: opt(bool()),
+  customModelCount: opt(int({ minimum: 0 })),
+  overrideCount: opt(int({ minimum: 0 })),
+  authPreview: opt(str()),
+  authAccountLabel: opt(str()),
+  authExpiresAt: opt(num()),
 });
 
 export const ListProvidersResponseSchema = obj({
   providers: arr(ProviderSummarySchema),
+  diagnostics: opt(arr(ModelsConfigDiagnosticSchema)),
 });
 
 export const SetApiKeyRequestSchema = obj({
@@ -478,6 +517,10 @@ export const ModelInfoSchema = obj({
   maxTokens: num({ minimum: 0 }),
   cost: ModelCostSchema,
   available: bool(),
+  input: opt(arr(oneOf(["text", "image"]))),
+  supportedThinkingLevels: opt(arr(ThinkingLevelSchema)),
+  isCustom: opt(bool()),
+  hasOverride: opt(bool()),
 });
 
 export const ListModelsResponseSchema = obj({
@@ -492,6 +535,233 @@ export const RefreshModelsRequestSchema = obj({
 export const RefreshModelsResponseSchema = obj({
   refreshed: lit(true),
   errors: map(str()),
+});
+
+export const BuiltinProviderCatalogItemSchema = obj({
+  id: str({ minLength: 1 }),
+  name: str({ minLength: 1 }),
+  baseUrl: opt(str()),
+  apis: arr(str()),
+  modelCount: int({ minimum: 0 }),
+  configured: bool(),
+  hasConfigOverride: bool(),
+  authMethods: ProviderAuthMethodsSchema,
+});
+
+export const ProviderCatalogResponseSchema = obj({
+  providers: arr(BuiltinProviderCatalogItemSchema),
+  supportedApis: arr(str()),
+  compatSchemas: map(arr(CompatFieldInfoSchema)),
+});
+
+export const ConnectionNoteSchema = obj({
+  text: str(),
+  warning: opt(bool()),
+});
+
+export const ModelDetailSchema = obj({
+  provider: str({ minLength: 1 }),
+  id: str({ minLength: 1 }),
+  name: str({ minLength: 1 }),
+  api: str({ minLength: 1 }),
+  baseUrl: str(),
+  reasoning: bool(),
+  input: arr(oneOf(["text", "image"])),
+  contextWindow: num({ minimum: 0 }),
+  maxTokens: num({ minimum: 0 }),
+  cost: ModelCostSchema,
+  available: bool(),
+  isCustom: bool(),
+  isBuiltin: bool(),
+  hasOverride: bool(),
+  supportedThinkingLevels: arr(ThinkingLevelSchema),
+  thinkingLevels: ThinkingLevelConfigSchema,
+  headers: opt(map(str())),
+  compat: opt(obj({}, { open: true })),
+  promptCache: opt(obj({}, { open: true })),
+  inputLimits: opt(obj({}, { open: true })),
+  samplingParams: opt(obj({}, { open: true })),
+  samplingParamsByThinkingLevel: opt(obj({}, { open: true })),
+  override: opt(obj({}, { open: true })),
+});
+
+export const ProviderDetailSchema = obj({
+  id: str({ minLength: 1 }),
+  name: str({ minLength: 1 }),
+  baseUrl: opt(str()),
+  authMethods: ProviderAuthMethodsSchema,
+  configured: bool(),
+  authType: opt(AuthTypeSchema),
+  authSource: opt(str()),
+  modelCount: int({ minimum: 0 }),
+  kind: opt(oneOf(["builtin", "custom"])),
+  api: opt(str()),
+  hasConfigOverride: opt(bool()),
+  customModelCount: opt(int({ minimum: 0 })),
+  overrideCount: opt(int({ minimum: 0 })),
+  authPreview: opt(str()),
+  authAccountLabel: opt(str()),
+  authExpiresAt: opt(num()),
+  config: opt(
+    obj({
+      name: opt(str()),
+      baseUrl: opt(str()),
+      api: opt(str()),
+      authHeader: opt(bool()),
+      oauth: opt(lit("radius")),
+      hasApiKey: opt(bool()),
+      apiKeyRef: opt(str()),
+      headers: opt(map(str())),
+      compat: opt(obj({}, { open: true })),
+    }),
+  ),
+  connectionNote: opt(ConnectionNoteSchema),
+  models: arr(ModelDetailSchema),
+});
+
+export const ProviderDetailResponseSchema = obj({
+  provider: ProviderDetailSchema,
+});
+
+export const UpsertProviderRequestSchema = obj({
+  id: opt(str()),
+  name: opt(nullable(str())),
+  baseUrl: opt(nullable(str())),
+  api: opt(nullable(str())),
+  apiKey: opt(nullable(str())),
+  authHeader: opt(nullable(bool())),
+  oauth: opt(nullable(lit("radius"))),
+  headers: opt(nullable(map(str()))),
+  compat: opt(nullable(obj({}, { open: true }))),
+  models: opt(arr(obj({}, { open: true }))),
+});
+
+export const UpsertProviderModelRequestSchema = obj({
+  id: opt(str()),
+  name: opt(nullable(str())),
+  api: opt(nullable(str())),
+  baseUrl: opt(nullable(str())),
+  reasoning: opt(nullable(bool())),
+  thinkingLevels: opt(nullable(ThinkingLevelConfigSchema)),
+  input: opt(nullable(arr(oneOf(["text", "image"])))),
+  contextWindow: opt(nullable(num({ minimum: 0 }))),
+  maxTokens: opt(nullable(num({ minimum: 0 }))),
+  cost: opt(nullable(obj({}, { open: true }))),
+  promptCache: opt(nullable(obj({}, { open: true }))),
+  inputLimits: opt(nullable(obj({}, { open: true }))),
+  samplingParams: opt(nullable(obj({}, { open: true }))),
+  samplingParamsByThinkingLevel: opt(nullable(obj({}, { open: true }))),
+  headers: opt(nullable(map(str()))),
+  compat: opt(nullable(obj({}, { open: true }))),
+});
+
+export const ProbeProviderRequestSchema = obj({
+  baseUrl: opt(str()),
+  api: opt(str()),
+  apiKey: opt(str()),
+  headers: opt(map(str())),
+  authHeader: opt(bool()),
+});
+
+export const ProbedModelSchema = obj({
+  id: str({ minLength: 1 }),
+  name: opt(str()),
+  contextWindow: opt(num({ minimum: 0 })),
+  maxTokens: opt(num({ minimum: 0 })),
+  input: opt(arr(oneOf(["text", "image"]))),
+  reasoning: opt(bool()),
+  exists: bool(),
+});
+
+export const ProbeProviderResponseSchema = obj({
+  ok: bool(),
+  catalogUrl: opt(str()),
+  connectionNote: opt(ConnectionNoteSchema),
+  models: arr(ProbedModelSchema),
+  truncated: bool(),
+  error: opt(str()),
+});
+
+export const ImportProviderModelsRequestSchema = obj({
+  models: arr(
+    obj({
+      id: str({ minLength: 1 }),
+      name: opt(str()),
+      contextWindow: opt(num({ minimum: 0 })),
+      maxTokens: opt(num({ minimum: 0 })),
+      input: opt(arr(oneOf(["text", "image"]))),
+      reasoning: opt(bool()),
+      api: opt(str()),
+      baseUrl: opt(str()),
+    }),
+  ),
+});
+
+export const ImportProviderModelsResponseSchema = obj({
+  imported: int({ minimum: 0 }),
+  provider: ProviderDetailSchema,
+});
+
+export const BuiltinModelMatchRequestSchema = obj({
+  query: opt(str()),
+  limit: opt(int({ minimum: 1, maximum: 50 })),
+});
+
+export const BuiltinFieldDiffSchema = obj({
+  field: str(),
+  applicable: bool(),
+  checked: bool(),
+  same: bool(),
+  currentText: str(),
+  referenceText: str(),
+  value: unknown(),
+});
+
+export const BuiltinModelCandidateSchema = obj({
+  providerId: str({ minLength: 1 }),
+  modelId: str({ minLength: 1 }),
+  name: str({ minLength: 1 }),
+  api: str({ minLength: 1 }),
+  reasoning: bool(),
+  contextWindow: num({ minimum: 0 }),
+  maxTokens: num({ minimum: 0 }),
+  input: arr(oneOf(["text", "image"])),
+  tier: oneOf(["exact", "normalized", "fuzzy"]),
+  diffs: arr(BuiltinFieldDiffSchema),
+});
+
+export const BuiltinModelMatchResponseSchema = obj({
+  candidates: arr(BuiltinModelCandidateSchema),
+});
+
+export const SmokeTestModelRequestSchema = obj({
+  thinkingLevel: opt(ThinkingLevelSchema),
+  testTools: opt(bool()),
+  timeoutMs: opt(int({ minimum: 1000, maximum: 60000 })),
+});
+
+export const SmokeTestModelResponseSchema = obj({
+  ok: bool(),
+  ttftMs: opt(num()),
+  totalMs: num(),
+  sawReasoning: bool(),
+  sawToolCall: bool(),
+  usage: opt(
+    obj({
+      input: num({ minimum: 0 }),
+      output: num({ minimum: 0 }),
+      totalTokens: num({ minimum: 0 }),
+    }),
+  ),
+  replyPreview: str(),
+  error: opt(str()),
+});
+
+export const ReloadModelsResponseSchema = obj({
+  reloaded: lit(true),
+  providerCount: int({ minimum: 0 }),
+  modelCount: int({ minimum: 0 }),
+  diagnostics: arr(ModelsConfigDiagnosticSchema),
 });
 
 export const ModelProfileSchema = obj({
@@ -672,6 +942,10 @@ export type TaskStreamChunkEvent = Static<typeof TaskStreamChunkEventSchema>;
 export type TaskStreamStatusEvent = Static<typeof TaskStreamStatusEventSchema>;
 export type AuthType = Static<typeof AuthTypeSchema>;
 export type ProviderAuthMethods = Static<typeof ProviderAuthMethodsSchema>;
+export type ThinkingLevelRule = Static<typeof ThinkingLevelRuleSchema>;
+export type ThinkingLevelConfig = Static<typeof ThinkingLevelConfigSchema>;
+export type ModelsConfigDiagnostic = Static<typeof ModelsConfigDiagnosticSchema>;
+export type CompatFieldInfo = Static<typeof CompatFieldInfoSchema>;
 export type ProviderSummary = Static<typeof ProviderSummarySchema>;
 export type ListProvidersResponse = Static<typeof ListProvidersResponseSchema>;
 export type SetApiKeyRequest = Static<typeof SetApiKeyRequestSchema>;
@@ -690,6 +964,26 @@ export type ModelInfo = Static<typeof ModelInfoSchema>;
 export type ListModelsResponse = Static<typeof ListModelsResponseSchema>;
 export type RefreshModelsRequest = Static<typeof RefreshModelsRequestSchema>;
 export type RefreshModelsResponse = Static<typeof RefreshModelsResponseSchema>;
+export type BuiltinProviderCatalogItem = Static<typeof BuiltinProviderCatalogItemSchema>;
+export type ProviderCatalogResponse = Static<typeof ProviderCatalogResponseSchema>;
+export type ConnectionNote = Static<typeof ConnectionNoteSchema>;
+export type ModelDetail = Static<typeof ModelDetailSchema>;
+export type ProviderDetail = Static<typeof ProviderDetailSchema>;
+export type ProviderDetailResponse = Static<typeof ProviderDetailResponseSchema>;
+export type UpsertProviderRequest = Static<typeof UpsertProviderRequestSchema>;
+export type UpsertProviderModelRequest = Static<typeof UpsertProviderModelRequestSchema>;
+export type ProbeProviderRequest = Static<typeof ProbeProviderRequestSchema>;
+export type ProbedModel = Static<typeof ProbedModelSchema>;
+export type ProbeProviderResponse = Static<typeof ProbeProviderResponseSchema>;
+export type ImportProviderModelsRequest = Static<typeof ImportProviderModelsRequestSchema>;
+export type ImportProviderModelsResponse = Static<typeof ImportProviderModelsResponseSchema>;
+export type BuiltinModelMatchRequest = Static<typeof BuiltinModelMatchRequestSchema>;
+export type BuiltinFieldDiff = Static<typeof BuiltinFieldDiffSchema>;
+export type BuiltinModelCandidate = Static<typeof BuiltinModelCandidateSchema>;
+export type BuiltinModelMatchResponse = Static<typeof BuiltinModelMatchResponseSchema>;
+export type SmokeTestModelRequest = Static<typeof SmokeTestModelRequestSchema>;
+export type SmokeTestModelResponse = Static<typeof SmokeTestModelResponseSchema>;
+export type ReloadModelsResponse = Static<typeof ReloadModelsResponseSchema>;
 export type ModelProfile = Static<typeof ModelProfileSchema>;
 export type ModelProfilesDocument = Static<typeof ModelProfilesDocumentSchema>;
 export type McpServerStatusPayload = Static<typeof McpServerStatusSchema>;

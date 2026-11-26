@@ -10,6 +10,7 @@ import { registerDaemonCommands } from "./commands/daemon.ts";
 import { registerMcpCommands } from "./commands/mcp.ts";
 import { registerModelsCommands } from "./commands/models.ts";
 import { registerProjectCommands } from "./commands/project.ts";
+import { registerProviderCommands } from "./commands/provider.ts";
 import { registerTaskCommands } from "./commands/task.ts";
 
 export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
@@ -19,6 +20,7 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
   registerDaemonCommands(program, env, fileURLToPath(import.meta.url));
   registerProjectCommands(program, env);
   registerAuthCommands(program, env);
+  registerProviderCommands(program, env);
   registerModelsCommands(program, env);
   registerMcpCommands(program, env);
   registerConfigCommands(program, env);

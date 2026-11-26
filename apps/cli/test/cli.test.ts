@@ -9,11 +9,16 @@ import {
   formatMcpState,
   formatModelProfiles,
   formatModels,
+  formatProbeResult,
   formatProjectUsage,
+  formatProviderCatalog,
+  formatProviderDetail,
   formatProviders,
   formatQuestionAnswered,
   formatRefreshModels,
+  formatReloadModels,
   formatSettings,
+  formatSmokeTestResult,
   formatTaskList,
   formatTaskOutput,
   parseModelFlag,
@@ -440,12 +445,19 @@ test("CLI program registers all 4C management commands, subcommands, and options
 
   const modelsCmd = program.commands.find((c) => c.name() === "models");
   assert.ok(modelsCmd);
-  assert.deepEqual(modelsCmd.commands.map((c) => c.name()).sort(), ["list", "profiles", "refresh"]);
+  assert.deepEqual(modelsCmd.commands.map((c) => c.name()).sort(), [
+    "list",
+    "profiles",
+    "refresh",
+    "reload",
+  ]);
   const profilesCmd = modelsCmd.commands.find((c) => c.name() === "profiles");
   assert.deepEqual(profilesCmd?.commands.map((c) => c.name()).sort(), ["get", "set"]);
   const modelsList = modelsCmd.commands.find((c) => c.name() === "list");
   assert.ok(modelsList?.options.some((o) => o.long === "--provider"));
   assert.ok(modelsList?.options.some((o) => o.long === "--available"));
+  const modelsReload = modelsCmd.commands.find((c) => c.name() === "reload");
+  assert.ok(modelsReload?.options.some((o) => o.long === "--json"));
 
   const mcpCmd = program.commands.find((c) => c.name() === "mcp");
   assert.ok(mcpCmd);
@@ -579,7 +591,7 @@ test("CLI 4C formatters render readable output and validate incompatible flags",
           modelCount: 5,
         },
       ],
-    }).includes("anthropic\tAnthropic\tconfigured (oauth: OAuth)"),
+    }).includes("anthropic\tAnthropic\t-\tconfigured (oauth: OAuth)"),
   );
   assert.ok(
     formatModels({
@@ -1045,6 +1057,380 @@ test("TaskWatchRenderer streams raw and filtered chunks with context and status 
       "3: hit 2",
       "[end] terminal",
       "",
+    ].join("\n"),
+  );
+});
+
+test("CLI program registers provider management subcommands and options", () => {
+  const program = createProgram({ EEVEE_HOME: "/tmp/eevee-cli-test" });
+  const providerCmd = program.commands.find((c) => c.name() === "provider");
+  assert.ok(providerCmd);
+  assert.deepEqual(providerCmd.commands.map((c) => c.name()).sort(), [
+    "add",
+    "list",
+    "probe",
+    "remove",
+    "show",
+    "test",
+    "update",
+  ]);
+
+  const listCmd = providerCmd.commands.find((c) => c.name() === "list");
+  assert.ok(listCmd);
+  assert.ok(listCmd.options.some((o) => o.long === "--catalog"));
+  assert.ok(listCmd.options.some((o) => o.long === "--json"));
+
+  const showCmd = providerCmd.commands.find((c) => c.name() === "show");
+  assert.ok(showCmd);
+  assert.equal(showCmd.registeredArguments.length, 1);
+  assert.ok(showCmd.options.some((o) => o.long === "--json"));
+
+  const addCmd = providerCmd.commands.find((c) => c.name() === "add");
+  assert.ok(addCmd);
+  assert.equal(addCmd.registeredArguments.length, 1);
+  for (const flag of [
+    "--name",
+    "--api",
+    "--base-url",
+    "--api-key",
+    "--auth-header",
+    "--header",
+    "--probe-import",
+    "--json",
+  ]) {
+    assert.ok(
+      addCmd.options.some((o) => o.long === flag),
+      `missing provider add flag ${flag}`,
+    );
+  }
+
+  const updateCmd = providerCmd.commands.find((c) => c.name() === "update");
+  assert.ok(updateCmd);
+  assert.equal(updateCmd.registeredArguments.length, 1);
+  for (const flag of [
+    "--name",
+    "--api",
+    "--base-url",
+    "--api-key",
+    "--auth-header",
+    "--no-auth-header",
+    "--header",
+    "--json",
+  ]) {
+    assert.ok(
+      updateCmd.options.some((o) => o.long === flag),
+      `missing provider update flag ${flag}`,
+    );
+  }
+
+  const removeCmd = providerCmd.commands.find((c) => c.name() === "remove");
+  assert.ok(removeCmd);
+  assert.equal(removeCmd.registeredArguments.length, 1);
+  assert.ok(removeCmd.options.some((o) => o.long === "--json"));
+
+  const probeCmd = providerCmd.commands.find((c) => c.name() === "probe");
+  assert.ok(probeCmd);
+  assert.equal(probeCmd.registeredArguments.length, 1);
+  for (const flag of ["--base-url", "--api", "--api-key", "--import", "--json"]) {
+    assert.ok(
+      probeCmd.options.some((o) => o.long === flag),
+      `missing provider probe flag ${flag}`,
+    );
+  }
+
+  const testCmd = providerCmd.commands.find((c) => c.name() === "test");
+  assert.ok(testCmd);
+  assert.equal(testCmd.registeredArguments.length, 2);
+  for (const flag of ["--thinking", "--tools", "--timeout", "--json"]) {
+    assert.ok(
+      testCmd.options.some((o) => o.long === flag),
+      `missing provider test flag ${flag}`,
+    );
+  }
+});
+
+test("CLI validates provider subcommand flags cleanly", async () => {
+  const program = createProgram({ EEVEE_HOME: "/tmp/eevee-cli-test" });
+  program.exitOverride();
+
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "provider", "add", "   "]),
+    /Invalid providerId/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "provider", "add", "custom", "--header", "BADHEADER"]),
+    /Invalid --header/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "provider", "update", "custom"]),
+    /Specify at least one field to update/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "provider", "update", "custom", "--header", "=value"]),
+    /Invalid --header/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "provider", "test", "custom", "   "]),
+    /Invalid modelId/,
+  );
+  await assert.rejects(
+    program.parseAsync([
+      "node",
+      "eevee",
+      "provider",
+      "test",
+      "custom",
+      "m1",
+      "--thinking",
+      "ultra",
+    ]),
+    /Invalid --thinking/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "provider", "test", "custom", "m1", "--timeout", "999"]),
+    /Invalid --timeout "999": expected integer 1000\.\.60000/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "provider", "test", "custom", "m1", "--timeout", "60001"]),
+    /Invalid --timeout "60001": expected integer 1000\.\.60000/,
+  );
+});
+
+test("CLI provider and reload formatters render catalog, detail, probe, smoke test, and diagnostics", () => {
+  const providersOut = formatProviders({
+    providers: [
+      {
+        id: "openai",
+        name: "OpenAI",
+        kind: "builtin",
+        hasConfigOverride: true,
+        api: "openai-responses",
+        authMethods: { apiKey: true, apiKeyLogin: false, oauth: true },
+        configured: true,
+        authType: "api_key",
+        authSource: "$OPENAI_API_KEY",
+        authPreview: "sk-...99",
+        modelCount: 10,
+        customModelCount: 1,
+        overrideCount: 2,
+      },
+    ],
+    diagnostics: [
+      { path: "providers.broken.baseUrl", message: "must be a valid URL", line: 12, column: 7 },
+    ],
+  });
+  assert.ok(
+    providersOut.includes(
+      "openai\tOpenAI\tbuiltin+override\tconfigured (api_key: $OPENAI_API_KEY)",
+    ),
+  );
+  assert.ok(providersOut.includes("custom=1\toverrides=2\tauth=sk-...99"));
+  assert.ok(providersOut.includes("models.json diagnostics:"));
+  assert.ok(providersOut.includes("- providers.broken.baseUrl:12:7: must be a valid URL"));
+
+  const catalogOut = formatProviderCatalog({
+    supportedApis: ["openai-responses", "openai-completions", "anthropic-messages"],
+    compatSchemas: {},
+    providers: [
+      {
+        id: "openai",
+        name: "OpenAI",
+        baseUrl: "https://api.openai.com/v1",
+        apis: ["openai-responses"],
+        modelCount: 12,
+        configured: true,
+        hasConfigOverride: true,
+        authMethods: { apiKey: true, apiKeyLogin: false, oauth: false },
+      },
+    ],
+  });
+  assert.ok(
+    catalogOut.includes("Supported APIs: openai-responses, openai-completions, anthropic-messages"),
+  );
+  assert.ok(
+    catalogOut.includes(
+      "openai\tOpenAI\tapis=[openai-responses]\turl=https://api.openai.com/v1\tmodels=12\tconfigured\toverride\tmethods=[api_key]",
+    ),
+  );
+  assert.ok(
+    formatProviderCatalog({
+      supportedApis: ["openai-completions"],
+      compatSchemas: {},
+      providers: [],
+    }).includes("No builtin providers."),
+  );
+
+  const thinkingRule = { enabled: true };
+  const detailOut = formatProviderDetail({
+    id: "vllm",
+    name: "Local vLLM",
+    kind: "custom",
+    api: "openai-completions",
+    baseUrl: "http://127.0.0.1:8000/v1/v1",
+    authMethods: { apiKey: true, apiKeyLogin: false, oauth: false },
+    configured: true,
+    authType: "api_key",
+    authSource: "$VLLM_KEY",
+    authPreview: "sk-...12",
+    modelCount: 1,
+    customModelCount: 1,
+    connectionNote: {
+      text: "Requests target http://127.0.0.1:8000/v1/v1/chat/completions",
+      warning: true,
+    },
+    config: {
+      authHeader: true,
+      hasApiKey: true,
+      apiKeyRef: "$VLLM_KEY",
+      headers: { "X-Team": "core" },
+    },
+    models: [
+      {
+        provider: "vllm",
+        id: "qwen-32b",
+        name: "Qwen 32B",
+        api: "openai-completions",
+        baseUrl: "http://127.0.0.1:8000/v1/v1",
+        reasoning: true,
+        input: ["text", "image"],
+        contextWindow: 32_768,
+        maxTokens: 4_096,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        available: true,
+        isCustom: true,
+        isBuiltin: false,
+        hasOverride: false,
+        supportedThinkingLevels: ["off", "low", "high"],
+        thinkingLevels: {
+          off: thinkingRule,
+          minimal: { enabled: false },
+          low: thinkingRule,
+          medium: { enabled: false },
+          high: thinkingRule,
+          xhigh: { enabled: false },
+          max: { enabled: false },
+        },
+      },
+    ],
+  });
+  assert.ok(detailOut.includes("vllm\tLocal vLLM\tcustom\tconfigured (api_key: $VLLM_KEY)"));
+  assert.ok(
+    detailOut.includes(
+      "Connection: Requests target http://127.0.0.1:8000/v1/v1/chat/completions (warning: possible doubled /v1 — check the base URL)",
+    ),
+  );
+  assert.ok(
+    detailOut.includes(
+      "Config: authHeader=true apiKey=set apiKeyRef=$VLLM_KEY headers=[X-Team=core]",
+    ),
+  );
+  assert.ok(
+    detailOut.includes(
+      "- qwen-32b\tQwen 32B\topenai-completions\treasoning=true\tctx=32768\tmax=4096\tavailable=true\tthinking=[off,low,high]\tinput=[text,image]\tcustom",
+    ),
+  );
+
+  const probeOkOut = formatProbeResult({
+    ok: true,
+    catalogUrl: "http://127.0.0.1:8000/v1/v1/models",
+    connectionNote: {
+      text: "Probing http://127.0.0.1:8000/v1/v1/models",
+      warning: true,
+    },
+    truncated: true,
+    models: [
+      { id: "existing-model", exists: true },
+      {
+        id: "new-model",
+        name: "New Model",
+        contextWindow: 64_000,
+        maxTokens: 8_192,
+        input: ["text"],
+        reasoning: true,
+        exists: false,
+      },
+    ],
+  });
+  assert.ok(probeOkOut.includes("Probe succeeded: 2 model(s) discovered, 1 new, truncated"));
+  assert.ok(probeOkOut.includes("Catalog URL: http://127.0.0.1:8000/v1/v1/models"));
+  assert.ok(
+    probeOkOut.includes(
+      "Connection: Probing http://127.0.0.1:8000/v1/v1/models (warning: possible doubled /v1 — check the base URL)",
+    ),
+  );
+  assert.ok(probeOkOut.includes("- existing-model\texists"));
+  assert.ok(
+    probeOkOut.includes(
+      "- new-model\tNew Model\tctx=64000\tmax=8192\tinput=[text]\treasoning=true\tnew",
+    ),
+  );
+
+  const probeErrOut = formatProbeResult({
+    ok: false,
+    catalogUrl: "http://127.0.0.1:8000/v1/models",
+    truncated: false,
+    models: [],
+    error: "ECONNREFUSED",
+  });
+  assert.ok(probeErrOut.includes("Probe failed: ECONNREFUSED"));
+
+  const smokeOkOut = formatSmokeTestResult({
+    ok: true,
+    ttftMs: 120,
+    totalMs: 450,
+    sawReasoning: true,
+    sawToolCall: true,
+    usage: { input: 10, output: 20, totalTokens: 30 },
+    replyPreview: "pong",
+  });
+  assert.equal(
+    smokeOkOut,
+    [
+      "Smoke test passed (total=450ms, ttft=120ms, reasoning=yes, toolCall=yes, tokens in=10 out=20 total=30)",
+      "Reply: pong",
+    ].join("\n"),
+  );
+
+  const smokeFailOut = formatSmokeTestResult({
+    ok: false,
+    totalMs: 1000,
+    sawReasoning: false,
+    sawToolCall: false,
+    replyPreview: "",
+    error: "401 Unauthorized",
+  });
+  assert.equal(
+    smokeFailOut,
+    ["Smoke test failed (total=1000ms, reasoning=no, toolCall=no)", "Error: 401 Unauthorized"].join(
+      "\n",
+    ),
+  );
+
+  const reloadOkOut = formatReloadModels({
+    reloaded: true,
+    providerCount: 15,
+    modelCount: 120,
+    diagnostics: [],
+  });
+  assert.equal(reloadOkOut, "Reloaded models.json: 15 provider(s), 120 model(s)");
+
+  const reloadDiagOut = formatReloadModels({
+    reloaded: true,
+    providerCount: 14,
+    modelCount: 110,
+    diagnostics: [
+      { path: "models.json", message: "invalid JSON", line: 4 },
+      { path: "providers.custom.api", message: "unsupported api" },
+    ],
+  });
+  assert.equal(
+    reloadDiagOut,
+    [
+      "Reloaded models.json: 14 provider(s), 110 model(s)",
+      "",
+      "models.json diagnostics:",
+      "- models.json:4: invalid JSON",
+      "- providers.custom.api: unsupported api",
     ].join("\n"),
   );
 });

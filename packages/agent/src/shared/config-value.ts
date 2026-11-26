@@ -5,6 +5,10 @@ const ENV_NAME_PREFIX_RE = /^[A-Za-z_][A-Za-z0-9_]*/;
 
 const commandCache = new Map<string, string | undefined>();
 
+export type ResolveConfigValueOptions = {
+  readonly cacheCommands?: boolean;
+};
+
 type TemplatePart =
   | { readonly type: "literal"; value: string }
   | { readonly type: "env"; readonly name: string };
@@ -90,8 +94,8 @@ function readEnv(
   return ambient === undefined || ambient === "" ? undefined : ambient;
 }
 
-function runCommand(command: string): string | undefined {
-  if (commandCache.has(command)) return commandCache.get(command);
+function runCommand(command: string, cache: boolean): string | undefined {
+  if (cache && commandCache.has(command)) return commandCache.get(command);
   let output: string | undefined;
   try {
     const raw = execSync(command, {
@@ -105,12 +109,21 @@ function runCommand(command: string): string | undefined {
   } catch {
     output = undefined;
   }
-  commandCache.set(command, output);
+  if (cache) commandCache.set(command, output);
   return output;
 }
 
+export function invalidateConfigValueCache(command?: string): void {
+  if (command === undefined) {
+    commandCache.clear();
+  } else {
+    commandCache.delete(command);
+    if (command.startsWith("!")) commandCache.delete(command.slice(1));
+  }
+}
+
 export function clearConfigValueCache(): void {
-  commandCache.clear();
+  invalidateConfigValueCache();
 }
 
 export function isCommandConfigValue(raw: string): boolean {
@@ -141,9 +154,10 @@ export function isConfigValueConfigured(
 export function resolveConfigValue(
   raw: string,
   env?: Readonly<Record<string, string | undefined>>,
+  options?: ResolveConfigValueOptions,
 ): string | undefined {
   const ref = parseRef(raw);
-  if (ref.type === "command") return runCommand(ref.command);
+  if (ref.type === "command") return runCommand(ref.command, options?.cacheCommands ?? true);
   let resolved = "";
   for (const part of ref.parts) {
     if (part.type === "literal") {
@@ -160,12 +174,38 @@ export function resolveConfigValue(
 export function resolveHeaders(
   headers: Readonly<Record<string, string>> | undefined,
   env?: Readonly<Record<string, string | undefined>>,
+  options?: ResolveConfigValueOptions,
 ): Record<string, string> | undefined {
   if (!headers) return undefined;
   const resolved: Record<string, string> = {};
   for (const [key, raw] of Object.entries(headers)) {
-    const value = resolveConfigValue(raw, env);
+    const value = resolveConfigValue(raw, env, options);
     if (value !== undefined) resolved[key] = value;
+  }
+  return Object.keys(resolved).length > 0 ? resolved : undefined;
+}
+
+export function resolveHeadersStrict(
+  headers: Readonly<Record<string, string>> | undefined,
+  env?: Readonly<Record<string, string | undefined>>,
+  options?: ResolveConfigValueOptions,
+): Record<string, string> | undefined {
+  if (!headers) return undefined;
+  const resolved: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(headers)) {
+    const value = resolveConfigValue(raw, env, options);
+    if (value === undefined) {
+      const envNames = getConfigValueEnvVarNames(raw).filter(
+        (name) => readEnv(name, env) === undefined,
+      );
+      const reason = isCommandConfigValue(raw)
+        ? "its !command failed or returned an empty value"
+        : envNames.length > 0
+          ? `missing environment variable${envNames.length === 1 ? "" : "s"}: ${envNames.join(", ")}`
+          : "the value could not be resolved";
+      throw new Error(`Failed to resolve header "${key}": ${reason}`);
+    }
+    resolved[key] = value;
   }
   return Object.keys(resolved).length > 0 ? resolved : undefined;
 }

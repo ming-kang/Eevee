@@ -3,6 +3,7 @@ import type {
   BackgroundTaskRecordPayload,
   BackgroundTaskStatus,
   BoardViewPayload,
+  ConnectionNote,
   ConversationViewPayload,
   EngineSettings,
   EntryRecordPayload,
@@ -10,11 +11,19 @@ import type {
   ListProvidersResponse,
   McpServerSnapshotPayload,
   McpStateResponse,
+  ModelDetail,
   ModelProfilesDocument,
+  ModelsConfigDiagnostic,
   OutputSlice,
+  ProbeProviderResponse,
   ProjectUsageResponse,
+  ProviderCatalogResponse,
+  ProviderDetail,
+  ProviderSummary,
   ReadWorkerTaskResponse,
   RefreshModelsResponse,
+  ReloadModelsResponse,
+  SmokeTestModelResponse,
   TaskListStatusFilter,
   TaskStreamEvent,
 } from "@eevee/protocol";
@@ -579,32 +588,258 @@ export class TaskWatchRenderer {
   }
 }
 
+function formatDiagnosticsLines(diagnostics: readonly ModelsConfigDiagnostic[]): string[] {
+  return diagnostics.map((diagnostic) => {
+    const position =
+      diagnostic.line === undefined
+        ? ""
+        : `:${diagnostic.line}${diagnostic.column === undefined ? "" : `:${diagnostic.column}`}`;
+    return `- ${diagnostic.path}${position}: ${diagnostic.message}`;
+  });
+}
+
+function appendDiagnostics(
+  lines: string[],
+  diagnostics: readonly ModelsConfigDiagnostic[] | undefined,
+): string {
+  if (diagnostics === undefined || diagnostics.length === 0) return lines.join("\n");
+  return [...lines, "", "models.json diagnostics:", ...formatDiagnosticsLines(diagnostics)].join(
+    "\n",
+  );
+}
+
+function providerAuthMethodsLabel(provider: {
+  readonly authMethods: { readonly apiKey: boolean; readonly oauth: boolean };
+}): string {
+  return [
+    provider.authMethods.apiKey ? "api_key" : undefined,
+    provider.authMethods.oauth ? "oauth" : undefined,
+  ]
+    .filter((value): value is string => value !== undefined)
+    .join(", ");
+}
+
+function providerKindLabel(provider: {
+  readonly kind?: "builtin" | "custom";
+  readonly hasConfigOverride?: boolean;
+}): string {
+  const kind = provider.kind ?? "-";
+  return kind === "builtin" && provider.hasConfigOverride === true ? "builtin+override" : kind;
+}
+
+function providerStatusLabel(provider: {
+  readonly configured: boolean;
+  readonly authType?: string;
+  readonly authSource?: string;
+}): string {
+  return provider.configured
+    ? `configured (${provider.authType ?? "unknown"}${provider.authSource ? `: ${provider.authSource}` : ""})`
+    : "unconfigured";
+}
+
+function formatProviderSummaryLine(provider: ProviderSummary): string {
+  const parts = [
+    provider.id,
+    provider.name,
+    providerKindLabel(provider),
+    providerStatusLabel(provider),
+  ];
+  if (provider.api !== undefined) parts.push(`api=${provider.api}`);
+  parts.push(`models=${provider.modelCount}`);
+  if ((provider.customModelCount ?? 0) > 0) parts.push(`custom=${provider.customModelCount}`);
+  if ((provider.overrideCount ?? 0) > 0) parts.push(`overrides=${provider.overrideCount}`);
+  if (provider.authPreview !== undefined) parts.push(`auth=${provider.authPreview}`);
+  parts.push(`methods=[${providerAuthMethodsLabel(provider)}]`);
+  return parts.join("\t");
+}
+
 export function formatProviders(response: ListProvidersResponse): string {
-  if (response.providers.length === 0) return "No providers.";
-  return response.providers
-    .map((provider) => {
-      const methods = [
-        provider.authMethods.apiKey ? "api_key" : undefined,
-        provider.authMethods.oauth ? "oauth" : undefined,
-      ]
-        .filter((value): value is string => value !== undefined)
-        .join(", ");
-      const status = provider.configured
-        ? `configured (${provider.authType ?? "unknown"}${provider.authSource ? `: ${provider.authSource}` : ""})`
-        : "unconfigured";
-      return `${provider.id}\t${provider.name}\t${status}\tmethods=[${methods}]\tmodels=${provider.modelCount}`;
-    })
-    .join("\n");
+  const lines: string[] = [];
+  if (response.providers.length === 0) {
+    lines.push("No providers.");
+  } else {
+    for (const provider of response.providers) {
+      lines.push(formatProviderSummaryLine(provider));
+    }
+  }
+  return appendDiagnostics(lines, response.diagnostics);
+}
+
+function thinkingLevelsLabel(levels: readonly string[]): string {
+  return `thinking=[${levels.join(",")}]`;
 }
 
 export function formatModels(response: ListModelsResponse): string {
   if (response.models.length === 0) return "No models.";
   return response.models
-    .map(
-      (model) =>
-        `${model.provider}/${model.id}\t${model.name}\t${model.api}\treasoning=${model.reasoning}\tctx=${model.contextWindow}\tavailable=${model.available}`,
-    )
+    .map((model) => {
+      const parts = [
+        `${model.provider}/${model.id}`,
+        model.name,
+        model.api,
+        `reasoning=${model.reasoning}`,
+        `ctx=${model.contextWindow}`,
+        `available=${model.available}`,
+      ];
+      if (model.supportedThinkingLevels !== undefined) {
+        parts.push(thinkingLevelsLabel(model.supportedThinkingLevels));
+      }
+      if (model.isCustom === true) parts.push("custom");
+      if (model.hasOverride === true) parts.push("override");
+      return parts.join("\t");
+    })
     .join("\n");
+}
+
+export function formatProviderCatalog(response: ProviderCatalogResponse): string {
+  const lines = [`Supported APIs: ${response.supportedApis.join(", ")}`];
+  if (response.providers.length === 0) {
+    lines.push("No builtin providers.");
+    return lines.join("\n");
+  }
+  lines.push("", "Builtin providers:");
+  for (const provider of response.providers) {
+    const parts = [provider.id, provider.name, `apis=[${provider.apis.join(",")}]`];
+    if (provider.baseUrl !== undefined) parts.push(`url=${provider.baseUrl}`);
+    parts.push(`models=${provider.modelCount}`);
+    parts.push(provider.configured ? "configured" : "unconfigured");
+    if (provider.hasConfigOverride) parts.push("override");
+    parts.push(`methods=[${providerAuthMethodsLabel(provider)}]`);
+    lines.push(parts.join("\t"));
+  }
+  return lines.join("\n");
+}
+
+function formatConnectionNoteLine(note: ConnectionNote): string {
+  return note.warning === true
+    ? `Connection: ${note.text} (warning: possible doubled /v1 — check the base URL)`
+    : `Connection: ${note.text}`;
+}
+
+function formatModelDetailLine(model: ModelDetail): string {
+  const parts = [
+    `- ${model.id}`,
+    model.name,
+    model.api,
+    `reasoning=${model.reasoning}`,
+    `ctx=${model.contextWindow}`,
+    `max=${model.maxTokens}`,
+    `available=${model.available}`,
+    thinkingLevelsLabel(model.supportedThinkingLevels),
+  ];
+  if (model.input.length > 0) parts.push(`input=[${model.input.join(",")}]`);
+  if (model.isCustom) parts.push("custom");
+  if (model.hasOverride) parts.push("override");
+  return parts.join("\t");
+}
+
+export function formatProviderDetail(provider: ProviderDetail): string {
+  const lines = [
+    `${provider.id}\t${provider.name}\t${providerKindLabel(provider)}\t${providerStatusLabel(provider)}`,
+    `API: ${provider.api ?? "-"}`,
+    `Base URL: ${provider.baseUrl ?? "-"}`,
+  ];
+  if (provider.connectionNote !== undefined) {
+    lines.push(formatConnectionNoteLine(provider.connectionNote));
+  }
+
+  const authSegments: string[] = [];
+  if (provider.authType !== undefined) authSegments.push(`type=${provider.authType}`);
+  if (provider.authSource !== undefined) authSegments.push(`source=${provider.authSource}`);
+  if (provider.authPreview !== undefined) authSegments.push(`key=${provider.authPreview}`);
+  if (provider.authAccountLabel !== undefined) {
+    authSegments.push(`account=${provider.authAccountLabel}`);
+  }
+  if (provider.authExpiresAt !== undefined) {
+    authSegments.push(`expires=${new Date(provider.authExpiresAt).toISOString()}`);
+  }
+  lines.push(
+    `Auth: ${authSegments.length === 0 ? (provider.configured ? "configured" : "unconfigured") : authSegments.join(" ")}`,
+  );
+
+  if (provider.config !== undefined) {
+    const configParts: string[] = [];
+    if (provider.config.authHeader === true) configParts.push("authHeader=true");
+    if (provider.config.hasApiKey === true) configParts.push("apiKey=set");
+    if (provider.config.apiKeyRef !== undefined) {
+      configParts.push(`apiKeyRef=${provider.config.apiKeyRef}`);
+    }
+    if (provider.config.oauth !== undefined) configParts.push(`oauth=${provider.config.oauth}`);
+    if (provider.config.headers !== undefined) {
+      const headers = Object.entries(provider.config.headers).map(
+        ([key, value]) => `${key}=${value}`,
+      );
+      if (headers.length > 0) configParts.push(`headers=[${headers.join(", ")}]`);
+    }
+    if (configParts.length > 0) lines.push(`Config: ${configParts.join(" ")}`);
+  }
+
+  if (provider.models.length === 0) {
+    lines.push("Models: none");
+  } else {
+    const counts: string[] = [];
+    if ((provider.customModelCount ?? 0) > 0) counts.push(`${provider.customModelCount} custom`);
+    if ((provider.overrideCount ?? 0) > 0) counts.push(`${provider.overrideCount} override(s)`);
+    const suffix = counts.length === 0 ? "" : `, ${counts.join(", ")}`;
+    lines.push(`Models (${provider.models.length}${suffix}):`);
+    for (const model of provider.models) {
+      lines.push(formatModelDetailLine(model));
+    }
+  }
+  return lines.join("\n");
+}
+
+export function formatProbeResult(result: ProbeProviderResponse): string {
+  const lines: string[] = [];
+  if (result.ok) {
+    const newCount = result.models.filter((model) => !model.exists).length;
+    const truncated = result.truncated ? ", truncated" : "";
+    lines.push(
+      `Probe succeeded: ${result.models.length} model(s) discovered, ${newCount} new${truncated}`,
+    );
+  } else {
+    lines.push(`Probe failed: ${result.error ?? "unknown error"}`);
+  }
+  if (result.catalogUrl !== undefined) lines.push(`Catalog URL: ${result.catalogUrl}`);
+  if (result.connectionNote !== undefined) {
+    lines.push(formatConnectionNoteLine(result.connectionNote));
+  }
+  for (const model of result.models) {
+    const parts = [`- ${model.id}`];
+    if (model.name !== undefined) parts.push(model.name);
+    if (model.contextWindow !== undefined) parts.push(`ctx=${model.contextWindow}`);
+    if (model.maxTokens !== undefined) parts.push(`max=${model.maxTokens}`);
+    if (model.input !== undefined) parts.push(`input=[${model.input.join(",")}]`);
+    if (model.reasoning !== undefined) parts.push(`reasoning=${model.reasoning}`);
+    parts.push(model.exists ? "exists" : "new");
+    lines.push(parts.join("\t"));
+  }
+  return lines.join("\n");
+}
+
+export function formatSmokeTestResult(result: SmokeTestModelResponse): string {
+  const parts = [`total=${result.totalMs}ms`];
+  if (result.ttftMs !== undefined) parts.push(`ttft=${result.ttftMs}ms`);
+  parts.push(`reasoning=${result.sawReasoning ? "yes" : "no"}`);
+  parts.push(`toolCall=${result.sawToolCall ? "yes" : "no"}`);
+  if (result.usage !== undefined) {
+    parts.push(
+      `tokens in=${result.usage.input} out=${result.usage.output} total=${result.usage.totalTokens}`,
+    );
+  }
+  const lines = [`Smoke test ${result.ok ? "passed" : "failed"} (${parts.join(", ")})`];
+  if (result.error !== undefined) lines.push(`Error: ${result.error}`);
+  if (result.replyPreview.length > 0) lines.push(`Reply: ${result.replyPreview}`);
+  return lines.join("\n");
+}
+
+export function formatReloadModels(response: ReloadModelsResponse): string {
+  return appendDiagnostics(
+    [
+      `Reloaded models.json: ${response.providerCount} provider(s), ${response.modelCount} model(s)`,
+    ],
+    response.diagnostics,
+  );
 }
 
 export function formatRefreshModels(response: RefreshModelsResponse): string {

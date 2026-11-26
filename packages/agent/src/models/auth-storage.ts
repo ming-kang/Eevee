@@ -5,7 +5,7 @@ import type {
   CredentialInfo,
   CredentialStore,
 } from "@earendil-works/pi-ai";
-import { resolveConfigValue } from "../shared/config-value.ts";
+import { clearConfigValueCache, resolveConfigValue } from "../shared/config-value.ts";
 import { withFileLock, writeFileAtomic } from "../shared/file-lock.ts";
 import { stripBom, stripJsonComments } from "../shared/json.ts";
 
@@ -117,6 +117,7 @@ export class AuthStorage implements CredentialStore {
           data[providerId] = next;
           await writeFileAtomic(this.filePath, `${JSON.stringify(data, null, 2)}\n`, 0o600);
         }
+        clearConfigValueCache();
         return data[providerId];
       },
       options?.signal,
@@ -131,6 +132,7 @@ export class AuthStorage implements CredentialStore {
         if (!(providerId in data)) return;
         delete data[providerId];
         await writeFileAtomic(this.filePath, `${JSON.stringify(data, null, 2)}\n`, 0o600);
+        clearConfigValueCache();
       },
       options?.signal,
     );

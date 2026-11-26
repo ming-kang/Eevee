@@ -1,0 +1,214 @@
+import type { ThinkingLevel, ThinkingLevelConfig, ThinkingLevelRule } from "@eevee/protocol";
+
+export const THINKING_LEVELS: readonly ThinkingLevel[] = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
+
+export function defaultThinkingLevels(): ThinkingLevelConfig {
+  return {
+    off: { enabled: true },
+    minimal: { enabled: true },
+    low: { enabled: true },
+    medium: { enabled: true },
+    high: { enabled: true },
+    xhigh: { enabled: false },
+    max: { enabled: false },
+  };
+}
+
+export function cloneThinkingLevels(value: ThinkingLevelConfig): ThinkingLevelConfig {
+  return {
+    off: { ...value.off },
+    minimal: { ...value.minimal },
+    low: { ...value.low },
+    medium: { ...value.medium },
+    high: { ...value.high },
+    xhigh: { ...value.xhigh },
+    max: { ...value.max },
+  };
+}
+
+export function setThinkingRule(
+  value: ThinkingLevelConfig,
+  level: ThinkingLevel,
+  rule: ThinkingLevelRule,
+): ThinkingLevelConfig {
+  return { ...value, [level]: rule } as ThinkingLevelConfig;
+}
+
+export function thinkingLevelsFromMap(value: unknown): ThinkingLevelConfig {
+  const source =
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const config = defaultThinkingLevels();
+  for (const level of THINKING_LEVELS) {
+    const raw = source[level];
+    const extended = level === "xhigh" || level === "max";
+    config[level] = {
+      enabled: extended ? typeof raw === "string" : raw !== null,
+      ...(typeof raw === "string" && raw !== level ? { mappedTo: raw } : {}),
+    };
+  }
+  return config;
+}
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function deepEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (!isRecord(left) && !Array.isArray(left)) return false;
+  if (!isRecord(right) && !Array.isArray(right)) return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((entry, index) => deepEqual(entry, right[index]))
+    );
+  }
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every((key) => Object.hasOwn(right, key) && deepEqual(left[key], right[key]))
+  );
+}
+
+export function formatJson(value: unknown): string {
+  return value === undefined ? "" : JSON.stringify(value, null, 2);
+}
+
+export function parseJsonObject(text: string, label: string): Record<string, unknown> | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (error) {
+    throw new Error(
+      `${label} 不是有效 JSON：${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!isRecord(parsed)) throw new Error(`${label} 必须是 JSON 对象`);
+  return parsed;
+}
+
+export function formatKeyValueLines(value: unknown): string {
+  if (!isRecord(value)) return "";
+  return Object.entries(value)
+    .map(([key, entry]) => `${key}=${typeof entry === "string" ? entry : JSON.stringify(entry)}`)
+    .join("\n");
+}
+
+export function parseKeyValueLines(
+  text: string,
+  label: string,
+): Record<string, string> | undefined {
+  const result: Record<string, string> = {};
+  const lines = text.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]?.trim() ?? "";
+    if (!line) continue;
+    const equals = line.indexOf("=");
+    if (equals <= 0) throw new Error(`${label} 第 ${index + 1} 行应为 KEY=VALUE`);
+    const key = line.slice(0, equals).trim();
+    if (!key) throw new Error(`${label} 第 ${index + 1} 行缺少 KEY`);
+    result[key] = line.slice(equals + 1).trim();
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+export function parseFiniteNumber(text: string, label: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error(`${label} 不能为空`);
+  const value = Number(trimmed);
+  if (!Number.isFinite(value)) throw new Error(`${label} 必须是数字`);
+  return value;
+}
+
+export function validateBaseUrl(value: string): string | undefined {
+  if (value.trim().length === 0) return "Base URL 不能为空";
+  if (value !== value.trim()) return "Base URL 首尾不能有空白字符";
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return "Base URL 必须是完整的绝对 URL";
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return "Base URL 必须使用 http 或 https";
+  }
+  if (url.username || url.password) return "Base URL 不能包含用户名或密码";
+  if (url.search || url.hash) return "Base URL 不能包含查询参数或锚点";
+  return undefined;
+}
+
+export function baseUrlPlaceholder(api: string | undefined): string {
+  switch (api) {
+    case "anthropic-messages":
+      return "https://api.anthropic.com";
+    case "azure-openai-responses":
+      return "https://RESOURCE.openai.azure.com/openai/v1";
+    case "google-generative-ai":
+      return "https://generativelanguage.googleapis.com/v1beta";
+    case "google-vertex":
+      return "https://REGION-aiplatform.googleapis.com/v1";
+    case "bedrock-converse-stream":
+      return "https://bedrock-runtime.REGION.amazonaws.com";
+    default:
+      return "https://api.example.com/v1";
+  }
+}
+
+export function describeConnectionUrl(
+  api: string | undefined,
+  baseUrl: string | undefined,
+): { readonly text: string; readonly warning?: boolean } | undefined {
+  if (baseUrl === undefined || validateBaseUrl(baseUrl) !== undefined) return undefined;
+  const url = new URL(baseUrl);
+  const path = url.pathname.replace(/\/+$/, "");
+  if (api === "anthropic-messages" && !/\/v1(?:\/anthropic)?$/i.test(path)) {
+    url.pathname = `${path}/v1/models`.replace(/^\/\//, "/");
+  } else {
+    url.pathname = `${path}/models`.replace(/^\/\//, "/");
+  }
+  const doubledV1 = /\/v1\/v1(?:\/|$)/i.test(url.pathname);
+  return {
+    text: url.toString(),
+    ...(doubledV1 ? { warning: true } : {}),
+  };
+}
+
+export function catalogUrlPreview(
+  baseUrl: string | undefined,
+  api: string | undefined,
+): { readonly text: string; readonly warning: boolean } | undefined {
+  const described = describeConnectionUrl(api, baseUrl?.trim());
+  if (!described) return undefined;
+  return { text: described.text, warning: described.warning === true };
+}
+
+export function normalizeHeaderObject(
+  value: Record<string, unknown>,
+  label: string,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry !== "string") throw new Error(`${label}.${key} 必须是字符串`);
+    result[key] = entry;
+  }
+  return result;
+}
+
+export function modelInputWithImage(image: boolean): ("text" | "image")[] {
+  return image ? ["text", "image"] : ["text"];
+}
