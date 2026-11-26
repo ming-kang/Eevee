@@ -1,0 +1,39 @@
+@layer eevee-reset, elanor;
+
+@import "@earendil-works/elanor-fonts/mallos-serif.css";
+@import "@earendil-works/elanor-fonts/commit-mono.css";
+@import "@earendil-works/design-tokens/pi.css";
+@import "@earendil-works/elanor-react/elanor.min.css";
+
+:root {
+  --primitive-font-family-mono:
+    "Maple Mono NF CN", "Maple Mono NF", "Commit Mono", ui-monospace, "Cascadia Code",
+    "Consolas", monospace;
+  --primitive-font-family-serif:
+    "LXGW WenKai", "LXGW WenKai Screen", "Mallos Serif", "Georgia", serif;
+  --primitive-font-family-sans-serif:
+    "LXGW WenKai", "LXGW WenKai Screen", "Inter", system-ui, -apple-system, sans-serif;
+}
+
+@layer eevee-reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: var(--semantic-color-background-canvas);
+    color: var(--semantic-color-text-primary);
+    font-family: var(--semantic-font-family-ui);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+}

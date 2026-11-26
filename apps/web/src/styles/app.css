@@ -1,0 +1,645 @@
+/* Application layout and domain presentation on top of @layer elanor */
+
+.eevee-app {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr) auto;
+  height: 100%;
+  overflow: hidden;
+  background: var(--semantic-color-background-canvas);
+}
+
+.eevee-app[data-sidebar-open="false"] {
+  grid-template-columns: 0 minmax(0, 1fr) auto;
+}
+
+.eevee-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--semantic-color-background-surface);
+  border-inline-end: 1px solid var(--semantic-color-border-secondary);
+}
+
+.eevee-app[data-sidebar-open="false"] .eevee-sidebar {
+  border-inline-end: 0;
+}
+
+.eevee-sidebar-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--semantic-dimension-space-gap-x-small);
+  padding: var(--semantic-dimension-space-padding-medium);
+  border-block-end: 1px solid var(--semantic-color-border-secondary);
+}
+
+.eevee-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--semantic-dimension-space-gap-x-small);
+}
+
+.eevee-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--semantic-dimension-space-gap-x-small);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.eevee-project-select {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: var(--semantic-dimension-radius-small);
+  border: 1px solid var(--semantic-color-border-secondary);
+  background: var(--semantic-color-background-canvas);
+  color: var(--semantic-color-text-primary);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.eevee-sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--semantic-dimension-space-padding-small);
+  display: flex;
+  flex-direction: column;
+  gap: var(--semantic-dimension-space-gap-small);
+}
+
+.eevee-nav-label {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--semantic-color-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.eevee-nav-item {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--semantic-dimension-radius-small);
+  background: transparent;
+  color: var(--semantic-color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.eevee-nav-item:hover {
+  background: var(--semantic-color-background-fill-ghost-neutral-hover);
+}
+
+.eevee-nav-item[data-active="true"] {
+  background: var(--semantic-color-background-fill-secondary-information);
+  border-color: var(--semantic-color-border-information);
+}
+
+.eevee-nav-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.eevee-nav-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.eevee-nav-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eevee-nav-meta {
+  font-size: 0.78rem;
+  color: var(--semantic-color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eevee-sidebar-footer {
+  padding: var(--semantic-dimension-space-padding-small) var(--semantic-dimension-space-padding-medium);
+  border-block-start: 1px solid var(--semantic-color-border-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--semantic-dimension-space-gap-x-small);
+}
+
+.eevee-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--semantic-dimension-radius-full);
+  flex-shrink: 0;
+  margin-top: 6px;
+  background: var(--semantic-color-text-secondary);
+}
+
+.eevee-dot[data-status="running"] {
+  background: var(--semantic-color-text-information);
+  animation: eevee-pulse 1.4s ease-in-out infinite;
+}
+
+.eevee-dot[data-status="idle"] {
+  background: var(--semantic-color-text-positive);
+}
+
+.eevee-dot[data-status="queued"] {
+  background: var(--semantic-color-text-warning);
+}
+
+.eevee-dot[data-status="closed"] {
+  background: var(--semantic-color-text-secondary);
+  opacity: 0.5;
+}
+
+.eevee-dot[data-status="failed"],
+.eevee-dot[data-status="error"] {
+  background: var(--semantic-color-text-negative);
+}
+
+.eevee-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: var(--semantic-dimension-radius-full);
+  font-size: 0.74rem;
+  font-family: var(--semantic-font-family-code);
+  background: var(--semantic-color-background-fill-secondary);
+  color: var(--semantic-color-text-on-secondary-fill);
+  white-space: nowrap;
+}
+
+.eevee-badge[data-tone="info"] {
+  background: var(--semantic-color-background-fill-secondary-information);
+  color: var(--semantic-color-text-on-secondary-fill-information);
+}
+
+.eevee-badge[data-tone="positive"] {
+  background: var(--semantic-color-background-fill-secondary-positive);
+  color: var(--semantic-color-text-on-secondary-fill-positive);
+}
+
+.eevee-badge[data-tone="warning"] {
+  background: var(--semantic-color-background-fill-secondary-warning);
+  color: var(--semantic-color-text-on-secondary-fill-warning);
+}
+
+.eevee-badge[data-tone="negative"] {
+  background: var(--semantic-color-background-fill-secondary-negative);
+  color: var(--semantic-color-text-on-secondary-fill-negative);
+}
+
+.eevee-main {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.eevee-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--semantic-dimension-space-gap-small);
+  padding: 10px 16px;
+  border-block-end: 1px solid var(--semantic-color-border-secondary);
+  background: var(--semantic-color-background-canvas);
+  min-height: 54px;
+}
+
+.eevee-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.eevee-topbar-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.eevee-topbar-sub {
+  font-size: 0.78rem;
+  color: var(--semantic-color-text-secondary);
+  font-family: var(--semantic-font-family-code);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eevee-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.eevee-questions-bar {
+  padding: 12px 16px;
+  background: var(--semantic-color-background-fill-secondary-warning);
+  border-block-end: 1px solid var(--semantic-color-border-warning);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 44vh;
+  overflow-y: auto;
+}
+
+.eevee-question-card {
+  background: var(--semantic-color-background-canvas);
+  border: 1px solid var(--semantic-color-border-warning);
+  border-radius: var(--semantic-dimension-radius-medium);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.eevee-question-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.eevee-option-chip {
+  padding: 5px 10px;
+  border-radius: var(--semantic-dimension-radius-small);
+  border: 1px solid var(--semantic-color-border-secondary);
+  background: var(--semantic-color-background-surface);
+  color: var(--semantic-color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86rem;
+}
+
+.eevee-option-chip[data-selected="true"] {
+  background: var(--semantic-color-background-fill-secondary-information);
+  border-color: var(--semantic-color-border-information);
+  color: var(--semantic-color-text-on-secondary-fill-information);
+}
+
+.eevee-transcript-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px 28px;
+}
+
+.eevee-transcript-inner {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.eevee-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.eevee-msg-user {
+  align-self: flex-end;
+  max-width: 82%;
+  padding: 10px 14px;
+  border-radius: var(--semantic-dimension-radius-medium);
+  background: var(--semantic-color-background-fill-secondary-information);
+  border: 1px solid var(--semantic-color-border-secondary);
+}
+
+.eevee-msg-assistant {
+  padding: 4px 2px;
+}
+
+.eevee-msg-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--semantic-color-text-secondary);
+}
+
+.eevee-notice-card {
+  padding: 10px 14px;
+  border-radius: var(--semantic-dimension-radius-medium);
+  border: 1px solid var(--semantic-color-border-secondary);
+  background: var(--semantic-color-background-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.eevee-notice-card[data-tone="negative"] {
+  border-color: var(--semantic-color-border-negative);
+  background: var(--semantic-color-background-fill-secondary-negative);
+}
+
+.eevee-notice-card[data-tone="info"] {
+  border-color: var(--semantic-color-border-information);
+}
+
+.eevee-marker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.78rem;
+  color: var(--semantic-color-text-secondary);
+  padding: 4px 0;
+}
+
+.eevee-marker::before,
+.eevee-marker::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--semantic-color-border-secondary);
+}
+
+.eevee-tool-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.eevee-tool-block {
+  border-inline-start: 2px solid var(--semantic-color-border-secondary);
+  padding-inline-start: 10px;
+}
+
+.eevee-tool-block[data-state="running"] {
+  border-inline-start-color: var(--semantic-color-border-information);
+}
+
+.eevee-tool-block[data-state="error"] {
+  border-inline-start-color: var(--semantic-color-border-negative);
+}
+
+.eevee-tool-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--semantic-dimension-radius-small);
+  background: transparent;
+  color: var(--semantic-color-text-primary);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--semantic-font-family-code);
+  font-size: 0.82rem;
+}
+
+.eevee-tool-trigger:hover {
+  background: var(--semantic-color-background-fill-ghost-neutral-hover);
+}
+
+.eevee-tool-arg {
+  color: var(--semantic-color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.eevee-tool-body {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.eevee-pre {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--semantic-dimension-radius-small);
+  background: var(--semantic-color-background-surface);
+  border: 1px solid var(--semantic-color-border-secondary);
+  font-family: var(--semantic-font-family-code);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.eevee-thinking {
+  font-size: 0.85rem;
+  color: var(--semantic-color-text-secondary);
+}
+
+.eevee-composer-wrap {
+  border-block-start: 1px solid var(--semantic-color-border-secondary);
+  background: var(--semantic-color-background-canvas);
+  padding: 12px 16px;
+}
+
+.eevee-composer {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.eevee-composer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.eevee-markdown pre {
+  tab-size: 2;
+  overflow-x: auto;
+}
+
+.eevee-markdown .hljs-comment,
+.eevee-markdown .hljs-quote {
+  color: var(--semantic-color-text-code-comment);
+  font-style: italic;
+}
+
+.eevee-markdown .hljs-keyword,
+.eevee-markdown .hljs-selector-tag,
+.eevee-markdown .hljs-subst {
+  color: var(--semantic-color-text-code-keyword);
+}
+
+.eevee-markdown .hljs-string,
+.eevee-markdown .hljs-doctag,
+.eevee-markdown .hljs-regexp {
+  color: var(--semantic-color-text-code-string);
+}
+
+.eevee-markdown .hljs-title,
+.eevee-markdown .hljs-section,
+.eevee-markdown .hljs-title\.function_ {
+  color: var(--semantic-color-text-code-function);
+}
+
+.eevee-markdown .hljs-number,
+.eevee-markdown .hljs-literal,
+.eevee-markdown .hljs-symbol {
+  color: var(--semantic-color-text-code-number);
+}
+
+.eevee-markdown .hljs-type,
+.eevee-markdown .hljs-built_in,
+.eevee-markdown .hljs-class,
+.eevee-markdown .hljs-title\.class_ {
+  color: var(--semantic-color-text-code-type);
+}
+
+.eevee-markdown .hljs-variable,
+.eevee-markdown .hljs-attr,
+.eevee-markdown .hljs-attribute,
+.eevee-markdown .hljs-property {
+  color: var(--semantic-color-text-code-variable);
+}
+
+.eevee-markdown .hljs-punctuation,
+.eevee-markdown .hljs-operator {
+  color: var(--semantic-color-text-code-punctuation);
+}
+
+.eevee-streaming-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--semantic-dimension-radius-full);
+  background: var(--semantic-color-text-information);
+  margin-inline-start: 6px;
+  vertical-align: middle;
+  animation: eevee-pulse 1s ease-in-out infinite;
+}
+
+.eevee-inspector {
+  width: 360px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--semantic-color-background-surface);
+  border-inline-start: 1px solid var(--semantic-color-border-secondary);
+  overflow: hidden;
+}
+
+.eevee-inspector-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.eevee-login-page {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--semantic-color-background-canvas);
+}
+
+.eevee-login-card {
+  width: 100%;
+  max-width: 440px;
+}
+
+.eevee-settings-page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 24px 40px;
+}
+
+.eevee-settings-inner {
+  max-width: 920px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.eevee-error-banner {
+  padding: 8px 12px;
+  border-radius: var(--semantic-dimension-radius-small);
+  background: var(--semantic-color-background-fill-secondary-negative);
+  border: 1px solid var(--semantic-color-border-negative);
+  color: var(--semantic-color-text-on-secondary-fill-negative);
+  font-size: 0.86rem;
+}
+
+.eevee-mono {
+  font-family: var(--semantic-font-family-code);
+}
+
+@keyframes eevee-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 1120px) {
+  .eevee-inspector {
+    width: 320px;
+  }
+}
+
+@media (max-width: 900px) {
+  .eevee-app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .eevee-sidebar {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 280px;
+    z-index: 30;
+    box-shadow: 0 12px 32px oklch(0% 0 0 / 0.25);
+  }
+
+  .eevee-app[data-sidebar-open="false"] .eevee-sidebar {
+    display: none;
+  }
+
+  .eevee-inspector {
+    display: none;
+  }
+}

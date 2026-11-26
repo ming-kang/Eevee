@@ -14,9 +14,10 @@
   },
   "scripts": {
     "dev": "node --conditions=eevee-source apps/cli/src/index.ts",
+    "dev:web": "npm run dev --workspace=@eevee/web",
     "clean": "node scripts/clean.ts",
-    "build": "tsc -b tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "build": "tsc -b tsconfig.build.json && npm run build --workspace=@eevee/web",
+    "typecheck": "tsc --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "check:deps": "node scripts/check-deps.ts",

@@ -41,8 +41,10 @@ for (const file of manifests.slice(1)) {
   workspaces.set(pkg.name, { file, dir: dirname(file), pkg });
 }
 
+const PI_CORE_EARENDIL = /^@earendil-works\/(?:chord|pi-.+)$/;
+
 const failures: string[] = [];
-const earendilVersions = new Map<string, string[]>();
+const piCoreVersions = new Map<string, string[]>();
 
 for (const file of manifests) {
   const label = relative(root, file).replace(/\\/g, "/");
@@ -58,10 +60,10 @@ for (const file of manifests) {
         );
         continue;
       }
-      if (name.startsWith("@earendil-works/")) {
-        const list = earendilVersions.get(specifier) ?? [];
+      if (PI_CORE_EARENDIL.test(name)) {
+        const list = piCoreVersions.get(specifier) ?? [];
         list.push(`${label} (${name})`);
-        earendilVersions.set(specifier, list);
+        piCoreVersions.set(specifier, list);
       }
       if (name.startsWith("@eevee/")) {
         const target = workspaces.get(name);
@@ -90,11 +92,13 @@ for (const file of manifests) {
   }
 }
 
-if (earendilVersions.size > 1) {
-  const detail = [...earendilVersions.entries()]
+if (piCoreVersions.size > 1) {
+  const detail = [...piCoreVersions.entries()]
     .map(([version, refs]) => `  ${version}: ${refs.join(", ")}`)
     .join("\n");
-  failures.push(`All @earendil-works/* packages must share one exact version:\n${detail}`);
+  failures.push(
+    `All Pi @earendil-works/{chord,pi-*} packages must share one exact version:\n${detail}`,
+  );
 }
 
 if (failures.length > 0) {

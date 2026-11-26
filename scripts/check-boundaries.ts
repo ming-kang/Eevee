@@ -10,6 +10,7 @@ export const ALLOWED_WORKSPACE_DEPS: Readonly<Record<string, readonly string[]>>
   "@eevee/protocol": [],
   "@eevee/engine": ["@eevee/agent", "@eevee/memory", "@eevee/core", "@eevee/protocol"],
   "@eevee/cli": ["@eevee/protocol", "@eevee/engine"],
+  "@eevee/web": ["@eevee/protocol"],
 };
 
 const CORE_FORBIDDEN_IMPORTS = new Set([
@@ -222,6 +223,12 @@ export function checkSource(input: SourceCheckInput): string[] {
           `${label}: @eevee/protocol must stay runtime-neutral (forbids "${specifier}")`,
         );
       }
+      if (
+        workspaceName === "@eevee/web" &&
+        (specifier.startsWith("node:") || PROTOCOL_FORBIDDEN_IMPORTS.has(specifier))
+      ) {
+        violations.push(`${label}: @eevee/web must stay browser-only (forbids "${specifier}")`);
+      }
     }
   }
 
@@ -264,7 +271,11 @@ function collectTsFiles(dir: string): string[] {
     if (entry.name === "node_modules" || entry.name === "dist") continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) found.push(...collectTsFiles(full));
-    else if (entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
+    else if (
+      entry.isFile() &&
+      (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) &&
+      !entry.name.endsWith(".d.ts")
+    ) {
       found.push(full);
     }
   }

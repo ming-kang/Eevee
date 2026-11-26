@@ -98,6 +98,35 @@ test("source boundary checker catches layer, runtime, extension, and relative im
     })[0] ?? "",
     /root host runtime is forbidden/,
   );
+
+  const webDir = join("/repo/apps", "web");
+  assert.deepEqual(
+    checkSource({
+      workspaceName: "@eevee/web",
+      workspaceDir: webDir,
+      file: join(webDir, "src/App.tsx"),
+      sourceText: 'import { EeveeClient } from "@eevee/protocol";',
+      declaredDeps: new Set(["@eevee/protocol"]),
+    }),
+    [],
+  );
+  assert.match(
+    checkSource({
+      workspaceName: "@eevee/web",
+      workspaceDir: webDir,
+      file: join(webDir, "src/App.tsx"),
+      sourceText: 'import { readFile } from "node:fs/promises";',
+      declaredDeps: new Set(["@eevee/protocol"]),
+    })[0] ?? "",
+    /browser-only/,
+  );
+  assert.match(
+    checkWorkspaceManifest({
+      workspaceName: "@eevee/web",
+      dependencies: { "@eevee/engine": "0.0.1" },
+    })[0] ?? "",
+    /forbidden workspace dependency -> @eevee\/engine/,
+  );
 });
 
 test("git invocation detection covers direct, aliased, and namespace child_process calls", () => {
