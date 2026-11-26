@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { constants } from "node:fs";
+import { access } from "node:fs/promises";
 import { posix, win32 } from "node:path";
 import { defineExtension, hook, ToolTask } from "@earendil-works/pi-durable";
 
@@ -7,7 +9,10 @@ export const SHELL_PATHS_EXTENSION = "eevee.shell-paths";
 const PATH_TOOLS = new Set(["read", "write", "edit", "ls", "grep", "find"]);
 const MOUNT_LINE = /^(.+?) on (\/.*) type \S+ \([^)]*\)$/;
 const MOUNT_TIMEOUT_MS = 5000;
+const WHERE_TIMEOUT_MS = 5000;
 const DRIVE_MOUNT = /^\/([a-zA-Z])(?=\/|$)/;
+const WINDOWS_ROOT = /^[a-z]:[\\/]/i;
+const LEGACY_WSL_BASH = /^[a-z]:\\windows\\(?:system32|sysnative)\\bash\.exe$/i;
 
 export type Mount = {
   readonly point: string;
@@ -75,18 +80,89 @@ function readMounts(shell: string, args: readonly string[]): Promise<Mount[]> {
   });
 }
 
+export function isLegacyWslBashPath(shellPath: string, systemRoot?: string): boolean {
+  const normalized = win32.normalize(shellPath).toLowerCase();
+  if (win32.basename(normalized) === "wsl.exe") return true;
+  if (systemRoot !== undefined && systemRoot !== "" && WINDOWS_ROOT.test(systemRoot)) {
+    return ["System32", "Sysnative"].some(
+      (directory) => normalized === win32.join(systemRoot, directory, "bash.exe").toLowerCase(),
+    );
+  }
+  // Without a known Windows directory only the conventional launcher paths can be told apart.
+  return LEGACY_WSL_BASH.test(normalized);
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path, constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function whereFirstLine(): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    execFile(
+      "where",
+      ["bash.exe"],
+      { timeout: WHERE_TIMEOUT_MS, windowsHide: true },
+      (error, stdout) => {
+        if (error) {
+          resolve(undefined);
+          return;
+        }
+        const first = stdout.trim().split(/\r?\n/)[0]?.trim();
+        resolve(first === undefined || first === "" ? undefined : first);
+      },
+    );
+  });
+}
+
+export type ResolveWindowsBashOptions = {
+  readonly shellPath?: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly pathExists?: (path: string) => Promise<boolean>;
+  readonly findOnPath?: () => Promise<string | undefined>;
+};
+
+export async function resolveWindowsBash(
+  options: ResolveWindowsBashOptions = {},
+): Promise<string | undefined> {
+  const env = options.env ?? process.env;
+  const pathExists = options.pathExists ?? fileExists;
+  const findOnPath =
+    options.findOnPath ??
+    (async () => {
+      const first = await whereFirstLine();
+      if (first === undefined) return undefined;
+      return (await pathExists(first)) ? first : undefined;
+    });
+  if (options.shellPath !== undefined) {
+    return (await pathExists(options.shellPath)) ? options.shellPath : undefined;
+  }
+  const programFiles = env.ProgramFiles;
+  if (programFiles) {
+    const candidate = `${programFiles}\\Git\\bin\\bash.exe`;
+    if (await pathExists(candidate)) return candidate;
+  }
+  const programFilesX86 = env["ProgramFiles(x86)"];
+  if (programFilesX86) {
+    const candidate = `${programFilesX86}\\Git\\bin\\bash.exe`;
+    if (await pathExists(candidate)) return candidate;
+  }
+  return findOnPath();
+}
+
 export type ShellPathsOptions = {
   readonly shellPath?: string;
   readonly shellArgs?: readonly string[];
   readonly platform?: NodeJS.Platform;
   readonly readMounts?: () => Promise<readonly Mount[]>;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly pathExists?: (path: string) => Promise<boolean>;
+  readonly findOnPath?: () => Promise<string | undefined>;
 };
-
-function isWslShell(shellPath: string | undefined): boolean {
-  if (shellPath === undefined) return false;
-  const name = shellPath.toLowerCase();
-  return name.endsWith("wsl.exe") || name.includes("system32\\bash");
-}
 
 export function rewriteToolArguments(
   toolName: string,
@@ -103,10 +179,23 @@ export function rewriteToolArguments(
 
 export function createShellPathsExtension(options: ShellPathsOptions = {}) {
   let cached: Promise<Mount[]> | undefined;
+  const resolveAndReadMounts = async (): Promise<Mount[]> => {
+    const shell = await resolveWindowsBash({
+      shellPath: options.shellPath,
+      env: options.env,
+      pathExists: options.pathExists,
+      findOnPath: options.findOnPath,
+    });
+    if (shell === undefined) return [];
+    // WSL mounts are drvfs, not the MSYS drive layout this extension rewrites, so there is no
+    // usable mount table behind a legacy WSL launcher.
+    if (isLegacyWslBashPath(shell, (options.env ?? process.env).SystemRoot)) return [];
+    return readMounts(shell, options.shellArgs ?? ["-c"]);
+  };
   const loadMounts = async (): Promise<readonly Mount[]> => {
     if (options.readMounts !== undefined) return options.readMounts();
     if (cached === undefined) {
-      const attempt = readMounts(options.shellPath ?? "bash.exe", options.shellArgs ?? ["-c"]);
+      const attempt = resolveAndReadMounts();
       cached = attempt;
       try {
         return await attempt;
@@ -129,7 +218,6 @@ export function createShellPathsExtension(options: ShellPathsOptions = {}) {
         beforeTool: async (call) => {
           const platform = options.platform ?? process.platform;
           if (platform !== "win32") return undefined;
-          if (isWslShell(options.shellPath)) return undefined;
           const args = call.arguments as Record<string, unknown>;
           const mounts = await loadMounts();
           const rewritten = rewriteToolArguments(call.name, args, mounts);

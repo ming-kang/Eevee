@@ -173,6 +173,45 @@ test("skills section renders only with a reading capability and hides disable-mo
   });
 });
 
+test("a dynamic workspaces getter switches discovered files on the next prompt render", async () => {
+  await withTempDir(async (dir) => {
+    const wsA = join(dir, "ws-a");
+    const wsB = join(dir, "ws-b");
+    await mkdir(join(wsA, ".pi", "skills", "alpha"), { recursive: true });
+    await mkdir(join(wsB, ".pi", "skills", "beta"), { recursive: true });
+    await writeFile(join(wsA, "AGENTS.md"), "rules from workspace A");
+    await writeFile(join(wsB, "AGENTS.md"), "rules from workspace B");
+    await writeFile(
+      join(wsA, ".pi", "skills", "alpha", "SKILL.md"),
+      "---\nname: alpha\ndescription: skill a\n---\n",
+    );
+    await writeFile(
+      join(wsB, ".pi", "skills", "beta", "SKILL.md"),
+      "---\nname: beta\ndescription: skill b\n---\n",
+    );
+
+    let current = wsA;
+    const extension = createBaseExtension({ workspaces: () => [current] });
+
+    const inputA = promptInput(wsA, ["read"]);
+    const contextA = await extension.sections?.[2]?.render(inputA, {} as never);
+    const skillsA = await extension.sections?.[3]?.render(inputA, {} as never);
+    assert.ok(contextA?.includes("rules from workspace A"));
+    assert.ok(!contextA?.includes("rules from workspace B"));
+    assert.ok(skillsA?.includes("<name>alpha</name>"));
+    assert.ok(!skillsA?.includes("<name>beta</name>"));
+
+    current = wsB;
+    const inputB = promptInput(wsB, ["read"]);
+    const contextB = await extension.sections?.[2]?.render(inputB, {} as never);
+    const skillsB = await extension.sections?.[3]?.render(inputB, {} as never);
+    assert.ok(contextB?.includes("rules from workspace B"));
+    assert.ok(!contextB?.includes("rules from workspace A"));
+    assert.ok(skillsB?.includes("<name>beta</name>"));
+    assert.ok(!skillsB?.includes("<name>alpha</name>"));
+  });
+});
+
 test("agent-context and skills share one discovery scan per render input", async () => {
   await withTempDir(async (dir) => {
     await writeFile(join(dir, "AGENTS.md"), "shared scan rules");

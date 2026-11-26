@@ -9,7 +9,9 @@ import { guidelinesForTools } from "./prompt-meta.ts";
 
 export const BASE_EXTENSION = "eevee.base";
 
-export type BaseExtensionOptions = PromptContextOptions;
+export type BaseExtensionOptions = Omit<PromptContextOptions, "workspaces"> & {
+  readonly workspaces?: readonly string[] | (() => readonly string[]);
+};
 
 function escapeXml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -66,8 +68,10 @@ export function createBaseExtension(options: BaseExtensionOptions = {}) {
     const key = input as object;
     const existing = discoveries.get(key);
     if (existing !== undefined) return existing;
+    const configured =
+      typeof options.workspaces === "function" ? options.workspaces() : options.workspaces;
     const workspaces =
-      options.workspaces ?? (input.agent.cwd === undefined ? undefined : [input.agent.cwd]);
+      configured ?? (input.agent.cwd === undefined ? undefined : [input.agent.cwd]);
     const discovery = discoverContext({ globalDir: options.globalDir, workspaces });
     discoveries.set(key, discovery);
     return discovery;

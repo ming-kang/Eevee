@@ -108,8 +108,11 @@ export {
 } from "./extensions/mcp/index.ts";
 export {
   createShellPathsExtension,
+  isLegacyWslBashPath,
   type Mount,
   parseMounts,
+  type ResolveWindowsBashOptions,
+  resolveWindowsBash,
   rewriteDrivePath,
   rewriteMsysPath,
   rewriteToolArguments,

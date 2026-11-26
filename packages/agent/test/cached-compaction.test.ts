@@ -428,6 +428,7 @@ test("manual compaction hits cached prefix with same sessionId, tracks file ops,
 
     assert.equal(events.length, 1);
     assert.equal(events[0]?.reason, "manual");
+    assert.deepEqual(events[0]?.model, { provider: "faux", modelId: "faux-1" });
     assert.deepEqual(events[0]?.readFiles, ["alpha.txt"]);
     assert.deepEqual(events[0]?.modifiedFiles, ["beta.txt"]);
   } finally {
@@ -478,6 +479,7 @@ test("automatic threshold compaction uses cached compaction hook", async () => {
     await submitAndWait(conversation, "Follow up question triggering threshold compaction.");
     assert.equal(events.length, 1);
     assert.equal(events[0]?.reason, "threshold");
+    assert.deepEqual(events[0]?.model, { provider: "faux", modelId: "faux-1" });
 
     const compactCall = calls[1];
     assert.ok(compactCall);

@@ -12,6 +12,7 @@ import {
   type EntryRecord,
   type Extension,
   hook,
+  type ModelRef,
   ProviderDoc,
 } from "@earendil-works/pi-durable";
 import {
@@ -28,6 +29,7 @@ export type CachedCompactionEvent = {
   readonly conversationId: ConversationId;
   readonly reason: CompactionReason;
   readonly firstKept: EntryId;
+  readonly model: ModelRef;
   readonly usage: Usage;
   readonly durationMs: number;
   readonly readFiles: readonly string[];
@@ -136,6 +138,7 @@ export function createCachedCompactionExtension(options?: CachedCompactionOption
                 conversationId: api.conversationId,
                 reason: compaction.reason,
                 firstKept: compaction.firstKept,
+                model: { provider: ref.provider, modelId: ref.modelId },
                 usage: response.usage,
                 durationMs: Math.max(0, api.now() - startedAt),
                 readFiles: checkpoint.readFiles,
