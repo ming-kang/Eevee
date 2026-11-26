@@ -1013,3 +1013,65 @@ test("project usage sums conversation pi.usage and Dreamer MemoryMetaDoc.usage",
     }
   });
 });
+
+test("updateProject workspaces reconfigures an already-open project cwd and AGENTS.md discovery", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws1 = join(dir, "ws1");
+    const ws2 = join(dir, "ws2");
+    await mkdir(ws1, { recursive: true });
+    await mkdir(ws2, { recursive: true });
+    await writeFile(join(ws1, "AGENTS.md"), "WS1_ONLY_CONTEXT_MARKER\n", "utf8");
+    await writeFile(join(ws2, "AGENTS.md"), "WS2_LIVE_CONTEXT_MARKER\n", "utf8");
+
+    const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+
+    const seenPrompts: string[] = [];
+    const brain: FauxResponseFactory = (context) => {
+      seenPrompts.push(getCurrentSystemPrompt(context.messages));
+      return fauxAssistantMessage("ack");
+    };
+    faux.setResponses([brain, brain]);
+
+    const foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      models,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+    });
+
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      const projectId = (await client.createProject({ workspaces: [ws1], title: "LiveWS" })).project
+        .id;
+      const handle = await foreground.engine.openProject(projectId);
+
+      const first = await client.sendMessage(projectId, "router", { text: "turn 1" });
+      await (
+        await handle.harness.submission(first.submissionId as never, BACKGROUND_CONTEXT)
+      )?.wait(BACKGROUND_CONTEXT);
+
+      assert.equal((await handle.root.agent(BACKGROUND_CONTEXT)).cwd, ws1);
+      assert.ok(seenPrompts[0]?.includes("WS1_ONLY_CONTEXT_MARKER"));
+      assert.equal(seenPrompts[0]?.includes("WS2_LIVE_CONTEXT_MARKER"), false);
+
+      await client.updateProject(projectId, { workspaces: [ws2] });
+      assert.equal(foreground.engine.isProjectOpen(projectId), true);
+      assert.equal((await handle.root.agent(BACKGROUND_CONTEXT)).cwd, ws2);
+
+      const second = await client.sendMessage(projectId, "router", { text: "turn 2" });
+      await (
+        await handle.harness.submission(second.submissionId as never, BACKGROUND_CONTEXT)
+      )?.wait(BACKGROUND_CONTEXT);
+
+      assert.ok(seenPrompts[1]?.includes("WS2_LIVE_CONTEXT_MARKER"));
+      assert.equal(seenPrompts[1]?.includes("WS1_ONLY_CONTEXT_MARKER"), false);
+    } finally {
+      await foreground.close();
+    }
+  });
+});
