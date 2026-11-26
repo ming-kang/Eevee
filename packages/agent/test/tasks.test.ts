@@ -18,6 +18,7 @@ import {
   createTasksExtension,
   getConversationTask,
   listConversationTasks,
+  type RunningCommand,
   readOutputFileSlice,
   sliceOutputText,
   sliceRetainedOutput,
@@ -1233,6 +1234,185 @@ test("TaskManager subscribeOutput streams live chunks and close() drains cleanly
       await th.cleanup();
     }
   } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("TaskManager eviction and close() clear #memoryLogs and #logStates", async () => {
+  const logRoot = await mkdtemp(join(tmpdir(), "eevee-tasks-memevict-"));
+  const manager = new TaskManager({
+    maxFinishedPerConversation: 2,
+    maxLogBytes: 32,
+    logOverflowPolicy: "truncate",
+    logPath: (conversationId, taskId) => join(logRoot, `${conversationId}-${taskId}.log`),
+  });
+  const th = await createTestHarness({
+    extensions: [createCodingToolsExtension(), createTasksExtension({ manager })],
+  });
+  try {
+    th.faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("bash", {
+            command: "node -e \"console.log('first-' + 'a'.repeat(80))\"",
+            background: true,
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("s1"),
+      fauxAssistantMessage("n1"),
+    ]);
+    const conv = await th.createConversation();
+    await (await conv.submit({ type: "input", content: "1" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    const rec1 = await waitForRecord(th, conv.id, "task-1", "completed");
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+
+    assert.equal(rec1.logTruncated, true);
+    assert.equal(manager.logStatus(conv.id, "task-1").logTruncated, true);
+    const memBefore = await manager.readOutput(conv.id, "task-1", { ...rec1, logPath: undefined });
+    assert.ok(memBefore.text.includes("first-"));
+    assert.ok(memBefore.totalBytes > 0);
+
+    th.faux.appendResponses([
+      fauxAssistantMessage(
+        [fauxToolCall("bash", { command: "echo second-retained", background: true })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("s2"),
+      fauxAssistantMessage("n2"),
+    ]);
+    await (await conv.submit({ type: "input", content: "2" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    const rec2 = await waitForRecord(th, conv.id, "task-2", "completed");
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+
+    th.faux.appendResponses([
+      fauxAssistantMessage(
+        [fauxToolCall("bash", { command: "echo third-retained", background: true })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("s3"),
+      fauxAssistantMessage("n3"),
+    ]);
+    await (await conv.submit({ type: "input", content: "3" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    const rec3 = await waitForRecord(th, conv.id, "task-3", "completed");
+    if (rec3.durableTaskId !== undefined) {
+      await th.harness.waitForTask(rec3.durableTaskId as TaskId, BACKGROUND_CONTEXT);
+    }
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+
+    const evictedSlice = await manager.readOutput(conv.id, "task-1", {
+      ...rec1,
+      logPath: undefined,
+    });
+    assert.deepEqual(evictedSlice, {
+      text: "",
+      totalBytes: 0,
+      truncated: false,
+      fromByte: 0,
+      endByte: 0,
+    });
+    assert.deepEqual(manager.logStatus(conv.id, "task-1"), { logTruncated: false });
+
+    const keptSlice = await manager.readOutput(conv.id, "task-2", { ...rec2, logPath: undefined });
+    assert.ok(keptSlice.text.includes("second-retained"));
+
+    await manager.close();
+    const afterCloseSlice = await manager.readOutput(conv.id, "task-2", {
+      ...rec2,
+      logPath: undefined,
+    });
+    assert.deepEqual(afterCloseSlice, {
+      text: "",
+      totalBytes: 0,
+      truncated: false,
+      fromByte: 0,
+      endByte: 0,
+    });
+    assert.deepEqual(manager.logStatus(conv.id, "task-2"), { logTruncated: false });
+  } finally {
+    await manager.close();
+    await th.cleanup();
+    await rm(logRoot, { recursive: true, force: true });
+  }
+});
+
+test("TaskManager.readOutput reads pre-retained disk bytes when a running task has droppedBytes > 0", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "eevee-tasks-disk-fallback-"));
+  const manager = new TaskManager();
+  try {
+    const convId = 1 as ConversationId;
+    const taskId = "task-1";
+    const logPath = join(dir, "running.log");
+    const earlyPart = `early-line-1\nEARLY_FILTER_HIT\n${"m".repeat(800)}\n`;
+    const retainedPart = "retained-tail-line\n";
+    const fullText = `${earlyPart}${retainedPart}`;
+    await writeFile(logPath, fullText, "utf8");
+
+    const droppedBytes = Buffer.byteLength(earlyPart, "utf8");
+    const totalBytes = Buffer.byteLength(fullText, "utf8");
+    const running: RunningCommand = {
+      shell: "bash",
+      command: "stream-lots",
+      rewrittenNul: false,
+      settled: false,
+      killed: false,
+      done: new Promise(() => {}),
+      output: () => ({ text: retainedPart, totalBytes, droppedBytes }),
+      onOutput: () => () => {},
+      kill: () => {},
+    };
+    manager.attach(convId, taskId, running);
+
+    const record: BackgroundTaskRecord = {
+      id: taskId,
+      command: "stream-lots",
+      status: "running",
+      startedAt: 1,
+      logPath,
+    };
+
+    const head = await manager.readOutput(convId, taskId, record, { mode: "head", bytes: 256 });
+    assert.equal(head.fromByte, 0);
+    assert.ok(head.text.startsWith("early-line-1\nEARLY_FILTER_HIT\n"), head.text);
+
+    const filtered = await manager.readOutput(convId, taskId, record, {
+      filter: "EARLY_FILTER_HIT",
+    });
+    assert.equal(filtered.matchedLines, 1);
+    assert.ok(filtered.text.includes("2: EARLY_FILTER_HIT"), filtered.text);
+
+    const pagedTail = await manager.readOutput(convId, taskId, record, {
+      mode: "tail",
+      bytes: 256,
+      endByte: 300,
+    });
+    assert.ok(pagedTail.endByte <= 300);
+    assert.ok(pagedTail.text.length > 0);
+
+    const liveTail = await manager.readOutput(convId, taskId, record, {
+      mode: "tail",
+      sinceBytes: droppedBytes,
+      bytes: 256,
+    });
+    assert.equal(liveTail.fromByte, droppedBytes);
+    assert.equal(liveTail.text, retainedPart);
+
+    await rm(logPath, { force: true });
+    const fallbackHead = await manager.readOutput(convId, taskId, record, {
+      mode: "head",
+      bytes: 256,
+    });
+    assert.equal(fallbackHead.fromByte, droppedBytes);
+    assert.equal(fallbackHead.text, "");
+  } finally {
+    manager.killAll();
     await rm(dir, { recursive: true, force: true });
   }
 });

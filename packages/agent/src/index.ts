@@ -246,6 +246,7 @@ export {
   type ProviderConfig,
   parseModelsConfig,
   type ResolvedModelChoice,
+  writeModelsJsonFile,
 } from "./models/index.ts";
 export {
   type BashShellConfig,

@@ -336,7 +336,7 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
       let untrackCloser: () => void = () => {};
 
       const finish = async (endPayload?: {
-        readonly reason: "completed" | "terminal" | "closed";
+        readonly reason: "completed" | "terminal" | "failed" | "closed";
         readonly message?: string;
       }): Promise<void> => {
         if (ended) return;
@@ -374,8 +374,8 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
           if (ended) return;
           writeSseEvent(res, "status", { task });
         },
-        onEnd: (reason) => {
-          void finish({ reason });
+        onEnd: (reason, message) => {
+          void finish({ reason, ...(message === undefined ? {} : { message }) });
         },
       });
     } catch (error) {

@@ -77,9 +77,35 @@ function normalizeWorkspaces(workspaces: readonly string[]): string[] {
 export class EngineStore {
   readonly #db: DatabaseSync;
   #closed = false;
+  #transactionDepth = 0;
 
   private constructor(db: DatabaseSync) {
     this.#db = db;
+  }
+
+  transaction<T>(fn: () => T): T {
+    const depth = this.#transactionDepth;
+    const savepoint = depth > 0 ? `eevee_sp_${depth}` : undefined;
+    this.#db.exec(savepoint === undefined ? "BEGIN IMMEDIATE;" : `SAVEPOINT ${savepoint};`);
+    this.#transactionDepth = depth + 1;
+    try {
+      const result = fn();
+      this.#db.exec(savepoint === undefined ? "COMMIT;" : `RELEASE SAVEPOINT ${savepoint};`);
+      return result;
+    } catch (error) {
+      try {
+        this.#db.exec(
+          savepoint === undefined
+            ? "ROLLBACK;"
+            : `ROLLBACK TO SAVEPOINT ${savepoint}; RELEASE SAVEPOINT ${savepoint};`,
+        );
+      } catch {
+        // Preserve the original failure if SQLite already rolled back the transaction.
+      }
+      throw error;
+    } finally {
+      this.#transactionDepth = depth;
+    }
   }
 
   static open(dbPath: string): EngineStore {
@@ -137,8 +163,7 @@ export class EngineStore {
     const modelsJson = input.models === undefined ? null : JSON.stringify(input.models);
     const toolsJson = input.tools === undefined ? null : JSON.stringify(input.tools);
 
-    this.#db.exec("BEGIN IMMEDIATE;");
-    try {
+    return this.transaction(() => {
       const checkStmt = this.#db.prepare("SELECT 1 FROM projects WHERE id = ? LIMIT 1");
       let id = base;
       let suffix = 2;
@@ -154,7 +179,6 @@ export class EngineStore {
         )
         .run(id, title, workspacesJson, memory, modelsJson, toolsJson, now, now);
 
-      this.#db.exec("COMMIT;");
       return {
         id,
         title,
@@ -165,10 +189,7 @@ export class EngineStore {
         createdAt: now,
         updatedAt: now,
       };
-    } catch (error) {
-      this.#db.exec("ROLLBACK;");
-      throw error;
-    }
+    });
   }
 
   listProjects(): ProjectSummary[] {
@@ -194,11 +215,9 @@ export class EngineStore {
   }
 
   updateProject(id: string, patch: UpdateProjectInput): ProjectSummary | undefined {
-    this.#db.exec("BEGIN IMMEDIATE;");
-    try {
+    return this.transaction(() => {
       const existing = this.getProject(id);
       if (existing === undefined) {
-        this.#db.exec("ROLLBACK;");
         return undefined;
       }
 
@@ -246,7 +265,6 @@ export class EngineStore {
           id,
         );
 
-      this.#db.exec("COMMIT;");
       return {
         id,
         title: nextTitle,
@@ -257,10 +275,7 @@ export class EngineStore {
         createdAt: existing.createdAt,
         updatedAt,
       };
-    } catch (error) {
-      this.#db.exec("ROLLBACK;");
-      throw error;
-    }
+    });
   }
 
   deleteProject(id: string): boolean {

@@ -69,13 +69,18 @@ function logFooter(outcome: CommandOutcome, killed: boolean, killReason?: TaskKi
     : `\n[error: ${outcome.message}]\n`;
 }
 
+type EvictedTask = {
+  readonly id: string;
+  readonly logPath?: string;
+};
+
 async function evictFinishedTasks(
   tx: Tx,
   conversationId: ConversationId,
   maxFinished: number,
-): Promise<string[]> {
+): Promise<EvictedTask[]> {
   const board = await tx.doc(TasksBoardDoc, conversationId);
-  const terminal: { id: string; logPath?: string }[] = [];
+  const terminal: EvictedTask[] = [];
   for (const id of board.order) {
     const rec = await tx.doc(TaskRecordDoc, conversationId, id, null);
     if (isTaskTerminalStatus(rec.status)) {
@@ -88,7 +93,7 @@ async function evictFinishedTasks(
   const evictIds = new Set(toEvict.map((entry) => entry.id));
   const kept = board.order.filter((id) => !evictIds.has(id));
   board.order.splice(0, board.order.length, ...kept);
-  return toEvict.flatMap((entry) => (entry.logPath === undefined ? [] : [entry.logPath]));
+  return toEvict;
 }
 
 export type BackgroundShellTask = Task<
@@ -116,7 +121,7 @@ export function createBackgroundShellTask(manager: TaskManager): BackgroundShell
             return;
           }
           const conv = await runtime.conversation(conversationId, context);
-          let evictedPaths: string[] = [];
+          let evicted: EvictedTask[] = [];
           await runtime.commit(async (tx) => {
             const doc = await tx.doc(TaskRecordDoc, conversationId, taskId, null);
             if (isTaskActiveStatus(doc.status)) {
@@ -136,16 +141,19 @@ export function createBackgroundShellTask(manager: TaskManager): BackgroundShell
                   },
                 });
               }
-              evictedPaths = await evictFinishedTasks(
+              evicted = await evictFinishedTasks(
                 tx,
                 conversationId,
                 manager.maxFinishedPerConversation,
               );
             }
-            return TERMINAL_COMPLETED;
+            return evicted.length === 0 ? TERMINAL_COMPLETED : undefined;
           }, context);
-          for (const logPath of evictedPaths) {
-            await manager.cleanupLog(logPath);
+          if (evicted.length > 0) {
+            for (const item of evicted) {
+              await manager.evict(conversationId, item.id, item.logPath);
+            }
+            await runtime.commit(() => TERMINAL_COMPLETED, context);
           }
           return;
         }
@@ -206,7 +214,7 @@ export function createBackgroundShellTask(manager: TaskManager): BackgroundShell
         }
 
         const conv = shouldNotify ? await runtime.conversation(conversationId, context) : undefined;
-        let evictedPaths: string[] = [];
+        let evicted: EvictedTask[] = [];
         await runtime.commit(async (tx) => {
           const doc = await tx.doc(TaskRecordDoc, conversationId, taskId, null);
           if (isTaskActiveStatus(doc.status)) {
@@ -239,17 +247,20 @@ export function createBackgroundShellTask(manager: TaskManager): BackgroundShell
               });
             }
 
-            evictedPaths = await evictFinishedTasks(
+            evicted = await evictFinishedTasks(
               tx,
               conversationId,
               manager.maxFinishedPerConversation,
             );
           }
-          return TERMINAL_COMPLETED;
+          return evicted.length === 0 ? TERMINAL_COMPLETED : undefined;
         }, context);
 
-        for (const logPath of evictedPaths) {
-          await manager.cleanupLog(logPath);
+        if (evicted.length > 0) {
+          for (const item of evicted) {
+            await manager.evict(conversationId, item.id, item.logPath);
+          }
+          await runtime.commit(() => TERMINAL_COMPLETED, context);
         }
       },
     },
@@ -266,7 +277,7 @@ export function createBackgroundShellTask(manager: TaskManager): BackgroundShell
       }
       await manager.finishLog(conversationId, taskId, "\n[cancelled]\n");
       const logStatus = manager.logStatus(conversationId, taskId);
-      let evictedPaths: string[] = [];
+      let evicted: EvictedTask[] = [];
       await runtime.commit(async (tx) => {
         const doc = await tx.doc(TaskRecordDoc, conversationId, taskId, null);
         if (isTaskActiveStatus(doc.status)) {
@@ -276,15 +287,19 @@ export function createBackgroundShellTask(manager: TaskManager): BackgroundShell
           if (logStatus.logTruncated) doc.logTruncated = true;
           if (logStatus.logError !== undefined) doc.logError = logStatus.logError;
         }
-        evictedPaths = await evictFinishedTasks(
-          tx,
-          conversationId,
-          manager.maxFinishedPerConversation,
-        );
-        return { status: "terminal", outcome: { status: "aborted" } };
+        evicted = await evictFinishedTasks(tx, conversationId, manager.maxFinishedPerConversation);
+        return evicted.length === 0
+          ? { status: "terminal", outcome: { status: "aborted" } }
+          : undefined;
       }, context);
-      for (const logPath of evictedPaths) {
-        await manager.cleanupLog(logPath);
+      if (evicted.length > 0) {
+        for (const item of evicted) {
+          await manager.evict(conversationId, item.id, item.logPath);
+        }
+        await runtime.commit(
+          () => ({ status: "terminal", outcome: { status: "aborted" } }),
+          context,
+        );
       }
     },
   });

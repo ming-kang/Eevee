@@ -12,17 +12,12 @@ import type {
 } from "@earendil-works/pi-durable";
 import {
   createMcpHub,
-  getConversationTask,
-  isTaskTerminalStatus,
   type McpHttpServerConfig,
   type McpHub,
   type McpHubOptions,
   McpOAuthCredentialStore,
   mcpOAuthStoreKey,
   parseMcpConfig,
-  resolveTaskId,
-  sliceRetainedOutput,
-  TASK_READ_MAX_BYTES,
   validateMcpServerEntry,
   validateOutputReadOptions,
 } from "@eevee/agent";
@@ -34,16 +29,12 @@ import type {
   WorkerId as CoreWorkerId,
   ModelSlots,
   OutputReadOptions,
-  OutputSlice,
   ProjectHandle,
   ProjectTarget,
 } from "@eevee/core";
-import { ProjectError } from "@eevee/core";
 import {
   type AnswerQuestionRequest,
   type AnswerQuestionResponse,
-  type BackgroundTaskRecordPayload,
-  type BackgroundTaskStatus,
   type BuiltinModelMatchRequest,
   type BuiltinModelMatchResponse,
   type ConfigBundle,
@@ -98,7 +89,6 @@ import {
   type StartLoginRequest,
   type StartLoginResponse,
   type StartMcpOAuthResponse,
-  type TaskStreamChunkEvent,
   type UpdateProjectRequest,
   type UpsertMcpServerRequest,
   type UpsertProviderModelRequest,
@@ -170,6 +160,7 @@ import {
   putProjectSkillsPolicy,
   type SkillsDeps,
 } from "./engine-skills.ts";
+import { subscribeWorkerTaskStream, type WorkerTaskStream } from "./engine-task-stream.ts";
 import { LoginSessionManager, type LoginSseFrame } from "./login-sessions.ts";
 import {
   GLOBAL_MCP_OAUTH_SCOPE,
@@ -181,6 +172,11 @@ import { EngineStore } from "./store.ts";
 
 export { formatModelProfiles } from "./engine-config.ts";
 export { EngineError } from "./engine-error.ts";
+export {
+  taskStatusPhase,
+  type WorkerTaskStream,
+  type WorkerTaskStreamCallbacks,
+} from "./engine-task-stream.ts";
 export type { LoginSseFrame } from "./login-sessions.ts";
 export type { OpenProjectStorage } from "./project-pool.ts";
 
@@ -191,32 +187,6 @@ export type ListEntriesParams = {
   readonly maxEntryId?: number;
   readonly cursor?: string;
 };
-
-export type WorkerTaskStreamCallbacks = {
-  readonly onChunk: (chunk: TaskStreamChunkEvent) => void;
-  readonly onStatus: (task: BackgroundTaskRecordPayload) => void;
-  readonly onEnd: (reason: "completed" | "terminal") => void;
-};
-
-export type WorkerTaskStream = {
-  readonly snapshot: ReadWorkerTaskResponse;
-  readonly terminal: boolean;
-  start(callbacks: WorkerTaskStreamCallbacks): void;
-  close(): void;
-};
-
-function taskStatusPhase(status: BackgroundTaskStatus): number {
-  switch (status) {
-    case "queued":
-      return 0;
-    case "running":
-      return 1;
-    case "stopping":
-      return 2;
-    default:
-      return 3;
-  }
-}
 
 export type EngineOptions = {
   readonly dataDir?: string;
@@ -1075,242 +1045,9 @@ export class Engine {
       }
     }
 
-    return this.#inProject(projectId, async (handle) => {
-      const workers = await handle.workers(BACKGROUND_CONTEXT);
-      const worker = workers.find((candidate) => candidate.id === workerId);
-      if (worker === undefined) {
-        throw new ProjectError("worker_not_found", `Unknown worker ${workerId}`);
-      }
-
-      const tasks = await handle.listWorkerTasks(
-        workerId as CoreWorkerId,
-        undefined,
-        BACKGROUND_CONTEXT,
-      );
-      const resolution = resolveTaskId(tasks, taskId);
-      if (resolution.kind === "not_found") {
-        throw new ProjectError("task_not_found", `Unknown task ${taskId} on worker ${workerId}`);
-      }
-      if (resolution.kind === "ambiguous") {
-        throw new EngineError(
-          400,
-          "task_ambiguous",
-          `Ambiguous task id "${taskId}" on worker ${workerId}`,
-        );
-      }
-      const resolvedId = resolution.record.id;
-
-      if (isTaskTerminalStatus(resolution.record.status)) {
-        const snapshot = await handle.readWorkerTaskOutput(
-          workerId as CoreWorkerId,
-          resolvedId,
-          options,
-          BACKGROUND_CONTEXT,
-        );
-        return {
-          snapshot,
-          terminal: true,
-          start: () => {},
-          close: () => {},
-        };
-      }
-
-      let closed = false;
-      let started = false;
-      let callbacks: WorkerTaskStreamCallbacks | undefined;
-      const bufferedChunks: string[] = [];
-      const bufferedBoards: BoardView[] = [];
-      let unsubOutput: (() => void) | undefined;
-      let unsubBoard: (() => void) | undefined;
-
-      const cleanup = () => {
-        if (closed) return;
-        closed = true;
-        unsubOutput?.();
-        unsubOutput = undefined;
-        unsubBoard?.();
-        unsubBoard = undefined;
-        bufferedChunks.length = 0;
-        bufferedBoards.length = 0;
-      };
-
-      let handleBoard = (_board: BoardView) => {};
-
-      unsubBoard = handle.subscribeBoard((board) => {
-        if (closed) return;
-        if (!started) {
-          bufferedBoards.push(board);
-          return;
-        }
-        handleBoard(board);
-      });
-
-      const running = handle.tasks.get(worker.conversationId, resolvedId);
-      let snapshot: ReadWorkerTaskResponse;
-      if (running !== undefined) {
-        unsubOutput = running.onOutput((chunk) => {
-          if (closed) return;
-          if (!started) {
-            bufferedChunks.push(chunk);
-            return;
-          }
-          emitChunkText(chunk);
-        });
-        const live = running.output();
-        const initialOutput = sliceRetainedOutput(
-          Buffer.from(live.text, "utf8"),
-          live.droppedBytes,
-          live.totalBytes,
-          options,
-        );
-        const freshTask = await getConversationTask(
-          handle.harness,
-          worker.conversationId,
-          resolvedId,
-          BACKGROUND_CONTEXT,
-        );
-        const task = freshTask ?? resolution.record;
-        if (isTaskTerminalStatus(task.status)) {
-          cleanup();
-          const finalSnapshot = await handle.readWorkerTaskOutput(
-            workerId as CoreWorkerId,
-            resolvedId,
-            options,
-            BACKGROUND_CONTEXT,
-          );
-          return {
-            snapshot: finalSnapshot,
-            terminal: true,
-            start: () => {},
-            close: () => {},
-          };
-        }
-        snapshot = { task, output: initialOutput };
-      } else {
-        snapshot = await handle.readWorkerTaskOutput(
-          workerId as CoreWorkerId,
-          resolvedId,
-          options,
-          BACKGROUND_CONTEXT,
-        );
-        if (isTaskTerminalStatus(snapshot.task.status)) {
-          cleanup();
-          return {
-            snapshot,
-            terminal: true,
-            start: () => {},
-            close: () => {},
-          };
-        }
-      }
-
-      let cursorByte = snapshot.output.totalBytes;
-      let lastTask = snapshot.task;
-      let lastTaskJson = JSON.stringify(lastTask);
-      let pendingBoard = Promise.resolve();
-
-      const emitChunkText = (text: string) => {
-        if (closed) return;
-        const byteLen = Buffer.byteLength(text, "utf8");
-        if (byteLen === 0) return;
-        const fromByte = cursorByte;
-        const endByte = fromByte + byteLen;
-        cursorByte = endByte;
-        callbacks?.onChunk({ text, fromByte, endByte, totalBytes: endByte });
-      };
-
-      const emitChunkSlice = (slice: OutputSlice) => {
-        if (closed) return;
-        if (slice.fromByte < cursorByte || slice.endByte <= cursorByte || slice.text.length === 0) {
-          return;
-        }
-        cursorByte = slice.endByte;
-        callbacks?.onChunk({
-          text: slice.text,
-          fromByte: slice.fromByte,
-          endByte: slice.endByte,
-          totalBytes: slice.totalBytes,
-        });
-      };
-
-      const processBoard = async (board: BoardView): Promise<void> => {
-        if (closed) return;
-        const boardWorker = board.workers.find((candidate) => candidate.id === workerId);
-        let candidate = boardWorker?.tasks.find((task) => task.id === resolvedId);
-        if (candidate === undefined) {
-          candidate = await getConversationTask(
-            handle.harness,
-            worker.conversationId,
-            resolvedId,
-            BACKGROUND_CONTEXT,
-          );
-          if (candidate === undefined || closed) return;
-        }
-        if (taskStatusPhase(candidate.status) < taskStatusPhase(lastTask.status)) {
-          return;
-        }
-        const candidateJson = JSON.stringify(candidate);
-        if (isTaskTerminalStatus(candidate.status)) {
-          unsubOutput?.();
-          unsubOutput = undefined;
-          for (;;) {
-            if (closed) return;
-            const read = await handle.readWorkerTaskOutput(
-              workerId as CoreWorkerId,
-              resolvedId,
-              { mode: "head", sinceBytes: cursorByte, bytes: TASK_READ_MAX_BYTES },
-              BACKGROUND_CONTEXT,
-            );
-            const slice = read.output;
-            if (
-              slice.fromByte >= cursorByte &&
-              slice.endByte > cursorByte &&
-              slice.text.length > 0
-            ) {
-              emitChunkSlice(slice);
-              if (slice.endByte < slice.totalBytes) continue;
-            }
-            break;
-          }
-          if (closed) return;
-          lastTask = candidate;
-          lastTaskJson = candidateJson;
-          callbacks?.onStatus(candidate);
-          const onEnd = callbacks?.onEnd;
-          cleanup();
-          onEnd?.("completed");
-          return;
-        }
-        if (candidateJson !== lastTaskJson) {
-          lastTask = candidate;
-          lastTaskJson = candidateJson;
-          callbacks?.onStatus(candidate);
-        }
-      };
-
-      handleBoard = (board: BoardView) => {
-        pendingBoard = pendingBoard.then(() => processBoard(board)).catch(() => undefined);
-      };
-
-      return {
-        snapshot,
-        terminal: false,
-        start: (nextCallbacks) => {
-          if (closed || started) return;
-          started = true;
-          callbacks = nextCallbacks;
-          const queuedChunks = bufferedChunks.splice(0, bufferedChunks.length);
-          for (const chunk of queuedChunks) {
-            emitChunkText(chunk);
-          }
-          const queuedBoards = bufferedBoards.splice(0, bufferedBoards.length);
-          for (const board of queuedBoards) {
-            handleBoard(board);
-          }
-        },
-        close: cleanup,
-      };
-    });
+    return this.#inProject(projectId, (handle) =>
+      subscribeWorkerTaskStream(handle, workerId, taskId, options),
+    );
   }
 
   async killWorkerTask(

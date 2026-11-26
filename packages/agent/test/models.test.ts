@@ -11,6 +11,7 @@ import {
   ModelRuntime,
   ModelsConfigError,
   parseModelsConfig,
+  upsertProviderConfig,
 } from "../src/models/index.ts";
 
 async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
@@ -805,4 +806,293 @@ test("!command apiKey executes at resolution time", async () => {
     const auth = await runtime.models().getAuth(model);
     assert.equal(auth?.auth.apiKey, "command-key");
   });
+});
+
+test("ModelRuntime.reload() serializes concurrent reloads and settles to latest on-disk state", async () => {
+  await withTempDir(async (dir) => {
+    const file = join(dir, "models.json");
+    await writeFile(
+      file,
+      JSON.stringify({
+        providers: {
+          p1: {
+            baseUrl: "http://localhost:1/v1",
+            api: "openai-completions",
+            models: [{ id: "m1" }],
+          },
+        },
+      }),
+    );
+
+    const runtime = await ModelRuntime.open({ dir, env: {} });
+    let hydrateCalls = 0;
+    let releaseFirstHydrate!: () => void;
+    const firstHydrateGate = new Promise<void>((resolve) => {
+      releaseFirstHydrate = resolve;
+    });
+    const originalHydrate = runtime.hydrateStoredCatalogs.bind(runtime);
+    runtime.hydrateStoredCatalogs = async () => {
+      hydrateCalls += 1;
+      if (hydrateCalls === 1) {
+        await firstHydrateGate;
+      }
+      return originalHydrate();
+    };
+
+    const reload1 = runtime.reload();
+    await writeFile(
+      file,
+      JSON.stringify({
+        providers: {
+          p2: {
+            baseUrl: "http://localhost:2/v1",
+            api: "openai-completions",
+            models: [{ id: "m2" }],
+          },
+        },
+      }),
+    );
+    const reload2 = runtime.reload();
+    releaseFirstHydrate();
+    await Promise.all([reload1, reload2]);
+
+    assert.equal(runtime.resolveModel({ provider: "p1", modelId: "m1" }), undefined);
+    assert.ok(runtime.resolveModel({ provider: "p2", modelId: "m2" }));
+
+    // Concurrent mutateModelsJson + runtime.reload() calls settle to the full final state.
+    runtime.hydrateStoredCatalogs = originalHydrate;
+    await Promise.all([
+      upsertProviderConfig(file, "p3", {
+        baseUrl: "http://localhost:3/v1",
+        api: "openai-completions",
+        models: [{ id: "m3" }],
+      }).then(() => runtime.reload()),
+      upsertProviderConfig(file, "p4", {
+        baseUrl: "http://localhost:4/v1",
+        api: "openai-completions",
+        models: [{ id: "m4" }],
+      }).then(() => runtime.reload()),
+    ]);
+    assert.ok(runtime.resolveModel({ provider: "p3", modelId: "m3" }));
+    assert.ok(runtime.resolveModel({ provider: "p4", modelId: "m4" }));
+
+    // A rejected strict reload must not poison subsequent reloads.
+    await writeFile(file, "{ bad json");
+    await assert.rejects(runtime.reload({ strict: true }), ModelsConfigError);
+    await writeFile(
+      file,
+      JSON.stringify({
+        providers: {
+          p5: {
+            baseUrl: "http://localhost:5/v1",
+            api: "openai-completions",
+            models: [{ id: "m5" }],
+          },
+        },
+      }),
+    );
+    await runtime.reload();
+    assert.ok(runtime.resolveModel({ provider: "p5", modelId: "m5" }));
+  });
+});
+
+test("custom providers support header-only auth on openai-completions, openai-responses, and anthropic-messages", async () => {
+  await withTempDir(async (dir) => {
+    await writeFile(
+      join(dir, "models.json"),
+      JSON.stringify({
+        providers: {
+          hdrOpenai: {
+            baseUrl: "http://127.0.0.1:1/v1",
+            api: "openai-completions",
+            headers: { Authorization: "Bearer $TOKEN", "X-Team": "alpha" },
+            models: [{ id: "gpt-custom" }],
+          },
+          hdrAnthropic: {
+            baseUrl: "http://127.0.0.1:1",
+            api: "anthropic-messages",
+            headers: { "x-api-key": "sk-ant-test" },
+            models: [{ id: "claude-custom" }],
+          },
+          hdrGateway: {
+            baseUrl: "http://127.0.0.1:1/v1",
+            api: "openai-responses",
+            headers: { "cf-aig-authorization": "Bearer cf-secret" },
+            models: [{ id: "resp-custom" }],
+          },
+        },
+      }),
+    );
+
+    const missingEnvRuntime = await ModelRuntime.open({ dir, env: {} });
+    assert.equal(await missingEnvRuntime.models().checkAuth("hdrOpenai"), undefined);
+    assert.equal((await missingEnvRuntime.getAuthSummary("hdrOpenai")).configured, false);
+    assert.equal((await missingEnvRuntime.models().getAvailable("hdrOpenai")).length, 0);
+
+    const runtime = await ModelRuntime.open({ dir, env: { TOKEN: "hdr-secret" } });
+    assert.deepEqual(await runtime.models().checkAuth("hdrOpenai"), {
+      type: "api_key",
+      source: "models.json",
+    });
+    assert.deepEqual(await runtime.models().checkAuth("hdrAnthropic"), {
+      type: "api_key",
+      source: "models.json",
+    });
+    assert.deepEqual(await runtime.models().checkAuth("hdrGateway"), {
+      type: "api_key",
+      source: "models.json",
+    });
+
+    const openaiModel = runtime.resolveModel({ provider: "hdrOpenai", modelId: "gpt-custom" });
+    const anthropicModel = runtime.resolveModel({
+      provider: "hdrAnthropic",
+      modelId: "claude-custom",
+    });
+    assert.ok(openaiModel);
+    assert.ok(anthropicModel);
+
+    const openaiAuth = await runtime.models().getAuth(openaiModel);
+    assert.equal(openaiAuth?.source, "models.json");
+    assert.equal(openaiAuth?.auth.apiKey, undefined);
+    assert.deepEqual(openaiAuth?.auth.headers, {
+      Authorization: "Bearer hdr-secret",
+      "X-Team": "alpha",
+    });
+
+    const summary = await runtime.getAuthSummary("hdrOpenai");
+    assert.equal(summary.configured, true);
+    assert.equal(summary.source, "models.json");
+    assert.equal(summary.type, "api_key");
+    assert.equal(summary.preview, "hdr-...cret");
+
+    const flattenHeaders = (headers: unknown): Record<string, string> => {
+      if (headers instanceof Headers) return Object.fromEntries(headers.entries());
+      if (Array.isArray(headers)) return Object.fromEntries(headers);
+      if (typeof headers === "object" && headers !== null) {
+        return { ...(headers as Record<string, string>) };
+      }
+      return {};
+    };
+
+    const capturedOpenAiHeaders: Record<string, string>[] = [];
+    const openaiSse = [
+      'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1,"model":"gpt-custom","choices":[{"index":0,"delta":{"role":"assistant","content":"ok-openai"},"finish_reason":null}]}',
+      "",
+      'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1,"model":"gpt-custom","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+      "",
+      "data: [DONE]",
+      "",
+      "",
+    ].join("\n");
+    const openaiRes = await runtime.models().complete(openaiModel, userMessage("hi"), {
+      fetch: (async (_input: unknown, init?: { headers?: unknown }) => {
+        capturedOpenAiHeaders.push(flattenHeaders(init?.headers));
+        return new Response(openaiSse, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }) as typeof globalThis.fetch,
+    });
+    assert.equal(openaiRes.stopReason, "stop");
+    const openAiMap = new Map(
+      Object.entries(capturedOpenAiHeaders[0] ?? {}).map(([k, v]) => [k.toLowerCase(), v]),
+    );
+    assert.equal(openAiMap.get("authorization"), "Bearer hdr-secret");
+    assert.equal(openAiMap.get("x-team"), "alpha");
+
+    const capturedAnthropicHeaders: Record<string, string>[] = [];
+    const anthropicSse = [
+      "event: message_start",
+      'data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"claude-custom","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":0}}}',
+      "",
+      "event: content_block_start",
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+      "",
+      "event: content_block_delta",
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok-ant"}}',
+      "",
+      "event: content_block_stop",
+      'data: {"type":"content_block_stop","index":0}',
+      "",
+      "event: message_delta",
+      'data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}',
+      "",
+      "event: message_stop",
+      'data: {"type":"message_stop"}',
+      "",
+      "",
+    ].join("\n");
+    const anthropicRes = await runtime.models().complete(anthropicModel, userMessage("hi"), {
+      fetch: (async (_input: unknown, init?: { headers?: unknown }) => {
+        capturedAnthropicHeaders.push(flattenHeaders(init?.headers));
+        return new Response(anthropicSse, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }) as typeof globalThis.fetch,
+    });
+    assert.equal(anthropicRes.stopReason, "stop");
+    const antMap = new Map(
+      Object.entries(capturedAnthropicHeaders[0] ?? {}).map(([k, v]) => [k.toLowerCase(), v]),
+    );
+    assert.equal(antMap.get("x-api-key"), "sk-ant-test");
+  });
+});
+
+test("composeProviders rejects authHeader: true on unsupported APIs and ModelRuntime degrades with diagnostic", async () => {
+  for (const [providerId, config] of [
+    [
+      "customGoogle",
+      {
+        baseUrl: "http://localhost:1/v1beta",
+        api: "google-generative-ai",
+        apiKey: "k",
+        authHeader: true,
+        models: [{ id: "gemini-custom" }],
+      },
+    ],
+    [
+      "customAzure",
+      {
+        baseUrl: "http://localhost:1/openai/v1",
+        api: "azure-openai-responses",
+        apiKey: "k",
+        authHeader: true,
+        models: [{ id: "gpt-azure" }],
+      },
+    ],
+    [
+      "google",
+      {
+        apiKey: "k",
+        authHeader: true,
+      },
+    ],
+  ] as const) {
+    const parsed = parseModelsConfig(JSON.stringify({ providers: { [providerId]: config } }));
+    assert.throws(
+      () => composeProviders(parsed, { env: {} }),
+      (error: unknown) =>
+        error instanceof ModelsConfigError && error.path === `providers.${providerId}.authHeader`,
+    );
+
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, "models.json"),
+        JSON.stringify({ providers: { [providerId]: config } }),
+      );
+      const runtime = await ModelRuntime.open({ dir, env: {} });
+      assert.deepEqual(runtime.config(), { providers: {} });
+      assert.ok(
+        runtime
+          .configDiagnostics()
+          .some((diag) => diag.path === `providers.${providerId}.authHeader`),
+      );
+      await assert.rejects(
+        ModelRuntime.open({ dir, env: {}, strict: true }),
+        (error: unknown) =>
+          error instanceof ModelsConfigError && error.path === `providers.${providerId}.authHeader`,
+      );
+    });
+  }
 });

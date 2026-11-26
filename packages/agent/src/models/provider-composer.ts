@@ -48,6 +48,13 @@ const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const DEFAULT_MAX_TOKENS = 16_384;
 
+const AUTH_HEADER_SUPPORTED_APIS = new Set([
+  "openai-completions",
+  "openai-responses",
+  "anthropic-messages",
+]);
+const REQUEST_AUTH_HEADER_NAMES = new Set(["authorization", "x-api-key", "cf-aig-authorization"]);
+
 export const CHAT_API_STREAMS: Readonly<Record<string, () => ProviderStreams>> = {
   "openai-completions": openAICompletionsApi,
   "openai-responses": openAIResponsesApi,
@@ -192,6 +199,45 @@ function configApiKeyConfigured(config: ProviderConfig, env?: ComposeEnvironment
   return config.apiKey !== undefined && isConfigValueConfigured(config.apiKey, env);
 }
 
+function hasRecognizedAuthHeader(headers: Readonly<Record<string, string>> | undefined): boolean {
+  if (!headers) return false;
+  return Object.keys(headers).some((name) => REQUEST_AUTH_HEADER_NAMES.has(name.toLowerCase()));
+}
+
+function hasConfiguredAuthHeader(
+  headers: Readonly<Record<string, string>> | undefined,
+  env?: ComposeEnvironment,
+): boolean {
+  if (!headers) return false;
+  return Object.entries(headers).some(
+    ([name, value]) =>
+      REQUEST_AUTH_HEADER_NAMES.has(name.toLowerCase()) &&
+      value.trim().length > 0 &&
+      isConfigValueConfigured(value, env),
+  );
+}
+
+function validateAuthHeaderApis(
+  providerId: string,
+  config: ProviderConfig,
+  models: readonly AnyModel[],
+): void {
+  if (config.authHeader !== true) return;
+  const apis = new Set<string>();
+  if (config.api !== undefined) apis.add(config.api);
+  for (const model of models) {
+    if (isChatModel(model)) apis.add(model.api);
+  }
+  for (const api of apis) {
+    if (!AUTH_HEADER_SUPPORTED_APIS.has(api)) {
+      throw new ModelsConfigError(
+        `providers.${providerId}.authHeader`,
+        `authHeader is not supported for api "${api}"; supported APIs: ${[...AUTH_HEADER_SUPPORTED_APIS].join(", ")}`,
+      );
+    }
+  }
+}
+
 function wrapOAuthAuth(
   delegate: NonNullable<Provider["auth"]["oauth"]>,
   config: ProviderConfig,
@@ -239,8 +285,24 @@ function wrapApiKeyAuth(
       }
       if (delegate) {
         const result = await delegate.resolve(input);
-        if (!result) return undefined;
-        return { ...result, auth: withConfigHeaders(result.auth, config, env) };
+        if (result) {
+          return { ...result, auth: withConfigHeaders(result.auth, config, env) };
+        }
+      }
+      if (hasRecognizedAuthHeader(config.headers)) {
+        const resolvedHeaders = resolveProviderConfigHeaders(config, env);
+        if (
+          resolvedHeaders &&
+          Object.entries(resolvedHeaders).some(
+            ([name, value]) =>
+              REQUEST_AUTH_HEADER_NAMES.has(name.toLowerCase()) && value.trim().length > 0,
+          )
+        ) {
+          return {
+            auth: { headers: resolvedHeaders as ProviderHeaders },
+            source: "models.json",
+          };
+        }
       }
       return undefined;
     },
@@ -252,10 +314,15 @@ function wrapApiKeyAuth(
       if (configApiKeyConfigured(config, env)) {
         return { type: "api_key", source: "models.json" };
       }
-      if (delegate?.check) return delegate.check(input);
-      if (delegate) {
+      if (delegate?.check) {
+        const checked = await delegate.check(input);
+        if (checked) return checked;
+      } else if (delegate) {
         const result = await delegate.resolve(input);
-        return result === undefined ? undefined : { type: "api_key", source: result.source };
+        if (result) return { type: "api_key", source: result.source };
+      }
+      if (hasConfiguredAuthHeader(config.headers, env)) {
+        return { type: "api_key", source: "models.json" };
       }
       return undefined;
     },
@@ -463,7 +530,7 @@ function wrapProvider(base: Provider, config: ProviderConfig, env?: ComposeEnvir
     id: base.id,
     name: config.name ?? base.name,
     auth: {
-      ...(base.auth.apiKey || config.apiKey !== undefined
+      ...(base.auth.apiKey || config.apiKey !== undefined || hasRecognizedAuthHeader(config.headers)
         ? { apiKey: wrapApiKeyAuth(base.auth.apiKey, config, env) }
         : {}),
       ...(base.auth.oauth === undefined
@@ -583,6 +650,7 @@ function createCustomProvider(
     }
     streams.set(api, factory());
   }
+  validateAuthHeaderApis(id, config, placeholder);
   const single = streams.size === 1 ? [...streams.values()][0] : undefined;
   const apiMap = single === undefined ? Object.fromEntries(streams) : undefined;
 
@@ -616,15 +684,28 @@ export function composeProviders(config: ModelsConfig, options?: ComposeOptions)
     const builtin = builtins.get(providerId);
     if (builtin) {
       const wrapped = wrapProvider(builtin, providerConfig, options?.env);
-      transformModels(builtin.getAllModels?.() ?? builtin.getModels(), providerConfig, providerId);
+      const transformed = transformModels(
+        builtin.getAllModels?.() ?? builtin.getModels(),
+        providerConfig,
+        providerId,
+      );
+      validateAuthHeaderApis(providerId, providerConfig, transformed);
       configured.set(providerId, wrapped);
       builtins.delete(providerId);
       continue;
     }
-    const base =
-      providerConfig.oauth === "radius"
-        ? createRadiusProvider(providerId, providerConfig)
-        : createCustomProvider(providerId, providerConfig, options?.env);
+    if (providerConfig.oauth === "radius") {
+      const base = createRadiusProvider(providerId, providerConfig);
+      if (providerConfig.authHeader === true) {
+        throw new ModelsConfigError(
+          `providers.${providerId}.authHeader`,
+          `authHeader is not supported for oauth "radius" (api "pi-messages"); supported APIs: ${[...AUTH_HEADER_SUPPORTED_APIS].join(", ")}`,
+        );
+      }
+      configured.set(providerId, wrapProvider(base, providerConfig, options?.env));
+      continue;
+    }
+    const base = createCustomProvider(providerId, providerConfig, options?.env);
     configured.set(providerId, wrapProvider(base, providerConfig, options?.env));
   }
 

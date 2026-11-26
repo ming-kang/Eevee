@@ -208,9 +208,31 @@ export async function mutateModelsJson(
     parseModelsConfig(nextText);
 
     if (document.exists && !(await backupExists(filePath))) {
-      await writeFileAtomic(`${filePath}.bak`, document.rawText);
+      await writeFileAtomic(`${filePath}.bak`, document.rawText, 0o600);
     }
-    await writeFileAtomic(filePath, nextText);
+    await writeFileAtomic(filePath, nextText, 0o600);
+    return candidate;
+  });
+}
+
+export async function writeModelsJsonFile(
+  filePath: string,
+  config: ModelsConfig,
+): Promise<ModelsConfig> {
+  return withFileLock(filePath, async () => {
+    const candidate = parseModelsConfig(JSON.stringify(config));
+    composeProviders(candidate);
+    let existingRawText: string | undefined;
+    try {
+      existingRawText = await readFile(filePath, "utf8");
+    } catch (error) {
+      if (!isMissing(error)) throw error;
+    }
+    const nextText = `${JSON.stringify(candidate, null, 2)}\n`;
+    if (existingRawText !== undefined && !(await backupExists(filePath))) {
+      await writeFileAtomic(`${filePath}.bak`, existingRawText, 0o600);
+    }
+    await writeFileAtomic(filePath, nextText, 0o600);
     return candidate;
   });
 }

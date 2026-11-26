@@ -42,6 +42,7 @@ export {
   upsertCustomModel,
   upsertModelOverride,
   upsertProviderConfig,
+  writeModelsJsonFile,
 } from "./models-json-store.ts";
 export { FileModelsStore } from "./models-store.ts";
 export {

@@ -12,6 +12,7 @@ import {
   upsertCustomModel,
   upsertModelOverride,
   upsertProviderConfig,
+  writeModelsJsonFile,
 } from "../src/models/index.ts";
 
 async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
@@ -147,5 +148,46 @@ test("readModelsJsonDocument reports a missing file without creating it", async 
       rawText: "",
     });
     await assert.rejects(stat(file));
+  });
+});
+
+test("models.json and .bak enforce 0o600 permissions on POSIX and writeModelsJsonFile locks and backs up", async () => {
+  await withTempDir(async (dir) => {
+    const file = join(dir, "models.json");
+    await upsertProviderConfig(file, "local", {
+      baseUrl: "http://localhost:1/v1",
+      api: "openai-completions",
+      apiKey: "secret-1",
+      models: [{ id: "m1" }],
+    });
+    if (process.platform !== "win32") {
+      assert.equal((await stat(file)).mode & 0o777, 0o600);
+    }
+
+    await upsertProviderConfig(file, "local", { name: "Updated" });
+    if (process.platform !== "win32") {
+      assert.equal((await stat(file)).mode & 0o777, 0o600);
+      assert.equal((await stat(`${file}.bak`)).mode & 0o777, 0o600);
+    }
+
+    const file2 = join(dir, "imported-models.json");
+    await writeFile(file2, '{"providers":{}}', { mode: 0o644 });
+    await writeModelsJsonFile(file2, {
+      providers: {
+        imported: {
+          baseUrl: "http://localhost:2/v1",
+          api: "openai-completions",
+          apiKey: "imported-secret",
+          models: [{ id: "m2" }],
+        },
+      },
+    });
+    assert.equal(await readFile(`${file2}.bak`, "utf8"), '{"providers":{}}');
+    const doc2 = await readModelsJsonDocument(file2);
+    assert.equal(doc2.config.providers.imported?.apiKey, "imported-secret");
+    if (process.platform !== "win32") {
+      assert.equal((await stat(file2)).mode & 0o777, 0o600);
+      assert.equal((await stat(`${file2}.bak`)).mode & 0o777, 0o600);
+    }
   });
 });

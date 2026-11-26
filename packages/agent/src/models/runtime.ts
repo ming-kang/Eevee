@@ -159,6 +159,7 @@ export class ModelRuntime {
   #config: ModelsConfig;
   #models: MutableModels;
   #diagnostics: ModelsConfigDiagnostic[];
+  #reloadChain: Promise<void> = Promise.resolve();
 
   private constructor(
     options: ModelRuntimeOptions,
@@ -204,6 +205,12 @@ export class ModelRuntime {
   }
 
   async reload(options?: { readonly strict?: boolean }): Promise<void> {
+    const run = this.#reloadChain.then(() => this.#runReload(options));
+    this.#reloadChain = run.catch(() => undefined);
+    return run;
+  }
+
+  async #runReload(options?: { readonly strict?: boolean }): Promise<void> {
     const strict = options?.strict ?? this.#strict;
     const loaded = await readModelsConfig(join(this.dir, MODELS_FILE), strict);
     let models: MutableModels;
@@ -243,7 +250,9 @@ export class ModelRuntime {
     if (!secret) {
       const headers = resolved?.auth.headers ?? {};
       const authorization = Object.entries(headers).find(([name]) =>
-        ["authorization", "x-api-key", "x-goog-api-key"].includes(name.toLowerCase()),
+        ["authorization", "x-api-key", "x-goog-api-key", "cf-aig-authorization"].includes(
+          name.toLowerCase(),
+        ),
       )?.[1];
       if (typeof authorization === "string") secret = authorization.replace(/^Bearer\s+/i, "");
     }

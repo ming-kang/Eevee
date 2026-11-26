@@ -1,6 +1,4 @@
-import { randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile } from "node:fs/promises";
 import { isMcpServerOverride } from "@earendil-works/pi-mcp";
 import {
   type McpHub,
@@ -13,6 +11,7 @@ import {
   type ModelRuntime,
   ModelsConfigError,
   parseModelsConfig,
+  writeModelsJsonFile,
 } from "@eevee/agent/models";
 import type { ModelSlots } from "@eevee/core";
 import {
@@ -242,18 +241,6 @@ function isEnoent(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
-async function writeTextAtomic(filePath: string, content: string): Promise<void> {
-  await mkdir(dirname(filePath), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
-  await writeFile(tempPath, content, "utf8");
-  try {
-    await rename(tempPath, filePath);
-  } catch (error) {
-    await rm(tempPath, { force: true }).catch(() => undefined);
-    throw error;
-  }
-}
-
 export type ExportConfigDeps = {
   readonly layout: DataDirLayout;
   readonly store: EngineStore;
@@ -471,26 +458,26 @@ export async function importEngineConfig(
   }
 
   if (parsedModelsConfig !== undefined) {
-    await writeTextAtomic(
-      deps.layout.modelsFile,
-      `${JSON.stringify(parsedModelsConfig, null, 2)}\n`,
-    );
+    await writeModelsJsonFile(deps.layout.modelsFile, parsedModelsConfig);
     await deps.modelRuntime.reload();
   }
 
-  const previousMcp = getMcpServersRecord(deps.store);
   const normalizedMcp = normalizeMcpMap(parsedMcp.servers);
-  const removedHttpMcp = findRemovedHttpMcpServers(previousMcp, normalizedMcp);
-  const cancellations = collectGlobalMcpOAuthCancellations(deps.store, removedHttpMcp);
-  deps.store.setKv(KV_SETTINGS, bundle.settings);
-  deps.store.setKv(KV_MODEL_PROFILES, bundle.modelProfiles);
-  deps.store.setKv(KV_MCP_SERVERS, normalizedMcp);
-  pruneOrphanProjectMcpOverrides(deps.store, normalizedMcp);
-  if (bundle.skillsPolicy !== undefined) {
-    deps.store.setKv(KV_SKILLS_POLICY, bundle.skillsPolicy);
-  } else {
-    deps.store.deleteKv(KV_SKILLS_POLICY);
-  }
+  const { removedHttpMcp, cancellations } = deps.store.transaction(() => {
+    const previousMcp = getMcpServersRecord(deps.store);
+    const removed = findRemovedHttpMcpServers(previousMcp, normalizedMcp);
+    const scopes = collectGlobalMcpOAuthCancellations(deps.store, removed);
+    deps.store.setKv(KV_SETTINGS, bundle.settings);
+    deps.store.setKv(KV_MODEL_PROFILES, bundle.modelProfiles);
+    deps.store.setKv(KV_MCP_SERVERS, normalizedMcp);
+    pruneOrphanProjectMcpOverrides(deps.store, normalizedMcp);
+    if (bundle.skillsPolicy !== undefined) {
+      deps.store.setKv(KV_SKILLS_POLICY, bundle.skillsPolicy);
+    } else {
+      deps.store.deleteKv(KV_SKILLS_POLICY);
+    }
+    return { removedHttpMcp: removed, cancellations: scopes };
+  });
 
   await cleanupRemovedMcpOAuth({
     store: deps.store,

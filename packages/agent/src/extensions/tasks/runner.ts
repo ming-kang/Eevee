@@ -13,6 +13,7 @@ import { type ResolvedPowerShell, resolvePowerShell } from "../../shell/discover
 import { normalizePosixBashCommand } from "../../shell/normalize.ts";
 import type { BackgroundTaskRecord } from "./docs.ts";
 import {
+  clampReadBytes,
   type OutputReadOptions,
   type OutputSlice,
   readOutputFileSlice,
@@ -302,6 +303,26 @@ function clampPositiveInt(value: number | undefined, fallback: number, minimum =
   return Math.max(minimum, Math.floor(value));
 }
 
+function needsDiskFallback(output: CommandOutput, options: OutputReadOptions): boolean {
+  if (output.droppedBytes <= 0) return false;
+  if (options.filter !== undefined && options.filter !== "") return true;
+  const mode = options.mode ?? "tail";
+  const ceiling =
+    options.endByte !== undefined && Number.isFinite(options.endByte)
+      ? Math.min(output.totalBytes, Math.max(0, Math.floor(options.endByte)))
+      : output.totalBytes;
+  if (options.endByte !== undefined && ceiling <= output.droppedBytes) return true;
+  const since =
+    options.sinceBytes !== undefined && Number.isFinite(options.sinceBytes)
+      ? Math.max(0, Math.floor(options.sinceBytes))
+      : undefined;
+  const effectiveSince = since === undefined || since > ceiling ? 0 : since;
+  if (mode === "head") {
+    return effectiveSince < output.droppedBytes;
+  }
+  return Math.max(effectiveSince, ceiling - clampReadBytes(options.bytes)) < output.droppedBytes;
+}
+
 export class TaskManager {
   readonly #logPath: TaskManagerOptions["logPath"];
   readonly maxLogBytes: number;
@@ -532,6 +553,15 @@ export class TaskManager {
     await cleanupLog(logPath);
   }
 
+  async evict(conversationId: ConversationId, taskId: string, logPath?: string): Promise<void> {
+    const key = this.#key(conversationId, taskId);
+    this.#memoryLogs.delete(key);
+    this.#logStates.delete(key);
+    if (logPath !== undefined) {
+      await cleanupLog(logPath);
+    }
+  }
+
   async readOutput(
     conversationId: ConversationId,
     taskId: string,
@@ -543,6 +573,13 @@ export class TaskManager {
     const running = this.#commands.get(key)?.running;
     if (running !== undefined) {
       const output = running.output();
+      if (record.logPath !== undefined && needsDiskFallback(output, options)) {
+        try {
+          return await readOutputFileSlice(record.logPath, options);
+        } catch {
+          // Fall through to the retained in-memory slice if reading the disk log fails.
+        }
+      }
       return sliceRetainedOutput(
         Buffer.from(output.text, "utf8"),
         output.droppedBytes,
@@ -577,6 +614,8 @@ export class TaskManager {
       sink.stream.destroy();
     }
     this.#sinks.clear();
+    this.#memoryLogs.clear();
+    this.#logStates.clear();
   }
 
   async close(graceMs = 3_000): Promise<void> {
@@ -631,6 +670,8 @@ export class TaskManager {
         sink.stream.end();
       });
     }
+    this.#memoryLogs.clear();
+    this.#logStates.clear();
   }
 }
 

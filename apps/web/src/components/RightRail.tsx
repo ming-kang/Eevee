@@ -363,6 +363,12 @@ function TaskLogViewer({
             } else if (event.type === "status") {
               onTaskUpdate(taskKey, event.task);
             } else if (event.type === "end") {
+              if (event.reason === "failed" || event.reason === "closed") {
+                setError(
+                  event.message ??
+                    (event.reason === "failed" ? "日志流读取失败" : "日志流连接已中断"),
+                );
+              }
               setStreaming(false);
               setLoading(false);
               return;

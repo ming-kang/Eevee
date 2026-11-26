@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -49,7 +49,7 @@ import {
   RefreshModelsResponseSchema,
   StartLoginResponseSchema,
 } from "@eevee/protocol";
-import { startForegroundEngine } from "../src/index.ts";
+import { EngineStore, startForegroundEngine } from "../src/index.ts";
 
 const MODEL_ID = "faux-1";
 
@@ -1107,8 +1107,47 @@ test("config export omits auth.json secrets, rejects invalid imports upfront, an
         (await clientB.getMcpState()).status.find((s) => s.name === "tools")?.status,
         "connected",
       );
+      if (process.platform !== "win32") {
+        assert.equal((await stat(join(homeB, "models.json"))).mode & 0o777, 0o600);
+      }
     } finally {
       await engineB.close();
+    }
+  });
+});
+
+test("EngineStore.transaction commits nested savepoints and rolls back cleanly on error", async () => {
+  await withTempDir(async (dir) => {
+    const store = EngineStore.open(join(dir, "engine.db"));
+    try {
+      store.setKv("k1", { v: 1 });
+
+      assert.throws(() => {
+        store.transaction(() => {
+          store.setKv("k1", { v: 2 });
+          store.setKv("k2", { v: 2 });
+          throw new Error("boom inside tx");
+        });
+      }, /boom inside tx/);
+
+      assert.deepEqual(store.getKv("k1"), { v: 1 });
+      assert.equal(store.getKv("k2"), undefined);
+
+      store.transaction(() => {
+        store.setKv("k1", { v: 3 });
+        assert.throws(() => {
+          store.transaction(() => {
+            store.setKv("k1", { v: 4 });
+            throw new Error("inner fail");
+          });
+        }, /inner fail/);
+        store.setKv("k2", { v: 3 });
+      });
+
+      assert.deepEqual(store.getKv("k1"), { v: 3 });
+      assert.deepEqual(store.getKv("k2"), { v: 3 });
+    } finally {
+      store.close();
     }
   });
 });
