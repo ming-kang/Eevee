@@ -9,6 +9,8 @@
                      ▲                 │
 @eevee/memory ───────┘                 ▼
                                @eevee/protocol ───▶ @eevee/cli
+                                       │
+                                       └──────────▶ @eevee/web
 ```
 
 | 包 | 路径 | 职责 | 内部依赖 |
@@ -17,8 +19,9 @@
 | `@eevee/memory` | `packages/memory` | 会话级二叉森林记忆（`zoom` / `search`）与独立静默 Dreamer | 无 |
 | `@eevee/core` | `packages/core` | 存储无关的编排逻辑：Project、Router、Worker、Ticket、Question | `agent`, `memory` |
 | `@eevee/protocol` | `packages/protocol` | 运行时无关的 HTTP/SSE Schema 与契约（基于 `pi-schema`） | 无 |
-| `@eevee/engine` | `packages/engine` | 本地 Engine 与 Supervisor：`engine.sqlite`、多项目托管、共享 MCP Hub、HTTP/SSE、崩溃重启与优雅退出 | `agent`, `memory`, `core`, `protocol` |
+| `@eevee/engine` | `packages/engine` | 本地 Engine 与 Supervisor：`engine.sqlite`、多项目托管、共享 MCP Hub、HTTP/SSE、Web 鉴权与静态托管、崩溃重启与优雅退出 | `agent`, `memory`, `core`, `protocol` |
 | `@eevee/cli` | `apps/cli` | 命令行客户端 | `protocol`, `engine` |
+| `@eevee/web` | `apps/web` | 浏览器端工作台（React + Elanor），构建后由 Engine 同源托管 | `protocol` |
 
 ### `@eevee/agent` 内部模块
 
@@ -32,7 +35,7 @@
 
 - **依赖单向**：源码与 `package.json` 必须遵守上表依赖关系，禁止跨包相对路径导入。
 - **扩展隔离**：`packages/agent/src/extensions/<name>/` 下的扩展禁止互相 import。
-- **运行时纯净**：`@eevee/core` 与 `@eevee/memory` 禁止引入 `node:sqlite` / `node:http` / `ws`；`@eevee/protocol` 禁止引入 Node 专属运行时模块。
+- **运行时纯净**：`@eevee/core` 与 `@eevee/memory` 禁止引入 `node:sqlite` / `node:http` / `ws`；`@eevee/protocol` 与 `@eevee/web` 禁止引入 Node 专属运行时模块。
 - **上游约定**：禁止引入 `@earendil-works/chord` 根 host runtime（仅使用 `/context`、`/watch`、`/json`）；生产代码禁止通过 `child_process` 调用 `git`。
 
 ## 角色扩展装配
@@ -52,5 +55,5 @@ Router 与 Worker 共享同一 Agent 底座，差异体现在挂载的扩展：
 ## 源码直跑与构建
 
 - **开发与测试**：内部包通过自定义导出条件 `"eevee-source"` 指向 `./src/*.ts`（避免与 `@earendil-works/*` 发布包内的 `"source"` 字段冲突），`node --conditions=eevee-source` 直接执行 TypeScript 源码，无需预编译。
-- **类型检查**：根 `tsconfig.json` 通过 `paths` 映射源码，`npm run typecheck` 直接全仓校验。
-- **增量构建**：`npm run build` 运行 `tsc -b tsconfig.build.json`，按依赖顺序输出各包 `dist/*.js` 与 `.d.ts`。
+- **类型检查**：根 `tsconfig.json` 通过 `paths` 映射源码，`npm run typecheck` 同时校验主工程与 `apps/web/tsconfig.json`。
+- **增量构建**：`npm run build` 运行 `tsc -b tsconfig.build.json` 并构建 `@eevee/web` 静态产物（`apps/web/dist`），供 Engine 在 `127.0.0.1` 同源托管。
