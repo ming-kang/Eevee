@@ -67,6 +67,32 @@ export const ModelSlotsOverrideSchema = obj({
   dreamer: opt(ModelChoiceSchema),
 });
 
+export const CodemodeModeSchema = oneOf(["off", "on", "only"]);
+export const CodemodeSettingsSchema = obj({
+  mode: opt(CodemodeModeSchema),
+  inlineBudget: opt(int({ minimum: 0 })),
+});
+export const ToolsSettingsSchema = obj({
+  router: opt(map(bool())),
+  worker: opt(map(bool())),
+  codemode: opt(CodemodeSettingsSchema),
+});
+
+export const ROUTER_TOGGLEABLE_TOOLS = ["read", "ls", "find", "grep", "tool_search"] as const;
+export const WORKER_TOGGLEABLE_TOOLS = [
+  "read",
+  "write",
+  "edit",
+  "bash",
+  "powershell",
+  "tasks",
+  "ls",
+  "find",
+  "grep",
+  "tool_search",
+] as const;
+export const WORKER_DEFAULT_DISABLED_TOOLS = ["powershell", "ls", "find", "grep"] as const;
+
 export const ProblemSchema = obj({
   code: str({ minLength: 1 }),
   message: str({ minLength: 1 }),
@@ -86,6 +112,7 @@ export const ProjectSummarySchema = obj({
   workspaces: arr(str({ minLength: 1 }), { minItems: 1 }),
   memory: opt(str()),
   models: opt(ModelSlotsOverrideSchema),
+  tools: opt(ToolsSettingsSchema),
   createdAt: num({ minimum: 0 }),
   updatedAt: num({ minimum: 0 }),
 });
@@ -95,6 +122,7 @@ export const CreateProjectRequestSchema = obj({
   workspaces: arr(str({ minLength: 1 }), { minItems: 1 }),
   memory: opt(str()),
   models: opt(ModelSlotsOverrideSchema),
+  tools: opt(ToolsSettingsSchema),
 });
 
 export const CreateProjectResponseSchema = obj({
@@ -523,6 +551,7 @@ export const EngineSettingsSchema = obj({
   routerContextTokens: opt(int({ minimum: 1 })),
   idleHibernateMs: opt(int({ minimum: 0 })),
   models: opt(ModelSlotsOverrideSchema),
+  tools: opt(ToolsSettingsSchema),
 });
 
 export const ConfigBundleSchema = obj({
@@ -538,6 +567,7 @@ export const UpdateProjectRequestSchema = obj({
   workspaces: opt(arr(str({ minLength: 1 }), { minItems: 1 })),
   memory: opt(nullable(str())),
   models: opt(nullable(ModelSlotsOverrideSchema)),
+  tools: opt(nullable(ToolsSettingsSchema)),
 });
 
 export const DeleteProjectResponseSchema = obj({
@@ -600,6 +630,9 @@ export type WhenBusy = Static<typeof WhenBusySchema>;
 export type SubmissionStatus = Static<typeof SubmissionStatusSchema>;
 export type ModelChoice = Static<typeof ModelChoiceSchema>;
 export type ModelSlotsOverride = Static<typeof ModelSlotsOverrideSchema>;
+export type CodemodeMode = Static<typeof CodemodeModeSchema>;
+export type CodemodeSettings = Static<typeof CodemodeSettingsSchema>;
+export type ToolsSettings = Static<typeof ToolsSettingsSchema>;
 export type Problem = Static<typeof ProblemSchema>;
 export type HealthResponse = Static<typeof HealthResponseSchema>;
 export type ProjectSummary = Static<typeof ProjectSummarySchema>;

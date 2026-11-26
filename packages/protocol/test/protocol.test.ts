@@ -62,6 +62,7 @@ import {
   ReconnectMcpResponseSchema,
   RefreshModelsRequestSchema,
   RefreshModelsResponseSchema,
+  ROUTER_TOGGLEABLE_TOOLS,
   ScanOrderSchema,
   SchemaValidationError,
   SendMessageRequestSchema,
@@ -84,11 +85,14 @@ import {
   TicketIdSchema,
   TicketRecordSchema,
   TicketStatusSchema,
+  ToolsSettingsSchema,
   UpdateProjectRequestSchema,
   UpsertMcpServerRequestSchema,
   UsageMetricsSchema,
   UsageStateSchema,
   WhenBusySchema,
+  WORKER_DEFAULT_DISABLED_TOOLS,
+  WORKER_TOGGLEABLE_TOOLS,
   WorkerBoardItemSchema,
   WorkerIdSchema,
   WorkerStatusSchema,
@@ -299,6 +303,56 @@ test("protocol schemas validate IDs, enums, project, message, board, and stream 
     () => parseWithSchema(SendMessageRequestSchema, { text: "" }, "send request"),
     SchemaValidationError,
   );
+});
+
+test("tool settings schemas validate policies, project overrides, and canonical tool metadata", () => {
+  const tools = {
+    router: { read: true, ls: false },
+    worker: { bash: false, powershell: true, grep: true },
+    codemode: { mode: "only", inlineBudget: 0 },
+  };
+  assert.equal(compile(ToolsSettingsSchema).check(tools), true);
+  assert.equal(compile(ToolsSettingsSchema).check({}), true);
+  assert.equal(compile(ToolsSettingsSchema).check({ codemode: { mode: "automatic" } }), false);
+  assert.equal(compile(ToolsSettingsSchema).check({ codemode: { inlineBudget: -1 } }), false);
+  assert.equal(compile(ToolsSettingsSchema).check({ codemode: { inlineBudget: 1.5 } }), false);
+  assert.equal(compile(ToolsSettingsSchema).check({ worker: { bash: "yes" } }), false);
+
+  assert.equal(compile(EngineSettingsSchema).check({ tools }), true);
+  const project = {
+    id: "tools-demo",
+    title: "Tools Demo",
+    workspaces: ["/tmp/tools-demo"],
+    tools,
+    createdAt: 1,
+    updatedAt: 2,
+  };
+  assert.equal(compile(ProjectSummarySchema).check(project), true);
+  assert.equal(
+    compile(CreateProjectRequestSchema).check({ workspaces: ["/tmp/tools-demo"], tools }),
+    true,
+  );
+  assert.equal(compile(UpdateProjectRequestSchema).check({ tools }), true);
+  assert.equal(compile(UpdateProjectRequestSchema).check({ tools: null }), true);
+  assert.equal(
+    compile(CreateProjectRequestSchema).check({ workspaces: ["/tmp"], tools: null }),
+    false,
+  );
+
+  assert.deepEqual(ROUTER_TOGGLEABLE_TOOLS, ["read", "ls", "find", "grep", "tool_search"]);
+  assert.deepEqual(WORKER_TOGGLEABLE_TOOLS, [
+    "read",
+    "write",
+    "edit",
+    "bash",
+    "powershell",
+    "tasks",
+    "ls",
+    "find",
+    "grep",
+    "tool_search",
+  ]);
+  assert.deepEqual(WORKER_DEFAULT_DISABLED_TOOLS, ["powershell", "ls", "find", "grep"]);
 });
 
 test("parseSseStream handles chunk splits, CRLF/LF/CR, multi-line data, id, comments, and cancellation", async () => {

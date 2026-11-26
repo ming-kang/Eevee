@@ -18,6 +18,7 @@ import {
   type ModelProfilesDocument,
   ModelProfilesDocumentSchema,
   parseWithSchema,
+  type ToolsSettings,
 } from "@eevee/protocol";
 import type { DataDirLayout } from "./data-dir.ts";
 import { EngineError } from "./engine-error.ts";
@@ -93,6 +94,30 @@ export function getMcpServersRecord(store: EngineStore): Record<string, Record<s
   return store.getKv<Record<string, Record<string, unknown>>>(KV_MCP_SERVERS) ?? {};
 }
 
+export function mergeToolsSettings(
+  base: ToolsSettings | undefined,
+  patch: ToolsSettings | undefined,
+): ToolsSettings | undefined {
+  if (base === undefined && patch === undefined) return undefined;
+  const router =
+    base?.router === undefined && patch?.router === undefined
+      ? undefined
+      : { ...base?.router, ...patch?.router };
+  const worker =
+    base?.worker === undefined && patch?.worker === undefined
+      ? undefined
+      : { ...base?.worker, ...patch?.worker };
+  const codemode =
+    base?.codemode === undefined && patch?.codemode === undefined
+      ? undefined
+      : { ...base?.codemode, ...patch?.codemode };
+  return {
+    ...(router === undefined ? {} : { router }),
+    ...(worker === undefined ? {} : { worker }),
+    ...(codemode === undefined ? {} : { codemode }),
+  };
+}
+
 export function mergeEngineSettings(
   current: EngineSettings,
   validated: EngineSettings,
@@ -104,6 +129,10 @@ export function mergeEngineSettings(
           ...current.models,
           ...validated.models,
         };
+  const mergedTools =
+    validated.tools === undefined
+      ? current.tools
+      : mergeToolsSettings(current.tools, validated.tools);
   return {
     ...(validated.maxActiveWorkers !== undefined
       ? { maxActiveWorkers: validated.maxActiveWorkers }
@@ -126,6 +155,7 @@ export function mergeEngineSettings(
         ? { idleHibernateMs: current.idleHibernateMs }
         : {}),
     ...(mergedModels !== undefined ? { models: mergedModels } : {}),
+    ...(mergedTools !== undefined ? { tools: mergedTools } : {}),
   };
 }
 
@@ -143,10 +173,13 @@ export type EngineKnobs = {
   readonly backgroundAfterMs: () => number;
   readonly routerContextTokens: () => number;
   readonly idleHibernateMs: () => number;
+  readonly toolPolicy: (projectId: string) => ToolsSettings | undefined;
 };
 
 export function engineKnobs(store: EngineStore, defaults: EngineDefaults): EngineKnobs {
   return {
+    toolPolicy: (projectId) =>
+      mergeToolsSettings(effectiveEngineSettings(store).tools, store.getProject(projectId)?.tools),
     modelSlots: (projectId) => {
       const project = store.getProject(projectId);
       const settingsModels = effectiveEngineSettings(store).models;

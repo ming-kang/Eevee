@@ -463,6 +463,9 @@ export class Engine {
       if (patch.workspaces !== undefined) {
         await openHandle.reconfigureWorkspaces(updated.workspaces);
       }
+      if (patch.tools !== undefined) {
+        await openHandle.reconfigureTools();
+      }
     }
     return { project: updated };
   }

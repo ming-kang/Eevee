@@ -4,10 +4,12 @@ import { connectLocalEngine } from "@eevee/engine";
 import { ConfigBundleSchema, type EngineSettings, parseWithSchema } from "@eevee/protocol";
 import type { Command } from "commander";
 import {
+  collectRepeatedFlag,
   hasModelSlots,
   parseModelSlotFlags,
   parseNonNegativeIntFlag,
   parsePositiveIntFlag,
+  parseToolsSettingsFlags,
   readJsonInput,
 } from "../args.ts";
 import { formatSettings } from "../format.ts";
@@ -41,6 +43,17 @@ export function registerConfigCommands(program: Command, env: NodeJS.ProcessEnv)
     .option("--router-model <provider/modelId>", "Default Router model")
     .option("--worker-model <provider/modelId>", "Default Worker model")
     .option("--dreamer-model <provider/modelId>", "Default Dreamer model")
+    .option("--router-tools <specs>", "Toggle Router tools, e.g. -ls,+grep", collectRepeatedFlag)
+    .option(
+      "--worker-tools <specs>",
+      "Toggle Worker tools, e.g. -bash,+powershell,+grep",
+      collectRepeatedFlag,
+    )
+    .option("--codemode-mode <mode>", "Codemode mode: off, on, or only")
+    .option(
+      "--codemode-inline-budget <n>",
+      "Estimated token budget for inline codemode declarations",
+    )
     .option("--json", "Output JSON")
     .action(
       async (options: {
@@ -51,9 +64,14 @@ export function registerConfigCommands(program: Command, env: NodeJS.ProcessEnv)
         routerModel?: string;
         workerModel?: string;
         dreamerModel?: string;
+        routerTools?: string | readonly string[];
+        workerTools?: string | readonly string[];
+        codemodeMode?: string;
+        codemodeInlineBudget?: string;
         json?: boolean;
       }) => {
         const models = parseModelSlotFlags(options);
+        const tools = parseToolsSettingsFlags(options);
 
         const patch: EngineSettings = {
           ...(options.maxActiveWorkers === undefined
@@ -89,6 +107,7 @@ export function registerConfigCommands(program: Command, env: NodeJS.ProcessEnv)
                 ),
               }),
           ...(hasModelSlots(models) ? { models } : {}),
+          ...(tools === undefined ? {} : { tools }),
         };
 
         if (Object.keys(patch).length === 0) {

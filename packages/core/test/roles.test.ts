@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createModels, fauxProvider } from "@earendil-works/pi-ai";
-import { createRegistry, defineExtension } from "@earendil-works/pi-durable";
+import { createRegistry, defineExtension, defineTool } from "@earendil-works/pi-durable";
+import { obj } from "@earendil-works/pi-schema";
 import { AGENT_EXTENSIONS, BASE_EXTENSION, MCP_SERVER_EXTENSION_PREFIX } from "@eevee/agent";
 import { MEMORY_EXTENSION } from "@eevee/memory";
 import {
@@ -13,11 +14,46 @@ import {
   ROUTER_EXTENSIONS,
   ROUTER_PREAMBLE,
   resolveRoleExtensions,
+  resolveRoleToolFilters,
   WORKER_COLLAB_TOOLS,
   WORKER_EXTENSION,
   WORKER_EXTENSIONS,
   WORKER_PREAMBLE,
 } from "../src/index.ts";
+
+function dummyTool(name: string) {
+  return defineTool({
+    name,
+    description: name,
+    parameters: obj({}),
+    execute: async () => ({ output: [] }),
+  });
+}
+
+function policyRegistry() {
+  const registry = createRegistry();
+  registry.install(defineExtension({ name: BASE_EXTENSION }));
+  registry.install(
+    defineExtension({
+      name: AGENT_EXTENSIONS.readonlyTools,
+      tools: ["read", "ls", "find", "grep", "tool_search"].map(dummyTool),
+    }),
+  );
+  registry.install(
+    defineExtension({
+      name: AGENT_EXTENSIONS.codingTools,
+      tools: ["read", "write", "edit", "bash", "powershell", "ls", "find", "grep"].map(dummyTool),
+    }),
+  );
+  registry.install(
+    defineExtension({ name: AGENT_EXTENSIONS.codemode, tools: [dummyTool("codemode")] }),
+  );
+  return registry;
+}
+
+function removedToolNames(filter: ReturnType<typeof resolveRoleToolFilters>["tools"]): string[] {
+  return (filter?.remove ?? []).map((tool) => tool.name);
+}
 
 test("Router uses readonly tools and binary-forest memory in prompt-cache extension order", () => {
   assert.deepEqual(ROUTER_EXTENSIONS, [
@@ -98,5 +134,73 @@ test("resolveRoleExtensions uses installed base, role, and MCP server extensions
   assert.deepEqual(
     resolveRoleExtensions("router", withoutMcpHub.snapshot()).map((extension) => extension.name),
     [BASE_EXTENSION, ROUTER_EXTENSION],
+  );
+});
+
+test("resolveRoleExtensions omits codemode only when policy mode is off", () => {
+  const registry = policyRegistry();
+  const withoutCodemode = resolveRoleExtensions("worker", registry.snapshot(), {
+    codemode: { mode: "off" },
+  });
+  assert.equal(
+    withoutCodemode.some((extension) => extension.name === AGENT_EXTENSIONS.codemode),
+    false,
+  );
+  assert.equal(
+    resolveRoleExtensions("worker", registry.snapshot(), {
+      codemode: { mode: "on" },
+    }).some((extension) => extension.name === AGENT_EXTENSIONS.codemode),
+    true,
+  );
+  assert.equal(
+    resolveRoleExtensions("worker", registry.snapshot()).some(
+      (extension) => extension.name === AGENT_EXTENSIONS.codemode,
+    ),
+    true,
+  );
+});
+
+test("resolveRoleToolFilters applies Worker defaults and per-tool overrides", () => {
+  const registry = policyRegistry();
+  const extensions = resolveRoleExtensions("worker", registry.snapshot());
+  const defaults = resolveRoleToolFilters("worker", extensions);
+  assert.deepEqual(removedToolNames(defaults.tools), ["powershell", "ls", "find", "grep"]);
+  assert.equal(defaults.modelTools, null);
+
+  const powerShellWithoutBash = resolveRoleToolFilters("worker", extensions, {
+    worker: { powershell: true, bash: false },
+  });
+  assert.deepEqual(removedToolNames(powerShellWithoutBash.tools), ["bash", "ls", "find", "grep"]);
+
+  const withGrep = resolveRoleToolFilters("worker", extensions, {
+    worker: { grep: true },
+  });
+  assert.deepEqual(removedToolNames(withGrep.tools), ["powershell", "ls", "find"]);
+});
+
+test("resolveRoleToolFilters applies Router overrides and codemode-only model filtering", () => {
+  const registry = policyRegistry();
+  const routerExtensions = resolveRoleExtensions("router", registry.snapshot());
+  const router = resolveRoleToolFilters("router", routerExtensions, {
+    router: { ls: false },
+  });
+  assert.deepEqual(removedToolNames(router.tools), ["ls"]);
+  assert.equal(router.modelTools, null);
+
+  const workerExtensions = resolveRoleExtensions("worker", registry.snapshot(), {
+    codemode: { mode: "only" },
+  });
+  const only = resolveRoleToolFilters("worker", workerExtensions, {
+    codemode: { mode: "only" },
+  });
+  assert.deepEqual(removedToolNames(only.modelTools), ["read", "write", "edit", "bash"]);
+  assert.deepEqual(removedToolNames(only.tools), ["powershell", "ls", "find", "grep"]);
+
+  const offExtensions = resolveRoleExtensions("worker", registry.snapshot(), {
+    codemode: { mode: "off" },
+  });
+  assert.equal(
+    resolveRoleToolFilters("worker", offExtensions, { codemode: { mode: "off" } }).modelTools,
+    null,
   );
 });

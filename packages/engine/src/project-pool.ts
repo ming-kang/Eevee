@@ -204,6 +204,7 @@ export class ProjectPool {
     await Promise.all(
       [...this.#projects.entries()].map(async ([projectId, entry]) => {
         await entry.handle.reconfigureRouterModel(this.#deps.knobs.modelSlots(projectId).router);
+        await entry.handle.reconfigureTools();
         entry.handle.requestPump();
       }),
     );
@@ -307,6 +308,7 @@ export class ProjectPool {
         maxActiveWorkers: () => knobs.maxActiveWorkers(),
         backgroundAfterMs: () => knobs.backgroundAfterMs(),
         routerContextTokens: () => knobs.routerContextTokens(),
+        toolPolicy: () => knobs.toolPolicy(project.id),
         taskLogPath: (conversationId, taskId) =>
           join(paths.logsDir, `${conversationId}-${taskId}.log`),
         ...(this.#deps.onReport === undefined

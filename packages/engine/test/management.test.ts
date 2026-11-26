@@ -541,6 +541,156 @@ test("settings, model profiles, project update, and memory take effect live on t
   });
 });
 
+test("tool settings merge with project overrides, propagate live, and persist across SQLite reopen", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws = join(dir, "ws");
+    await mkdir(ws, { recursive: true });
+    const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+
+    let foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      models,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+        worker: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+    });
+
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      const created = await client.createProject({
+        workspaces: [ws],
+        title: "Tool policy",
+        tools: { router: { ls: true }, codemode: { mode: "on" } },
+      });
+      const projectId = created.project.id;
+      assert.deepEqual(created.project.tools, {
+        router: { ls: true },
+        codemode: { mode: "on" },
+      });
+
+      await client.patchSettings({
+        tools: {
+          router: { ls: false, grep: false },
+          worker: { bash: false, powershell: true },
+          codemode: { mode: "off", inlineBudget: 4_321 },
+        },
+      });
+      const handle = await foreground.engine.openProject(projectId);
+      const initial = await handle.root.agent(BACKGROUND_CONTEXT);
+      const initialNames = initial.tools.map((tool) => tool.name);
+      assert.ok(initialNames.includes("ls"));
+      assert.equal(initialNames.includes("grep"), false);
+      assert.ok(initialNames.includes("codemode"));
+
+      const overridden = await client.updateProject(projectId, {
+        tools: {
+          router: { read: false, ls: false },
+          worker: { grep: true },
+          codemode: { mode: "only" },
+        },
+      });
+      assert.deepEqual(overridden.project.tools, {
+        router: { read: false, ls: false },
+        worker: { grep: true },
+        codemode: { mode: "only" },
+      });
+      const only = await handle.root.agent(BACKGROUND_CONTEXT);
+      assert.deepEqual(
+        only.tools.map((tool) => tool.name),
+        ["codemode"],
+      );
+      assert.equal(
+        only.callable.some((tool) => tool.name === "read"),
+        false,
+      );
+      assert.equal(
+        only.callable.some((tool) => tool.name === "ls"),
+        false,
+      );
+      assert.equal(
+        only.callable.some((tool) => tool.name === "grep"),
+        false,
+      );
+
+      const globallyUpdated = await client.patchSettings({
+        tools: { router: { grep: true }, codemode: { mode: "on" } },
+      });
+      assert.deepEqual(globallyUpdated.tools, {
+        router: { ls: false, grep: true },
+        worker: { bash: false, powershell: true },
+        codemode: { mode: "on", inlineBudget: 4_321 },
+      });
+      const stillOnly = await handle.root.agent(BACKGROUND_CONTEXT);
+      assert.deepEqual(
+        stillOnly.tools.map((tool) => tool.name),
+        ["codemode"],
+      );
+      assert.ok(stillOnly.callable.some((tool) => tool.name === "grep"));
+
+      const cleared = await client.updateProject(projectId, { tools: null });
+      assert.equal(cleared.project.tools, undefined);
+      const inherited = await handle.root.agent(BACKGROUND_CONTEXT);
+      const inheritedNames = inherited.tools.map((tool) => tool.name);
+      assert.ok(inheritedNames.includes("read"));
+      assert.ok(inheritedNames.includes("grep"));
+      assert.ok(inheritedNames.includes("codemode"));
+      assert.equal(inheritedNames.includes("ls"), false);
+
+      const persistedTools = {
+        router: { read: false },
+        worker: { powershell: true, grep: true },
+        codemode: { mode: "off" as const, inlineBudget: 123 },
+      };
+      await client.updateProject(projectId, { tools: persistedTools });
+      const exported = await client.exportConfig();
+      assert.deepEqual(exported.settings.tools, globallyUpdated.tools);
+    } finally {
+      await foreground.close();
+    }
+
+    foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      models,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+        worker: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+    });
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      const reopenedProject = (await client.listProjects()).projects.find(
+        (project) => project.title === "Tool policy",
+      );
+      assert.deepEqual(reopenedProject?.tools, {
+        router: { read: false },
+        worker: { powershell: true, grep: true },
+        codemode: { mode: "off", inlineBudget: 123 },
+      });
+      assert.deepEqual((await client.getSettings()).tools, {
+        router: { ls: false, grep: true },
+        worker: { bash: false, powershell: true },
+        codemode: { mode: "on", inlineBudget: 4_321 },
+      });
+      assert.ok(reopenedProject);
+      const handle = await foreground.engine.openProject(reopenedProject.id);
+      const reopened = await handle.root.agent(BACKGROUND_CONTEXT);
+      const reopenedNames = reopened.tools.map((tool) => tool.name);
+      assert.equal(reopenedNames.includes("read"), false);
+      assert.equal(reopenedNames.includes("ls"), false);
+      assert.ok(reopenedNames.includes("grep"));
+      assert.equal(reopenedNames.includes("codemode"), false);
+    } finally {
+      await foreground.close();
+    }
+  });
+});
+
 test("shared McpHub propagates live MCP reloads to multiple open projects and supports reconnect", async () => {
   await withTempDir(async (dir) => {
     const home = join(dir, "home");
@@ -886,6 +1036,11 @@ test("config export omits auth.json secrets, rejects invalid imports upfront, an
         routerContextTokens: 90_000,
         idleHibernateMs: 45_000,
         models: { router: { provider: "custom", modelId: "custom-1" } },
+        tools: {
+          router: { ls: false, grep: true },
+          worker: { bash: false, powershell: true },
+          codemode: { mode: "only", inlineBudget: 2_500 },
+        },
       });
       await clientA.putModelProfiles({
         profiles: [

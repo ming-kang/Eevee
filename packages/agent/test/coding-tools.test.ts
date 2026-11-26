@@ -274,6 +274,19 @@ test("powershell is opt-in only", () => {
   ]);
 });
 
+test("search tools are opt-in for coding-tools", () => {
+  const coding = createCodingToolsExtension({ searchTools: true });
+  assert.deepEqual((coding.tools ?? []).map((tool) => tool.name).sort(), [
+    "bash",
+    "edit",
+    "find",
+    "grep",
+    "ls",
+    "read",
+    "write",
+  ]);
+});
+
 test("readonly tools are replay-safe", () => {
   for (const tool of [lsTool, findTool, grepTool]) {
     assert.equal(tool.replay, "safe");

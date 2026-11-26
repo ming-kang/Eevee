@@ -1,8 +1,9 @@
 import { DownloadIcon, UploadIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Field, Heading, Input, Separator, TextArea } from "@earendil-works/elanor-react";
-import type { ConfigBundle, EngineSettings, ModelChoice } from "@eevee/protocol";
+import type { ConfigBundle, EngineSettings, ModelChoice, ToolsSettings } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { resolveToolsSettings, ToolsSettingsEditor } from "./ToolsSettingsEditor.tsx";
 
 function formatChoice(choice: ModelChoice | undefined): string {
   if (!choice) return "";
@@ -38,6 +39,8 @@ export function ConfigTab() {
   const [routerModel, setRouterModel] = useState("");
   const [workerModel, setWorkerModel] = useState("");
   const [dreamerModel, setDreamerModel] = useState("");
+  const [tools, setTools] = useState<ToolsSettings | undefined>(undefined);
+  const [inlineBudget, setInlineBudget] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -57,6 +60,8 @@ export function ConfigTab() {
       setRouterModel(formatChoice(settings.models?.router));
       setWorkerModel(formatChoice(settings.models?.worker));
       setDreamerModel(formatChoice(settings.models?.dreamer));
+      setTools(settings.tools);
+      setInlineBudget(String(settings.tools?.codemode?.inlineBudget ?? ""));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -83,12 +88,14 @@ export function ConfigTab() {
             }
           : undefined;
 
+      const nextTools = resolveToolsSettings(tools, inlineBudget, "global");
       const next: EngineSettings = {
         maxActiveWorkers: Number(maxActiveWorkers),
         backgroundAfterMs: Number(backgroundAfterMs),
         routerContextTokens: Number(routerContextTokens),
         idleHibernateMs: Number(idleHibernateMs),
         ...(models ? { models } : {}),
+        ...(nextTools ? { tools: nextTools } : {}),
       };
       await api.putSettings(next);
       setSaved(true);
@@ -198,7 +205,22 @@ export function ConfigTab() {
               />
             </Field.Root>
           </div>
+        </div>
+      </div>
 
+      <div className="ev-settings-section">
+        <Heading level={2} size={5}>
+          工具与 Codemode
+        </Heading>
+        <div className="ev-settings-card">
+          <ToolsSettingsEditor
+            variant="global"
+            value={tools}
+            onChange={setTools}
+            inlineBudget={inlineBudget}
+            onInlineBudgetChange={setInlineBudget}
+          />
+          <Separator />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Button
               hierarchy="primary"

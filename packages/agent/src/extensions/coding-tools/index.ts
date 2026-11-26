@@ -1,4 +1,4 @@
-import { defineExtension } from "@earendil-works/pi-durable";
+import { defineExtension, type ToolRegistration } from "@earendil-works/pi-durable";
 import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
 import {
   type BashToolOptions,
@@ -22,6 +22,7 @@ export type CodingToolsOptions = {
   readonly images?: ImageProcessor;
   readonly bash?: BashToolOptions;
   readonly powerShell?: boolean | PowerShellToolOptions;
+  readonly searchTools?: boolean;
 };
 
 function lazyPhotonImages(): ImageProcessor {
@@ -73,7 +74,7 @@ export function createCodingToolsExtension(options: CodingToolsOptions = {}) {
       "Use bash for builds, tests, and system commands. Quote paths with spaces, prefer non-interactive commands, and use POSIX shell syntax (/dev/null, not NUL or $null).",
     ],
   });
-  const tools = [readTool(options.images), writeTool, editTool, bashTool];
+  const tools: ToolRegistration[] = [readTool(options.images), writeTool, editTool, bashTool];
   if (options.powerShell !== undefined && options.powerShell !== false) {
     const powerShellTool = withToolPromptMeta(
       createPowerShellTool(options.powerShell === true ? {} : options.powerShell) as never,
@@ -87,6 +88,7 @@ export function createCodingToolsExtension(options: CodingToolsOptions = {}) {
     );
     tools.push(powerShellTool);
   }
+  if (options.searchTools === true) tools.push(lsTool, findTool, grepTool);
   return defineExtension({
     name: CODING_TOOLS_EXTENSION,
     tools,

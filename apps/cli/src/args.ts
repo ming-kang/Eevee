@@ -1,11 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
+  CodemodeModeSchema,
   type ConversationRef,
   ConversationRefSchema,
   type ModelChoice,
   type ModelSlotsOverride,
   parseWithSchema,
+  type ToolsSettings,
 } from "@eevee/protocol";
 
 export function parsePort(raw: string): number {
@@ -94,6 +96,94 @@ export function parseModelSlotFlags(options: {
 
 export function hasModelSlots(models: ModelSlotsOverride): boolean {
   return models.router !== undefined || models.worker !== undefined || models.dreamer !== undefined;
+}
+
+export function collectRepeatedFlag(value: string, previous: string[] = []): string[] {
+  return [...previous, value];
+}
+
+function invalidToolOverrideToken(flagName: string, token: string): Error {
+  return new Error(
+    `Invalid ${flagName} token "${token}": expected +name, -name, or name=true|false|on|off|1|0`,
+  );
+}
+
+export function parseToolOverridesFlag(
+  raw: string | readonly string[] | undefined,
+  flagName: string,
+): Record<string, boolean> | undefined {
+  if (raw === undefined) return undefined;
+  const specs = typeof raw === "string" ? [raw] : raw;
+  if (specs.length === 0) return undefined;
+
+  const record: Record<string, boolean> = {};
+  for (const spec of specs) {
+    for (const part of spec.split(",")) {
+      const token = part.trim();
+      const prefix = token[0];
+      if (prefix === "+" || prefix === "-") {
+        const name = token.slice(1);
+        if (name.length === 0) {
+          throw new Error(`Invalid ${flagName} token "${token}": tool name must not be empty`);
+        }
+        if (name.includes("=") || /\s/.test(name)) {
+          throw invalidToolOverrideToken(flagName, token);
+        }
+        record[name] = prefix === "+";
+        continue;
+      }
+
+      const equals = token.indexOf("=");
+      if (equals < 0) throw invalidToolOverrideToken(flagName, token);
+      const name = token.slice(0, equals);
+      if (name.length === 0) {
+        throw new Error(`Invalid ${flagName} token "${token}": tool name must not be empty`);
+      }
+      if (/\s/.test(name)) throw invalidToolOverrideToken(flagName, token);
+
+      const value = token.slice(equals + 1);
+      if (value === "true" || value === "on" || value === "1") {
+        record[name] = true;
+      } else if (value === "false" || value === "off" || value === "0") {
+        record[name] = false;
+      } else {
+        throw invalidToolOverrideToken(flagName, token);
+      }
+    }
+  }
+  return record;
+}
+
+export function parseToolsSettingsFlags(options: {
+  readonly routerTools?: string | readonly string[];
+  readonly workerTools?: string | readonly string[];
+  readonly codemodeMode?: string;
+  readonly codemodeInlineBudget?: string;
+}): ToolsSettings | undefined {
+  const router = parseToolOverridesFlag(options.routerTools, "--router-tools");
+  const worker = parseToolOverridesFlag(options.workerTools, "--worker-tools");
+  const mode =
+    options.codemodeMode === undefined
+      ? undefined
+      : parseWithSchema(CodemodeModeSchema, options.codemodeMode, "--codemode-mode");
+  const inlineBudget =
+    options.codemodeInlineBudget === undefined
+      ? undefined
+      : parseNonNegativeIntFlag(options.codemodeInlineBudget, "--codemode-inline-budget");
+  const codemode =
+    mode === undefined && inlineBudget === undefined
+      ? undefined
+      : {
+          ...(mode === undefined ? {} : { mode }),
+          ...(inlineBudget === undefined ? {} : { inlineBudget }),
+        };
+
+  if (router === undefined && worker === undefined && codemode === undefined) return undefined;
+  return {
+    ...(router === undefined ? {} : { router }),
+    ...(worker === undefined ? {} : { worker }),
+    ...(codemode === undefined ? {} : { codemode }),
+  };
 }
 
 export function installSignalAbort(controller: AbortController): () => void {

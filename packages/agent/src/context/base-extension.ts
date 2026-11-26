@@ -40,7 +40,7 @@ function renderContextFiles(files: readonly ContextFile[]): string | undefined {
 
 function renderSkills(
   skills: readonly SkillInfo[],
-  reader: "read" | "bash" | undefined,
+  reader: "read" | "bash" | "powershell" | "codemode" | undefined,
 ): string | undefined {
   if (reader === undefined) return undefined;
   const visible = skills.filter((skill) => !skill.disableModelInvocation);
@@ -51,9 +51,13 @@ function renderSkills(
         `  <skill>\n    <name>${escapeXml(skill.name)}</name>\n    <description>${escapeXml(skill.description)}</description>\n    <location>${escapeXml(skill.path)}</location>\n  </skill>`,
     )
     .join("\n");
+  const instruction =
+    reader === "codemode"
+      ? "Use codemode (tools.read) to load a skill's file when the task matches its description."
+      : `Use ${reader} to load a skill's file when the task matches its description.`;
   return [
     "The following skills provide specialized instructions for specific tasks.",
-    `Use ${reader} to load a skill's file when the task matches its description.`,
+    instruction,
     "Resolve relative paths against the skill's directory (parent of SKILL.md). Use absolute paths in tool calls.",
     "",
     "<available_skills>",
@@ -62,9 +66,16 @@ function renderSkills(
   ].join("\n");
 }
 
-function skillReader(toolNames: readonly string[]): "read" | "bash" | undefined {
+function skillReader(
+  agent: PromptInput["agent"],
+): "read" | "bash" | "powershell" | "codemode" | undefined {
+  const toolNames = agent.tools.map((tool) => tool.name);
   if (toolNames.includes("read")) return "read";
   if (toolNames.includes("bash")) return "bash";
+  if (toolNames.includes("powershell")) return "powershell";
+  if (toolNames.includes("codemode") && agent.callable.some((tool) => tool.name === "read")) {
+    return "codemode";
+  }
   return undefined;
 }
 
@@ -103,7 +114,7 @@ export function createBaseExtension(options: BaseExtensionOptions = {}) {
       }),
       section("skills", async (input) => {
         const discovery = await discoverOnce(input);
-        const reader = skillReader(input.agent.tools.map((tool) => tool.name));
+        const reader = skillReader(input.agent);
         return renderSkills(discovery.skills, reader);
       }),
     ],

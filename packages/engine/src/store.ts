@@ -1,13 +1,19 @@
 import { mkdirSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { CreateProjectRequest, ModelSlotsOverride, ProjectSummary } from "@eevee/protocol";
+import type {
+  CreateProjectRequest,
+  ModelSlotsOverride,
+  ProjectSummary,
+  ToolsSettings,
+} from "@eevee/protocol";
 
 export type UpdateProjectInput = {
   readonly title?: string;
   readonly workspaces?: readonly string[];
   readonly memory?: string | null;
   readonly models?: ModelSlotsOverride | null;
+  readonly tools?: ToolsSettings | null;
 };
 
 type ProjectRow = {
@@ -16,6 +22,7 @@ type ProjectRow = {
   readonly workspaces_json: string;
   readonly memory: string | null;
   readonly models_json: string | null;
+  readonly tools_json: string | null;
   readonly created_at: number;
   readonly updated_at: number;
 };
@@ -38,12 +45,14 @@ function rowToProject(row: ProjectRow): ProjectSummary {
   const workspaces = JSON.parse(row.workspaces_json) as string[];
   const models =
     row.models_json === null ? undefined : (JSON.parse(row.models_json) as ModelSlotsOverride);
+  const tools = row.tools_json === null ? undefined : (JSON.parse(row.tools_json) as ToolsSettings);
   return {
     id: row.id,
     title: row.title,
     workspaces,
     ...(row.memory === null ? {} : { memory: row.memory }),
     ...(models === undefined ? {} : { models }),
+    ...(tools === undefined ? {} : { tools }),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -86,6 +95,7 @@ export class EngineStore {
         workspaces_json TEXT NOT NULL,
         memory TEXT,
         models_json TEXT,
+        tools_json TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
@@ -95,6 +105,12 @@ export class EngineStore {
         updated_at INTEGER NOT NULL
       );
     `);
+    const projectColumns = db.prepare("PRAGMA table_info(projects)").all() as {
+      readonly name: string;
+    }[];
+    if (!projectColumns.some((column) => column.name === "tools_json")) {
+      db.exec("ALTER TABLE projects ADD COLUMN tools_json TEXT");
+    }
     return new EngineStore(db);
   }
 
@@ -110,6 +126,7 @@ export class EngineStore {
     const workspacesJson = JSON.stringify(workspaces);
     const memory = input.memory ?? null;
     const modelsJson = input.models === undefined ? null : JSON.stringify(input.models);
+    const toolsJson = input.tools === undefined ? null : JSON.stringify(input.tools);
 
     this.#db.exec("BEGIN IMMEDIATE;");
     try {
@@ -123,10 +140,10 @@ export class EngineStore {
 
       this.#db
         .prepare(
-          `INSERT INTO projects (id, title, workspaces_json, memory, models_json, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO projects (id, title, workspaces_json, memory, models_json, tools_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(id, title, workspacesJson, memory, modelsJson, now, now);
+        .run(id, title, workspacesJson, memory, modelsJson, toolsJson, now, now);
 
       this.#db.exec("COMMIT;");
       return {
@@ -135,6 +152,7 @@ export class EngineStore {
         workspaces,
         ...(memory === null ? {} : { memory }),
         ...(input.models === undefined ? {} : { models: input.models }),
+        ...(input.tools === undefined ? {} : { tools: input.tools }),
         createdAt: now,
         updatedAt: now,
       };
@@ -147,7 +165,7 @@ export class EngineStore {
   listProjects(): ProjectSummary[] {
     const rows = this.#db
       .prepare(
-        `SELECT id, title, workspaces_json, memory, models_json, created_at, updated_at
+        `SELECT id, title, workspaces_json, memory, models_json, tools_json, created_at, updated_at
          FROM projects
          ORDER BY created_at ASC, id ASC`,
       )
@@ -158,7 +176,7 @@ export class EngineStore {
   getProject(id: string): ProjectSummary | undefined {
     const row = this.#db
       .prepare(
-        `SELECT id, title, workspaces_json, memory, models_json, created_at, updated_at
+        `SELECT id, title, workspaces_json, memory, models_json, tools_json, created_at, updated_at
          FROM projects
          WHERE id = ?`,
       )
@@ -199,12 +217,14 @@ export class EngineStore {
           : patch.models !== undefined
             ? patch.models
             : existing.models;
+      const nextTools =
+        patch.tools === null ? undefined : patch.tools !== undefined ? patch.tools : existing.tools;
       const updatedAt = Date.now();
 
       this.#db
         .prepare(
           `UPDATE projects
-           SET title = ?, workspaces_json = ?, memory = ?, models_json = ?, updated_at = ?
+           SET title = ?, workspaces_json = ?, memory = ?, models_json = ?, tools_json = ?, updated_at = ?
            WHERE id = ?`,
         )
         .run(
@@ -212,6 +232,7 @@ export class EngineStore {
           JSON.stringify(nextWorkspaces),
           nextMemory,
           nextModels === undefined ? null : JSON.stringify(nextModels),
+          nextTools === undefined ? null : JSON.stringify(nextTools),
           updatedAt,
           id,
         );
@@ -223,6 +244,7 @@ export class EngineStore {
         workspaces: nextWorkspaces,
         ...(nextMemory === null ? {} : { memory: nextMemory }),
         ...(nextModels === undefined ? {} : { models: nextModels }),
+        ...(nextTools === undefined ? {} : { tools: nextTools }),
         createdAt: existing.createdAt,
         updatedAt,
       };

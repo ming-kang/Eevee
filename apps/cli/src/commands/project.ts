@@ -1,8 +1,14 @@
 import { resolve } from "node:path";
 import { connectLocalEngine } from "@eevee/engine";
-import type { ModelSlotsOverride, UpdateProjectRequest } from "@eevee/protocol";
+import type { UpdateProjectRequest } from "@eevee/protocol";
 import type { Command } from "commander";
-import { hasModelSlots, parseModelSlotFlags, readTextInput } from "../args.ts";
+import {
+  collectRepeatedFlag,
+  hasModelSlots,
+  parseModelSlotFlags,
+  parseToolsSettingsFlags,
+  readTextInput,
+} from "../args.ts";
 import { formatProjectUsage } from "../format.ts";
 
 export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv): void {
@@ -85,6 +91,18 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
     .option("--worker-model <provider/modelId>", "Worker model override")
     .option("--dreamer-model <provider/modelId>", "Dreamer model override")
     .option("--clear-models", "Clear project model overrides")
+    .option("--router-tools <specs>", "Toggle Router tools, e.g. -ls,+grep", collectRepeatedFlag)
+    .option(
+      "--worker-tools <specs>",
+      "Toggle Worker tools, e.g. -bash,+powershell,+grep",
+      collectRepeatedFlag,
+    )
+    .option("--codemode-mode <mode>", "Codemode mode: off, on, or only")
+    .option(
+      "--codemode-inline-budget <n>",
+      "Estimated token budget for inline codemode declarations",
+    )
+    .option("--clear-tools", "Clear project tool overrides to inherit global settings")
     .option("--json", "Output JSON")
     .action(
       async (
@@ -98,6 +116,11 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
           workerModel?: string;
           dreamerModel?: string;
           clearModels?: boolean;
+          routerTools?: string | readonly string[];
+          workerTools?: string | readonly string[];
+          codemodeMode?: string;
+          codemodeInlineBudget?: string;
+          clearTools?: boolean;
           json?: boolean;
         },
       ) => {
@@ -111,13 +134,17 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
         if (hasModelFlag && options.clearModels) {
           throw new Error("Cannot combine model override flags with --clear-models");
         }
+        const hasToolsFlag =
+          options.routerTools !== undefined ||
+          options.workerTools !== undefined ||
+          options.codemodeMode !== undefined ||
+          options.codemodeInlineBudget !== undefined;
+        if (hasToolsFlag && options.clearTools) {
+          throw new Error("Cannot combine tool override flags with --clear-tools");
+        }
+        const tools = parseToolsSettingsFlags(options);
 
-        const patch: {
-          title?: string;
-          workspaces?: string[];
-          memory?: string | null;
-          models?: ModelSlotsOverride | null;
-        } = {};
+        const patch: UpdateProjectRequest = {};
         if (options.title !== undefined) patch.title = options.title;
         if (options.workspace !== undefined) {
           patch.workspaces = options.workspace.map((dir) => resolve(dir));
@@ -130,13 +157,18 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
         } else if (hasModelFlag) {
           patch.models = parseModelSlotFlags(options);
         }
+        if (options.clearTools) {
+          patch.tools = null;
+        } else if (tools !== undefined) {
+          patch.tools = tools;
+        }
 
         if (Object.keys(patch).length === 0) {
           throw new Error("Specify at least one field to update.");
         }
 
         const { client } = await connectLocalEngine(env);
-        const response = await client.updateProject(projectId, patch as UpdateProjectRequest);
+        const response = await client.updateProject(projectId, patch);
         if (options.json) {
           console.log(JSON.stringify(response, null, 2));
           return;

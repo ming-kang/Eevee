@@ -19,10 +19,14 @@ import { resolveToolPromptMeta, withToolPromptMeta } from "../../context/tool-me
 
 export const CODEMODE_EXTENSION = "eevee.codemode";
 
-export type CodemodeExtensionOptions = CodemodeToolOptions;
+export type CodemodeExtensionOptions = Omit<CodemodeToolOptions, "inlineBudget"> & {
+  readonly inlineBudget?: number | (() => number | undefined);
+};
 
 export function createCodemodeExtension(options: CodemodeExtensionOptions): Extension {
-  const upstream = createUpstreamCodemodeExtension(options);
+  const initialBudget =
+    typeof options.inlineBudget === "function" ? options.inlineBudget() : options.inlineBudget;
+  const upstream = createUpstreamCodemodeExtension({ ...options, inlineBudget: initialBudget });
   const tools = (upstream.tools ?? []).map((tool) =>
     tool.name === CODEMODE_TOOL_NAME
       ? withToolPromptMeta(tool, {
@@ -38,6 +42,16 @@ export function createCodemodeExtension(options: CodemodeExtensionOptions): Exte
     return {
       ...entry,
       render: (input: PromptInput, context: Context) => {
+        const budget =
+          typeof options.inlineBudget === "function"
+            ? options.inlineBudget()
+            : options.inlineBudget;
+        const renderEntry =
+          typeof options.inlineBudget === "function"
+            ? ((
+                createUpstreamCodemodeExtension({ ...options, inlineBudget: budget }).sections ?? []
+              ).find((candidate) => candidate.key === "codemode") ?? entry)
+            : entry;
         const callable = input.agent.callable.map((tool) => {
           const guidelines =
             resolveToolPromptMeta(tool, input.agent.extensions)?.promptGuidelines ?? [];
@@ -51,15 +65,16 @@ export function createCodemodeExtension(options: CodemodeExtensionOptions): Exte
             description: `${tool.description.trim()}\n\n${bullets.join("\n")}`,
           };
         });
-        return entry.render({ ...input, agent: { ...input.agent, callable } }, context);
+        return renderEntry.render({ ...input, agent: { ...input.agent, callable } }, context);
       },
     };
   });
   return defineExtension({ ...upstream, name: CODEMODE_EXTENSION, tools, sections });
 }
 
-export type CodemodeHandleOptions = Omit<CodemodeToolOptions, "sandbox"> & {
+export type CodemodeHandleOptions = Omit<CodemodeToolOptions, "sandbox" | "inlineBudget"> & {
   readonly sandbox?: CodemodeSandboxBase;
+  readonly inlineBudget?: number | (() => number | undefined);
   readonly mode?: "worker" | "inline";
   readonly sandboxOptions?: CodemodeSandboxOptions;
   readonly inlineOptions?: InlineCodemodeSandboxOptions;

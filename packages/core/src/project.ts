@@ -3,6 +3,9 @@ import { BACKGROUND_CONTEXT, type Context, withAbortSignal } from "@earendil-wor
 import { copyJson, type JsonRepresentation } from "@earendil-works/chord/json";
 import type { Models, Usage } from "@earendil-works/pi-ai";
 import {
+  type AgentChange,
+  AgentDoc,
+  type AgentState,
   type CompactionSettings,
   type Conversation,
   type ConversationId,
@@ -19,6 +22,7 @@ import {
   type Observation,
   type Observer,
   type Page,
+  type RegistrySnapshot,
   type Report,
   ROOT_CONVERSATION_ID,
   type Storage,
@@ -85,7 +89,14 @@ import { answerQuestion as submitQuestionAnswer } from "./extensions/ask-user.ts
 import { createRouterExtension, type RouterProjectInfo } from "./extensions/router.ts";
 import { createWorkerExtension } from "./extensions/worker.ts";
 import { ProjectPump } from "./pump.ts";
-import { buildRouterAgent, type ModelSlots, resolveRoleExtensions } from "./roles.ts";
+import {
+  buildRouterAgent,
+  type ModelSlots,
+  resolveRoleExtensions,
+  resolveRoleToolFilters,
+  type ToolPolicy,
+  type WorkerRole,
+} from "./roles.ts";
 import { SerialPass } from "./serial-pass.ts";
 import { resolveWorkerStatus } from "./status.ts";
 import { addUsage, BoardFeed, type BoardView, projectUsage, readBoardView } from "./views.ts";
@@ -123,6 +134,7 @@ export type OpenProjectDeps = {
   readonly maxActiveWorkers?: number | (() => number);
   readonly backgroundAfterMs?: number | (() => number);
   readonly routerContextTokens?: number | (() => number);
+  readonly toolPolicy?: ToolPolicy | (() => ToolPolicy | undefined);
   readonly projectMeta?: () => RouterProjectInfo;
   readonly projectMemory?: () => string | undefined;
   readonly modelProfiles?: () => string | undefined | Promise<string | undefined>;
@@ -214,6 +226,7 @@ export type ProjectHandle = {
   questions(context?: Context): Promise<QuestionRecord[]>;
   usage(context?: Context): Promise<UsageState>;
   syncMcpExtensions(context?: Context): Promise<void>;
+  reconfigureTools(context?: Context): Promise<void>;
   reconfigureRouterModel(model: ModelChoice | undefined, context?: Context): Promise<void>;
   reconfigureWorkspaces(workspaces: readonly string[], context?: Context): Promise<void>;
   requestPump(): void;
@@ -229,6 +242,82 @@ function sameExtensionOrder(current: readonly Extension[], desired: readonly Ext
     current.length === desired.length &&
     current.every((extension, idx) => extension.name === desired[idx]?.name)
   );
+}
+
+function sameToolNames(
+  current: readonly string[],
+  desired: readonly { readonly name: string }[],
+): boolean {
+  const currentNames = new Set(current);
+  const desiredNames = new Set(desired.map((tool) => tool.name));
+  return (
+    currentNames.size === desiredNames.size &&
+    [...currentNames].every((name) => desiredNames.has(name))
+  );
+}
+
+function hasModelToolsRemoveFilter(state: Readonly<AgentState> | undefined): boolean {
+  const filter = state?.modelTools;
+  return filter !== undefined && !Array.isArray(filter) && Object.hasOwn(filter, "remove");
+}
+
+function roleToolFilterChanges(
+  role: WorkerRole,
+  extensions: readonly Extension[],
+  state: Readonly<AgentState> | undefined,
+  policy: ToolPolicy | undefined,
+): {
+  readonly tools: AgentChange["tools"];
+  readonly modelTools: AgentChange["modelTools"];
+} {
+  const desired = resolveRoleToolFilters(role, extensions, policy);
+  const currentTools = state?.tools;
+  const toolsUnchanged =
+    desired.tools === null
+      ? currentTools === undefined ||
+        (!Array.isArray(currentTools) && currentTools.remove.length === 0)
+      : currentTools !== undefined &&
+        !Array.isArray(currentTools) &&
+        sameToolNames(currentTools.remove, desired.tools.remove);
+
+  let modelTools: AgentChange["modelTools"];
+  if (desired.modelTools === null) {
+    modelTools = hasModelToolsRemoveFilter(state) ? null : undefined;
+  } else {
+    const currentModelTools = state?.modelTools;
+    const modelToolsUnchanged =
+      hasModelToolsRemoveFilter(state) &&
+      currentModelTools !== undefined &&
+      !Array.isArray(currentModelTools) &&
+      sameToolNames(currentModelTools.remove ?? [], desired.modelTools.remove);
+    modelTools = modelToolsUnchanged ? undefined : desired.modelTools;
+  }
+  return {
+    tools: toolsUnchanged ? undefined : desired.tools,
+    modelTools,
+  };
+}
+
+async function configureRoleConversation(
+  harness: Harness,
+  conversation: Conversation,
+  role: WorkerRole,
+  snapshot: RegistrySnapshot,
+  policy: ToolPolicy | undefined,
+  context: Context,
+): Promise<void> {
+  const extensions = resolveRoleExtensions(role, snapshot, policy);
+  const [current, state] = await Promise.all([
+    conversation.agent(context),
+    harness.snapshot(AgentDoc, conversation.id, context),
+  ]);
+  const filters = roleToolFilterChanges(role, extensions, state, policy);
+  const change: AgentChange = {
+    ...(sameExtensionOrder(current.extensions, extensions) ? {} : { extensions }),
+    ...(filters.tools === undefined ? {} : { tools: filters.tools }),
+    ...(filters.modelTools === undefined ? {} : { modelTools: filters.modelTools }),
+  };
+  if (Object.keys(change).length > 0) await conversation.configure(change, context);
 }
 
 export async function openProject(storage: Storage, deps: OpenProjectDeps): Promise<ProjectHandle> {
@@ -249,6 +338,8 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     typeof routerContextTokensOption === "function"
       ? routerContextTokensOption
       : () => routerContextTokensOption ?? DEFAULT_ROUTER_CONTEXT_TOKENS;
+  const getToolPolicy = (): ToolPolicy | undefined =>
+    typeof deps.toolPolicy === "function" ? deps.toolPolicy() : deps.toolPolicy;
 
   const registry = createRegistry();
   const ownsTaskManager = deps.taskManager === undefined;
@@ -262,7 +353,13 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     if (deps.codemode !== undefined && isCodemodeHandle(deps.codemode)) {
       codemodeHandle = deps.codemode;
     } else {
-      codemodeHandle = createCodemodeHandle(deps.codemode);
+      const configuredBudget = deps.codemode?.inlineBudget;
+      codemodeHandle = createCodemodeHandle({
+        ...deps.codemode,
+        inlineBudget: () =>
+          getToolPolicy()?.codemode?.inlineBudget ??
+          (typeof configuredBudget === "function" ? configuredBudget() : configuredBudget),
+      });
       ownsCodemode = true;
     }
   }
@@ -318,7 +415,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
       workspaces: deps.baseExtensionOptions?.workspaces ?? (() => currentWorkspaces),
     }),
     createReadonlyToolsExtension(),
-    createCodingToolsExtension(),
+    createCodingToolsExtension({ powerShell: true, searchTools: true }),
     createShellPathsExtension(),
     createTasksExtension({
       manager: taskManager,
@@ -350,6 +447,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
       ...(deps.routerInstructions === undefined
         ? {}
         : { routerInstructions: deps.routerInstructions }),
+      toolPolicy: getToolPolicy,
       project: () => deps.projectMeta?.() ?? { title, workspaces: currentWorkspaces },
       ...(deps.projectMemory === undefined ? {} : { projectMemory: deps.projectMemory }),
       ...(deps.modelProfiles === undefined ? {} : { modelProfiles: deps.modelProfiles }),
@@ -444,6 +542,21 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
 
   let root: Conversation;
   let memoryStore: MemoryStore;
+
+  async function reconfigureRoles(context: Context): Promise<void> {
+    const snapshot = registry.snapshot();
+    const policy = getToolPolicy();
+    await configureRoleConversation(harness, root, "router", snapshot, policy, context);
+    const workers = await readWorkers(harness, context);
+    for (const worker of workers) {
+      if (worker.closedAt !== undefined) continue;
+      const conversation = await harness.conversation(worker.conversationId, context);
+      if (conversation !== undefined) {
+        await configureRoleConversation(harness, conversation, "worker", snapshot, policy, context);
+      }
+    }
+  }
+
   try {
     const resolveMemoryBudget = (): RecallBudget => {
       if (deps.memoryBudget !== undefined) return deps.memoryBudget();
@@ -463,11 +576,14 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
         : deps.settings?.compaction !== undefined
           ? undefined
           : (resolveMemoryBudget().compaction ?? undefined);
+    const initialSnapshot = registry.snapshot();
+    const initialToolPolicy = getToolPolicy();
     const routerAgent = buildRouterAgent({
-      snapshot: registry.snapshot(),
+      snapshot: initialSnapshot,
       ...(initialRouterModel === undefined ? {} : { model: initialRouterModel }),
       cwd: projectRoot,
       ...(initialCompaction === undefined ? {} : { compaction: initialCompaction }),
+      toolPolicy: initialToolPolicy,
     });
 
     const rootExisted =
@@ -482,8 +598,22 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
             : initialRouterModel.thinkingLevel === undefined
               ? ({ thinkingLevel: null } as const)
               : {};
+      const routerExtensions = resolveRoleExtensions("router", initialSnapshot, initialToolPolicy);
+      const routerState = await harness.snapshot(AgentDoc, root.id, BACKGROUND_CONTEXT);
+      const filters = roleToolFilterChanges(
+        "router",
+        routerExtensions,
+        routerState,
+        initialToolPolicy,
+      );
       await root.configure(
-        { ...routerAgent, ...clearModelFields, instructions: null },
+        {
+          ...routerAgent,
+          tools: filters.tools,
+          modelTools: filters.modelTools,
+          ...clearModelFields,
+          instructions: null,
+        },
         BACKGROUND_CONTEXT,
       );
     }
@@ -528,23 +658,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
 
     const syncMcpExtensionsNow = async (): Promise<void> => {
       if (living.signal.aborted) return;
-      const snapshot = registry.snapshot();
-      const routerExtensions = resolveRoleExtensions("router", snapshot);
-      const workerExtensions = resolveRoleExtensions("worker", snapshot);
-      const currentRouter = await root.agent(livingContext);
-      if (!sameExtensionOrder(currentRouter.extensions, routerExtensions)) {
-        await root.configure({ extensions: routerExtensions }, livingContext);
-      }
-      const workers = await readWorkers(harness, livingContext);
-      for (const worker of workers) {
-        if (worker.closedAt !== undefined) continue;
-        const conversation = await harness.conversation(worker.conversationId, livingContext);
-        if (conversation === undefined) continue;
-        const currentWorker = await conversation.agent(livingContext);
-        if (!sameExtensionOrder(currentWorker.extensions, workerExtensions)) {
-          await conversation.configure({ extensions: workerExtensions }, livingContext);
-        }
-      }
+      await reconfigureRoles(livingContext);
     };
 
     mcpSyncPass = new SerialPass(syncMcpExtensionsNow, {
@@ -563,6 +677,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
       mcpSyncPass.request();
     }
 
+    await reconfigureRoles(livingContext);
     await createdDreamer.sync(livingContext);
     createdDreamer.wake();
     pump.request();
@@ -846,6 +961,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
       await activeMcpSyncPass.idle();
       context.abortSignal?.throwIfAborted();
     },
+    reconfigureTools: (context = BACKGROUND_CONTEXT) => reconfigureRoles(context),
     reconfigureRouterModel: async (model, context = BACKGROUND_CONTEXT) => {
       const compaction: CompactionSettings | null | undefined =
         deps.memoryBudget !== undefined

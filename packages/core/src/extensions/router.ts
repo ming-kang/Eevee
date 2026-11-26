@@ -30,6 +30,7 @@ import {
   parseModelSpec,
   ROUTER_EXTENSION,
   ROUTER_PREAMBLE,
+  type ToolPolicy,
 } from "../roles.ts";
 import { resolveWorkerStatus } from "../status.ts";
 import { formatBoardOverview, readBoardView } from "../views.ts";
@@ -48,6 +49,7 @@ export type RouterExtensionDeps = {
   readonly workerModel?: ModelChoice | (() => ModelChoice | undefined);
   readonly routerInstructions?: string;
   readonly workerInstructions?: string;
+  readonly toolPolicy?: ToolPolicy | (() => ToolPolicy | undefined);
   readonly project?: () => RouterProjectInfo;
   readonly projectMemory?: () => string | undefined;
   readonly modelProfiles?: () => string | undefined | Promise<string | undefined>;
@@ -77,6 +79,8 @@ function errorResult(message: string): ToolExecutionResult {
 
 export function createRouterExtension(deps: RouterExtensionDeps) {
   const resolveCwd = (): string => (typeof deps.cwd === "function" ? deps.cwd() : deps.cwd);
+  const getToolPolicy = (): ToolPolicy | undefined =>
+    typeof deps.toolPolicy === "function" ? deps.toolPolicy() : deps.toolPolicy;
   const spawnWorker = withToolPromptMeta(
     defineTool({
       name: "spawn_worker",
@@ -135,6 +139,7 @@ export function createRouterExtension(deps: RouterExtensionDeps) {
               ? {}
               : { instructions: deps.workerInstructions }),
             cwd,
+            toolPolicy: getToolPolicy(),
           });
           await configure(tx, conversation.id, workerAgent);
           await tx.appendEntry(UserEntry, conversation.id, {

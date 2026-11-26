@@ -4,6 +4,7 @@ import type {
   CompactionSettings,
   Extension,
   RegistrySnapshot,
+  ToolRegistration,
 } from "@earendil-works/pi-durable";
 import {
   AGENT_EXTENSIONS,
@@ -51,6 +52,17 @@ export const WORKER_COLLAB_TOOLS = ["message_router"] as const;
 export type ModelSlot = "router" | "worker" | "dreamer";
 export type ModelSlots = Partial<Record<ModelSlot, ModelChoice>>;
 export type WorkerRole = "router" | "worker";
+export type CodemodeMode = "off" | "on" | "only";
+export type ToolPolicy = {
+  readonly router?: Readonly<Record<string, boolean>>;
+  readonly worker?: Readonly<Record<string, boolean>>;
+  readonly codemode?: {
+    readonly mode?: CodemodeMode;
+    readonly inlineBudget?: number;
+  };
+};
+
+export const WORKER_DEFAULT_DISABLED_TOOLS = ["powershell", "ls", "find", "grep"] as const;
 
 export type RoleAgentOptions = {
   readonly snapshot: RegistrySnapshot;
@@ -59,6 +71,7 @@ export type RoleAgentOptions = {
   readonly instructions?: string;
   readonly cwd?: string;
   readonly compaction?: CompactionSettings;
+  readonly toolPolicy?: ToolPolicy;
 };
 
 export const ROUTER_PREAMBLE =
@@ -82,7 +95,11 @@ export function parseModelSpec(spec: string, models: Models): ModelChoice | unde
   return { provider, modelId };
 }
 
-export function resolveRoleExtensions(role: WorkerRole, snapshot: RegistrySnapshot): Extension[] {
+export function resolveRoleExtensions(
+  role: WorkerRole,
+  snapshot: RegistrySnapshot,
+  policy?: ToolPolicy,
+): Extension[] {
   const selected: Extension[] = [];
   const seen = new Set<string>();
   const add = (name: string) => {
@@ -94,13 +111,50 @@ export function resolveRoleExtensions(role: WorkerRole, snapshot: RegistrySnapsh
   };
 
   add(BASE_EXTENSION);
-  for (const name of role === "router" ? ROUTER_EXTENSIONS : WORKER_EXTENSIONS) add(name);
+  for (const name of role === "router" ? ROUTER_EXTENSIONS : WORKER_EXTENSIONS) {
+    if (name === AGENT_EXTENSIONS.codemode && policy?.codemode?.mode === "off") continue;
+    add(name);
+  }
   if (snapshot.extension(AGENT_EXTENSIONS.mcp) !== undefined) {
     for (const extension of snapshot.installed()) {
       if (extension.name.startsWith(MCP_SERVER_EXTENSION_PREFIX)) add(extension.name);
     }
   }
   return selected;
+}
+
+export function resolveRoleToolFilters(
+  role: WorkerRole,
+  extensions: readonly Extension[],
+  policy?: ToolPolicy,
+): {
+  readonly tools: { readonly remove: ToolRegistration[] } | null;
+  readonly modelTools: { readonly remove: ToolRegistration[] } | null;
+} {
+  const registered = new Map<string, ToolRegistration>();
+  for (const extension of extensions) {
+    for (const tool of extension.tools ?? []) registered.set(tool.name, tool);
+  }
+
+  const disabled = new Set<string>(role === "worker" ? WORKER_DEFAULT_DISABLED_TOOLS : []);
+  const overrides = role === "router" ? policy?.router : policy?.worker;
+  for (const [name, enabled] of Object.entries(overrides ?? {})) {
+    if (enabled) disabled.delete(name);
+    else disabled.add(name);
+  }
+
+  const remove = [...registered.values()].filter((tool) => disabled.has(tool.name));
+  const tools = remove.length > 0 ? { remove } : null;
+  if (
+    policy?.codemode?.mode !== "only" ||
+    !extensions.some((extension) => extension.name === AGENT_EXTENSIONS.codemode)
+  ) {
+    return { tools, modelTools: null };
+  }
+  const modelRemove = [...registered.values()].filter(
+    (tool) => tool.name !== "codemode" && !disabled.has(tool.name),
+  );
+  return { tools, modelTools: modelRemove.length > 0 ? { remove: modelRemove } : null };
 }
 
 export function buildRouterAgent(options: RoleAgentOptions): AgentChange {
@@ -113,8 +167,12 @@ export function buildWorkerAgent(options: RoleAgentOptions): AgentChange {
 
 function buildRoleAgent(role: WorkerRole, options: RoleAgentOptions): AgentChange {
   const thinkingLevel = options.thinkingLevel ?? options.model?.thinkingLevel;
+  const extensions = resolveRoleExtensions(role, options.snapshot, options.toolPolicy);
+  const filters = resolveRoleToolFilters(role, extensions, options.toolPolicy);
   return {
-    extensions: resolveRoleExtensions(role, options.snapshot),
+    extensions,
+    tools: filters.tools,
+    modelTools: filters.modelTools,
     ...(options.model === undefined
       ? {}
       : { model: { provider: options.model.provider, modelId: options.model.modelId } }),

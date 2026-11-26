@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { test } from "node:test";
+import { parseToolOverridesFlag, parseToolsSettingsFlags } from "../src/args.ts";
 import {
   aggregateBoardTasks,
   ConversationWatchRenderer,
@@ -262,6 +263,100 @@ test("parseModelFlag and formatBoard handle valid and edge-case inputs", () => {
   assert.ok(formatted.includes("q1: Target port?"));
 });
 
+test("parseToolOverridesFlag parses Pi-style toggles and boolean assignments", () => {
+  assert.equal(parseToolOverridesFlag(undefined, "--router-tools"), undefined);
+  assert.equal(parseToolOverridesFlag([], "--router-tools"), undefined);
+  assert.deepEqual(parseToolOverridesFlag("+powershell,-bash,+grep", "--worker-tools"), {
+    powershell: true,
+    bash: false,
+    grep: true,
+  });
+  assert.deepEqual(
+    parseToolOverridesFlag(
+      ["+powershell", "-bash", "grep=on", "read=off", "write=1", "edit=0"],
+      "--worker-tools",
+    ),
+    {
+      powershell: true,
+      bash: false,
+      grep: true,
+      read: false,
+      write: true,
+      edit: false,
+    },
+  );
+  assert.deepEqual(parseToolOverridesFlag("read=true,ls=false,find=on", "--router-tools"), {
+    read: true,
+    ls: false,
+    find: true,
+  });
+  assert.deepEqual(parseToolOverridesFlag(["+grep", "-grep,+ls"], "--router-tools"), {
+    grep: false,
+    ls: true,
+  });
+});
+
+test("parseToolOverridesFlag rejects empty names and malformed tokens clearly", () => {
+  for (const token of ["", "grep", "+", "-", "=on", "grep=", "grep=yes", "+grep=on"]) {
+    assert.throws(
+      () => parseToolOverridesFlag(token, "--router-tools"),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.ok(error.message.includes("--router-tools"), error.message);
+        assert.ok(error.message.includes(`"${token}"`), error.message);
+        return true;
+      },
+    );
+  }
+  assert.throws(() => parseToolOverridesFlag("+", "--worker-tools"), /tool name must not be empty/);
+  assert.throws(
+    () => parseToolOverridesFlag("+ls,,+grep", "--router-tools"),
+    /Invalid --router-tools token ""/,
+  );
+});
+
+test("parseToolsSettingsFlags combines tool overrides and codemode settings", () => {
+  assert.equal(parseToolsSettingsFlags({}), undefined);
+  assert.deepEqual(
+    parseToolsSettingsFlags({
+      routerTools: "+grep,-ls",
+      workerTools: ["-bash", "+powershell,+grep"],
+      codemodeMode: "only",
+      codemodeInlineBudget: "0",
+    }),
+    {
+      router: { grep: true, ls: false },
+      worker: { bash: false, powershell: true, grep: true },
+      codemode: { mode: "only", inlineBudget: 0 },
+    },
+  );
+  assert.deepEqual(parseToolsSettingsFlags({ routerTools: "read=on" }), {
+    router: { read: true },
+  });
+  assert.deepEqual(parseToolsSettingsFlags({ workerTools: "bash=off" }), {
+    worker: { bash: false },
+  });
+  assert.deepEqual(parseToolsSettingsFlags({ codemodeMode: "on" }), {
+    codemode: { mode: "on" },
+  });
+  assert.deepEqual(parseToolsSettingsFlags({ codemodeInlineBudget: "1200" }), {
+    codemode: { inlineBudget: 1200 },
+  });
+
+  assert.throws(
+    () => parseToolsSettingsFlags({ codemodeMode: "sometimes" }),
+    /Invalid --codemode-mode/,
+  );
+  assert.throws(
+    () => parseToolsSettingsFlags({ codemodeInlineBudget: "-1" }),
+    /Invalid --codemode-inline-budget "-1": expected non-negative integer/,
+  );
+  assert.throws(
+    () => parseToolsSettingsFlags({ workerTools: "bash=maybe" }),
+    /Invalid --worker-tools token "bash=maybe"/,
+  );
+});
+
 test("ConversationWatchRenderer streams live deltas without duplicating committed text", () => {
   const output: string[] = [];
   const renderer = new ConversationWatchRenderer((chunk) => output.push(chunk));
@@ -385,6 +480,10 @@ test("CLI program registers all 4C management commands, subcommands, and options
     "--router-model",
     "--worker-model",
     "--dreamer-model",
+    "--router-tools",
+    "--worker-tools",
+    "--codemode-mode",
+    "--codemode-inline-budget",
   ]) {
     assert.ok(
       configSet?.options.some((o) => o.long === flag),
@@ -402,6 +501,19 @@ test("CLI program registers all 4C management commands, subcommands, and options
     "update",
     "usage",
   ]);
+  const projectUpdate = projectCmd.commands.find((c) => c.name() === "update");
+  for (const flag of [
+    "--router-tools",
+    "--worker-tools",
+    "--codemode-mode",
+    "--codemode-inline-budget",
+    "--clear-tools",
+  ]) {
+    assert.ok(
+      projectUpdate?.options.some((o) => o.long === flag),
+      `missing project update flag ${flag}`,
+    );
+  }
   const projectMemory = projectCmd.commands.find((c) => c.name() === "memory");
   assert.deepEqual(projectMemory?.commands.map((c) => c.name()).sort(), ["get", "set"]);
 });
@@ -524,6 +636,23 @@ test("CLI 4C formatters render readable output and validate incompatible flags",
       },
     }).includes("mock/m1: totalTokens=15"),
   );
+});
+
+test("project update rejects every tool setting combined with --clear-tools", async () => {
+  const toolFlags = [
+    ["--router-tools", "+grep"],
+    ["--worker-tools", "-bash"],
+    ["--codemode-mode", "on"],
+    ["--codemode-inline-budget", "100"],
+  ];
+  for (const flags of toolFlags) {
+    const program = createProgram({ EEVEE_HOME: "/tmp/eevee-cli-test" });
+    program.exitOverride();
+    await assert.rejects(
+      program.parseAsync(["node", "eevee", "project", "update", "demo", "--clear-tools", ...flags]),
+      /Cannot combine tool override flags with --clear-tools/,
+    );
+  }
 });
 
 test("CLI validates task list, read, and watch flags cleanly", async () => {

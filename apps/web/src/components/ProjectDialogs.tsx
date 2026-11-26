@@ -1,8 +1,14 @@
+import { ChevronRightIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Field, Input, Modal, Text, TextArea } from "@earendil-works/elanor-react";
-import type { ProjectSummary } from "@eevee/protocol";
+import type { ProjectSummary, ToolsSettings } from "@eevee/protocol";
 import { type FormEvent, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
 import { showToast } from "../lib/toasts.ts";
+import {
+  hasToolsOverrides,
+  resolveToolsSettings,
+  ToolsSettingsEditor,
+} from "./settings/ToolsSettingsEditor.tsx";
 
 export function EditProjectModal({
   project,
@@ -15,14 +21,40 @@ export function EditProjectModal({
 }) {
   const [title, setTitle] = useState("");
   const [workspacesText, setWorkspacesText] = useState("");
+  const [tools, setTools] = useState<ToolsSettings | undefined>(undefined);
+  const [inheritedTools, setInheritedTools] = useState<ToolsSettings | undefined>(undefined);
+  const [inlineBudget, setInlineBudget] = useState("");
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [globalStatus, setGlobalStatus] = useState<"loading" | "ready" | "error">("loading");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!project) return;
+    let active = true;
     setTitle(project.title);
     setWorkspacesText(project.workspaces.join("\n"));
+    setTools(project.tools);
+    setInlineBudget(String(project.tools?.codemode?.inlineBudget ?? ""));
+    setToolsOpen(hasToolsOverrides(project.tools));
+    setInheritedTools(undefined);
+    setGlobalStatus("loading");
     setError(undefined);
+    void api
+      .getSettings()
+      .then((settings) => {
+        if (!active) return;
+        setInheritedTools(settings.tools);
+        setGlobalStatus("ready");
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setGlobalStatus("error");
+        setError(`全局设置加载失败：${err instanceof Error ? err.message : String(err)}`);
+      });
+    return () => {
+      active = false;
+    };
   }, [project]);
 
   const handleSubmit = async (event: FormEvent) => {
@@ -39,9 +71,11 @@ export function EditProjectModal({
     setSaving(true);
     setError(undefined);
     try {
+      const nextTools = resolveToolsSettings(tools, inlineBudget, "project");
       const res = await api.updateProject(project.id, {
         title: title.trim() || project.title,
         workspaces,
+        tools: nextTools ?? null,
       });
       onUpdated(res.project);
       showToast("项目配置已更新");
@@ -77,6 +111,44 @@ export function EditProjectModal({
                       onValueChange={setWorkspacesText}
                     />
                   </Field.Root>
+                  <details
+                    key={project?.id}
+                    className="ev-tool-disclosure"
+                    open={toolsOpen}
+                    onToggle={(event) => setToolsOpen(event.currentTarget.open)}
+                  >
+                    <summary>
+                      <ChevronRightIcon
+                        className="ev-tool-disclosure-chevron"
+                        width={14}
+                        height={14}
+                      />
+                      <span>工具覆盖（可选）</span>
+                      {(hasToolsOverrides(tools) || inlineBudget.trim()) && (
+                        <span className="eevee-badge" data-tone="info">
+                          项目覆盖
+                        </span>
+                      )}
+                    </summary>
+                    <div className="ev-tool-disclosure-body">
+                      {globalStatus !== "ready" && (
+                        <div className="ev-tool-group-hint">
+                          {globalStatus === "loading"
+                            ? "正在读取全局设置…"
+                            : "全局设置不可用，工具覆盖暂不可编辑。"}
+                        </div>
+                      )}
+                      <ToolsSettingsEditor
+                        variant="project"
+                        value={tools}
+                        onChange={setTools}
+                        inheritedTools={inheritedTools}
+                        inlineBudget={inlineBudget}
+                        onInlineBudgetChange={setInlineBudget}
+                        disabled={globalStatus !== "ready"}
+                      />
+                    </div>
+                  </details>
                 </div>
               </Modal.Body>
               <Modal.Actions style={{ marginTop: 12 }}>

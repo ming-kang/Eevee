@@ -22,14 +22,18 @@ async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
   }
 }
 
-function promptInput(cwd: string | undefined, tools: readonly string[]) {
+function promptInput(
+  cwd: string | undefined,
+  tools: readonly string[],
+  callable: readonly string[] = [],
+) {
   return {
     conversationId: 1,
     agent: {
       tools: tools.map((name) => ({ name })),
       thinkingLevel: "off",
       extensions: [],
-      callable: [],
+      callable: callable.map((name) => ({ name })),
       deferred: [],
       sections: [],
       cwd,
@@ -334,6 +338,13 @@ test("skills section renders only with a reading capability and hides disable-mo
 
     const withBash = await skills.render(promptInput(dir, ["bash"]), {} as never);
     assert.ok(withBash?.includes("Use bash to load"));
+
+    const withCodemode = await skills.render(promptInput(dir, ["codemode"], ["read"]), {} as never);
+    assert.ok(
+      withCodemode?.includes(
+        "Use codemode (tools.read) to load a skill's file when the task matches its description.",
+      ),
+    );
   });
 });
 
