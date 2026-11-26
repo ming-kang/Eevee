@@ -20,6 +20,7 @@ export const DEFAULT_ENGINE_PORT = 4173;
 export type StartForegroundEngineOptions = {
   readonly dataDir?: string;
   readonly env?: NodeJS.ProcessEnv;
+  readonly userHomeDir?: string | null;
   readonly host?: string;
   readonly port?: number;
   readonly webDistDir?: string | false;
@@ -84,6 +85,7 @@ async function startLockedForegroundEngine(
   const engine = await Engine.open({
     dataDir: layout.root,
     env: options.env,
+    userHomeDir: options.userHomeDir,
     models: options.models,
     credentials: options.credentials,
     openProjectStorage: options.openProjectStorage,

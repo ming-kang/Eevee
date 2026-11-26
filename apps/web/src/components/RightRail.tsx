@@ -197,6 +197,7 @@ function WorkerPanel({
                 )}
                 <Composer
                   draftKey={`worker:${projectId}:${worker.id}`}
+                  projectId={projectId}
                   activeRef={worker.id}
                   busy={live.busy}
                   hasRunFailure={live.runFailure !== undefined}

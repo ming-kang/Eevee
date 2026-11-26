@@ -9,6 +9,8 @@ import type {
   EntryRecordPayload,
   ListModelsResponse,
   ListProvidersResponse,
+  McpLogsResponse,
+  McpServerRoles,
   McpServerSnapshotPayload,
   McpStateResponse,
   ModelDetail,
@@ -16,6 +18,7 @@ import type {
   ModelsConfigDiagnostic,
   OutputSlice,
   ProbeProviderResponse,
+  ProjectMcpStateResponse,
   ProjectUsageResponse,
   ProviderCatalogResponse,
   ProviderDetail,
@@ -23,6 +26,8 @@ import type {
   ReadWorkerTaskResponse,
   RefreshModelsResponse,
   ReloadModelsResponse,
+  SkillEntry,
+  SkillsListResponse,
   SmokeTestModelResponse,
   TaskListStatusFilter,
   TaskStreamEvent,
@@ -870,19 +875,123 @@ export function formatModelProfiles(doc: ModelProfilesDocument): string {
   return lines.join("\n");
 }
 
-export function formatMcpStatus(status: readonly McpServerSnapshotPayload[]): string {
-  if (status.length === 0) return "No MCP servers configured.";
-  return status
-    .map((server) => {
-      const state = server.enabled ? server.status : `${server.status} (disabled)`;
-      const err = server.error === undefined ? "" : `\terror=${server.error}`;
-      return `${server.name}\t${state}\ttools=${server.toolCount}${err}`;
-    })
-    .join("\n");
+export type FormatMcpStatusOptions = {
+  readonly showLogs?: boolean;
+  readonly logs?: ReadonlyMap<string, McpLogsResponse>;
+};
+
+function formatMcpRoles(roles: McpServerRoles): string {
+  const active: string[] = [];
+  if (roles.router) active.push("router");
+  if (roles.worker) active.push("worker");
+  return `roles=${active.length > 0 ? active.join(",") : "none"}`;
 }
 
-export function formatMcpState(state: McpStateResponse): string {
-  return formatMcpStatus(state.status);
+export function formatMcpStatus(
+  status: readonly McpServerSnapshotPayload[],
+  options?: FormatMcpStatusOptions,
+): string {
+  if (status.length === 0) return "No MCP servers configured.";
+  const includeLogs = options?.showLogs === true || options?.logs !== undefined;
+  const lines: string[] = [];
+
+  for (const server of status) {
+    const state = server.enabled
+      ? server.status
+      : server.status === "disabled"
+        ? "disabled"
+        : `${server.status} (disabled)`;
+    const parts = [server.name, state, `tools=${server.toolCount}`];
+    if (server.transport !== undefined) parts.push(`transport=${server.transport}`);
+    if (server.exposure !== undefined) parts.push(`exposure=${server.exposure}`);
+    if (server.roles !== undefined) parts.push(formatMcpRoles(server.roles));
+    if (server.hasResources === true) parts.push("resources");
+    if (server.authRequired === true && server.status !== "auth_required") {
+      parts.push("auth_required");
+    }
+    if (server.scope !== undefined) parts.push(`scope=${server.scope}`);
+    if (server.error !== undefined) parts.push(`error=${server.error}`);
+    lines.push(parts.join("\t"));
+
+    if (includeLogs) {
+      const fetched = options?.logs?.get(server.name);
+      const logLines = fetched?.lines ?? server.recentLogs ?? [];
+      const logPathSuffix = fetched?.logPath === undefined ? "" : ` (${fetched.logPath})`;
+      if (logLines.length > 0) {
+        lines.push(`  logs${logPathSuffix}:`);
+        for (const logLine of logLines) {
+          lines.push(`    ${logLine}`);
+        }
+      } else if (options?.showLogs === true) {
+        lines.push(`  logs${logPathSuffix}: (none)`);
+      }
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export function formatMcpState(state: McpStateResponse, options?: FormatMcpStatusOptions): string {
+  return formatMcpStatus(state.status, options);
+}
+
+export function formatProjectMcpState(
+  state: ProjectMcpStateResponse,
+  options?: FormatMcpStatusOptions,
+): string {
+  const enriched = state.status.map((snapshot) => {
+    if (snapshot.scope !== undefined) return snapshot;
+    const inProject = Object.hasOwn(state.projectServers, snapshot.name);
+    const inGlobal = Object.hasOwn(state.globalServers, snapshot.name);
+    const scope: "global" | "project" | "override" = inProject
+      ? inGlobal
+        ? "override"
+        : "project"
+      : "global";
+    return { ...snapshot, scope };
+  });
+  return formatMcpStatus(enriched, options);
+}
+
+export function formatMcpLogs(logs: McpLogsResponse): string {
+  const header = `MCP logs for ${logs.server}${logs.logPath === undefined ? "" : ` (${logs.logPath})`}:`;
+  if (logs.lines.length === 0) {
+    return `${header}\nNo log entries.`;
+  }
+  return [header, ...logs.lines].join("\n");
+}
+
+function formatSkillMode(skill: SkillEntry): string {
+  if (skill.projectOverride !== undefined) {
+    const globalNote = skill.globalOverride === undefined ? "" : `, global=${skill.globalOverride}`;
+    return `mode=${skill.effectiveMode} (project override, default=${skill.defaultMode}${globalNote})`;
+  }
+  if (skill.globalOverride !== undefined) {
+    return `mode=${skill.effectiveMode} (global override, default=${skill.defaultMode})`;
+  }
+  return `mode=${skill.effectiveMode}`;
+}
+
+export function formatSkillsList(response: SkillsListResponse): string {
+  const lines: string[] = [];
+  if (response.skills.length === 0) {
+    lines.push("No skills discovered.");
+  } else {
+    for (const skill of response.skills) {
+      const description = skill.description.replace(/\r?\n/g, " ");
+      lines.push(
+        `${skill.name}\t${skill.source}\t${formatSkillMode(skill)}\t${description}\t${skill.path}`,
+      );
+    }
+  }
+  if (response.diagnostics.length > 0) {
+    lines.push("", "Skill diagnostics:");
+    for (const diagnostic of response.diagnostics) {
+      const skillLabel = diagnostic.skillName === undefined ? "" : ` (${diagnostic.skillName})`;
+      lines.push(`- [${diagnostic.type}]${skillLabel} ${diagnostic.path}: ${diagnostic.message}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 export function formatSettings(settings: EngineSettings): string {

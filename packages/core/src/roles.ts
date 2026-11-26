@@ -9,6 +9,7 @@ import type {
 import {
   AGENT_EXTENSIONS,
   BASE_EXTENSION,
+  getMcpServerExtensionRoles,
   MCP_SERVER_EXTENSION_PREFIX,
   type ModelChoice,
 } from "@eevee/agent";
@@ -117,7 +118,10 @@ export function resolveRoleExtensions(
   }
   if (snapshot.extension(AGENT_EXTENSIONS.mcp) !== undefined) {
     for (const extension of snapshot.installed()) {
-      if (extension.name.startsWith(MCP_SERVER_EXTENSION_PREFIX)) add(extension.name);
+      if (!extension.name.startsWith(MCP_SERVER_EXTENSION_PREFIX)) continue;
+      const roles = getMcpServerExtensionRoles(extension);
+      if (roles !== undefined && roles[role] === false) continue;
+      add(extension.name);
     }
   }
   return selected;

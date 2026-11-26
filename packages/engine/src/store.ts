@@ -5,6 +5,7 @@ import type {
   CreateProjectRequest,
   ModelSlotsOverride,
   ProjectSummary,
+  SkillPolicyMap,
   ToolsSettings,
 } from "@eevee/protocol";
 
@@ -96,6 +97,8 @@ export class EngineStore {
         memory TEXT,
         models_json TEXT,
         tools_json TEXT,
+        skills_policy_json TEXT,
+        mcp_json TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
@@ -110,6 +113,12 @@ export class EngineStore {
     }[];
     if (!projectColumns.some((column) => column.name === "tools_json")) {
       db.exec("ALTER TABLE projects ADD COLUMN tools_json TEXT");
+    }
+    if (!projectColumns.some((column) => column.name === "skills_policy_json")) {
+      db.exec("ALTER TABLE projects ADD COLUMN skills_policy_json TEXT");
+    }
+    if (!projectColumns.some((column) => column.name === "mcp_json")) {
+      db.exec("ALTER TABLE projects ADD COLUMN mcp_json TEXT");
     }
     return new EngineStore(db);
   }
@@ -256,6 +265,42 @@ export class EngineStore {
 
   deleteProject(id: string): boolean {
     const result = this.#db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+    return Number(result.changes) > 0;
+  }
+
+  getProjectSkillsPolicy(projectId: string): SkillPolicyMap | undefined {
+    const row = this.#db
+      .prepare("SELECT skills_policy_json FROM projects WHERE id = ?")
+      .get(projectId) as { readonly skills_policy_json: string | null } | undefined;
+    if (row === undefined || row.skills_policy_json === null) return undefined;
+    return JSON.parse(row.skills_policy_json) as SkillPolicyMap;
+  }
+
+  setProjectSkillsPolicy(projectId: string, policy: SkillPolicyMap | null): boolean {
+    const json = policy === null ? null : JSON.stringify(policy);
+    const result = this.#db
+      .prepare("UPDATE projects SET skills_policy_json = ?, updated_at = ? WHERE id = ?")
+      .run(json, Date.now(), projectId);
+    return Number(result.changes) > 0;
+  }
+
+  getProjectMcpServers(projectId: string): Record<string, Record<string, unknown>> | undefined {
+    const row = this.#db.prepare("SELECT mcp_json FROM projects WHERE id = ?").get(projectId) as
+      | { readonly mcp_json: string | null }
+      | undefined;
+    if (row === undefined || row.mcp_json === null) return undefined;
+    return JSON.parse(row.mcp_json) as Record<string, Record<string, unknown>>;
+  }
+
+  setProjectMcpServers(
+    projectId: string,
+    servers: Record<string, Record<string, unknown>> | null,
+  ): boolean {
+    const json =
+      servers === null || Object.keys(servers).length === 0 ? null : JSON.stringify(servers);
+    const result = this.#db
+      .prepare("UPDATE projects SET mcp_json = ?, updated_at = ? WHERE id = ?")
+      .run(json, Date.now(), projectId);
     return Number(result.changes) > 0;
   }
 

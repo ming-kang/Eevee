@@ -226,6 +226,7 @@ export type ProjectHandle = {
   questions(context?: Context): Promise<QuestionRecord[]>;
   usage(context?: Context): Promise<UsageState>;
   syncMcpExtensions(context?: Context): Promise<void>;
+  rebindMcpHub(mcpHub: McpHub | undefined, context?: Context): Promise<void>;
   reconfigureTools(context?: Context): Promise<void>;
   reconfigureRouterModel(model: ModelChoice | undefined, context?: Context): Promise<void>;
   reconfigureWorkspaces(workspaces: readonly string[], context?: Context): Promise<void>;
@@ -469,7 +470,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
   ];
   for (const extension of extensions) registry.install(extension);
 
-  const unbindMcp = deps.mcpHub === undefined ? undefined : deps.mcpHub.bindRegistry(registry);
+  let unbindMcp = deps.mcpHub === undefined ? undefined : deps.mcpHub.bindRegistry(registry);
 
   const environments = new Map<string, NodeExecutionEnv>();
   const settings: HarnessSettings = {
@@ -957,6 +958,24 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     },
     syncMcpExtensions: async (context = BACKGROUND_CONTEXT) => {
       context.abortSignal?.throwIfAborted();
+      activeMcpSyncPass.request();
+      await activeMcpSyncPass.idle();
+      context.abortSignal?.throwIfAborted();
+    },
+    rebindMcpHub: async (nextHub, context = BACKGROUND_CONTEXT) => {
+      context.abortSignal?.throwIfAborted();
+      unsubscribeMcp?.();
+      unsubscribeMcp = undefined;
+      await activeMcpSyncPass.idle();
+      context.abortSignal?.throwIfAborted();
+      unbindMcp?.();
+      unbindMcp = undefined;
+      if (nextHub !== undefined) {
+        unbindMcp = nextHub.bindRegistry(registry);
+        unsubscribeMcp = nextHub.subscribe(() => {
+          activeMcpSyncPass.request();
+        });
+      }
       activeMcpSyncPass.request();
       await activeMcpSyncPass.idle();
       context.abortSignal?.throwIfAborted();

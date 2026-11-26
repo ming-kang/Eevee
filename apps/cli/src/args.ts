@@ -6,6 +6,7 @@ import {
   ConversationRefSchema,
   type ModelChoice,
   type ModelSlotsOverride,
+  ProjectIdSchema,
   parseWithSchema,
   type ToolsSettings,
 } from "@eevee/protocol";
@@ -63,6 +64,14 @@ export function parseNonEmptyTaskId(raw: string): string {
     throw new Error("Invalid taskId: must not be empty");
   }
   return raw;
+}
+
+export function parseProjectIdFlag(
+  raw: string | undefined,
+  flagName = "--project",
+): string | undefined {
+  if (raw === undefined) return undefined;
+  return parseWithSchema(ProjectIdSchema, raw, flagName);
 }
 
 export function parseModelFlag(spec: string, flagName: string): ModelChoice {

@@ -3,7 +3,13 @@ import { test } from "node:test";
 import { createModels, fauxProvider } from "@earendil-works/pi-ai";
 import { createRegistry, defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { obj } from "@earendil-works/pi-schema";
-import { AGENT_EXTENSIONS, BASE_EXTENSION, MCP_SERVER_EXTENSION_PREFIX } from "@eevee/agent";
+import {
+  AGENT_EXTENSIONS,
+  BASE_EXTENSION,
+  createMcpHub,
+  MCP_SERVER_EXTENSION_PREFIX,
+  mcpServerExtensionName,
+} from "@eevee/agent";
 import { MEMORY_EXTENSION } from "@eevee/memory";
 import {
   DEFAULT_ROUTER_INSTRUCTIONS,
@@ -203,4 +209,56 @@ test("resolveRoleToolFilters applies Router overrides and codemode-only model fi
     resolveRoleToolFilters("worker", offExtensions, { codemode: { mode: "off" } }).modelTools,
     null,
   );
+});
+
+test("resolveRoleExtensions filters MCP server extensions by roles while keeping eevee.mcp", async () => {
+  const hub = createMcpHub({
+    servers: [
+      {
+        name: "router-only",
+        config: { command: "echo", roles: { router: true, worker: false } },
+      },
+      {
+        name: "worker-only",
+        config: { command: "echo", roles: { router: false, worker: true } },
+      },
+      {
+        name: "both",
+        config: { command: "echo", roles: { router: true, worker: true } },
+      },
+      {
+        name: "neither",
+        config: { command: "echo", roles: { router: false, worker: false } },
+      },
+      {
+        name: "defaulted",
+        config: { command: "echo" },
+      },
+    ],
+  });
+  const registry = createRegistry();
+  registry.install(defineExtension({ name: BASE_EXTENSION }));
+  const unbind = hub.bindRegistry(registry);
+  try {
+    const snapshot = registry.snapshot();
+    const routerNames = resolveRoleExtensions("router", snapshot).map((ext) => ext.name);
+    const workerNames = resolveRoleExtensions("worker", snapshot).map((ext) => ext.name);
+
+    assert.equal(routerNames.includes(AGENT_EXTENSIONS.mcp), true);
+    assert.equal(routerNames.includes(mcpServerExtensionName("router-only")), true);
+    assert.equal(routerNames.includes(mcpServerExtensionName("worker-only")), false);
+    assert.equal(routerNames.includes(mcpServerExtensionName("both")), true);
+    assert.equal(routerNames.includes(mcpServerExtensionName("neither")), false);
+    assert.equal(routerNames.includes(mcpServerExtensionName("defaulted")), true);
+
+    assert.equal(workerNames.includes(AGENT_EXTENSIONS.mcp), true);
+    assert.equal(workerNames.includes(mcpServerExtensionName("router-only")), false);
+    assert.equal(workerNames.includes(mcpServerExtensionName("worker-only")), true);
+    assert.equal(workerNames.includes(mcpServerExtensionName("both")), true);
+    assert.equal(workerNames.includes(mcpServerExtensionName("neither")), false);
+    assert.equal(workerNames.includes(mcpServerExtensionName("defaulted")), true);
+  } finally {
+    unbind();
+    await hub.close();
+  }
 });

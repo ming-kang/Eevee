@@ -208,7 +208,7 @@ test("discoverContextFiles and agent-context attribute multiple workspaces clean
     assert.equal(files[2]?.workspace, wsA);
     assert.equal(files[3]?.workspace, wsB);
 
-    const ext = createBaseExtension({ globalDir, workspaces: [wsA, wsB] });
+    const ext = createBaseExtension({ globalDir, userHomeDir: null, workspaces: [wsA, wsB] });
     const rendered = await sectionByKey(ext, "agent-context").render(
       promptInput(wsA, ["read"]),
       {} as never,
@@ -235,38 +235,69 @@ test("parseSkillFrontmatter reads name, description, and disable-model-invocatio
   assert.deepEqual(parseSkillFrontmatter("---\nname: x\n---\n"), { name: "x" });
 });
 
-test("discoverSkills scans global, .pi/skills, and .agents/skills with correct precedence", async () => {
+test("discoverSkills scans userHomeDir/.agents/skills and workspace .agents/skills with workspace precedence", async () => {
   await withTempDir(async (dir) => {
+    const userHomeDir = join(dir, "home");
     const globalDir = join(dir, "global");
-    const workspace = join(dir, "ws", "nested");
-    const root = join(dir, "ws");
-    await mkdir(join(globalDir, "skills", "alpha"), { recursive: true });
-    await mkdir(join(workspace, ".pi", "skills", "beta"), { recursive: true });
-    await mkdir(join(root, ".agents", "skills", "gamma"), { recursive: true });
-    await mkdir(join(root, ".agents", "skills", "alpha"), { recursive: true });
+    const repo = join(dir, "ws");
+    const workspace = join(repo, "nested");
+    await mkdir(join(repo, ".git"), { recursive: true });
+    await writeFile(join(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
+    await mkdir(join(userHomeDir, ".agents", "skills", "alpha"), { recursive: true });
+    await mkdir(join(userHomeDir, ".agents", "skills", "global-only"), { recursive: true });
+    await mkdir(join(globalDir, "skills", "legacy-global"), { recursive: true });
+    await mkdir(join(workspace, ".pi", "skills", "legacy-pi"), { recursive: true });
+    await mkdir(join(workspace, ".agents", "skills", "beta"), { recursive: true });
+    await mkdir(join(repo, ".agents", "skills", "gamma"), { recursive: true });
+    await mkdir(join(repo, ".agents", "skills", "alpha"), { recursive: true });
+
     await writeFile(
-      join(globalDir, "skills", "alpha", "SKILL.md"),
+      join(userHomeDir, ".agents", "skills", "alpha", "SKILL.md"),
       "---\nname: alpha\ndescription: global alpha\n---\n",
     );
-    await writeFile(join(workspace, ".pi", "skills", "beta", "SKILL.md"), "---\nname: beta\n---\n");
     await writeFile(
-      join(root, ".agents", "skills", "gamma", "SKILL.md"),
-      "---\nname: gamma\n---\n",
+      join(userHomeDir, ".agents", "skills", "global-only", "SKILL.md"),
+      "---\nname: global-only\ndescription: from user home\n---\n",
     );
     await writeFile(
-      join(root, ".agents", "skills", "alpha", "SKILL.md"),
+      join(globalDir, "skills", "legacy-global", "SKILL.md"),
+      "---\nname: legacy-global\ndescription: ignored legacy global\n---\n",
+    );
+    await writeFile(
+      join(workspace, ".pi", "skills", "legacy-pi", "SKILL.md"),
+      "---\nname: legacy-pi\ndescription: ignored legacy pi\n---\n",
+    );
+    await writeFile(
+      join(workspace, ".agents", "skills", "beta", "SKILL.md"),
+      "---\nname: beta\ndescription: workspace beta\n---\n",
+    );
+    await writeFile(
+      join(repo, ".agents", "skills", "gamma", "SKILL.md"),
+      "---\nname: gamma\ndescription: repo gamma\n---\n",
+    );
+    await writeFile(
+      join(repo, ".agents", "skills", "alpha", "SKILL.md"),
       "---\nname: alpha\ndescription: workspace alpha\n---\n",
     );
-    const skills = await discoverSkills({ globalDir, workspaces: [workspace] });
+
+    const skills = await discoverSkills({ globalDir, userHomeDir, workspaces: [workspace] });
     const alpha = skills.find((skill) => skill.name === "alpha");
-    assert.equal(alpha?.description, "global alpha");
+    assert.equal(alpha?.description, "workspace alpha");
+    assert.equal(alpha?.source, "workspace");
+    assert.ok(skills.some((skill) => skill.name === "global-only" && skill.source === "global"));
     assert.ok(skills.some((skill) => skill.name === "beta" && skill.source === "workspace"));
     assert.ok(skills.some((skill) => skill.name === "gamma" && skill.source === "workspace"));
-    const confined = await discoverSkills({ globalDir, workspaces: [join(dir, "isolated")] });
     assert.equal(
-      confined.some((skill) => skill.name === "beta"),
+      skills.some((skill) => skill.name === "legacy-global" || skill.name === "legacy-pi"),
       false,
     );
+
+    const noGlobal = await discoverSkills({
+      globalDir,
+      userHomeDir: null,
+      workspaces: [join(dir, "isolated")],
+    });
+    assert.deepEqual(noGlobal, []);
   });
 });
 
@@ -296,7 +327,7 @@ test("renderToolsSection and renderRulesSection render metadata only for offered
 test("createBaseExtension exposes preamble, tools, rules, cwd, agent-context, and skills in order", async () => {
   await withTempDir(async (dir) => {
     await writeFile(join(dir, "AGENTS.md"), "project rules");
-    const extension = createBaseExtension({ workspaces: [dir] });
+    const extension = createBaseExtension({ userHomeDir: null, workspaces: [dir] });
     assert.equal(extension.name, "eevee.base");
     const keys = (extension.sections ?? []).map((entry) => entry.key);
     assert.deepEqual(keys, ["preamble", "tools", "rules", "cwd", "agent-context", "skills"]);
@@ -314,17 +345,17 @@ test("createBaseExtension exposes preamble, tools, rules, cwd, agent-context, an
 
 test("skills section renders only with a reading capability and hides disable-model-invocation skills", async () => {
   await withTempDir(async (dir) => {
-    await mkdir(join(dir, ".pi", "skills", "open"), { recursive: true });
-    await mkdir(join(dir, ".pi", "skills", "hidden"), { recursive: true });
+    await mkdir(join(dir, ".agents", "skills", "open"), { recursive: true });
+    await mkdir(join(dir, ".agents", "skills", "hidden"), { recursive: true });
     await writeFile(
-      join(dir, ".pi", "skills", "open", "SKILL.md"),
+      join(dir, ".agents", "skills", "open", "SKILL.md"),
       "---\nname: open\ndescription: visible skill\n---\n",
     );
     await writeFile(
-      join(dir, ".pi", "skills", "hidden", "SKILL.md"),
+      join(dir, ".agents", "skills", "hidden", "SKILL.md"),
       "---\nname: hidden\ndescription: not for the model\ndisable-model-invocation: true\n---\n",
     );
-    const extension = createBaseExtension({ workspaces: [dir] });
+    const extension = createBaseExtension({ userHomeDir: null, workspaces: [dir] });
     const skills = sectionByKey(extension, "skills");
 
     const withoutReader = await skills.render(promptInput(dir, ["write"]), {} as never);
@@ -352,21 +383,21 @@ test("a dynamic workspaces getter switches discovered files on the next prompt r
   await withTempDir(async (dir) => {
     const wsA = join(dir, "ws-a");
     const wsB = join(dir, "ws-b");
-    await mkdir(join(wsA, ".pi", "skills", "alpha"), { recursive: true });
-    await mkdir(join(wsB, ".pi", "skills", "beta"), { recursive: true });
+    await mkdir(join(wsA, ".agents", "skills", "alpha"), { recursive: true });
+    await mkdir(join(wsB, ".agents", "skills", "beta"), { recursive: true });
     await writeFile(join(wsA, "AGENTS.md"), "rules from workspace A");
     await writeFile(join(wsB, "AGENTS.md"), "rules from workspace B");
     await writeFile(
-      join(wsA, ".pi", "skills", "alpha", "SKILL.md"),
+      join(wsA, ".agents", "skills", "alpha", "SKILL.md"),
       "---\nname: alpha\ndescription: skill a\n---\n",
     );
     await writeFile(
-      join(wsB, ".pi", "skills", "beta", "SKILL.md"),
+      join(wsB, ".agents", "skills", "beta", "SKILL.md"),
       "---\nname: beta\ndescription: skill b\n---\n",
     );
 
     let current = wsA;
-    const extension = createBaseExtension({ workspaces: () => [current] });
+    const extension = createBaseExtension({ userHomeDir: null, workspaces: () => [current] });
 
     const inputA = promptInput(wsA, ["read"]);
     const contextA = await sectionByKey(extension, "agent-context").render(inputA, {} as never);
@@ -390,12 +421,12 @@ test("a dynamic workspaces getter switches discovered files on the next prompt r
 test("agent-context and skills share one discovery scan per render input", async () => {
   await withTempDir(async (dir) => {
     await writeFile(join(dir, "AGENTS.md"), "shared scan rules");
-    await mkdir(join(dir, ".pi", "skills", "s"), { recursive: true });
+    await mkdir(join(dir, ".agents", "skills", "s"), { recursive: true });
     await writeFile(
-      join(dir, ".pi", "skills", "s", "SKILL.md"),
+      join(dir, ".agents", "skills", "s", "SKILL.md"),
       "---\nname: s\ndescription: x\n---\n",
     );
-    const extension = createBaseExtension({ workspaces: [dir] });
+    const extension = createBaseExtension({ userHomeDir: null, workspaces: [dir] });
     const input = promptInput(dir, ["read"]);
     const agentContext = await sectionByKey(extension, "agent-context").render(input, {} as never);
     const skills = await sectionByKey(extension, "skills").render(input, {} as never);

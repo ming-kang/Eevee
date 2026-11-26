@@ -55,6 +55,11 @@ import {
   type LoginInputRequest,
   type LoginPromptEvent,
   LoginPromptEventSchema,
+  type McpLogsResponse,
+  McpLogsResponseSchema,
+  type McpOAuthEvent,
+  McpOAuthEventSchema,
+  type McpOAuthInputRequest,
   type McpStateResponse,
   McpStateResponseSchema,
   type ModelProfilesDocument,
@@ -67,6 +72,8 @@ import {
   ProbeProviderResponseSchema,
   type Problem,
   ProblemSchema,
+  type ProjectMcpStateResponse,
+  ProjectMcpStateResponseSchema,
   type ProjectMemoryResponse,
   ProjectMemoryResponseSchema,
   type ProjectUsageResponse,
@@ -77,6 +84,7 @@ import {
   ProviderDetailResponseSchema,
   type PutMcpConfigRequest,
   type PutProjectMemoryRequest,
+  type PutSkillsPolicyRequest,
   parseWithSchema,
   type QuestionId,
   type ReadWorkerTaskResponse,
@@ -94,12 +102,16 @@ import {
   type SendMessageResponse,
   SendMessageResponseSchema,
   type SetApiKeyRequest,
+  type SkillsListResponse,
+  SkillsListResponseSchema,
   type SmokeTestModelRequest,
   type SmokeTestModelResponse,
   SmokeTestModelResponseSchema,
   type StartLoginRequest,
   type StartLoginResponse,
   StartLoginResponseSchema,
+  type StartMcpOAuthResponse,
+  StartMcpOAuthResponseSchema,
   type StreamEndEvent,
   StreamEndEventSchema,
   type TaskListStatusFilter,
@@ -153,7 +165,12 @@ const builtinModelMatchValidator = compile(BuiltinModelMatchResponseSchema);
 const smokeTestModelValidator = compile(SmokeTestModelResponseSchema);
 const reloadModelsValidator = compile(ReloadModelsResponseSchema);
 const modelProfilesValidator = compile(ModelProfilesDocumentSchema);
+const skillsListValidator = compile(SkillsListResponseSchema);
 const mcpStateValidator = compile(McpStateResponseSchema);
+const mcpLogsValidator = compile(McpLogsResponseSchema);
+const startMcpOAuthValidator = compile(StartMcpOAuthResponseSchema);
+const mcpOAuthEventValidator = compile(McpOAuthEventSchema);
+const projectMcpStateValidator = compile(ProjectMcpStateResponseSchema);
 const reconnectMcpValidator = compile(ReconnectMcpResponseSchema);
 const engineSettingsValidator = compile(EngineSettingsSchema);
 const configBundleValidator = compile(ConfigBundleSchema);
@@ -283,6 +300,10 @@ export type ListModelsOptions = {
 };
 
 export type StreamLoginOptions = {
+  readonly signal?: AbortSignal;
+};
+
+export type StreamMcpOAuthOptions = {
   readonly signal?: AbortSignal;
 };
 
@@ -862,6 +883,35 @@ export class EeveeClient {
     return parseWithSchema(modelProfilesValidator, data, "PUT /models/profiles response");
   }
 
+  async listSkills(signal?: AbortSignal): Promise<SkillsListResponse> {
+    const data = await this.#requestJson("GET", "/skills", undefined, signal);
+    return parseWithSchema(skillsListValidator, data, "GET /skills response");
+  }
+
+  async putSkillsPolicy(
+    input: PutSkillsPolicyRequest,
+    signal?: AbortSignal,
+  ): Promise<SkillsListResponse> {
+    const data = await this.#requestJson("PUT", "/skills/policy", input, signal);
+    return parseWithSchema(skillsListValidator, data, "PUT /skills/policy response");
+  }
+
+  async listProjectSkills(projectId: string, signal?: AbortSignal): Promise<SkillsListResponse> {
+    const path = `/projects/${encodeURIComponent(projectId)}/skills`;
+    const data = await this.#requestJson("GET", path, undefined, signal);
+    return parseWithSchema(skillsListValidator, data, `GET ${path} response`);
+  }
+
+  async putProjectSkillsPolicy(
+    projectId: string,
+    input: PutSkillsPolicyRequest,
+    signal?: AbortSignal,
+  ): Promise<SkillsListResponse> {
+    const path = `/projects/${encodeURIComponent(projectId)}/skills/policy`;
+    const data = await this.#requestJson("PUT", path, input, signal);
+    return parseWithSchema(skillsListValidator, data, `PUT ${path} response`);
+  }
+
   async getMcpState(signal?: AbortSignal): Promise<McpStateResponse> {
     const data = await this.#requestJson("GET", "/mcp", undefined, signal);
     return parseWithSchema(mcpStateValidator, data, "GET /mcp response");
@@ -894,6 +944,128 @@ export class EeveeClient {
   ): Promise<ReconnectMcpResponse> {
     const data = await this.#requestJson("POST", "/mcp/reconnect", input, signal);
     return parseWithSchema(reconnectMcpValidator, data, "POST /mcp/reconnect response");
+  }
+
+  async getMcpLogs(serverName: string, signal?: AbortSignal): Promise<McpLogsResponse> {
+    const path = `/mcp/servers/${encodeURIComponent(serverName)}/logs`;
+    const data = await this.#requestJson("GET", path, undefined, signal);
+    return parseWithSchema(mcpLogsValidator, data, `GET ${path} response`);
+  }
+
+  async startMcpOAuth(serverName: string, signal?: AbortSignal): Promise<StartMcpOAuthResponse> {
+    const path = `/mcp/servers/${encodeURIComponent(serverName)}/oauth/login`;
+    const data = await this.#requestJson("POST", path, undefined, signal);
+    return parseWithSchema(startMcpOAuthValidator, data, `POST ${path} response`);
+  }
+
+  async *streamMcpOAuth(
+    serverName: string,
+    sessionId: string,
+    opts?: StreamMcpOAuthOptions,
+  ): AsyncGenerator<McpOAuthEvent> {
+    const path = `/mcp/servers/${encodeURIComponent(serverName)}/oauth/login/${encodeURIComponent(sessionId)}/stream`;
+    const response = await this.#requestSse(path, opts?.signal);
+    for await (const sse of parseSseStream(response.body, opts?.signal)) {
+      if (
+        sse.event === "auth_url" ||
+        sse.event === "progress" ||
+        sse.event === "complete" ||
+        sse.event === "error" ||
+        sse.event === "message"
+      ) {
+        const raw = parseJsonString(sse.data, "MCP OAuth SSE payload");
+        const event = parseWithSchema(mcpOAuthEventValidator, raw, "MCP OAuth SSE payload");
+        yield event;
+        if (event.type === "complete" || event.type === "error") return;
+      }
+    }
+  }
+
+  async submitMcpOAuthInput(
+    serverName: string,
+    sessionId: string,
+    input: McpOAuthInputRequest,
+    signal?: AbortSignal,
+  ): Promise<OkResponse> {
+    const path = `/mcp/servers/${encodeURIComponent(serverName)}/oauth/login/${encodeURIComponent(sessionId)}/input`;
+    const data = await this.#requestJson("POST", path, input, signal);
+    return parseWithSchema(okValidator, data, `POST ${path} response`);
+  }
+
+  async cancelMcpOAuth(
+    serverName: string,
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<OkResponse> {
+    const path = `/mcp/servers/${encodeURIComponent(serverName)}/oauth/login/${encodeURIComponent(sessionId)}/cancel`;
+    const data = await this.#requestJson("POST", path, undefined, signal);
+    return parseWithSchema(okValidator, data, `POST ${path} response`);
+  }
+
+  async logoutMcpOAuth(serverName: string, signal?: AbortSignal): Promise<OkResponse> {
+    const path = `/mcp/servers/${encodeURIComponent(serverName)}/oauth`;
+    const data = await this.#requestJson("DELETE", path, undefined, signal);
+    return parseWithSchema(okValidator, data, `DELETE ${path} response`);
+  }
+
+  async getProjectMcpState(
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<ProjectMcpStateResponse> {
+    const path = `/projects/${encodeURIComponent(projectId)}/mcp`;
+    const data = await this.#requestJson("GET", path, undefined, signal);
+    return parseWithSchema(projectMcpStateValidator, data, `GET ${path} response`);
+  }
+
+  async putProjectMcpConfig(
+    projectId: string,
+    input: PutMcpConfigRequest,
+    signal?: AbortSignal,
+  ): Promise<ProjectMcpStateResponse> {
+    const path = `/projects/${encodeURIComponent(projectId)}/mcp`;
+    const data = await this.#requestJson("PUT", path, input, signal);
+    return parseWithSchema(projectMcpStateValidator, data, `PUT ${path} response`);
+  }
+
+  async upsertProjectMcpServer(
+    projectId: string,
+    serverName: string,
+    input: UpsertMcpServerRequest,
+    signal?: AbortSignal,
+  ): Promise<ProjectMcpStateResponse> {
+    const path = `/projects/${encodeURIComponent(projectId)}/mcp/servers/${encodeURIComponent(serverName)}`;
+    const data = await this.#requestJson("PUT", path, input, signal);
+    return parseWithSchema(projectMcpStateValidator, data, `PUT ${path} response`);
+  }
+
+  async deleteProjectMcpServer(
+    projectId: string,
+    serverName: string,
+    signal?: AbortSignal,
+  ): Promise<ProjectMcpStateResponse> {
+    const path = `/projects/${encodeURIComponent(projectId)}/mcp/servers/${encodeURIComponent(serverName)}`;
+    const data = await this.#requestJson("DELETE", path, undefined, signal);
+    return parseWithSchema(projectMcpStateValidator, data, `DELETE ${path} response`);
+  }
+
+  async reconnectProjectMcp(
+    projectId: string,
+    input: ReconnectMcpRequest = {},
+    signal?: AbortSignal,
+  ): Promise<ReconnectMcpResponse> {
+    const path = `/projects/${encodeURIComponent(projectId)}/mcp/reconnect`;
+    const data = await this.#requestJson("POST", path, input, signal);
+    return parseWithSchema(reconnectMcpValidator, data, `POST ${path} response`);
+  }
+
+  async getProjectMcpLogs(
+    projectId: string,
+    serverName: string,
+    signal?: AbortSignal,
+  ): Promise<McpLogsResponse> {
+    const path = `/projects/${encodeURIComponent(projectId)}/mcp/servers/${encodeURIComponent(serverName)}/logs`;
+    const data = await this.#requestJson("GET", path, undefined, signal);
+    return parseWithSchema(mcpLogsValidator, data, `GET ${path} response`);
   }
 
   async getSettings(signal?: AbortSignal): Promise<EngineSettings> {

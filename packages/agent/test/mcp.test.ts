@@ -337,7 +337,7 @@ function parseCodemodePayload(text: string): Record<string, unknown> {
   return JSON.parse(text.slice(index + marker.length).trim()) as Record<string, unknown>;
 }
 
-test("parseMcpConfig accepts stdio and HTTP configs, JSONC, BOM, and applies deferred defaults", () => {
+test("parseMcpConfig accepts stdio and HTTP configs, JSONC, BOM, and applies codemode defaults", () => {
   const parsed = parseMcpConfig({
     mcpServers: {
       local: {
@@ -358,7 +358,7 @@ test("parseMcpConfig accepts stdio and HTTP configs, JSONC, BOM, and applies def
   assert.equal(parsed.servers.length, 2);
   assert.equal(parsed.servers[0]?.name, "local");
   assert.equal(parsed.servers[1]?.name, "remote");
-  assert.equal(getMcpToolExposure(required(parsed.servers[0]).config, "anything"), "deferred");
+  assert.equal(getMcpToolExposure(required(parsed.servers[0]).config, "anything"), "codemode");
 
   const jsonc = parseMcpConfig(
     '\uFEFF{\n  // a comment\n  "mcpServers": {\n    /* block */\n    "docs": { "command": "docs-server" }\n  }\n}',
@@ -736,7 +736,10 @@ test("deferred MCP tools are discovered with tool_search, called by the model, a
     structuredContent: { answer: `fact for ${String(args.query)}`, confidence: 0.9 },
     _meta: { serverOnly: true },
   });
-  const entry = stdioEntry("docs", { description: "Pineapple documentation" });
+  const entry = stdioEntry("docs", {
+    description: "Pineapple documentation",
+    exposure: "deferred",
+  });
   const hub = createPipeHub({ docs: server }, [entry]);
   const captured = new Map<string, ToolExecutionResult[]>();
   const th = await createTestHarness({
@@ -1263,7 +1266,7 @@ test("McpHub.reconnect reconnects failed or connected servers, skips disabled, a
     const allSnaps = await hub.reconnect();
     assert.equal(allSnaps.find((s) => s.name === "alpha")?.status, "connected");
     assert.equal(allSnaps.find((s) => s.name === "flaky")?.status, "connected");
-    assert.equal(allSnaps.find((s) => s.name === "disabled")?.status, "idle");
+    assert.equal(allSnaps.find((s) => s.name === "disabled")?.status, "disabled");
     assert.equal(disabled.connectCount, 0);
     assert.ok(
       th.registry

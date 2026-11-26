@@ -1,15 +1,22 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+import type { Command } from "commander";
 import { parseToolOverridesFlag, parseToolsSettingsFlags } from "../src/args.ts";
 import {
   aggregateBoardTasks,
   ConversationWatchRenderer,
   formatBoard,
+  formatMcpLogs,
   formatMcpState,
+  formatMcpStatus,
   formatModelProfiles,
   formatModels,
   formatProbeResult,
+  formatProjectMcpState,
   formatProjectUsage,
   formatProviderCatalog,
   formatProviderDetail,
@@ -18,6 +25,7 @@ import {
   formatRefreshModels,
   formatReloadModels,
   formatSettings,
+  formatSkillsList,
   formatSmokeTestResult,
   formatTaskList,
   formatTaskOutput,
@@ -464,6 +472,9 @@ test("CLI program registers all 4C management commands, subcommands, and options
   assert.deepEqual(mcpCmd.commands.map((c) => c.name()).sort(), [
     "add",
     "list",
+    "login",
+    "logout",
+    "logs",
     "reconnect",
     "remove",
     "set",
@@ -1433,4 +1444,725 @@ test("CLI provider and reload formatters render catalog, detail, probe, smoke te
       "- providers.custom.api: unsupported api",
     ].join("\n"),
   );
+});
+
+test("CLI registers skills and upgraded MCP subcommands and options", () => {
+  const program = createProgram({ EEVEE_HOME: "/tmp/eevee-cli-test" });
+
+  const skillsCmd = program.commands.find((c) => c.name() === "skills");
+  assert.ok(skillsCmd);
+  assert.deepEqual(skillsCmd.commands.map((c) => c.name()).sort(), [
+    "clear-policy",
+    "list",
+    "set-policy",
+  ]);
+
+  const skillsList = skillsCmd.commands.find((c) => c.name() === "list");
+  assert.ok(skillsList?.options.some((o) => o.long === "--project"));
+  assert.ok(skillsList?.options.some((o) => o.long === "--json"));
+
+  const skillsSetPolicy = skillsCmd.commands.find((c) => c.name() === "set-policy");
+  assert.equal(skillsSetPolicy?.registeredArguments.length, 2);
+  assert.ok(skillsSetPolicy?.options.some((o) => o.long === "--project"));
+  assert.ok(skillsSetPolicy?.options.some((o) => o.long === "--json"));
+
+  const skillsClearPolicy = skillsCmd.commands.find((c) => c.name() === "clear-policy");
+  assert.ok(skillsClearPolicy?.options.some((o) => o.long === "--project"));
+  assert.ok(skillsClearPolicy?.options.some((o) => o.long === "--json"));
+
+  const mcpCmd = program.commands.find((c) => c.name() === "mcp");
+  assert.ok(mcpCmd);
+  const mcpSubcommands: readonly Command[] = mcpCmd.commands;
+
+  for (const name of ["status", "list"]) {
+    const cmd = mcpSubcommands.find((c) => c.name() === name);
+    assert.ok(cmd, `missing mcp subcommand ${name}`);
+    assert.ok(
+      cmd.options.some((o) => o.long === "--project"),
+      `missing --project on ${name}`,
+    );
+    assert.ok(
+      cmd.options.some((o) => o.long === "--logs"),
+      `missing --logs on ${name}`,
+    );
+    assert.ok(
+      cmd.options.some((o) => o.long === "--json"),
+      `missing --json on ${name}`,
+    );
+  }
+
+  for (const name of ["set", "remove", "reconnect"]) {
+    const cmd = mcpSubcommands.find((c) => c.name() === name);
+    assert.ok(cmd, `missing mcp subcommand ${name}`);
+    assert.ok(
+      cmd.options.some((o) => o.long === "--project"),
+      `missing --project on ${name}`,
+    );
+  }
+
+  const mcpAdd = mcpCmd.commands.find((c) => c.name() === "add");
+  assert.ok(mcpAdd);
+  for (const flag of [
+    "--project",
+    "--router",
+    "--no-router",
+    "--worker",
+    "--no-worker",
+    "--disabled",
+    "--no-disabled",
+  ]) {
+    assert.ok(
+      mcpAdd.options.some((o) => o.long === flag),
+      `missing mcp add flag ${flag}`,
+    );
+  }
+  const exposureOpt = mcpAdd.options.find((o) => o.long === "--exposure");
+  assert.ok(exposureOpt?.description.includes("codemode"));
+
+  const mcpLogs = mcpCmd.commands.find((c) => c.name() === "logs");
+  assert.equal(mcpLogs?.registeredArguments.length, 1);
+  assert.ok(mcpLogs?.options.some((o) => o.long === "--project"));
+  assert.ok(mcpLogs?.options.some((o) => o.long === "--json"));
+
+  const mcpLogin = mcpCmd.commands.find((c) => c.name() === "login");
+  assert.equal(mcpLogin?.registeredArguments.length, 1);
+  assert.ok(mcpLogin?.options.some((o) => o.long === "--json"));
+
+  const mcpLogout = mcpCmd.commands.find((c) => c.name() === "logout");
+  assert.equal(mcpLogout?.registeredArguments.length, 1);
+  assert.ok(mcpLogout?.options.some((o) => o.long === "--json"));
+});
+
+test("CLI validates skills and upgraded MCP arguments and flags cleanly", async () => {
+  const program = createProgram({ EEVEE_HOME: "/tmp/eevee-cli-test" });
+  program.exitOverride();
+
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "skills", "list", "--project", "../bad"]),
+    /Invalid --project/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "skills", "set-policy", "   ", "model"]),
+    /Invalid skillName/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "skills", "set-policy", "my-skill", "always"]),
+    /Invalid mode "always": expected model, user, disabled, or reset/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "skills", "clear-policy", "--project", "bad/id"]),
+    /Invalid --project/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "mcp", "add", "docs", "--project", "demo"]),
+    /Specify --command, --url, or at least one override flag/,
+  );
+  await assert.rejects(
+    program.parseAsync([
+      "node",
+      "eevee",
+      "mcp",
+      "add",
+      "docs",
+      "--project",
+      "demo",
+      "--command",
+      "npx",
+      "--url",
+      "https://example.com/mcp",
+    ]),
+    /Cannot combine --command and --url/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "mcp", "logs", "   "]),
+    /Invalid server name/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "mcp", "login", "   "]),
+    /Invalid server name/,
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "eevee", "mcp", "logout", "   "]),
+    /Invalid server name/,
+  );
+});
+
+test("formatSkillsList, formatProjectMcpState, formatMcpLogs, and updated formatMcpStatus render complete details", () => {
+  assert.equal(
+    formatSkillsList({ skills: [], diagnostics: [], globalPolicy: {} }),
+    "No skills discovered.",
+  );
+
+  const skillsText = formatSkillsList({
+    skills: [
+      {
+        name: "shared-skill",
+        description: "Shared\nskill",
+        path: "/home/user/.agents/skills/shared-skill/SKILL.md",
+        baseDir: "/home/user/.agents/skills/shared-skill",
+        source: "global",
+        disableModelInvocation: false,
+        defaultMode: "model",
+        effectiveMode: "disabled",
+        globalOverride: "disabled",
+      },
+      {
+        name: "ws-skill",
+        description: "Workspace skill",
+        path: "/ws/.agents/skills/ws-skill/SKILL.md",
+        baseDir: "/ws/.agents/skills/ws-skill",
+        source: "workspace",
+        workspace: "/ws",
+        disableModelInvocation: true,
+        defaultMode: "user",
+        effectiveMode: "model",
+        globalOverride: "disabled",
+        projectOverride: "model",
+      },
+    ],
+    diagnostics: [
+      {
+        type: "collision",
+        message: "Duplicate skill name",
+        path: "/ws/.agents/skills/dup/SKILL.md",
+        skillName: "shared-skill",
+      },
+      {
+        type: "error",
+        message: "Missing description",
+        path: "/ws/.agents/skills/broken/SKILL.md",
+      },
+    ],
+    globalPolicy: { "shared-skill": "disabled" },
+    projectPolicy: { "ws-skill": "model" },
+  });
+  assert.ok(
+    skillsText.includes(
+      "shared-skill\tglobal\tmode=disabled (global override, default=model)\tShared skill\t/home/user/.agents/skills/shared-skill/SKILL.md",
+    ),
+  );
+  assert.ok(
+    skillsText.includes(
+      "ws-skill\tworkspace\tmode=model (project override, default=user, global=disabled)\tWorkspace skill\t/ws/.agents/skills/ws-skill/SKILL.md",
+    ),
+  );
+  assert.ok(skillsText.includes("Skill diagnostics:"));
+  assert.ok(
+    skillsText.includes(
+      "- [collision] (shared-skill) /ws/.agents/skills/dup/SKILL.md: Duplicate skill name",
+    ),
+  );
+  assert.ok(
+    skillsText.includes("- [error] /ws/.agents/skills/broken/SKILL.md: Missing description"),
+  );
+
+  const statusText = formatMcpStatus(
+    [
+      {
+        name: "docs",
+        status: "connected",
+        enabled: true,
+        toolCount: 4,
+        transport: "http",
+        exposure: "codemode",
+        roles: { router: true, worker: false },
+        hasResources: true,
+        scope: "override",
+        recentLogs: ["[info] initialized"],
+      },
+      {
+        name: "oauth-srv",
+        status: "auth_required",
+        enabled: true,
+        toolCount: 0,
+        transport: "http",
+        exposure: "direct",
+        roles: { router: true, worker: true },
+        hasResources: false,
+        authRequired: true,
+        scope: "global",
+      },
+      {
+        name: "degraded-auth",
+        status: "disconnected",
+        enabled: true,
+        toolCount: 0,
+        authRequired: true,
+        error: "token expired",
+      },
+      {
+        name: "off-srv",
+        status: "disabled",
+        enabled: false,
+        toolCount: 0,
+      },
+    ],
+    { showLogs: true },
+  );
+  assert.ok(
+    statusText.includes(
+      "docs\tconnected\ttools=4\ttransport=http\texposure=codemode\troles=router\tresources\tscope=override",
+    ),
+  );
+  assert.ok(statusText.includes("  logs:\n    [info] initialized"));
+  assert.ok(
+    statusText.includes(
+      "oauth-srv\tauth_required\ttools=0\ttransport=http\texposure=direct\troles=router,worker\tscope=global",
+    ),
+  );
+  assert.ok(
+    statusText.includes("degraded-auth\tdisconnected\ttools=0\tauth_required\terror=token expired"),
+  );
+  assert.ok(statusText.includes("off-srv\tdisabled\ttools=0"));
+  assert.ok(statusText.includes("  logs: (none)"));
+
+  const projectMcpText = formatProjectMcpState(
+    {
+      globalServers: {
+        shared: { command: "shared" },
+        base: { command: "base" },
+      },
+      projectServers: {
+        shared: { enabled: false },
+        local: { command: "local" },
+      },
+      effectiveServers: {
+        shared: { command: "shared", enabled: false },
+        base: { command: "base" },
+        local: { command: "local" },
+      },
+      status: [
+        { name: "shared", status: "disabled", enabled: false, toolCount: 0 },
+        { name: "base", status: "connected", enabled: true, toolCount: 1 },
+        { name: "local", status: "connected", enabled: true, toolCount: 2, scope: "project" },
+      ],
+    },
+    {
+      logs: new Map([
+        ["local", { server: "local", lines: ["started"], logPath: "/tmp/proj/mcp.log" }],
+      ]),
+    },
+  );
+  assert.ok(projectMcpText.includes("shared\tdisabled\ttools=0\tscope=override"));
+  assert.ok(projectMcpText.includes("base\tconnected\ttools=1\tscope=global"));
+  assert.ok(projectMcpText.includes("local\tconnected\ttools=2\tscope=project"));
+  assert.ok(projectMcpText.includes("  logs (/tmp/proj/mcp.log):\n    started"));
+
+  assert.equal(
+    formatMcpLogs({ server: "docs", lines: [], logPath: "/tmp/mcp.log" }),
+    "MCP logs for docs (/tmp/mcp.log):\nNo log entries.",
+  );
+  assert.equal(
+    formatMcpLogs({ server: "docs", lines: ["line 1", "line 2"] }),
+    "MCP logs for docs:\nline 1\nline 2",
+  );
+});
+
+async function readHttpJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : (chunk as Buffer));
+  }
+  const text = Buffer.concat(chunks).toString("utf8");
+  return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+}
+
+function writeHttpJson(res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { "content-type": "application/json" });
+  res.end(JSON.stringify(body));
+}
+
+function runCliSubprocess(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+): Promise<{ readonly code: number | null; readonly stdout: string; readonly stderr: string }> {
+  const cliEntry = fileURLToPath(new URL("../src/index.ts", import.meta.url));
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ["--conditions=eevee-source", cliEntry, ...args], {
+      env: { ...process.env, ...env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      resolve({
+        code,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+        stderr: Buffer.concat(stderrChunks).toString("utf8"),
+      });
+    });
+  });
+}
+
+test("skills and MCP CLI commands dispatch expected API requests and handle OAuth outcomes", async () => {
+  const calls: Array<{ method: string; url: string; body?: Record<string, unknown> }> = [];
+  let globalPolicy: Record<string, "model" | "user" | "disabled"> = { existing: "user" };
+  let projectPolicy: Record<string, "model" | "user" | "disabled"> | undefined = {
+    "proj-skill": "disabled",
+  };
+  let oauthMode: "complete" | "error" | "hang" = "complete";
+
+  const server = createServer(async (req, res) => {
+    const method = req.method ?? "GET";
+    const url = req.url ?? "/";
+
+    if (method === "GET" && url === "/skills") {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, {
+        skills: [
+          {
+            name: "existing",
+            description: "Global skill",
+            path: "/home/.agents/skills/existing/SKILL.md",
+            baseDir: "/home/.agents/skills/existing",
+            source: "global",
+            disableModelInvocation: false,
+            defaultMode: "model",
+            effectiveMode: globalPolicy.existing ?? "model",
+            ...(globalPolicy.existing === undefined
+              ? {}
+              : { globalOverride: globalPolicy.existing }),
+          },
+        ],
+        diagnostics: [],
+        globalPolicy,
+      });
+      return;
+    }
+    if (method === "PUT" && url === "/skills/policy") {
+      const body = await readHttpJson(req);
+      calls.push({ method, url, body });
+      globalPolicy =
+        body.policy === null ? {} : (body.policy as Record<string, "model" | "user" | "disabled">);
+      writeHttpJson(res, 200, { skills: [], diagnostics: [], globalPolicy });
+      return;
+    }
+    if (method === "GET" && url === "/projects/demo/skills") {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, {
+        skills: [],
+        diagnostics: [],
+        globalPolicy,
+        ...(projectPolicy === undefined ? {} : { projectPolicy }),
+      });
+      return;
+    }
+    if (method === "PUT" && url === "/projects/demo/skills/policy") {
+      const body = await readHttpJson(req);
+      calls.push({ method, url, body });
+      projectPolicy =
+        body.policy === null
+          ? undefined
+          : (body.policy as Record<string, "model" | "user" | "disabled">);
+      writeHttpJson(res, 200, {
+        skills: [],
+        diagnostics: [],
+        globalPolicy,
+        ...(projectPolicy === undefined ? {} : { projectPolicy }),
+      });
+      return;
+    }
+    if (method === "GET" && url === "/projects/demo/mcp") {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, {
+        globalServers: { docs: { url: "https://docs.example/mcp" } },
+        projectServers: { docs: { roles: { router: false, worker: false } } },
+        effectiveServers: {
+          docs: { url: "https://docs.example/mcp", roles: { router: false, worker: false } },
+        },
+        status: [
+          {
+            name: "docs",
+            status: "connected",
+            enabled: true,
+            toolCount: 1,
+            transport: "http",
+            exposure: "codemode",
+            roles: { router: false, worker: false },
+            scope: "override",
+          },
+        ],
+      });
+      return;
+    }
+    if (method === "GET" && url === "/projects/demo/mcp/servers/docs/logs") {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, {
+        server: "docs",
+        lines: ["[info] project log line"],
+        logPath: "/tmp/demo/mcp.log",
+      });
+      return;
+    }
+    if (method === "PUT" && url === "/projects/demo/mcp/servers/docs") {
+      const body = await readHttpJson(req);
+      calls.push({ method, url, body });
+      writeHttpJson(res, 200, {
+        globalServers: { docs: { url: "https://docs.example/mcp" } },
+        projectServers: { docs: body.config },
+        effectiveServers: { docs: body.config },
+        status: [{ name: "docs", status: "connected", enabled: true, toolCount: 1 }],
+      });
+      return;
+    }
+    if (method === "PUT" && url === "/projects/demo/mcp") {
+      const body = await readHttpJson(req);
+      calls.push({ method, url, body });
+      writeHttpJson(res, 200, {
+        globalServers: {},
+        projectServers: body.servers,
+        effectiveServers: body.servers,
+        status: [{ name: "docs", status: "connected", enabled: true, toolCount: 1 }],
+      });
+      return;
+    }
+    if (method === "DELETE" && url === "/projects/demo/mcp/servers/docs") {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, {
+        globalServers: {},
+        projectServers: {},
+        effectiveServers: {},
+        status: [],
+      });
+      return;
+    }
+    if (method === "POST" && url === "/projects/demo/mcp/reconnect") {
+      const body = await readHttpJson(req);
+      calls.push({ method, url, body });
+      writeHttpJson(res, 200, {
+        status: [
+          { name: "docs", status: "connected", enabled: true, toolCount: 1, scope: "project" },
+        ],
+      });
+      return;
+    }
+    if (method === "GET" && url === "/mcp") {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, {
+        servers: { local: { command: "npx" } },
+        status: [
+          {
+            name: "local",
+            status: "connected",
+            enabled: true,
+            toolCount: 0,
+            transport: "stdio",
+            exposure: "codemode",
+            roles: { router: false, worker: true },
+            scope: "global",
+          },
+        ],
+      });
+      return;
+    }
+    if (method === "GET" && url === "/mcp/servers/local/logs") {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, {
+        server: "local",
+        lines: ["[info] global log line"],
+        logPath: "/tmp/mcp.log",
+      });
+      return;
+    }
+    if (method === "PUT" && url === "/mcp/servers/local") {
+      const body = await readHttpJson(req);
+      calls.push({ method, url, body });
+      writeHttpJson(res, 200, {
+        servers: { local: body.config },
+        status: [{ name: "local", status: "connected", enabled: true, toolCount: 0 }],
+      });
+      return;
+    }
+    if (method === "POST" && url === "/mcp/servers/oauth-srv/oauth/login") {
+      calls.push({ method, url });
+      writeHttpJson(res, 201, { sessionId: "sess-1", server: "oauth-srv" });
+      return;
+    }
+    if (method === "GET" && url === "/mcp/servers/oauth-srv/oauth/login/sess-1/stream") {
+      calls.push({ method, url });
+      res.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+      });
+      res.write(
+        `event: auth_url\ndata: ${JSON.stringify({
+          type: "auth_url",
+          url: "https://auth.example/authorize",
+          redirectUrl: "http://127.0.0.1:9999/callback",
+          instructions: "Open browser to sign in.",
+        })}\n\n`,
+      );
+      if (oauthMode === "complete") {
+        res.write(
+          `event: progress\ndata: ${JSON.stringify({ type: "progress", message: "Exchanging code..." })}\n\n`,
+        );
+        res.write(`event: complete\ndata: ${JSON.stringify({ type: "complete" })}\n\n`);
+        res.end();
+      } else if (oauthMode === "error") {
+        res.write(
+          `event: error\ndata: ${JSON.stringify({
+            type: "error",
+            code: "oauth_denied",
+            message: "Access denied",
+          })}\n\n`,
+        );
+        res.end();
+      } else {
+        req.on("close", () => res.end());
+      }
+      return;
+    }
+    if (method === "POST" && url === "/mcp/servers/oauth-srv/oauth/login/sess-1/cancel") {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, { ok: true });
+      return;
+    }
+    if (method === "DELETE" && url === "/mcp/servers/oauth-srv/oauth") {
+      calls.push({ method, url });
+      writeHttpJson(res, 200, { ok: true });
+      return;
+    }
+    writeHttpJson(res, 404, { code: "not_found", message: `Unhandled ${method} ${url}` });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const env: NodeJS.ProcessEnv = {
+    EEVEE_HOME: "/tmp/eevee-cli-mock-test",
+    EEVEE_URL: `http://127.0.0.1:${address.port}`,
+    EEVEE_TOKEN: "test-token",
+  };
+
+  const logs: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+
+  try {
+    const run = (argv: string[]) => createProgram(env).parseAsync(["node", "eevee", ...argv]);
+
+    logs.length = 0;
+    await run(["skills", "list"]);
+    assert.ok(logs[0]?.includes("existing\tglobal\tmode=user (global override, default=model)"));
+
+    logs.length = 0;
+    await run(["skills", "list", "--project", "demo", "--json"]);
+    assert.equal(JSON.parse(logs[0] ?? "{}").projectPolicy["proj-skill"], "disabled");
+
+    await run(["skills", "set-policy", "new-skill", "disabled"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PUT",
+      url: "/skills/policy",
+      body: { policy: { existing: "user", "new-skill": "disabled" } },
+    });
+
+    await run(["skills", "set-policy", "proj-skill", "reset", "--project", "demo"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PUT",
+      url: "/projects/demo/skills/policy",
+      body: { policy: null },
+    });
+
+    await run(["skills", "clear-policy"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PUT",
+      url: "/skills/policy",
+      body: { policy: null },
+    });
+
+    await run(["mcp", "add", "docs", "--project", "demo", "--no-router", "--no-worker"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PUT",
+      url: "/projects/demo/mcp/servers/docs",
+      body: { config: { roles: { router: false, worker: false } } },
+    });
+
+    await run(["mcp", "add", "local", "--command", "npx", "--no-router"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PUT",
+      url: "/mcp/servers/local",
+      body: { config: { command: "npx", roles: { router: false, worker: true } } },
+    });
+
+    await run(["mcp", "reconnect", "docs", "--project", "demo"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "POST",
+      url: "/projects/demo/mcp/reconnect",
+      body: { server: "docs" },
+    });
+
+    await run(["mcp", "remove", "docs", "--project", "demo"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "DELETE",
+      url: "/projects/demo/mcp/servers/docs",
+    });
+
+    logs.length = 0;
+    await run(["mcp", "status", "--logs"]);
+    assert.ok(logs[0]?.includes("[info] global log line"));
+
+    logs.length = 0;
+    await run(["mcp", "status", "--project", "demo", "--logs"]);
+    assert.ok(logs[0]?.includes("docs\tconnected\ttools=1"));
+    assert.ok(logs[0]?.includes("[info] project log line"));
+
+    logs.length = 0;
+    await run(["mcp", "logs", "docs", "--project", "demo"]);
+    assert.ok(logs[0]?.includes("MCP logs for docs (/tmp/demo/mcp.log):\n[info] project log line"));
+
+    oauthMode = "complete";
+    const loginOk = await runCliSubprocess(["mcp", "login", "oauth-srv"], env);
+    assert.equal(loginOk.code, 0, loginOk.stderr);
+    assert.ok(loginOk.stdout.includes("Open URL: https://auth.example/authorize"));
+    assert.ok(loginOk.stdout.includes("Open browser to sign in."));
+    assert.ok(loginOk.stdout.includes("Exchanging code..."));
+    assert.ok(loginOk.stdout.includes("Authenticated MCP server oauth-srv"));
+
+    oauthMode = "error";
+    const loginErr = await runCliSubprocess(["mcp", "login", "oauth-srv"], env);
+    assert.equal(loginErr.code, 1);
+    assert.ok(loginErr.stderr.includes("Access denied (oauth_denied)"));
+
+    const loginErrJson = await runCliSubprocess(["mcp", "login", "oauth-srv", "--json"], env);
+    assert.equal(loginErrJson.code, 1);
+    assert.deepEqual(JSON.parse(loginErrJson.stdout), {
+      type: "error",
+      code: "oauth_denied",
+      message: "Access denied",
+    });
+
+    oauthMode = "hang";
+    const beforeSigint = new Set(process.listeners("SIGINT"));
+    const originalStderrWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    try {
+      const loginPromise = run(["mcp", "login", "oauth-srv", "--json"]);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      const addedSigint = process
+        .listeners("SIGINT")
+        .filter((listener) => !beforeSigint.has(listener));
+      assert.equal(addedSigint.length, 1);
+      addedSigint[0]?.("SIGINT");
+      await loginPromise;
+    } finally {
+      process.stderr.write = originalStderrWrite;
+    }
+    assert.ok(
+      calls.some(
+        (c) => c.method === "POST" && c.url === "/mcp/servers/oauth-srv/oauth/login/sess-1/cancel",
+      ),
+    );
+
+    logs.length = 0;
+    await run(["mcp", "logout", "oauth-srv"]);
+    assert.ok(logs.includes("Logged out of MCP server oauth-srv"));
+  } finally {
+    console.log = originalLog;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });

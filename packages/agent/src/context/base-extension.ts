@@ -4,7 +4,9 @@ import {
   type ContextFile,
   discoverContext,
   type PromptContextOptions,
+  resolveSkillTriggerMode,
   type SkillInfo,
+  type SkillPolicyMap,
 } from "./discovery.ts";
 import { renderRulesSection, renderToolsSection } from "./tool-meta.ts";
 
@@ -12,6 +14,7 @@ export const BASE_EXTENSION = "eevee.base";
 
 export type BaseExtensionOptions = Omit<PromptContextOptions, "workspaces"> & {
   readonly workspaces?: readonly string[] | (() => readonly string[]);
+  readonly skillPolicy?: SkillPolicyMap | (() => SkillPolicyMap | undefined);
 };
 
 function escapeXml(text: string): string {
@@ -41,9 +44,10 @@ function renderContextFiles(files: readonly ContextFile[]): string | undefined {
 function renderSkills(
   skills: readonly SkillInfo[],
   reader: "read" | "bash" | "powershell" | "codemode" | undefined,
+  policy?: SkillPolicyMap,
 ): string | undefined {
   if (reader === undefined) return undefined;
-  const visible = skills.filter((skill) => !skill.disableModelInvocation);
+  const visible = skills.filter((skill) => resolveSkillTriggerMode(skill, policy) === "model");
   if (visible.length === 0) return undefined;
   const entries = visible
     .map(
@@ -89,7 +93,11 @@ export function createBaseExtension(options: BaseExtensionOptions = {}) {
       typeof options.workspaces === "function" ? options.workspaces() : options.workspaces;
     const workspaces =
       configured ?? (input.agent.cwd === undefined ? undefined : [input.agent.cwd]);
-    const discovery = discoverContext({ globalDir: options.globalDir, workspaces });
+    const discovery = discoverContext({
+      globalDir: options.globalDir,
+      userHomeDir: options.userHomeDir,
+      workspaces,
+    });
     discoveries.set(key, discovery);
     return discovery;
   };
@@ -115,7 +123,9 @@ export function createBaseExtension(options: BaseExtensionOptions = {}) {
       section("skills", async (input) => {
         const discovery = await discoverOnce(input);
         const reader = skillReader(input.agent);
-        return renderSkills(discovery.skills, reader);
+        const policy =
+          typeof options.skillPolicy === "function" ? options.skillPolicy() : options.skillPolicy;
+        return renderSkills(discovery.skills, reader, policy);
       }),
     ],
   });

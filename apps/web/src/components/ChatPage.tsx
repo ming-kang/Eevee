@@ -182,6 +182,7 @@ export function ChatPage({
 
               <Composer
                 draftKey={`router:${project.id}`}
+                projectId={project.id}
                 activeRef="router"
                 busy={live.busy}
                 hasRunFailure={live.runFailure !== undefined}

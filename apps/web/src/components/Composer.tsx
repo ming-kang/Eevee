@@ -1,12 +1,35 @@
 import { RefreshIcon, SendIcon, StopIcon } from "@earendil-works/elanor-icons-react";
 import { Button, SegmentedControl, Stack } from "@earendil-works/elanor-react";
-import type { ConversationRef, WhenBusy } from "@eevee/protocol";
-import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import type { ConversationRef, SkillEntry, WhenBusy } from "@eevee/protocol";
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  type SyntheticEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { api } from "../lib/api.ts";
 import { formatTokens } from "../lib/format.ts";
+import {
+  applySkillAutocomplete,
+  extractSkillAutocompleteToken,
+  filterAutocompleteSkills,
+} from "../lib/skill-autocomplete.ts";
 import type { ContextUsage } from "../lib/transcript.ts";
+
+const SKILLS_CACHE_TTL_MS = 4000;
+
+type CachedSkills = {
+  readonly skills: readonly SkillEntry[];
+  readonly fetchedAt: number;
+};
 
 export type ComposerProps = {
   readonly draftKey: string;
+  readonly projectId?: string;
   readonly activeRef: ConversationRef;
   readonly busy: boolean;
   readonly hasRunFailure: boolean;
@@ -21,6 +44,7 @@ export type ComposerProps = {
 
 export function Composer({
   draftKey,
+  projectId,
   activeRef,
   busy,
   hasRunFailure,
@@ -42,26 +66,62 @@ export function Composer({
   const [whenBusy, setWhenBusy] = useState<WhenBusy>("followUp");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [cursorOffset, setCursorOffset] = useState(() => text.length);
+  const [dismissedTokenKey, setDismissedTokenKey] = useState<string | undefined>(undefined);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const cacheKey = projectId ?? "__global__";
+  const skillsCacheRef = useRef<Map<string, CachedSkills>>(new Map());
+  const inflightKeyRef = useRef<string | undefined>(undefined);
+  const skillsAbortRef = useRef<AbortController | undefined>(undefined);
+  const [skills, setSkills] = useState<readonly SkillEntry[]>(
+    () => skillsCacheRef.current.get(cacheKey)?.skills ?? [],
+  );
+  const [loadingSkills, setLoadingSkills] = useState(false);
+  const [skillsError, setSkillsError] = useState<string | undefined>(undefined);
+
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
+    let nextDraft = "";
     try {
-      setText(window.localStorage.getItem(`eevee.draft.${draftKey}`) ?? "");
+      nextDraft = window.localStorage.getItem(`eevee.draft.${draftKey}`) ?? "";
     } catch {
-      setText("");
+      nextDraft = "";
     }
+    setText(nextDraft);
+    setCursorOffset(nextDraft.length);
+    setDismissedTokenKey(undefined);
     setError(undefined);
   }, [draftKey]);
 
-  const updateText = (next: string) => {
-    setText(next);
-    try {
-      if (next) window.localStorage.setItem(`eevee.draft.${draftKey}`, next);
-      else window.localStorage.removeItem(`eevee.draft.${draftKey}`);
-    } catch {
-      // Ignore storage errors.
-    }
-  };
+  useEffect(() => {
+    skillsAbortRef.current?.abort();
+    inflightKeyRef.current = undefined;
+    setLoadingSkills(false);
+    setSkillsError(undefined);
+    setSkills(skillsCacheRef.current.get(cacheKey)?.skills ?? []);
+  }, [cacheKey]);
+
+  useEffect(() => {
+    return () => {
+      skillsAbortRef.current?.abort();
+    };
+  }, []);
+
+  const updateText = useCallback(
+    (next: string) => {
+      setText(next);
+      try {
+        if (next) window.localStorage.setItem(`eevee.draft.${draftKey}`, next);
+        else window.localStorage.removeItem(`eevee.draft.${draftKey}`);
+      } catch {
+        // Ignore storage errors.
+      }
+    },
+    [draftKey],
+  );
 
   useEffect(() => {
     void text;
@@ -71,6 +131,85 @@ export function Composer({
     el.style.height = `${Math.min(el.scrollHeight, compact ? 130 : 200)}px`;
   }, [text, compact]);
 
+  const token = useMemo(
+    () => extractSkillAutocompleteToken(text, cursorOffset),
+    [text, cursorOffset],
+  );
+  const tokenKey = token ? `${token.start}:${token.end}:${token.query}` : undefined;
+  const popoverOpen = !disabled && token !== undefined && tokenKey !== dismissedTokenKey;
+
+  useEffect(() => {
+    if (!token || disabled) return;
+    const cached = skillsCacheRef.current.get(cacheKey);
+    const fresh = cached !== undefined && Date.now() - cached.fetchedAt < SKILLS_CACHE_TTL_MS;
+    if (fresh || inflightKeyRef.current === cacheKey) return;
+
+    skillsAbortRef.current?.abort();
+    const controller = new AbortController();
+    skillsAbortRef.current = controller;
+    inflightKeyRef.current = cacheKey;
+    if (cached === undefined) setLoadingSkills(true);
+    setSkillsError(undefined);
+
+    const request = projectId
+      ? api.listProjectSkills(projectId, controller.signal)
+      : api.listSkills(controller.signal);
+
+    void request
+      .then((res) => {
+        if (controller.signal.aborted) return;
+        skillsCacheRef.current.set(cacheKey, { skills: res.skills, fetchedAt: Date.now() });
+        setSkills(res.skills);
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        setSkillsError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          if (inflightKeyRef.current === cacheKey) inflightKeyRef.current = undefined;
+          setLoadingSkills(false);
+        }
+      });
+  }, [token, disabled, cacheKey, projectId]);
+
+  const matchingSkills = useMemo(
+    () => (token ? filterAutocompleteSkills(skills, token.query) : []),
+    [skills, token],
+  );
+
+  const safeIndex =
+    matchingSkills.length === 0 ? 0 : Math.min(activeIndex, matchingSkills.length - 1);
+
+  useEffect(() => {
+    void tokenKey;
+    setActiveIndex(0);
+  }, [tokenKey]);
+
+  useEffect(() => {
+    if (!popoverOpen) return;
+    optionRefs.current[safeIndex]?.scrollIntoView({ block: "nearest" });
+  }, [popoverOpen, safeIndex]);
+
+  const syncCursor = (event: SyntheticEvent<HTMLTextAreaElement>) => {
+    const pos = event.currentTarget.selectionStart;
+    if (typeof pos === "number") setCursorOffset(pos);
+  };
+
+  const selectSkill = (skill: SkillEntry) => {
+    if (!token) return;
+    const { nextText, nextCursor } = applySkillAutocomplete(text, token, skill.name);
+    setDismissedTokenKey(undefined);
+    updateText(nextText);
+    setCursorOffset(nextCursor);
+    window.requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(nextCursor, nextCursor);
+    });
+  };
+
   const submit = async (overrideMode?: WhenBusy) => {
     const trimmed = text.trim();
     if (!trimmed || submitting || disabled) return;
@@ -79,6 +218,8 @@ export function Composer({
     try {
       await onSend(trimmed, overrideMode ?? whenBusy);
       updateText("");
+      setCursorOffset(0);
+      setDismissedTokenKey(undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -93,6 +234,35 @@ export function Composer({
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
+
+    if (popoverOpen) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setDismissedTokenKey(tokenKey);
+        return;
+      }
+      if (matchingSkills.length > 0) {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          setActiveIndex((prev) => (prev + 1) % matchingSkills.length);
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          setActiveIndex((prev) => (prev - 1 + matchingSkills.length) % matchingSkills.length);
+          return;
+        }
+        if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+          event.preventDefault();
+          event.stopPropagation();
+          const chosen = matchingSkills[safeIndex];
+          if (chosen) selectSkill(chosen);
+          return;
+        }
+      }
+    }
+
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       if (busy && (event.metaKey || event.ctrlKey)) {
@@ -121,6 +291,58 @@ export function Composer({
 
   return (
     <form className={`ev-composer-form${compact ? " compact" : ""}`} onSubmit={handleSubmit}>
+      {popoverOpen && (
+        <div className="ev-skill-autocomplete" role="listbox" aria-label="Skills 自动补全">
+          <div className="ev-skill-ac-head">
+            <span>选择 Skill</span>
+            <span className="ev-skill-ac-keys ev-mono">↑↓ · Tab/↵ · Esc</span>
+          </div>
+          {loadingSkills && skills.length === 0 ? (
+            <div className="ev-skill-ac-empty">加载 Skills…</div>
+          ) : skillsError && skills.length === 0 ? (
+            <div className="ev-skill-ac-empty ev-inline-error">{skillsError}</div>
+          ) : matchingSkills.length === 0 ? (
+            <div className="ev-skill-ac-empty">未找到匹配的可用 Skill</div>
+          ) : (
+            <div className="ev-skill-ac-list">
+              {matchingSkills.map((skill, idx) => (
+                <button
+                  key={`${skill.name}:${skill.path}`}
+                  ref={(el) => {
+                    optionRefs.current[idx] = el;
+                  }}
+                  type="button"
+                  role="option"
+                  aria-selected={idx === safeIndex}
+                  className="ev-skill-ac-item"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setActiveIndex(idx)}
+                  onClick={() => selectSkill(skill)}
+                >
+                  <div className="ev-skill-ac-row">
+                    <span className="ev-mono ev-skill-ac-name">/skill:{skill.name}</span>
+                    {skill.effectiveMode === "user" && (
+                      <span className="eevee-badge" data-tone="warning">
+                        仅用户
+                      </span>
+                    )}
+                    <span
+                      className="eevee-badge"
+                      data-tone={skill.source === "workspace" ? "info" : undefined}
+                    >
+                      {skill.source === "workspace" ? "项目" : "全局"}
+                    </span>
+                  </div>
+                  {skill.description && (
+                    <div className="ev-skill-ac-desc ev-truncate">{skill.description}</div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {error && <div className="ev-error-banner">{error}</div>}
       <textarea
         ref={textareaRef}
@@ -129,7 +351,16 @@ export function Composer({
         value={text}
         disabled={disabled}
         placeholder={placeholder}
-        onChange={(event) => updateText(event.target.value)}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          const pos = event.target.selectionStart;
+          updateText(nextValue);
+          if (typeof pos === "number") setCursorOffset(pos);
+        }}
+        onClick={syncCursor}
+        onKeyUp={syncCursor}
+        onSelect={syncCursor}
+        onFocus={syncCursor}
         onKeyDown={handleKeyDown}
       />
       <div className="ev-composer-bar">

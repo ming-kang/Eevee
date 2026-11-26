@@ -6,11 +6,13 @@ import { ConfigTab } from "./settings/ConfigTab.tsx";
 import { McpTab } from "./settings/McpTab.tsx";
 import { ModelsTab } from "./settings/ModelsTab.tsx";
 import { ProvidersTab } from "./settings/ProvidersTab.tsx";
+import { SkillsTab } from "./settings/SkillsTab.tsx";
 
 const SECTIONS: readonly { readonly id: SettingsSection; readonly label: string }[] = [
   { id: "providers", label: "Providers" },
   { id: "models", label: "模型" },
   { id: "mcp", label: "MCP" },
+  { id: "skills", label: "Skills" },
   { id: "config", label: "配置" },
 ];
 
@@ -67,6 +69,7 @@ export function SettingsView({
           {section === "providers" && <ProvidersTab />}
           {section === "models" && <ModelsTab />}
           {section === "mcp" && <McpTab />}
+          {section === "skills" && <SkillsTab />}
           {section === "config" && <ConfigTab />}
         </div>
       </div>

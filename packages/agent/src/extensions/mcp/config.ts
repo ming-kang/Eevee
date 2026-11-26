@@ -16,17 +16,33 @@ import { stripBom, stripJsonComments } from "../../shared/json.ts";
 export type McpExposure = "deferred" | "direct" | "codemode" | "hidden";
 export type McpOAuthConfig = PiMcpOAuthConfig;
 
+export const DEFAULT_MCP_EXPOSURE = "codemode" as const;
+
+export type McpServerRoles = {
+  readonly router?: boolean;
+  readonly worker?: boolean;
+};
+
 export interface McpStdioServerConfig extends PiMcpStdioServerConfig {
   exposure?: McpExposure;
   toolExposure?: Record<string, McpExposure>;
+  roles?: McpServerRoles;
 }
 
 export interface McpHttpServerConfig extends PiMcpHttpServerConfig {
   exposure?: McpExposure;
   toolExposure?: Record<string, McpExposure>;
+  roles?: McpServerRoles;
 }
 
 export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig;
+
+export function isMcpServerEnabledForRole(
+  config: McpServerConfig,
+  role: "router" | "worker",
+): boolean {
+  return config.roles?.[role] !== false;
+}
 
 export type McpServerEntry = {
   readonly name: string;
@@ -85,12 +101,30 @@ function checkExposures(entry: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+function checkRoles(entry: Record<string, unknown>): string | undefined {
+  if (entry.roles === undefined) return undefined;
+  if (!isRecord(entry.roles)) {
+    return 'roles must be an object with optional boolean "router" and "worker" properties';
+  }
+  for (const [key, value] of Object.entries(entry.roles)) {
+    if (key !== "router" && key !== "worker") {
+      return `roles has unknown key "${key}" (expected "router" or "worker")`;
+    }
+    if (value !== undefined && typeof value !== "boolean") {
+      return `roles.${key} must be a boolean`;
+    }
+  }
+  return undefined;
+}
+
 export function validateMcpServerEntry(name: string, raw: unknown): McpServerConfig | string {
   const prepared = isRecord(raw) ? resolveExposureAliases(raw) : raw;
   const result = validateSharedMcpServerConfig(name, prepared);
   if (result.kind === "invalid") return result.error;
   const exposureError = checkExposures(result.config);
   if (exposureError !== undefined) return `server "${name}": ${exposureError}`;
+  const rolesError = checkRoles(result.config);
+  if (rolesError !== undefined) return `server "${name}": ${rolesError}`;
   return result.config as McpServerConfig;
 }
 
@@ -151,7 +185,7 @@ export function getMcpToolExposure(config: McpServerConfig, toolName: string): M
   for (const [pattern, exposure] of Object.entries(overrides)) {
     if (pattern.includes("*") && toolPatternRegExp(pattern).test(toolName)) return exposure;
   }
-  return config.exposure ?? "deferred";
+  return config.exposure ?? DEFAULT_MCP_EXPOSURE;
 }
 
 function missingEnvNames(

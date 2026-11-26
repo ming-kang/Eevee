@@ -4,18 +4,26 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
 import type { CommitObservation, Report, Storage } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import type { McpHub } from "@eevee/agent";
+import {
+  createMcpHub,
+  type McpHub,
+  type McpHubOptions,
+  type McpOAuthCredentialStore,
+  type McpServerEntry,
+} from "@eevee/agent";
 import { openProject as openCoreProject, type ProjectHandle } from "@eevee/core";
 import type { ProjectSummary } from "@eevee/protocol";
 import { type DataDirLayout, projectPaths } from "./data-dir.ts";
 import {
   type EngineKnobs,
+  effectiveSkillsPolicy,
   formatModelProfiles,
   MAX_HIBERNATE_SWEEP_MS,
   MIN_HIBERNATE_SWEEP_MS,
   readModelProfiles,
 } from "./engine-config.ts";
 import { EngineError } from "./engine-error.ts";
+import { hasProjectMcpOverrides, resolveEffectiveProjectMcpForStore } from "./engine-mcp.ts";
 import type { EngineStore } from "./store.ts";
 
 export type OpenProjectStorage = (
@@ -27,8 +35,12 @@ export type ProjectPoolDeps = {
   readonly layout: DataDirLayout;
   readonly store: EngineStore;
   readonly mcpHub: McpHub;
+  readonly oauthStore: McpOAuthCredentialStore;
   readonly models: () => Models;
   readonly knobs: EngineKnobs;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly userHomeDir?: string | null;
+  readonly createMcpTransport?: McpHubOptions["createTransport"];
   readonly openProjectStorage?: OpenProjectStorage;
   readonly onReport?: (projectId: string, report: Report) => void;
   readonly onPumpError?: (projectId: string, error: unknown) => void;
@@ -37,6 +49,7 @@ export type ProjectPoolDeps = {
 type OpenProjectEntry = {
   readonly handle: ProjectHandle;
   readonly observation: CommitObservation;
+  projectMcpHub?: McpHub;
   lastActivityAt: number;
 };
 
@@ -65,6 +78,22 @@ export class ProjectPool {
 
   getOpenHandle(projectId: string): ProjectHandle | undefined {
     return this.#projects.get(projectId)?.handle;
+  }
+
+  getProjectMcpHub(projectId: string): McpHub | undefined {
+    const openEntry = this.#projects.get(projectId);
+    if (openEntry !== undefined) {
+      return openEntry.projectMcpHub ?? this.#deps.mcpHub;
+    }
+    if (!hasProjectMcpOverrides(this.#deps.store, projectId)) {
+      return this.#deps.mcpHub;
+    }
+    return undefined;
+  }
+
+  async openProjectMcpHub(projectId: string): Promise<McpHub> {
+    await this.openProject(projectId);
+    return this.getProjectMcpHub(projectId) ?? this.#deps.mcpHub;
   }
 
   touch(projectId: string): void {
@@ -199,6 +228,82 @@ export class ProjectPool {
     );
   }
 
+  async reloadGlobalMcpChanges(): Promise<void> {
+    await Promise.all(
+      [...this.#projects.entries()].map(async ([projectId, entry]) => {
+        if (entry.projectMcpHub !== undefined) {
+          const servers = resolveEffectiveProjectMcpForStore(this.#deps.store, projectId);
+          await entry.projectMcpHub.reload(servers);
+        }
+        await entry.handle.syncMcpExtensions();
+      }),
+    );
+  }
+
+  async syncProjectMcp(projectId: string): Promise<void> {
+    const opening = this.#opening.get(projectId);
+    if (opening !== undefined) {
+      await opening.catch(() => undefined);
+    }
+    const entry = this.#projects.get(projectId);
+    if (entry === undefined) return;
+
+    const hasOverrides = hasProjectMcpOverrides(this.#deps.store, projectId);
+    if (!hasOverrides) {
+      if (entry.projectMcpHub !== undefined) {
+        const oldHub = entry.projectMcpHub;
+        entry.projectMcpHub = undefined;
+        await entry.handle.rebindMcpHub(this.#deps.mcpHub);
+        await oldHub.close().catch(() => undefined);
+      } else {
+        await entry.handle.syncMcpExtensions();
+      }
+      return;
+    }
+
+    const servers = resolveEffectiveProjectMcpForStore(this.#deps.store, projectId);
+    if (entry.projectMcpHub !== undefined) {
+      await entry.projectMcpHub.reload(servers);
+      await entry.handle.syncMcpExtensions();
+      return;
+    }
+
+    const project = this.#requireProject(projectId);
+    const nextHub = this.#createProjectMcpHub(project, servers);
+    try {
+      await nextHub.start();
+      if (this.#closed || this.#projects.get(projectId) !== entry) {
+        await nextHub.close().catch(() => undefined);
+        return;
+      }
+      entry.projectMcpHub = nextHub;
+      await entry.handle.rebindMcpHub(nextHub);
+    } catch (error) {
+      await nextHub.close().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async updateProjectMcpRoots(projectId: string, workspaces: readonly string[]): Promise<void> {
+    const entry = this.#projects.get(projectId);
+    if (entry?.projectMcpHub !== undefined) {
+      await entry.projectMcpHub.updateRoots(workspaces);
+    }
+  }
+
+  async reconnectServerOnProjectHubs(serverName: string): Promise<void> {
+    await Promise.all(
+      [...this.#projects.values()].map(async (entry) => {
+        if (
+          entry.projectMcpHub?.status().some((snap) => snap.name === serverName && snap.enabled)
+        ) {
+          await entry.projectMcpHub.reconnect(serverName).catch(() => undefined);
+          await entry.handle.syncMcpExtensions();
+        }
+      }),
+    );
+  }
+
   async applySettingsLive(): Promise<void> {
     this.#rescheduleHibernateSweeper();
     await Promise.all(
@@ -223,9 +328,28 @@ export class ProjectPool {
     await Promise.allSettled(
       entries.map(async ([, entry]) => {
         entry.observation.detach();
-        await entry.handle.close();
+        try {
+          await entry.handle.close();
+        } finally {
+          await entry.projectMcpHub?.close().catch(() => undefined);
+        }
       }),
     );
+  }
+
+  #createProjectMcpHub(project: ProjectSummary, servers: readonly McpServerEntry[]): McpHub {
+    const paths = projectPaths(this.#deps.layout, project.id);
+    return createMcpHub({
+      servers,
+      cwd: project.workspaces[0],
+      env: this.#deps.env,
+      roots: () => this.#deps.store.getProject(project.id)?.workspaces ?? project.workspaces,
+      oauthStore: this.#deps.oauthStore,
+      logPath: join(paths.logsDir, "mcp.log"),
+      ...(this.#deps.createMcpTransport === undefined
+        ? {}
+        : { createTransport: this.#deps.createMcpTransport }),
+    });
   }
 
   #requireProject(projectId: string): ProjectSummary {
@@ -263,7 +387,13 @@ export class ProjectPool {
     }
     this.#projects.delete(projectId);
     entry.observation.detach();
-    const closing = entry.handle.close().finally(() => {
+    const closing = (async () => {
+      try {
+        await entry.handle.close();
+      } finally {
+        await entry.projectMcpHub?.close().catch(() => undefined);
+      }
+    })().finally(() => {
       if (this.#closingProjects.get(projectId) === closing) {
         this.#closingProjects.delete(projectId);
       }
@@ -288,16 +418,25 @@ export class ProjectPool {
       throw new EngineError(500, "invalid_project", `Project ${project.id} has no workspaces`);
     }
 
+    let projectMcpHub: McpHub | undefined;
     try {
+      if (hasProjectMcpOverrides(store, project.id)) {
+        const servers = resolveEffectiveProjectMcpForStore(store, project.id);
+        projectMcpHub = this.#createProjectMcpHub(project, servers);
+        projectMcpHub.startBackground();
+      }
+
       const handle = await openCoreProject(storage, {
         cwd: primaryWorkspace,
         title: project.title,
         workspaces: project.workspaces,
         models: () => this.#deps.models(),
         modelSlots: () => knobs.modelSlots(project.id),
-        mcpHub,
+        mcpHub: projectMcpHub ?? mcpHub,
         baseExtensionOptions: {
           globalDir: layout.root,
+          ...(this.#deps.userHomeDir === undefined ? {} : { userHomeDir: this.#deps.userHomeDir }),
+          skillPolicy: () => effectiveSkillsPolicy(store, project.id),
         },
         projectMeta: () => {
           const current = store.getProject(project.id) ?? project;
@@ -321,6 +460,7 @@ export class ProjectPool {
 
       if (this.#closed || this.#deletingProjects.has(project.id)) {
         await handle.close().catch(() => undefined);
+        await projectMcpHub?.close().catch(() => undefined);
         throw new EngineError(
           this.#closed ? 503 : 404,
           this.#closed ? "engine_closed" : "project_not_found",
@@ -338,12 +478,14 @@ export class ProjectPool {
       const entry: OpenProjectEntry = {
         handle,
         observation,
+        ...(projectMcpHub === undefined ? {} : { projectMcpHub }),
         lastActivityAt: Date.now(),
       };
       entryRef = entry;
       this.#projects.set(project.id, entry);
       return handle;
     } catch (error) {
+      await projectMcpHub?.close().catch(() => undefined);
       await storage.close(BACKGROUND_CONTEXT).catch(() => undefined);
       throw error;
     }

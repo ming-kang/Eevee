@@ -16,10 +16,12 @@ import {
   isTaskTerminalStatus,
   type McpHub,
   type McpHubOptions,
+  McpOAuthCredentialStore,
   parseMcpConfig,
   resolveTaskId,
   sliceRetainedOutput,
   TASK_READ_MAX_BYTES,
+  validateMcpServerEntry,
   validateOutputReadOptions,
 } from "@eevee/agent";
 import { MODELS_FILE, ModelRuntime } from "@eevee/agent/models";
@@ -58,12 +60,16 @@ import {
   type ListProvidersResponse,
   type ListWorkerTasksResponse,
   type LoginInputRequest,
+  type McpLogsResponse,
+  type McpOAuthEvent,
+  type McpOAuthInputRequest,
   type McpStateResponse,
   type ModelProfilesDocument,
   ModelProfilesDocumentSchema,
   type OkResponse,
   type ProbeProviderRequest,
   type ProbeProviderResponse,
+  type ProjectMcpStateResponse,
   type ProjectMemoryResponse,
   type ProjectSummary,
   type ProjectUsageResponse,
@@ -71,6 +77,7 @@ import {
   type ProviderDetailResponse,
   type PutMcpConfigRequest,
   type PutProjectMemoryRequest,
+  type PutSkillsPolicyRequest,
   parseWithSchema,
   type QuestionId,
   type ReadWorkerTaskResponse,
@@ -83,10 +90,12 @@ import {
   type SendMessageRequest,
   type SendMessageResponse,
   type SetApiKeyRequest,
+  type SkillsListResponse,
   type SmokeTestModelRequest,
   type SmokeTestModelResponse,
   type StartLoginRequest,
   type StartLoginResponse,
+  type StartMcpOAuthResponse,
   type TaskStreamChunkEvent,
   type UpdateProjectRequest,
   type UpsertMcpServerRequest,
@@ -99,6 +108,7 @@ import {
   type EngineKnobs,
   engineKnobs,
   exportEngineConfig,
+  getMcpServersRecord,
   importEngineConfig,
   KV_MCP_SERVERS,
   KV_MODEL_PROFILES,
@@ -110,11 +120,18 @@ import {
 import { EngineError } from "./engine-error.ts";
 import {
   deleteMcpServer,
+  deleteProjectMcpServer,
+  getMcpLogs,
   getMcpState,
+  getProjectMcpLogs,
+  getProjectMcpState,
   type McpDeps,
   putMcpConfig,
+  putProjectMcpConfig,
   reconnectMcp,
+  reconnectProjectMcp,
   upsertMcpServer,
+  upsertProjectMcpServer,
 } from "./engine-mcp.ts";
 import {
   decodeCursor,
@@ -143,7 +160,15 @@ import {
   updateProvider,
   updateProviderModel,
 } from "./engine-providers-manage.ts";
+import {
+  expandMessageSkills,
+  listSkills,
+  putGlobalSkillsPolicy,
+  putProjectSkillsPolicy,
+  type SkillsDeps,
+} from "./engine-skills.ts";
 import { LoginSessionManager, type LoginSseFrame } from "./login-sessions.ts";
+import { McpOAuthSessionManager } from "./mcp-oauth-sessions.ts";
 import { type OpenProjectStorage, ProjectPool } from "./project-pool.ts";
 import { EngineStore } from "./store.ts";
 
@@ -189,6 +214,7 @@ function taskStatusPhase(status: BackgroundTaskStatus): number {
 export type EngineOptions = {
   readonly dataDir?: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly userHomeDir?: string | null;
   readonly models?: Models | (() => Models);
   readonly credentials?: CredentialStore;
   readonly openProjectStorage?: OpenProjectStorage;
@@ -217,11 +243,14 @@ export class Engine {
   readonly store: EngineStore;
   readonly modelRuntime: ModelRuntime;
   readonly mcpHub: McpHub;
+  readonly oauthStore: McpOAuthCredentialStore;
 
+  readonly #mcpLogPath: string;
   readonly #options: EngineOptions;
   readonly #knobs: EngineKnobs;
   readonly #pool: ProjectPool;
   readonly #loginSessions = new LoginSessionManager();
+  readonly #mcpOAuthSessions = new McpOAuthSessionManager();
   #closed = false;
   #closePromise: Promise<void> | undefined;
 
@@ -230,12 +259,16 @@ export class Engine {
     store: EngineStore,
     modelRuntime: ModelRuntime,
     mcpHub: McpHub,
+    oauthStore: McpOAuthCredentialStore,
+    mcpLogPath: string,
     options: EngineOptions,
   ) {
     this.layout = layout;
     this.store = store;
     this.modelRuntime = modelRuntime;
     this.mcpHub = mcpHub;
+    this.oauthStore = oauthStore;
+    this.#mcpLogPath = mcpLogPath;
     this.#options = options;
     this.#knobs = engineKnobs(store, {
       defaultModelSlots: options.defaultModelSlots,
@@ -248,8 +281,12 @@ export class Engine {
       layout,
       store,
       mcpHub,
+      oauthStore,
       models: () => this.models(),
       knobs: this.#knobs,
+      env: options.env,
+      userHomeDir: options.userHomeDir,
+      createMcpTransport: options.createMcpTransport,
       openProjectStorage: options.openProjectStorage,
       onReport: options.onReport,
       onPumpError: options.onPumpError,
@@ -269,17 +306,21 @@ export class Engine {
         dir: layout.root,
         env: options.env,
       });
+      const oauthStore = new McpOAuthCredentialStore(layout.root);
+      const mcpLogPath = join(layout.root, "logs", "mcp.log");
       const storedMcp = store.getKv<Record<string, unknown>>(KV_MCP_SERVERS) ?? {};
       const parsedMcp = parseMcpConfig({ mcpServers: storedMcp });
       mcpHub = createMcpHub({
         servers: parsedMcp.servers,
         env: options.env,
+        oauthStore,
+        logPath: mcpLogPath,
         ...(options.createMcpTransport === undefined
           ? {}
           : { createTransport: options.createMcpTransport }),
       });
-      await mcpHub.start();
-      return new Engine(layout, store, modelRuntime, mcpHub, options);
+      mcpHub.startBackground();
+      return new Engine(layout, store, modelRuntime, mcpHub, oauthStore, mcpLogPath, options);
     } catch (error) {
       await mcpHub?.close().catch(() => undefined);
       store.close();
@@ -460,6 +501,29 @@ export class Engine {
     return validated;
   }
 
+  async listSkills(): Promise<SkillsListResponse> {
+    this.#assertOpen();
+    return listSkills(this.#skillsDeps());
+  }
+
+  async putSkillsPolicy(input: PutSkillsPolicyRequest): Promise<SkillsListResponse> {
+    this.#assertOpen();
+    return putGlobalSkillsPolicy(this.#skillsDeps(), input);
+  }
+
+  async listProjectSkills(projectId: string): Promise<SkillsListResponse> {
+    this.#assertOpen();
+    return listSkills(this.#skillsDeps(), projectId);
+  }
+
+  async putProjectSkillsPolicy(
+    projectId: string,
+    input: PutSkillsPolicyRequest,
+  ): Promise<SkillsListResponse> {
+    this.#assertOpen();
+    return putProjectSkillsPolicy(this.#skillsDeps(), projectId, input);
+  }
+
   getMcpState(): McpStateResponse {
     this.#assertOpen();
     return getMcpState(this.#mcpDeps());
@@ -483,6 +547,141 @@ export class Engine {
   async reconnectMcp(input: ReconnectMcpRequest = {}): Promise<ReconnectMcpResponse> {
     this.#assertOpen();
     return reconnectMcp(this.#mcpDeps(), input);
+  }
+
+  getMcpLogs(serverName: string): McpLogsResponse {
+    this.#assertOpen();
+    return getMcpLogs(this.#mcpDeps(), serverName);
+  }
+
+  startMcpOAuth(serverName: string): StartMcpOAuthResponse {
+    this.#assertOpen();
+    const servers = getMcpServersRecord(this.store);
+    if (!Object.hasOwn(servers, serverName)) {
+      throw new EngineError(404, "mcp_server_not_found", `Unknown MCP server "${serverName}"`);
+    }
+    const config = validateMcpServerEntry(serverName, servers[serverName]);
+    if (typeof config === "string") {
+      throw new EngineError(400, "invalid_mcp_config", config);
+    }
+    if (!("url" in config)) {
+      throw new EngineError(
+        400,
+        "mcp_oauth_unsupported",
+        `MCP server "${serverName}" does not use HTTP transport`,
+      );
+    }
+    if (config.enabled === false) {
+      throw new EngineError(409, "mcp_server_disabled", `MCP server "${serverName}" is disabled`);
+    }
+    return this.#mcpOAuthSessions.start({
+      serverName,
+      serverUrl: config.url,
+      store: this.oauthStore,
+      ...(config.oauth === undefined ? {} : { settings: config.oauth }),
+      env: this.#options.env,
+      challenge: this.mcpHub.getAuthChallenge(serverName),
+      onComplete: async (name) => {
+        await this.mcpHub.reconnect(name).catch(() => undefined);
+        await this.#pool.reconnectServerOnProjectHubs(name);
+        await this.#pool.syncMcpExtensions();
+      },
+    });
+  }
+
+  subscribeMcpOAuthSession(
+    serverName: string,
+    sessionId: string,
+    onEvent: (event: McpOAuthEvent) => void,
+  ): () => void {
+    this.#assertOpen();
+    return this.#mcpOAuthSessions.subscribe(serverName, sessionId, onEvent);
+  }
+
+  submitMcpOAuthInput(
+    serverName: string,
+    sessionId: string,
+    input: McpOAuthInputRequest,
+  ): OkResponse {
+    this.#assertOpen();
+    this.#mcpOAuthSessions.submitInput(serverName, sessionId, input.redirectUrl);
+    return { ok: true };
+  }
+
+  cancelMcpOAuth(serverName: string, sessionId: string): OkResponse {
+    this.#assertOpen();
+    this.#mcpOAuthSessions.cancel(serverName, sessionId);
+    return { ok: true };
+  }
+
+  async logoutMcpOAuth(serverName: string): Promise<OkResponse> {
+    this.#assertOpen();
+    const servers = getMcpServersRecord(this.store);
+    if (!Object.hasOwn(servers, serverName)) {
+      throw new EngineError(404, "mcp_server_not_found", `Unknown MCP server "${serverName}"`);
+    }
+    const config = validateMcpServerEntry(serverName, servers[serverName]);
+    if (typeof config === "string") {
+      throw new EngineError(400, "invalid_mcp_config", config);
+    }
+    if (!("url" in config)) {
+      throw new EngineError(
+        400,
+        "mcp_oauth_unsupported",
+        `MCP server "${serverName}" does not use HTTP transport`,
+      );
+    }
+    this.#mcpOAuthSessions.cancelForServer(serverName);
+    await this.oauthStore.remove(serverName, config.url);
+    if (config.enabled !== false) {
+      await this.mcpHub.reconnect(serverName).catch(() => undefined);
+      await this.#pool.reconnectServerOnProjectHubs(serverName);
+      await this.#pool.syncMcpExtensions();
+    }
+    return { ok: true };
+  }
+
+  getProjectMcpState(projectId: string): ProjectMcpStateResponse {
+    this.#assertOpen();
+    return getProjectMcpState(this.#mcpDeps(), projectId);
+  }
+
+  async putProjectMcpConfig(
+    projectId: string,
+    input: PutMcpConfigRequest,
+  ): Promise<ProjectMcpStateResponse> {
+    this.#assertOpen();
+    return putProjectMcpConfig(this.#mcpDeps(), projectId, input);
+  }
+
+  async upsertProjectMcpServer(
+    projectId: string,
+    serverName: string,
+    input: UpsertMcpServerRequest,
+  ): Promise<ProjectMcpStateResponse> {
+    this.#assertOpen();
+    return upsertProjectMcpServer(this.#mcpDeps(), projectId, serverName, input);
+  }
+
+  async deleteProjectMcpServer(
+    projectId: string,
+    serverName: string,
+  ): Promise<ProjectMcpStateResponse> {
+    this.#assertOpen();
+    return deleteProjectMcpServer(this.#mcpDeps(), projectId, serverName);
+  }
+
+  async reconnectProjectMcp(
+    projectId: string,
+    input: ReconnectMcpRequest = {},
+  ): Promise<ReconnectMcpResponse> {
+    this.#assertOpen();
+    return reconnectProjectMcp(this.#mcpDeps(), projectId, input);
+  }
+
+  getProjectMcpLogs(projectId: string, serverName: string): McpLogsResponse {
+    this.#assertOpen();
+    return getProjectMcpLogs(this.#mcpDeps(), projectId, serverName);
   }
 
   getSettings(): EngineSettings {
@@ -521,7 +720,7 @@ export class Engine {
         modelRuntime: this.modelRuntime,
         mcpHub: this.mcpHub,
         env: this.#options.env,
-        syncProjects: () => this.#pool.syncMcpExtensions(),
+        syncProjects: () => this.#pool.reloadGlobalMcpChanges(),
         applySettings: () => this.#pool.applySettingsLive(),
       },
       input,
@@ -587,6 +786,7 @@ export class Engine {
       }
       if (patch.workspaces !== undefined) {
         await openHandle.reconfigureWorkspaces(updated.workspaces);
+        await this.#pool.updateProjectMcpRoots(projectId, updated.workspaces);
       }
       if (patch.tools !== undefined) {
         await openHandle.reconfigureTools();
@@ -655,9 +855,11 @@ export class Engine {
     ref: ConversationRef,
     input: SendMessageRequest,
   ): Promise<SendMessageResponse> {
+    this.#assertOpen();
+    const expandedText = await expandMessageSkills(this.#skillsDeps(), projectId, input.text);
     const options = input.whenBusy === undefined ? undefined : { whenBusy: input.whenBusy };
     return this.#inProject(projectId, async (handle) =>
-      submissionResponse(await handle.send(conversationTarget(ref), input.text, options)),
+      submissionResponse(await handle.send(conversationTarget(ref), expandedText, options)),
     );
   }
 
@@ -1069,11 +1271,28 @@ export class Engine {
     };
   }
 
-  #mcpDeps(): McpDeps {
+  #skillsDeps(): SkillsDeps {
     return {
       store: this.store,
+      ...(this.#options.userHomeDir === undefined
+        ? {}
+        : { userHomeDir: this.#options.userHomeDir }),
+      requireProject: (projectId) => this.getProject(projectId),
+    };
+  }
+
+  #mcpDeps(): McpDeps {
+    return {
+      layout: this.layout,
+      store: this.store,
       mcpHub: this.mcpHub,
-      syncProjects: () => this.#pool.syncMcpExtensions(),
+      globalLogPath: this.#mcpLogPath,
+      requireProject: (projectId) => this.getProject(projectId),
+      syncProjects: () => this.#pool.reloadGlobalMcpChanges(),
+      syncExtensions: () => this.#pool.syncMcpExtensions(),
+      getProjectMcpHub: (projectId) => this.#pool.getProjectMcpHub(projectId),
+      openProjectMcpHub: (projectId) => this.#pool.openProjectMcpHub(projectId),
+      syncProjectMcp: (projectId) => this.#pool.syncProjectMcp(projectId),
     };
   }
 
@@ -1091,6 +1310,7 @@ export class Engine {
   async #dispose(): Promise<void> {
     this.#closed = true;
     await this.#loginSessions.close().catch(() => undefined);
+    await this.#mcpOAuthSessions.close().catch(() => undefined);
     await this.#pool.closeAll();
     await this.mcpHub.close().catch(() => undefined);
     this.store.close();

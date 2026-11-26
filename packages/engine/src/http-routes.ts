@@ -7,10 +7,12 @@ import {
   EngineSettingsSchema,
   ImportProviderModelsRequestSchema,
   LoginInputRequestSchema,
+  McpOAuthInputRequestSchema,
   ModelProfilesDocumentSchema,
   ProbeProviderRequestSchema,
   PutMcpConfigRequestSchema,
   PutProjectMemoryRequestSchema,
+  PutSkillsPolicyRequestSchema,
   ReconnectMcpRequestSchema,
   RefreshModelsRequestSchema,
   SendMessageRequestSchema,
@@ -236,6 +238,16 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     }),
   ];
 
+  const skillsRoutes: readonly Route[] = [
+    route("GET", "/skills", async ({ res }) => {
+      sendJson(res, 200, await engine.listSkills());
+    }),
+    route("PUT", "/skills/policy", async ({ req, res }) => {
+      const input = await readBody(req, PutSkillsPolicyRequestSchema, "PutSkillsPolicyRequest");
+      sendJson(res, 200, await engine.putSkillsPolicy(input));
+    }),
+  ];
+
   const mcpRoutes: readonly Route[] = [
     route("GET", "/mcp", ({ res }) => {
       sendJson(res, 200, engine.getMcpState());
@@ -244,6 +256,10 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
       const input = await readBody(req, PutMcpConfigRequestSchema, "PutMcpConfigRequest");
       sendJson(res, 200, await engine.putMcpConfig(input));
     }),
+    route("POST", "/mcp/reconnect", async ({ req, res }) => {
+      const input = await readOptionalBody(req, ReconnectMcpRequestSchema, "ReconnectMcpRequest");
+      sendJson(res, 200, await engine.reconnectMcp(input));
+    }),
     route("PUT", "/mcp/servers/:serverName", async ({ req, res, params }) => {
       const input = await readBody(req, UpsertMcpServerRequestSchema, "UpsertMcpServerRequest");
       sendJson(res, 200, await engine.upsertMcpServer(params.serverName, input));
@@ -251,9 +267,38 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     route("DELETE", "/mcp/servers/:serverName", async ({ res, params }) => {
       sendJson(res, 200, await engine.deleteMcpServer(params.serverName));
     }),
-    route("POST", "/mcp/reconnect", async ({ req, res }) => {
-      const input = await readOptionalBody(req, ReconnectMcpRequestSchema, "ReconnectMcpRequest");
-      sendJson(res, 200, await engine.reconnectMcp(input));
+    route("GET", "/mcp/servers/:serverName/logs", ({ res, params }) => {
+      sendJson(res, 200, engine.getMcpLogs(params.serverName));
+    }),
+    route("POST", "/mcp/servers/:serverName/oauth/login", async ({ req, res, params }) => {
+      await readOptionalJsonBody(req);
+      sendJson(res, 201, engine.startMcpOAuth(params.serverName));
+    }),
+    route(
+      "GET",
+      "/mcp/servers/:serverName/oauth/login/:sessionId/stream",
+      ({ req, res, params }) => {
+        streams.handleMcpOAuthStream(req, res, params.serverName, params.sessionId);
+      },
+    ),
+    route(
+      "POST",
+      "/mcp/servers/:serverName/oauth/login/:sessionId/input",
+      async ({ req, res, params }) => {
+        const input = await readBody(req, McpOAuthInputRequestSchema, "McpOAuthInputRequest");
+        sendJson(res, 200, engine.submitMcpOAuthInput(params.serverName, params.sessionId, input));
+      },
+    ),
+    route(
+      "POST",
+      "/mcp/servers/:serverName/oauth/login/:sessionId/cancel",
+      async ({ req, res, params }) => {
+        await readOptionalJsonBody(req);
+        sendJson(res, 200, engine.cancelMcpOAuth(params.serverName, params.sessionId));
+      },
+    ),
+    route("DELETE", "/mcp/servers/:serverName/oauth", async ({ res, params }) => {
+      sendJson(res, 200, await engine.logoutMcpOAuth(params.serverName));
     }),
   ];
 
@@ -305,6 +350,38 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     }),
     route("GET", "/projects/:projectId/usage", async ({ res, params }) => {
       sendJson(res, 200, await engine.getProjectUsage(params.projectId));
+    }),
+    route("GET", "/projects/:projectId/skills", async ({ res, params }) => {
+      sendJson(res, 200, await engine.listProjectSkills(params.projectId));
+    }),
+    route("PUT", "/projects/:projectId/skills/policy", async ({ req, res, params }) => {
+      const input = await readBody(req, PutSkillsPolicyRequestSchema, "PutSkillsPolicyRequest");
+      sendJson(res, 200, await engine.putProjectSkillsPolicy(params.projectId, input));
+    }),
+    route("GET", "/projects/:projectId/mcp", ({ res, params }) => {
+      sendJson(res, 200, engine.getProjectMcpState(params.projectId));
+    }),
+    route("PUT", "/projects/:projectId/mcp", async ({ req, res, params }) => {
+      const input = await readBody(req, PutMcpConfigRequestSchema, "PutMcpConfigRequest");
+      sendJson(res, 200, await engine.putProjectMcpConfig(params.projectId, input));
+    }),
+    route("POST", "/projects/:projectId/mcp/reconnect", async ({ req, res, params }) => {
+      const input = await readOptionalBody(req, ReconnectMcpRequestSchema, "ReconnectMcpRequest");
+      sendJson(res, 200, await engine.reconnectProjectMcp(params.projectId, input));
+    }),
+    route("PUT", "/projects/:projectId/mcp/servers/:serverName", async ({ req, res, params }) => {
+      const input = await readBody(req, UpsertMcpServerRequestSchema, "UpsertMcpServerRequest");
+      sendJson(
+        res,
+        200,
+        await engine.upsertProjectMcpServer(params.projectId, params.serverName, input),
+      );
+    }),
+    route("DELETE", "/projects/:projectId/mcp/servers/:serverName", async ({ res, params }) => {
+      sendJson(res, 200, await engine.deleteProjectMcpServer(params.projectId, params.serverName));
+    }),
+    route("GET", "/projects/:projectId/mcp/servers/:serverName/logs", ({ res, params }) => {
+      sendJson(res, 200, engine.getProjectMcpLogs(params.projectId, params.serverName));
     }),
     route("GET", "/projects/:projectId/board", async ({ res, params }) => {
       sendJson(res, 200, await engine.getBoard(params.projectId));
@@ -397,6 +474,7 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     ...systemRoutes,
     ...providerRoutes,
     ...modelRoutes,
+    ...skillsRoutes,
     ...mcpRoutes,
     ...settingsRoutes,
     ...projectRoutes,

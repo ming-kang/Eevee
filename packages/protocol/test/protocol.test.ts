@@ -40,7 +40,14 @@ import {
   LoginInputRequestSchema,
   LoginPromptEventSchema,
   type LoginStreamEvent,
+  McpExposureSchema,
+  McpLogsResponseSchema,
+  McpOAuthEventSchema,
+  McpOAuthInputRequestSchema,
+  McpServerRolesSchema,
   McpServerSnapshotSchema,
+  McpServerStatusSchema,
+  McpServerToolSummarySchema,
   McpStateResponseSchema,
   ModelChoiceSchema,
   ModelDetailSchema,
@@ -56,6 +63,7 @@ import {
   ProbeProviderResponseSchema,
   ProblemSchema,
   ProjectIdSchema,
+  ProjectMcpStateResponseSchema,
   ProjectMemoryResponseSchema,
   ProjectSummarySchema,
   ProjectUsageResponseSchema,
@@ -64,6 +72,7 @@ import {
   ProviderSummarySchema,
   PutMcpConfigRequestSchema,
   PutProjectMemoryRequestSchema,
+  PutSkillsPolicyRequestSchema,
   parseSseStream,
   parseWithSchema,
   QuestionIdSchema,
@@ -80,10 +89,16 @@ import {
   SendMessageRequestSchema,
   SendMessageResponseSchema,
   SetApiKeyRequestSchema,
+  SkillDiagnosticSchema,
+  SkillEntrySchema,
+  SkillPolicyMapSchema,
+  SkillsListResponseSchema,
+  SkillTriggerModeSchema,
   SmokeTestModelRequestSchema,
   SmokeTestModelResponseSchema,
   StartLoginRequestSchema,
   StartLoginResponseSchema,
+  StartMcpOAuthResponseSchema,
   StreamEndEventSchema,
   SubmissionStatusSchema,
   TaskCancelReasonSchema,
@@ -1400,4 +1415,276 @@ test("protocol 3B model management schemas and client methods preserve typed pay
   assert.deepEqual(await client.testProviderModel("custom", "vendor/model"), smoke);
   assert.equal(calls.at(-1)?.pathname, "/providers/custom/models/vendor%2Fmodel/test");
   assert.deepEqual(await client.reloadModels(), reload);
+});
+
+test("protocol 4B schemas and EeveeClient methods validate Skills, MCP OAuth/logs, and project MCP", async () => {
+  const checkMode = compile(SkillTriggerModeSchema);
+  assert.equal(checkMode.check("model"), true);
+  assert.equal(checkMode.check("user"), true);
+  assert.equal(checkMode.check("disabled"), true);
+  assert.equal(checkMode.check("auto"), false);
+
+  assert.equal(compile(SkillPolicyMapSchema).check({ pdf: "user", lint: "disabled" }), true);
+  assert.equal(compile(SkillPolicyMapSchema).check({ pdf: "invalid" }), false);
+
+  const diagnostic = {
+    type: "warning" as const,
+    message: "Name warning",
+    path: "/ws/.agents/skills/pdf/SKILL.md",
+    skillName: "pdf",
+  };
+  assert.equal(compile(SkillDiagnosticSchema).check(diagnostic), true);
+  assert.equal(
+    compile(SkillDiagnosticSchema).check({ type: "collision", message: "dup", path: "/a" }),
+    true,
+  );
+  assert.equal(
+    compile(SkillDiagnosticSchema).check({ type: "info", message: "x", path: "/a" }),
+    false,
+  );
+
+  const skillEntry = {
+    name: "pdf",
+    description: "PDF tools",
+    path: "/ws/.agents/skills/pdf/SKILL.md",
+    baseDir: "/ws/.agents/skills/pdf",
+    source: "workspace" as const,
+    workspace: "/ws",
+    disableModelInvocation: false,
+    defaultMode: "model" as const,
+    effectiveMode: "user" as const,
+    globalOverride: "disabled" as const,
+    projectOverride: "user" as const,
+  };
+  assert.equal(compile(SkillEntrySchema).check(skillEntry), true);
+
+  const skillsList = {
+    skills: [skillEntry],
+    diagnostics: [diagnostic],
+    globalPolicy: { pdf: "disabled" as const },
+    projectPolicy: { pdf: "user" as const },
+  };
+  assert.equal(compile(SkillsListResponseSchema).check(skillsList), true);
+  assert.equal(
+    compile(SkillsListResponseSchema).check({
+      skills: [],
+      diagnostics: [],
+      globalPolicy: {},
+    }),
+    true,
+  );
+  assert.equal(compile(PutSkillsPolicyRequestSchema).check({ policy: null }), true);
+  assert.equal(compile(PutSkillsPolicyRequestSchema).check({ policy: { pdf: "disabled" } }), true);
+
+  const checkMcpStatus = compile(McpServerStatusSchema);
+  for (const status of [
+    "idle",
+    "connecting",
+    "connected",
+    "auth_required",
+    "degraded",
+    "disconnected",
+    "failed",
+    "disabled",
+    "closed",
+  ]) {
+    assert.equal(checkMcpStatus.check(status), true);
+  }
+  assert.equal(checkMcpStatus.check("unknown"), false);
+
+  assert.equal(compile(McpExposureSchema).check("codemode"), true);
+  assert.equal(compile(McpExposureSchema).check("hidden"), true);
+  assert.equal(compile(McpExposureSchema).check("none"), false);
+  assert.equal(compile(McpServerRolesSchema).check({ router: true, worker: false }), true);
+  assert.equal(
+    compile(McpServerToolSummarySchema).check({
+      name: "search",
+      description: "Search docs",
+      exposure: "deferred",
+    }),
+    true,
+  );
+
+  const extendedSnapshot = {
+    name: "remote",
+    status: "auth_required" as const,
+    enabled: true,
+    toolCount: 1,
+    transport: "http" as const,
+    roles: { router: true, worker: false },
+    exposure: "codemode" as const,
+    hasResources: true,
+    authRequired: true,
+    tools: [{ name: "query", exposure: "direct" as const }],
+    recentLogs: ["2026-01-01T00:00:00Z [stderr] hello"],
+    scope: "override" as const,
+  };
+  assert.equal(compile(McpServerSnapshotSchema).check(extendedSnapshot), true);
+
+  const logsResp = {
+    server: "remote",
+    lines: ["line1", "line2"],
+    logPath: "/tmp/eevee/logs/mcp.log",
+  };
+  assert.equal(compile(McpLogsResponseSchema).check(logsResp), true);
+  assert.equal(
+    compile(StartMcpOAuthResponseSchema).check({ sessionId: "s1", server: "remote" }),
+    true,
+  );
+  assert.equal(
+    compile(McpOAuthInputRequestSchema).check({ redirectUrl: "http://127.0.0.1:9999/cb?code=1" }),
+    true,
+  );
+  assert.equal(
+    compile(McpOAuthEventSchema).check({
+      type: "auth_url",
+      url: "https://auth.example.com/authorize",
+      redirectUrl: "http://127.0.0.1:1234/callback",
+      instructions: "Open URL",
+    }),
+    true,
+  );
+  assert.equal(
+    compile(McpOAuthEventSchema).check({ type: "progress", message: "Exchanging" }),
+    true,
+  );
+  assert.equal(compile(McpOAuthEventSchema).check({ type: "complete" }), true);
+  assert.equal(
+    compile(McpOAuthEventSchema).check({ type: "error", code: "login_failed", message: "boom" }),
+    true,
+  );
+
+  const projectMcpState = {
+    globalServers: { docs: { command: "docs-mcp" } },
+    projectServers: { docs: { enabled: false }, local: { command: "local-mcp" } },
+    effectiveServers: {
+      docs: { command: "docs-mcp", enabled: false },
+      local: { command: "local-mcp" },
+    },
+    status: [extendedSnapshot],
+  };
+  assert.equal(compile(ProjectMcpStateResponseSchema).check(projectMcpState), true);
+
+  assert.equal(
+    compile(ConfigBundleSchema).check({
+      version: 1,
+      settings: {},
+      modelProfiles: { profiles: [] },
+      mcpServers: {},
+      skillsPolicy: { pdf: "disabled" },
+    }),
+    true,
+  );
+
+  const calls: { method: string; pathname: string; body?: string }[] = [];
+  const client = new EeveeClient({
+    baseUrl: "http://127.0.0.1:4173",
+    token: "tok-4b-skills-mcp",
+    fetch: async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? "GET";
+      calls.push({
+        method,
+        pathname: url.pathname,
+        body: typeof init?.body === "string" ? init.body : undefined,
+      });
+
+      if (url.pathname === "/skills" || url.pathname === "/skills/policy") {
+        return Response.json(skillsList);
+      }
+      if (
+        url.pathname === "/projects/demo/skills" ||
+        url.pathname === "/projects/demo/skills/policy"
+      ) {
+        return Response.json(skillsList);
+      }
+      if (url.pathname === "/mcp/servers/remote/logs") {
+        return Response.json(logsResp);
+      }
+      if (url.pathname === "/mcp/servers/remote/oauth/login") {
+        return Response.json({ sessionId: "oa-1", server: "remote" }, { status: 201 });
+      }
+      if (url.pathname === "/mcp/servers/remote/oauth/login/oa-1/stream") {
+        return sseResponse([
+          `event: auth_url\ndata: ${JSON.stringify({ type: "auth_url", url: "https://a.example", redirectUrl: "http://127.0.0.1/cb" })}\n\n`,
+          `event: progress\ndata: ${JSON.stringify({ type: "progress", message: "Exchanging" })}\n\n`,
+          `event: complete\ndata: ${JSON.stringify({ type: "complete" })}\n\n`,
+        ]);
+      }
+      if (
+        url.pathname === "/mcp/servers/remote/oauth/login/oa-1/input" ||
+        url.pathname === "/mcp/servers/remote/oauth/login/oa-1/cancel" ||
+        url.pathname === "/mcp/servers/remote/oauth"
+      ) {
+        return Response.json({ ok: true });
+      }
+      if (
+        url.pathname === "/projects/demo/mcp" ||
+        url.pathname === "/projects/demo/mcp/servers/local"
+      ) {
+        return Response.json(projectMcpState);
+      }
+      if (url.pathname === "/projects/demo/mcp/reconnect") {
+        return Response.json({ status: [extendedSnapshot] });
+      }
+      if (url.pathname === "/projects/demo/mcp/servers/local/logs") {
+        return Response.json({ server: "local", lines: ["local-log"] });
+      }
+      return Response.json({ code: "not_found", message: "missing" }, { status: 404 });
+    },
+  });
+
+  assert.deepEqual(await client.listSkills(), skillsList);
+  assert.deepEqual(await client.putSkillsPolicy({ policy: { pdf: "disabled" } }), skillsList);
+  assert.deepEqual(await client.listProjectSkills("demo"), skillsList);
+  assert.deepEqual(await client.putProjectSkillsPolicy("demo", { policy: null }), skillsList);
+  assert.deepEqual(await client.getMcpLogs("remote"), logsResp);
+  assert.deepEqual(await client.startMcpOAuth("remote"), { sessionId: "oa-1", server: "remote" });
+
+  const oauthEvents = [];
+  for await (const evt of client.streamMcpOAuth("remote", "oa-1")) {
+    oauthEvents.push(evt);
+  }
+  assert.deepEqual(
+    oauthEvents.map((evt) => evt.type),
+    ["auth_url", "progress", "complete"],
+  );
+
+  assert.deepEqual(
+    await client.submitMcpOAuthInput("remote", "oa-1", {
+      redirectUrl: "http://127.0.0.1/cb?code=1",
+    }),
+    { ok: true },
+  );
+  assert.deepEqual(await client.cancelMcpOAuth("remote", "oa-1"), { ok: true });
+  assert.deepEqual(await client.logoutMcpOAuth("remote"), { ok: true });
+  assert.deepEqual(await client.getProjectMcpState("demo"), projectMcpState);
+  assert.deepEqual(
+    await client.putProjectMcpConfig("demo", { servers: { local: { command: "local-mcp" } } }),
+    projectMcpState,
+  );
+  assert.deepEqual(
+    await client.upsertProjectMcpServer("demo", "local", { config: { command: "local-mcp" } }),
+    projectMcpState,
+  );
+  assert.deepEqual(await client.deleteProjectMcpServer("demo", "local"), projectMcpState);
+  assert.deepEqual(await client.reconnectProjectMcp("demo", { server: "local" }), {
+    status: [extendedSnapshot],
+  });
+  assert.deepEqual(await client.getProjectMcpLogs("demo", "local"), {
+    server: "local",
+    lines: ["local-log"],
+  });
+  assert.equal(
+    calls.some((c) => c.pathname === "/projects/demo/skills/policy"),
+    true,
+  );
+  assert.equal(
+    calls.some((c) => c.pathname === "/mcp/servers/remote/oauth"),
+    true,
+  );
+  assert.equal(
+    calls.some((c) => c.pathname === "/projects/demo/mcp/servers/local/logs"),
+    true,
+  );
 });

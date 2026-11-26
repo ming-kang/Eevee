@@ -11,6 +11,7 @@ import { registerMcpCommands } from "./commands/mcp.ts";
 import { registerModelsCommands } from "./commands/models.ts";
 import { registerProjectCommands } from "./commands/project.ts";
 import { registerProviderCommands } from "./commands/provider.ts";
+import { registerSkillsCommands } from "./commands/skills.ts";
 import { registerTaskCommands } from "./commands/task.ts";
 
 export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
@@ -22,6 +23,7 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
   registerAuthCommands(program, env);
   registerProviderCommands(program, env);
   registerModelsCommands(program, env);
+  registerSkillsCommands(program, env);
   registerMcpCommands(program, env);
   registerConfigCommands(program, env);
   registerConversationCommands(program, env);

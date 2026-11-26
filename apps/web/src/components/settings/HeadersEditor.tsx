@@ -44,10 +44,20 @@ export function HeadersEditor({
   rows,
   onChange,
   disabled = false,
+  itemLabel = "Header",
+  emptyText = "暂无自定义请求头。",
+  addLabel = "添加 Header",
+  keyPlaceholder = "Header-Name",
+  valuePlaceholder = "VALUE（支持 $ENV_VAR 或 !cmd）",
 }: {
   readonly rows: readonly HeaderRow[];
   readonly onChange: (rows: HeaderRow[]) => void;
   readonly disabled?: boolean;
+  readonly itemLabel?: string;
+  readonly emptyText?: string;
+  readonly addLabel?: string;
+  readonly keyPlaceholder?: string;
+  readonly valuePlaceholder?: string;
 }) {
   const updateRow = (uid: number, patch: Partial<Pick<HeaderRow, "key" | "value">>) => {
     onChange(rows.map((row) => (row.uid === uid ? { ...row, ...patch } : row)));
@@ -64,7 +74,7 @@ export function HeadersEditor({
   return (
     <div className="ev-headers-editor">
       {rows.length === 0 ? (
-        <Text className="ev-inline-hint">暂无自定义请求头。</Text>
+        <Text className="ev-inline-hint">{emptyText}</Text>
       ) : (
         rows.map((row, index) => (
           <div key={row.uid} className="ev-header-row">
@@ -72,8 +82,8 @@ export function HeadersEditor({
               type="text"
               value={row.key}
               disabled={disabled}
-              placeholder="Header-Name"
-              aria-label={`Header ${index + 1} 名称`}
+              placeholder={keyPlaceholder}
+              aria-label={`${itemLabel} ${index + 1} 名称`}
               onValueChange={(key) => updateRow(row.uid, { key })}
             />
             <span className="ev-header-eq" aria-hidden="true">
@@ -83,14 +93,14 @@ export function HeadersEditor({
               type="text"
               value={row.value}
               disabled={disabled}
-              placeholder="VALUE（支持 $ENV_VAR 或 !cmd）"
-              aria-label={`Header ${index + 1} 值`}
+              placeholder={valuePlaceholder}
+              aria-label={`${itemLabel} ${index + 1} 值`}
               onValueChange={(value) => updateRow(row.uid, { value })}
             />
             <IconButton
               type="button"
               disabled={disabled}
-              aria-label={`删除请求头 ${row.key || index + 1}`}
+              aria-label={`删除 ${itemLabel} ${row.key || index + 1}`}
               onClick={() => removeRow(row.uid)}
             >
               <DeleteIcon width={15} height={15} />
@@ -107,7 +117,7 @@ export function HeadersEditor({
           iconStart={<AddIcon width={14} height={14} />}
           onClick={addRow}
         >
-          添加 Header
+          {addLabel}
         </Button>
       </div>
     </div>

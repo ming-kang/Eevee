@@ -64,9 +64,9 @@ test("Router and Worker enforce exact prompt-cache section ordering, concise pre
   const storage = new MemoryStorage();
 
   await writeFile(join(dir, "AGENTS.md"), "Project context rules.");
-  await mkdir(join(dir, ".pi", "skills", "demo"), { recursive: true });
+  await mkdir(join(dir, ".agents", "skills", "demo"), { recursive: true });
   await writeFile(
-    join(dir, ".pi", "skills", "demo", "SKILL.md"),
+    join(dir, ".agents", "skills", "demo", "SKILL.md"),
     "---\nname: demo\ndescription: Demo skill\n---\n",
   );
 
@@ -99,7 +99,7 @@ test("Router and Worker enforce exact prompt-cache section ordering, concise pre
       codemode: { mode: "inline", models: false },
       projectMemory: () => projectMemory,
       modelProfiles: () => modelProfiles,
-      baseExtensionOptions: { globalDir: join(dir, "no-global") },
+      baseExtensionOptions: { globalDir: join(dir, "no-global"), userHomeDir: null },
     });
 
     const brain: FauxResponseFactory = (context) => {
@@ -250,7 +250,7 @@ test("custom routerInstructions and workerInstructions render inside router-role
       routerInstructions: "Custom Router directive.",
       workerInstructions: "Custom Worker directive.",
       codemode: false,
-      baseExtensionOptions: { globalDir: join(dir, "no-global") },
+      baseExtensionOptions: { globalDir: join(dir, "no-global"), userHomeDir: null },
     });
 
     const brain: FauxResponseFactory = (context) => {

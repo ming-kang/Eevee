@@ -18,6 +18,8 @@ import {
   type ModelProfilesDocument,
   ModelProfilesDocumentSchema,
   parseWithSchema,
+  type SkillPolicyMap,
+  SkillPolicyMapSchema,
   type ToolsSettings,
 } from "@eevee/protocol";
 import type { DataDirLayout } from "./data-dir.ts";
@@ -27,6 +29,7 @@ import type { EngineStore } from "./store.ts";
 export const KV_SETTINGS = "settings";
 export const KV_MODEL_PROFILES = "model_profiles";
 export const KV_MCP_SERVERS = "mcp_servers";
+export const KV_SKILLS_POLICY = "skills_policy";
 
 export const DEFAULT_MAX_ACTIVE_WORKERS = 3;
 export const DEFAULT_BACKGROUND_AFTER_MS = 30_000;
@@ -92,6 +95,23 @@ export function readModelProfiles(store: EngineStore): ModelProfilesDocument {
 
 export function getMcpServersRecord(store: EngineStore): Record<string, Record<string, unknown>> {
   return store.getKv<Record<string, Record<string, unknown>>>(KV_MCP_SERVERS) ?? {};
+}
+
+export function readGlobalSkillsPolicy(store: EngineStore): SkillPolicyMap {
+  const stored = store.getKv<unknown>(KV_SKILLS_POLICY);
+  if (stored === undefined) return {};
+  try {
+    return parseWithSchema(SkillPolicyMapSchema, stored, "stored skills_policy");
+  } catch {
+    return {};
+  }
+}
+
+export function effectiveSkillsPolicy(store: EngineStore, projectId: string): SkillPolicyMap {
+  const globalPolicy = readGlobalSkillsPolicy(store);
+  const projectPolicy = store.getProjectSkillsPolicy(projectId);
+  if (projectPolicy === undefined) return globalPolicy;
+  return { ...globalPolicy, ...projectPolicy };
 }
 
 export function mergeToolsSettings(
@@ -241,11 +261,13 @@ export async function exportEngineConfig(deps: ExportConfigDeps): Promise<Config
   } catch (error) {
     if (!isEnoent(error)) throw error;
   }
+  const skillsPolicy = deps.store.getKv<SkillPolicyMap>(KV_SKILLS_POLICY);
   return {
     version: 1,
     settings: readEngineSettings(deps.store),
     modelProfiles: readModelProfiles(deps.store),
     mcpServers: getMcpServersRecord(deps.store),
+    ...(skillsPolicy === undefined ? {} : { skillsPolicy }),
     ...(modelsConfig === undefined ? {} : { modelsConfig }),
   };
 }
@@ -293,6 +315,11 @@ export async function importEngineConfig(
   deps.store.setKv(KV_SETTINGS, bundle.settings);
   deps.store.setKv(KV_MODEL_PROFILES, bundle.modelProfiles);
   deps.store.setKv(KV_MCP_SERVERS, normalizedMcp);
+  if (bundle.skillsPolicy !== undefined) {
+    deps.store.setKv(KV_SKILLS_POLICY, bundle.skillsPolicy);
+  } else {
+    deps.store.deleteKv(KV_SKILLS_POLICY);
+  }
 
   await deps.mcpHub.reload(parsedMcp.servers);
   await deps.syncProjects();

@@ -1,7 +1,7 @@
 import type { ProjectId, WorkerId } from "@eevee/protocol";
 
 export type ProjectSubView = "chat" | "memory" | "usage";
-export type SettingsSection = "providers" | "models" | "mcp" | "config";
+export type SettingsSection = "providers" | "models" | "mcp" | "skills" | "config";
 
 export type Route =
   | { readonly name: "overview" }
@@ -29,7 +29,7 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === "control") {
     const sec = parts[1];
     const section: SettingsSection =
-      sec === "models" || sec === "mcp" || sec === "config" ? sec : "providers";
+      sec === "models" || sec === "mcp" || sec === "skills" || sec === "config" ? sec : "providers";
     return { name: "control", section };
   }
   if (parts[0] === "p" && parts[1]) {

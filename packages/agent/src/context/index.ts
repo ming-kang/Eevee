@@ -12,13 +12,27 @@ export {
   discoverContext,
   discoverContextFiles,
   discoverSkills,
+  discoverSkillsWithDiagnostics,
   PI_SKILLS_DIR,
   type PromptContextOptions,
   parseSkillFrontmatter,
+  resolveSkillTriggerMode,
   SKILL_FILE,
   SKILLS_DIR,
+  type SkillDiagnostic,
   type SkillInfo,
+  type SkillPolicyMap,
+  type SkillTriggerMode,
+  stripSkillFrontmatter,
 } from "./discovery.ts";
+export {
+  type ExpandSkillsResult,
+  expandSkillReferences,
+  extractSkillAutocompleteToken,
+  type InvokedSkill,
+  type SkillAutocompleteToken,
+  type SkillInvocationResult,
+} from "./skill-invocation.ts";
 export {
   getToolPromptMeta,
   renderRulesSection,

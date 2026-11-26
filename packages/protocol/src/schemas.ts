@@ -775,14 +775,66 @@ export const ModelProfilesDocumentSchema = obj({
   notes: opt(str()),
 });
 
+export const SkillTriggerModeSchema = oneOf(["model", "user", "disabled"]);
+
+export const SkillPolicyMapSchema = map(SkillTriggerModeSchema);
+
+export const SkillDiagnosticSchema = obj({
+  type: oneOf(["warning", "collision", "error"]),
+  message: str(),
+  path: str(),
+  skillName: opt(str()),
+});
+
+export const SkillEntrySchema = obj({
+  name: str(),
+  description: str(),
+  path: str(),
+  baseDir: str(),
+  source: oneOf(["global", "workspace"]),
+  workspace: opt(str()),
+  disableModelInvocation: bool(),
+  defaultMode: SkillTriggerModeSchema,
+  effectiveMode: SkillTriggerModeSchema,
+  globalOverride: opt(SkillTriggerModeSchema),
+  projectOverride: opt(SkillTriggerModeSchema),
+});
+
+export const SkillsListResponseSchema = obj({
+  skills: arr(SkillEntrySchema),
+  diagnostics: arr(SkillDiagnosticSchema),
+  globalPolicy: SkillPolicyMapSchema,
+  projectPolicy: opt(SkillPolicyMapSchema),
+});
+
+export const PutSkillsPolicyRequestSchema = obj({
+  policy: nullable(SkillPolicyMapSchema),
+});
+
 export const McpServerStatusSchema = oneOf([
   "idle",
   "connecting",
   "connected",
+  "auth_required",
+  "degraded",
   "disconnected",
   "failed",
+  "disabled",
   "closed",
 ]);
+
+export const McpExposureSchema = oneOf(["deferred", "direct", "codemode", "hidden"]);
+
+export const McpServerRolesSchema = obj({
+  router: bool(),
+  worker: bool(),
+});
+
+export const McpServerToolSummarySchema = obj({
+  name: str(),
+  description: opt(str()),
+  exposure: McpExposureSchema,
+});
 
 export const McpServerSnapshotSchema = obj({
   name: str({ minLength: 1 }),
@@ -792,10 +844,61 @@ export const McpServerSnapshotSchema = obj({
   instructions: opt(str()),
   toolCount: int({ minimum: 0 }),
   error: opt(str()),
+  transport: opt(oneOf(["stdio", "http"])),
+  roles: opt(McpServerRolesSchema),
+  exposure: opt(McpExposureSchema),
+  hasResources: opt(bool()),
+  authRequired: opt(bool()),
+  tools: opt(arr(McpServerToolSummarySchema)),
+  recentLogs: opt(arr(str())),
+  scope: opt(oneOf(["global", "project", "override"])),
 });
 
 export const McpStateResponseSchema = obj({
   servers: map(obj({}, { open: true })),
+  status: arr(McpServerSnapshotSchema),
+});
+
+export const McpLogsResponseSchema = obj({
+  server: str(),
+  lines: arr(str()),
+  logPath: opt(str()),
+});
+
+export const StartMcpOAuthResponseSchema = obj({
+  sessionId: str({ minLength: 1 }),
+  server: str({ minLength: 1 }),
+});
+
+export const McpOAuthInputRequestSchema = obj({
+  redirectUrl: str({ minLength: 1 }),
+});
+
+export const McpOAuthEventSchema = union([
+  obj({
+    type: lit("auth_url"),
+    url: str(),
+    redirectUrl: str(),
+    instructions: opt(str()),
+  }),
+  obj({
+    type: lit("progress"),
+    message: str(),
+  }),
+  obj({
+    type: lit("complete"),
+  }),
+  obj({
+    type: lit("error"),
+    code: str(),
+    message: str(),
+  }),
+]);
+
+export const ProjectMcpStateResponseSchema = obj({
+  globalServers: map(obj({}, { open: true })),
+  projectServers: map(obj({}, { open: true })),
+  effectiveServers: map(obj({}, { open: true })),
   status: arr(McpServerSnapshotSchema),
 });
 
@@ -829,6 +932,7 @@ export const ConfigBundleSchema = obj({
   settings: EngineSettingsSchema,
   modelProfiles: ModelProfilesDocumentSchema,
   mcpServers: map(obj({}, { open: true })),
+  skillsPolicy: opt(SkillPolicyMapSchema),
   modelsConfig: opt(obj({}, { open: true })),
 });
 
@@ -986,9 +1090,23 @@ export type SmokeTestModelResponse = Static<typeof SmokeTestModelResponseSchema>
 export type ReloadModelsResponse = Static<typeof ReloadModelsResponseSchema>;
 export type ModelProfile = Static<typeof ModelProfileSchema>;
 export type ModelProfilesDocument = Static<typeof ModelProfilesDocumentSchema>;
+export type SkillTriggerMode = Static<typeof SkillTriggerModeSchema>;
+export type SkillPolicyMap = Static<typeof SkillPolicyMapSchema>;
+export type SkillDiagnostic = Static<typeof SkillDiagnosticSchema>;
+export type SkillEntry = Static<typeof SkillEntrySchema>;
+export type SkillsListResponse = Static<typeof SkillsListResponseSchema>;
+export type PutSkillsPolicyRequest = Static<typeof PutSkillsPolicyRequestSchema>;
 export type McpServerStatusPayload = Static<typeof McpServerStatusSchema>;
+export type McpExposure = Static<typeof McpExposureSchema>;
+export type McpServerRoles = Static<typeof McpServerRolesSchema>;
+export type McpServerToolSummary = Static<typeof McpServerToolSummarySchema>;
 export type McpServerSnapshotPayload = Static<typeof McpServerSnapshotSchema>;
 export type McpStateResponse = Static<typeof McpStateResponseSchema>;
+export type McpLogsResponse = Static<typeof McpLogsResponseSchema>;
+export type StartMcpOAuthResponse = Static<typeof StartMcpOAuthResponseSchema>;
+export type McpOAuthInputRequest = Static<typeof McpOAuthInputRequestSchema>;
+export type McpOAuthEvent = Static<typeof McpOAuthEventSchema>;
+export type ProjectMcpStateResponse = Static<typeof ProjectMcpStateResponseSchema>;
 export type PutMcpConfigRequest = Static<typeof PutMcpConfigRequestSchema>;
 export type UpsertMcpServerRequest = Static<typeof UpsertMcpServerRequestSchema>;
 export type ReconnectMcpRequest = Static<typeof ReconnectMcpRequestSchema>;

@@ -69,9 +69,9 @@ function toolNames(agent: Agent): string[] {
 
 test("live tool policy reconfigures Workers, prompts, codemode modes, and newly spawned Workers", async () => {
   const dir = await mkdtemp(join(tmpdir(), "eevee-core-tool-policy-"));
-  await mkdir(join(dir, ".pi", "skills", "demo"), { recursive: true });
+  await mkdir(join(dir, ".agents", "skills", "demo"), { recursive: true });
   await writeFile(
-    join(dir, ".pi", "skills", "demo", "SKILL.md"),
+    join(dir, ".agents", "skills", "demo", "SKILL.md"),
     "---\nname: demo\ndescription: Demo skill\n---\n",
   );
 
@@ -111,7 +111,7 @@ test("live tool policy reconfigures Workers, prompts, codemode modes, and newly 
       },
       codemode: { mode: "inline", models: false },
       toolPolicy: () => policy,
-      baseExtensionOptions: { globalDir: join(dir, "no-global") },
+      baseExtensionOptions: { globalDir: join(dir, "no-global"), userHomeDir: null },
     });
     const p = project;
 

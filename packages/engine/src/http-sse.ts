@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import type { ConversationWindow } from "@earendil-works/pi-durable";
-import type { ConversationRef, WorkerId } from "@eevee/protocol";
+import type { ConversationRef, McpOAuthEvent, WorkerId } from "@eevee/protocol";
 import type { Engine, LoginSseFrame, WorkerTaskStream } from "./engine.ts";
 import type { StreamWorkerTaskQuery } from "./http-io.ts";
 
@@ -38,6 +38,12 @@ export type SseStreamHandlers = {
     req: IncomingMessage,
     res: ServerResponse,
     providerId: string,
+    sessionId: string,
+  ) => void;
+  readonly handleMcpOAuthStream: (
+    req: IncomingMessage,
+    res: ServerResponse,
+    serverName: string,
     sessionId: string,
   ) => void;
 };
@@ -372,5 +378,79 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     }
   }
 
-  return { handleBoardStream, handleConversationStream, handleTaskStream, handleLoginStream };
+  function handleMcpOAuthStream(
+    req: IncomingMessage,
+    res: ServerResponse,
+    serverName: string,
+    sessionId: string,
+  ): void {
+    const buffered: McpOAuthEvent[] = [];
+    let streamReady = false;
+    let ended = false;
+    let unsubscribe = () => {};
+    let keepalive: ReturnType<typeof setInterval> | undefined;
+    let closeForServer = async () => {};
+    let untrackCloser: () => void = () => {};
+
+    const finish = async (): Promise<void> => {
+      if (ended) return;
+      ended = true;
+      untrackCloser();
+      if (keepalive !== undefined) clearInterval(keepalive);
+      unsubscribe();
+      if (!res.writableEnded && !res.destroyed) res.end();
+    };
+
+    const emitEvent = (event: McpOAuthEvent): void => {
+      if (ended) return;
+      writeSseEvent(res, event.type, event);
+      if (event.type === "complete" || event.type === "error") {
+        void finish();
+      }
+    };
+
+    unsubscribe = engine.subscribeMcpOAuthSession(serverName, sessionId, (event) => {
+      if (!streamReady) {
+        buffered.push(event);
+        return;
+      }
+      emitEvent(event);
+    });
+
+    if (isClosing() || res.destroyed || req.socket.destroyed) {
+      unsubscribe();
+      return;
+    }
+
+    keepalive = openSseStream(res);
+
+    closeForServer = async () => {
+      if (!ended) {
+        writeSseEvent(res, "error", {
+          type: "error",
+          code: "engine_closed",
+          message: "Engine is closing",
+        });
+      }
+      await finish();
+    };
+    untrackCloser = trackCloser(closeForServer);
+
+    res.on("close", () => {
+      void finish();
+    });
+
+    streamReady = true;
+    for (const event of buffered) {
+      emitEvent(event);
+    }
+  }
+
+  return {
+    handleBoardStream,
+    handleConversationStream,
+    handleTaskStream,
+    handleLoginStream,
+    handleMcpOAuthStream,
+  };
 }
