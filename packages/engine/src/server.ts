@@ -22,6 +22,7 @@ export type StartForegroundEngineOptions = {
   readonly env?: NodeJS.ProcessEnv;
   readonly host?: string;
   readonly port?: number;
+  readonly webDistDir?: string | false;
   readonly models?: Models | (() => Models);
   readonly credentials?: CredentialStore;
   readonly openProjectStorage?: OpenProjectStorage;
@@ -103,6 +104,7 @@ async function startLockedForegroundEngine(
       host,
       port: options.port ?? DEFAULT_ENGINE_PORT,
       token,
+      ...(options.webDistDir === undefined ? {} : { webDistDir: options.webDistDir }),
       ...(options.onShutdown === undefined ? {} : { onShutdown: options.onShutdown }),
     });
   } catch (error) {

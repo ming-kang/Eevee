@@ -1,15 +1,30 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { SchemaValidationError } from "@eevee/protocol";
+import { CreateWebSessionRequestSchema, SchemaValidationError } from "@eevee/protocol";
 import { verifyBearerToken } from "./auth.ts";
 import { type Engine, EngineError } from "./engine.ts";
-import { matchesPattern, parsePathParams, sendMethodNotAllowed, sendProblem } from "./http-io.ts";
+import {
+  matchesPattern,
+  parsePathParams,
+  readBody,
+  readOptionalJsonBody,
+  sendJson,
+  sendMethodNotAllowed,
+  sendProblem,
+} from "./http-io.ts";
 import { createEngineRoutes } from "./http-routes.ts";
 import { createSseStreamHandlers } from "./http-sse.ts";
+import {
+  createStaticAssetHandler,
+  resolveDefaultWebDistDir,
+  type StaticAssetHandler,
+} from "./http-static.ts";
+import { isSameOriginRequest, WebAuthManager } from "./web-auth.ts";
 
 export type EngineHttpServerOptions = {
   readonly host?: string;
   readonly port?: number;
   readonly token: string;
+  readonly webDistDir?: string | false;
   readonly onShutdown?: () => void;
 };
 
@@ -32,6 +47,13 @@ export async function startEngineHttpServer(
   const requestedPort = options.port ?? 0;
   const activeClosers = new Set<() => Promise<void>>();
   let closing = false;
+  let boundPort = requestedPort;
+
+  const webAuth = new WebAuthManager();
+  const resolvedWebDist =
+    options.webDistDir === false ? undefined : (options.webDistDir ?? resolveDefaultWebDistDir());
+  const staticHandler: StaticAssetHandler | undefined =
+    resolvedWebDist === undefined ? undefined : createStaticAssetHandler(resolvedWebDist);
 
   const streams = createSseStreamHandlers({
     engine,
@@ -44,20 +66,70 @@ export async function startEngineHttpServer(
 
   const routes = createEngineRoutes(engine, {
     streams,
+    webAuth,
     ...(options.onShutdown === undefined ? {} : { onShutdown: options.onShutdown }),
   });
 
-  async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (!verifyBearerToken(req.headers.authorization, options.token)) {
-      sendProblem(
-        res,
-        401,
-        { code: "unauthorized", message: "Missing or invalid bearer token" },
-        { "WWW-Authenticate": "Bearer" },
-      );
-      return;
+  function isAuthenticatedRequest(req: IncomingMessage): "bearer" | "cookie" | undefined {
+    if (verifyBearerToken(req.headers.authorization, options.token)) return "bearer";
+    if (webAuth.verifyCookieHeader(req.headers.cookie) !== undefined) return "cookie";
+    return undefined;
+  }
+
+  async function handlePublicAuthRoute(
+    req: IncomingMessage,
+    res: ServerResponse,
+    method: string,
+    pathname: string,
+  ): Promise<boolean> {
+    if (pathname === "/auth/session") {
+      if (method === "GET") {
+        sendJson(res, 200, { authenticated: isAuthenticatedRequest(req) !== undefined });
+        return true;
+      }
+      if (method === "POST") {
+        if (!isSameOriginRequest(req, boundPort)) {
+          sendProblem(res, 403, {
+            code: "csrf_rejected",
+            message: "Cross-origin request rejected",
+          });
+          return true;
+        }
+        const input = await readBody(req, CreateWebSessionRequestSchema, "CreateWebSessionRequest");
+        const valid =
+          (input.ticket !== undefined && webAuth.redeemTicket(input.ticket)) ||
+          (input.token !== undefined && verifyBearerToken(`Bearer ${input.token}`, options.token));
+        if (!valid) {
+          sendProblem(res, 401, { code: "unauthorized", message: "Invalid token or login ticket" });
+          return true;
+        }
+        const session = webAuth.createSession();
+        sendJson(res, 200, { authenticated: true }, { "Set-Cookie": session.cookieHeader });
+        return true;
+      }
+      sendMethodNotAllowed(res, method, "GET, POST");
+      return true;
     }
 
+    if (pathname === "/auth/logout") {
+      if (method !== "POST") {
+        sendMethodNotAllowed(res, method, "POST");
+        return true;
+      }
+      if (!isSameOriginRequest(req, boundPort)) {
+        sendProblem(res, 403, { code: "csrf_rejected", message: "Cross-origin request rejected" });
+        return true;
+      }
+      await readOptionalJsonBody(req);
+      webAuth.revokeCookieHeader(req.headers.cookie);
+      sendJson(res, 200, { ok: true }, { "Set-Cookie": webAuth.clearCookieHeader() });
+      return true;
+    }
+
+    return false;
+  }
+
+  async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (closing) {
       sendProblem(res, 503, { code: "engine_closed", message: "Engine is closing" });
       return;
@@ -83,14 +155,50 @@ export async function startEngineHttpServer(
     const method = req.method ?? "GET";
 
     try {
+      if (await handlePublicAuthRoute(req, res, method, url.pathname)) return;
+
       const candidates = routes.filter((candidate) => matchesPattern(candidate.pattern, segments));
+      if (candidates.length === 0) {
+        if (staticHandler !== undefined && (method === "GET" || method === "HEAD")) {
+          if (await staticHandler.serve(req, res, url.pathname)) return;
+        }
+        const authKind = isAuthenticatedRequest(req);
+        if (authKind === undefined) {
+          sendProblem(
+            res,
+            401,
+            { code: "unauthorized", message: "Missing or invalid bearer token" },
+            { "WWW-Authenticate": "Bearer" },
+          );
+          return;
+        }
+        sendProblem(res, 404, { code: "not_found", message: "Route not found" });
+        return;
+      }
+
+      const authKind = isAuthenticatedRequest(req);
+      if (authKind === undefined) {
+        sendProblem(
+          res,
+          401,
+          { code: "unauthorized", message: "Missing or invalid bearer token" },
+          { "WWW-Authenticate": "Bearer" },
+        );
+        return;
+      }
+      if (authKind === "cookie" && method !== "GET" && method !== "HEAD") {
+        if (!isSameOriginRequest(req, boundPort)) {
+          sendProblem(res, 403, {
+            code: "csrf_rejected",
+            message: "Cross-origin request rejected",
+          });
+          return;
+        }
+      }
+
       const matched = candidates.find((candidate) => candidate.method === method);
       if (matched === undefined) {
-        if (candidates.length === 0) {
-          sendProblem(res, 404, { code: "not_found", message: "Route not found" });
-        } else {
-          sendMethodNotAllowed(res, method, candidates.map((c) => c.method).join(", "));
-        }
+        sendMethodNotAllowed(res, method, candidates.map((c) => c.method).join(", "));
         return;
       }
       const params = parsePathParams(matched.pattern, segments);
@@ -142,7 +250,7 @@ export async function startEngineHttpServer(
     server.close();
     throw new Error("Expected TCP address for Engine HTTP server");
   }
-  const boundPort = address.port;
+  boundPort = address.port;
   const url = `http://${host}:${boundPort}`;
 
   let closePromise: Promise<void> | undefined;

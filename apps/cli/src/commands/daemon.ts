@@ -1,4 +1,6 @@
+import { spawn } from "node:child_process";
 import {
+  connectLocalEngine,
   DEFAULT_ENGINE_PORT,
   dataDirLayout,
   ENGINE_VERSION,
@@ -11,6 +13,22 @@ import { PROTOCOL_VERSION } from "@eevee/protocol";
 import type { Command } from "commander";
 import { parsePort } from "../args.ts";
 import { formatDaemonStatus, runForegroundEngine, runSupervisorProcess } from "../lifecycle.ts";
+
+function openExternalUrl(url: string): void {
+  const command =
+    process.platform === "win32"
+      ? { bin: "cmd", args: ["/c", "start", "", url] }
+      : process.platform === "darwin"
+        ? { bin: "open", args: [url] }
+        : { bin: "xdg-open", args: [url] };
+  const child = spawn(command.bin, command.args, {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  child.on("error", () => undefined);
+  child.unref();
+}
 
 export function registerDaemonCommands(
   program: Command,
@@ -98,6 +116,25 @@ export function registerDaemonCommands(
         return;
       }
       console.log(formatDaemonStatus(status));
+    });
+
+  program
+    .command("web")
+    .description("Print a one-time login link for the local Eevee Web UI")
+    .option("--open", "Open the Web UI in the default browser")
+    .option("--json", "Output JSON")
+    .action(async (options: { open?: boolean; json?: boolean }) => {
+      const { url, client } = await connectLocalEngine(env);
+      const { ticket, expiresAt } = await client.createWebTicket();
+      const loginUrl = `${url}/#ticket=${ticket}`;
+      if (options.open) {
+        openExternalUrl(loginUrl);
+      }
+      if (options.json) {
+        console.log(JSON.stringify({ url: loginUrl, expiresAt }, null, 2));
+        return;
+      }
+      console.log(`Eevee Web UI (one-time login link, valid 10 minutes):\n${loginUrl}`);
     });
 
   program

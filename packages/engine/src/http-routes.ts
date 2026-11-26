@@ -30,10 +30,12 @@ import {
   sendJson,
 } from "./http-io.ts";
 import type { SseStreamHandlers } from "./http-sse.ts";
+import type { WebAuthManager } from "./web-auth.ts";
 
 export type EngineRoutesOptions = {
   readonly onShutdown?: () => void;
   readonly streams: SseStreamHandlers;
+  readonly webAuth: WebAuthManager;
 };
 
 export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions): readonly Route[] {
@@ -51,6 +53,10 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     route("POST", "/shutdown", ({ res }) => {
       sendJson(res, 200, { ok: true });
       if (options.onShutdown !== undefined) setImmediate(options.onShutdown);
+    }),
+    route("POST", "/auth/web-ticket", async ({ req, res }) => {
+      await readOptionalJsonBody(req);
+      sendJson(res, 201, options.webAuth.issueTicket());
     }),
   ];
 

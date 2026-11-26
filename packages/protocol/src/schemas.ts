@@ -628,6 +628,26 @@ export type UsageMetricsPayload = Static<typeof UsageMetricsSchema>;
 export type UsageStatePayload = Static<typeof UsageStateSchema>;
 export type ProjectUsageResponse = Static<typeof ProjectUsageResponseSchema>;
 
+export const WebSessionResponseSchema = obj({
+  authenticated: bool(),
+});
+
+export type WebSessionResponse = Static<typeof WebSessionResponseSchema>;
+
+export const CreateWebSessionRequestSchema = obj({
+  token: opt(str({ minLength: 1 })),
+  ticket: opt(str({ minLength: 1 })),
+});
+
+export type CreateWebSessionRequest = Static<typeof CreateWebSessionRequestSchema>;
+
+export const CreateWebTicketResponseSchema = obj({
+  ticket: str({ minLength: 1 }),
+  expiresAt: num(),
+});
+
+export type CreateWebTicketResponse = Static<typeof CreateWebTicketResponseSchema>;
+
 export function formatValidationErrors(errors: readonly ValidationError[]): string {
   return errors.map((err) => `${err.path || "<root>"}: ${err.message}`).join("; ");
 }

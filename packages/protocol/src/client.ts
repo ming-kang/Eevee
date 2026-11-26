@@ -16,6 +16,9 @@ import {
   type CreateProjectRequest,
   type CreateProjectResponse,
   CreateProjectResponseSchema,
+  type CreateWebSessionRequest,
+  type CreateWebTicketResponse,
+  CreateWebTicketResponseSchema,
   type DeleteProjectResponse,
   DeleteProjectResponseSchema,
   type EngineSettings,
@@ -80,6 +83,8 @@ import {
   type TaskReadMode,
   type UpdateProjectRequest,
   type UpsertMcpServerRequest,
+  type WebSessionResponse,
+  WebSessionResponseSchema,
   type WorkerId,
 } from "./schemas.ts";
 import { parseSseStream } from "./sse.ts";
@@ -116,6 +121,8 @@ const configBundleValidator = compile(ConfigBundleSchema);
 const deleteProjectValidator = compile(DeleteProjectResponseSchema);
 const projectMemoryValidator = compile(ProjectMemoryResponseSchema);
 const projectUsageValidator = compile(ProjectUsageResponseSchema);
+const webSessionValidator = compile(WebSessionResponseSchema);
+const webTicketValidator = compile(CreateWebTicketResponseSchema);
 
 export class EeveeApiError extends Error {
   readonly status: number;
@@ -129,9 +136,12 @@ export class EeveeApiError extends Error {
   }
 }
 
+export type FetchCredentials = "omit" | "same-origin" | "include";
+
 export type EeveeClientOptions = {
   readonly baseUrl: string;
   readonly token?: string;
+  readonly credentials?: FetchCredentials;
   readonly fetch?: typeof globalThis.fetch;
 };
 
@@ -220,12 +230,37 @@ function parseJsonString(text: string, label: string): unknown {
 export class EeveeClient {
   readonly #baseUrl: string;
   readonly #token?: string;
+  readonly #credentials?: FetchCredentials;
   readonly #fetch: typeof globalThis.fetch;
 
   constructor(options: EeveeClientOptions) {
     this.#baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.#token = options.token;
-    this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#credentials = options.credentials;
+    this.#fetch = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
+  }
+
+  async getWebSession(signal?: AbortSignal): Promise<WebSessionResponse> {
+    const data = await this.#requestJson("GET", "/auth/session", undefined, signal);
+    return parseWithSchema(webSessionValidator, data, "GET /auth/session response");
+  }
+
+  async createWebSession(
+    input: CreateWebSessionRequest,
+    signal?: AbortSignal,
+  ): Promise<WebSessionResponse> {
+    const data = await this.#requestJson("POST", "/auth/session", input, signal);
+    return parseWithSchema(webSessionValidator, data, "POST /auth/session response");
+  }
+
+  async logoutWebSession(signal?: AbortSignal): Promise<OkResponse> {
+    const data = await this.#requestJson("POST", "/auth/logout", {}, signal);
+    return parseWithSchema(okValidator, data, "POST /auth/logout response");
+  }
+
+  async createWebTicket(signal?: AbortSignal): Promise<CreateWebTicketResponse> {
+    const data = await this.#requestJson("POST", "/auth/web-ticket", {}, signal);
+    return parseWithSchema(webTicketValidator, data, "POST /auth/web-ticket response");
   }
 
   async health(signal?: AbortSignal): Promise<HealthResponse> {
@@ -680,6 +715,7 @@ export class EeveeClient {
     const response = await this.#fetch(`${this.#baseUrl}${path}`, {
       method,
       headers: this.#headers("application/json", hasBody),
+      ...(this.#credentials === undefined ? {} : { credentials: this.#credentials }),
       ...(hasBody ? { body: JSON.stringify(body) } : {}),
       ...(signal === undefined ? {} : { signal }),
     });
@@ -700,6 +736,7 @@ export class EeveeClient {
     const response = await this.#fetch(`${this.#baseUrl}${path}`, {
       method: "GET",
       headers: this.#headers("text/event-stream", false, extraHeaders),
+      ...(this.#credentials === undefined ? {} : { credentials: this.#credentials }),
       ...(signal === undefined ? {} : { signal }),
     });
 
