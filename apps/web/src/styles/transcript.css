@@ -522,6 +522,10 @@
   transition: box-shadow var(--ev-dur-base) var(--ev-ease-out);
 }
 
+.ev-composer-stack[hidden] {
+  display: none;
+}
+
 .ev-composer-stack:focus-within {
   box-shadow: var(--ev-shadow-soft), var(--ev-focus-ring);
 }

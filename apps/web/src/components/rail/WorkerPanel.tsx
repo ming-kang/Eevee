@@ -1,16 +1,9 @@
 import { SegmentedControl } from "@earendil-works/elanor-react";
-import type {
-  BoardViewPayload,
-  ProjectId,
-  WhenBusy,
-  WorkerBoardItemPayload,
-} from "@eevee/protocol";
+import type { BoardViewPayload, ProjectId, WorkerBoardItemPayload } from "@eevee/protocol";
 import { useMemo, useState } from "react";
-import { api } from "../../lib/api.ts";
 import { formatRelativeTime, shortPath, workerStatusLabel } from "../../lib/format.ts";
-import { useConversationStream } from "../../lib/hooks.ts";
-import { parseAgentDoc, parseInbox, parseLiveDoc } from "../../lib/transcript.ts";
-import { Composer } from "../Composer.tsx";
+import { useConversationPanel } from "../../lib/useConversationPanel.ts";
+import { ConversationDock } from "../ConversationDock.tsx";
 import { TranscriptView } from "../TranscriptView.tsx";
 
 export function WorkerPanel({
@@ -24,10 +17,9 @@ export function WorkerPanel({
 }) {
   const [subTab, setSubTab] = useState<"chat" | "details">("chat");
   const workerId = worker?.id;
-  const conv = useConversationStream(projectId, workerId);
-  const live = useMemo(() => parseLiveDoc(conv.view), [conv.view]);
-  const inbox = useMemo(() => parseInbox(conv.view), [conv.view]);
-  const agent = useMemo(() => parseAgentDoc(conv.view), [conv.view]);
+  const conv = useConversationPanel(projectId, workerId, {
+    interruptEnabled: worker !== undefined && worker.status !== "closed" && subTab === "chat",
+  });
 
   const tickets = useMemo(
     () => (board?.tickets ?? []).filter((t) => t.workerId === workerId),
@@ -38,27 +30,43 @@ export function WorkerPanel({
     return <div className="ev-rail-scroll ev-rail-empty-inline">未找到该 Worker。</div>;
   }
 
+  const modelLabel =
+    conv.agent.modelLabel ??
+    (worker.model ? `${worker.model.provider}/${worker.model.modelId}` : undefined);
+
   return (
     <div className="ev-rail-section">
       <div className="ev-worker-subhead">
         <span className="ev-mono ev-truncate" title={worker.cwd}>
-          {agent.modelLabel ??
-            (worker.model ? `${worker.model.provider}/${worker.model.modelId}` : "默认模型")}
+          {modelLabel ?? "默认模型"}
           {" · "}
           {shortPath(worker.cwd)}
         </span>
-        <SegmentedControl.Root
-          density="compact"
-          value={[subTab]}
-          onValueChange={(vals) => {
-            const v = vals[0];
-            if (v === "chat" || v === "details") setSubTab(v);
-          }}
-        >
-          <SegmentedControl.Item value="chat">对话</SegmentedControl.Item>
-          <SegmentedControl.Item value="details">详情</SegmentedControl.Item>
-        </SegmentedControl.Root>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          {!conv.connected && (
+            <span className="eevee-badge" data-tone="warning">
+              重连中…
+            </span>
+          )}
+          <SegmentedControl.Root
+            density="compact"
+            value={[subTab]}
+            onValueChange={(vals) => {
+              const v = vals[0];
+              if (v === "chat" || v === "details") setSubTab(v);
+            }}
+          >
+            <SegmentedControl.Item value="chat">对话</SegmentedControl.Item>
+            <SegmentedControl.Item value="details">详情</SegmentedControl.Item>
+          </SegmentedControl.Root>
+        </div>
       </div>
+
+      {conv.error && (
+        <div style={{ padding: "8px 12px 0" }}>
+          <div className="ev-error-banner">对话流异常：{conv.error}</div>
+        </div>
+      )}
 
       {subTab === "details" ? (
         <div className="ev-rail-scroll ev-worker-details">
@@ -100,7 +108,7 @@ export function WorkerPanel({
           <TranscriptView
             activeRef={worker.id}
             entries={conv.entries}
-            live={live}
+            live={conv.live}
             hasMoreOlder={conv.hasMoreOlder}
             loadingOlder={conv.loadingOlder}
             onLoadOlder={() => void conv.loadOlder()}
@@ -111,36 +119,20 @@ export function WorkerPanel({
             {worker.status === "closed" ? (
               <div className="ev-worker-closed-note">该 Worker 已关闭（只读查看）</div>
             ) : (
-              <div className="ev-composer-stack">
-                {inbox.length > 0 && (
-                  <div className="ev-queued-dock">
-                    <span className="ev-worker-inbox-title">队列中（{inbox.length}）</span>
-                    {inbox.map((item) => (
-                      <div key={item.id} className="ev-truncate">
-                        <span className="ev-chip-id ev-worker-inbox-chip">{item.mode}</span>
-                        {item.text}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <Composer
-                  draftKey={`worker:${projectId}:${worker.id}`}
-                  projectId={projectId}
-                  activeRef={worker.id}
-                  busy={live.busy}
-                  hasRunFailure={live.runFailure !== undefined}
-                  compact
-                  onSend={async (text: string, whenBusy: WhenBusy) => {
-                    await api.sendMessage(projectId, worker.id, { text, whenBusy });
-                  }}
-                  onInterrupt={async () => {
-                    await api.interrupt(projectId, worker.id);
-                  }}
-                  onRetry={async () => {
-                    await api.retry(projectId, worker.id);
-                  }}
-                />
-              </div>
+              <ConversationDock
+                inbox={conv.inbox}
+                draftKey={`worker:${projectId}:${worker.id}`}
+                projectId={projectId}
+                activeRef={worker.id}
+                busy={conv.live.busy}
+                hasRunFailure={conv.live.runFailure !== undefined}
+                compact
+                contextUsage={conv.contextUsage}
+                modelLabel={modelLabel}
+                onSend={conv.send}
+                onInterrupt={conv.interrupt}
+                onRetry={conv.retry}
+              />
             )}
           </div>
         </>

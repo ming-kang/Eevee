@@ -1,4 +1,4 @@
-import type { BackgroundTaskStatus, TaskCancelReason, WorkerId } from "@eevee/protocol";
+import type { NoticeData, TaskNotificationData, WorkerId } from "@eevee/protocol";
 
 export type DiffLine = {
   readonly id: number;
@@ -43,17 +43,10 @@ export type EditSummary = {
   }[];
 };
 
-export type NoticeMeta = {
-  readonly type: string;
-  readonly workerId?: WorkerId;
-  readonly workerName?: string;
-  readonly ticketId?: string;
-  readonly questionId?: string;
-  readonly taskId?: string;
-  readonly taskStatus?: BackgroundTaskStatus;
-  readonly taskExitCode?: number;
-  readonly taskCancelReason?: TaskCancelReason;
-};
+export type NoticeInfo =
+  | { readonly kind: "notice"; readonly data: NoticeData }
+  | { readonly kind: "task_notification"; readonly data: TaskNotificationData }
+  | { readonly kind: "generic"; readonly type: string };
 
 export type DisplayItem =
   | {
@@ -68,7 +61,7 @@ export type DisplayItem =
       readonly key: string;
       readonly id: number;
       readonly text: string;
-      readonly meta: NoticeMeta;
+      readonly meta: NoticeInfo;
       readonly at?: number;
     }
   | {

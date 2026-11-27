@@ -29,7 +29,7 @@ export type {
   FindMatch,
   InboxPreview,
   LiveDocView,
-  NoticeMeta,
+  NoticeInfo,
   OutlineEntry,
   ToolStep,
   VisualStage,

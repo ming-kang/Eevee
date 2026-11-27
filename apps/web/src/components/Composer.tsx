@@ -32,6 +32,8 @@ type CachedSkills = {
   readonly fetchedAt: number;
 };
 
+const skillsCache = new Map<string, CachedSkills>();
+
 export type ComposerProps = {
   readonly draftKey: string;
   readonly projectId?: string;
@@ -81,11 +83,10 @@ export function Composer({
   const [activeIndex, setActiveIndex] = useState(0);
 
   const cacheKey = projectId ?? "__global__";
-  const skillsCacheRef = useRef<Map<string, CachedSkills>>(new Map());
   const inflightKeyRef = useRef<string | undefined>(undefined);
   const skillsAbortRef = useRef<AbortController | undefined>(undefined);
   const [skills, setSkills] = useState<readonly SkillEntry[]>(
-    () => skillsCacheRef.current.get(cacheKey)?.skills ?? [],
+    () => skillsCache.get(cacheKey)?.skills ?? [],
   );
   const [loadingSkills, setLoadingSkills] = useState(false);
   const [skillsError, setSkillsError] = useState<string | undefined>(undefined);
@@ -113,7 +114,7 @@ export function Composer({
     inflightKeyRef.current = undefined;
     setLoadingSkills(false);
     setSkillsError(undefined);
-    setSkills(skillsCacheRef.current.get(cacheKey)?.skills ?? []);
+    setSkills(skillsCache.get(cacheKey)?.skills ?? []);
   }, [cacheKey]);
 
   useEffect(() => {
@@ -156,9 +157,13 @@ export function Composer({
 
   useEffect(() => {
     if (!token || disabled) return;
-    const cached = skillsCacheRef.current.get(cacheKey);
+    const cached = skillsCache.get(cacheKey);
     const fresh = cached !== undefined && Date.now() - cached.fetchedAt < SKILLS_CACHE_TTL_MS;
-    if (fresh || inflightKeyRef.current === cacheKey) return;
+    if (fresh) {
+      setSkills((prev) => (prev === cached.skills ? prev : cached.skills));
+      return;
+    }
+    if (inflightKeyRef.current === cacheKey) return;
 
     skillsAbortRef.current?.abort();
     const controller = new AbortController();
@@ -174,7 +179,7 @@ export function Composer({
     void request
       .then((res) => {
         if (controller.signal.aborted) return;
-        skillsCacheRef.current.set(cacheKey, { skills: res.skills, fetchedAt: Date.now() });
+        skillsCache.set(cacheKey, { skills: res.skills, fetchedAt: Date.now() });
         setSkills(res.skills);
       })
       .catch((err: unknown) => {

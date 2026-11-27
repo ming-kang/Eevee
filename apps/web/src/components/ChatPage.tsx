@@ -1,14 +1,11 @@
 import { FolderIcon } from "@earendil-works/elanor-icons-react";
 import { Heading } from "@earendil-works/elanor-react";
-import type { BoardViewPayload, ProjectSummary, WhenBusy, WorkerId } from "@eevee/protocol";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../lib/api.ts";
+import type { BoardViewPayload, ProjectSummary, WorkerId } from "@eevee/protocol";
+import { useEffect, useMemo, useState } from "react";
 import { shortPath } from "../lib/format.ts";
-import { useConversationStream } from "../lib/hooks.ts";
-import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
-import { lastContextUsage, parseAgentDoc, parseInbox, parseLiveDoc } from "../lib/transcript.ts";
+import { useConversationPanel } from "../lib/useConversationPanel.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
-import { Composer } from "./Composer.tsx";
+import { ConversationDock } from "./ConversationDock.tsx";
 import { ProjectHeader } from "./ProjectHeader.tsx";
 import { QuestionCard, QuestionStrip } from "./QuestionDock.tsx";
 import { TranscriptView } from "./TranscriptView.tsx";
@@ -32,11 +29,7 @@ export function ChatPage({
   readonly onEditProject: () => void;
   readonly onOpenWorker: (workerId: WorkerId) => void;
 }) {
-  const conv = useConversationStream(project.id, "router");
-  const live = useMemo(() => parseLiveDoc(conv.view), [conv.view]);
-  const inbox = useMemo(() => parseInbox(conv.view), [conv.view]);
-  const agent = useMemo(() => parseAgentDoc(conv.view), [conv.view]);
-  const contextUsage = useMemo(() => lastContextUsage(conv.entries), [conv.entries]);
+  const conv = useConversationPanel(project.id, "router");
 
   const openQuestions = useMemo(
     () =>
@@ -51,37 +44,13 @@ export function ChatPage({
     if (openQuestions.length === 0) setLater(false);
   }, [openQuestions.length]);
 
-  const lastEscRef = useRef(0);
-
-  useEffect(() => {
-    void live.busy;
-    void project.id;
-    lastEscRef.current = 0;
-  }, [live.busy, project.id]);
-
-  useShortcutLayer({
-    id: "chat-interrupt-esc",
-    active: live.busy,
-    priority: SHORTCUT_PRIORITY.PAGE,
-    onKeyDown: (event) => {
-      if (event.key !== "Escape") return false;
-      const now = Date.now();
-      if (now - lastEscRef.current < 450) {
-        lastEscRef.current = 0;
-        event.preventDefault();
-        void api.interrupt(project.id, "router");
-        return true;
-      }
-      lastEscRef.current = now;
-      return false;
-    },
-  });
+  const showingQuestionCard = openQuestions.length > 0 && !later;
 
   const loadedEmpty =
     conv.view !== undefined &&
     conv.entries.every((e) => e.kind === "pi.system") &&
-    !live.busy &&
-    !live.runFailure;
+    !conv.live.busy &&
+    !conv.live.runFailure;
 
   return (
     <section className={`ev-chat-shell${loadedEmpty ? " landing" : ""}`}>
@@ -141,7 +110,7 @@ export function ChatPage({
         <TranscriptView
           activeRef="router"
           entries={conv.entries}
-          live={live}
+          live={conv.live}
           hasMoreOlder={conv.hasMoreOlder}
           loadingOlder={conv.loadingOlder}
           onLoadOlder={() => void conv.loadOlder()}
@@ -153,62 +122,38 @@ export function ChatPage({
 
       <div className="ev-dock">
         <div className="ev-dock-inner">
-          {openQuestions.length > 0 && !later ? (
+          {showingQuestionCard && (
             <QuestionCard
               projectId={project.id}
               questions={openQuestions}
               onLater={() => setLater(true)}
             />
-          ) : (
-            <div className="ev-composer-stack">
-              {openQuestions.length > 0 && later && openQuestions[0] && (
+          )}
+
+          <ConversationDock
+            hidden={showingQuestionCard}
+            topSlot={
+              openQuestions.length > 0 && later && openQuestions[0] ? (
                 <QuestionStrip
                   projectId={project.id}
                   question={openQuestions[0]}
                   count={openQuestions.length}
                   onExpand={() => setLater(false)}
                 />
-              )}
-
-              {inbox.length > 0 && (
-                <div className="ev-queued-dock">
-                  <span style={{ fontSize: 11.5, color: "var(--ev-fg-subtle)", fontWeight: 500 }}>
-                    队列中（{inbox.length}）
-                  </span>
-                  {inbox.map((item) => (
-                    <div
-                      key={item.id}
-                      style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}
-                    >
-                      <span className="ev-chip-id">{item.mode}</span>
-                      <span className="ev-truncate" style={{ flex: 1 }}>
-                        {item.text}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <Composer
-                draftKey={`router:${project.id}`}
-                projectId={project.id}
-                activeRef="router"
-                busy={live.busy}
-                hasRunFailure={live.runFailure !== undefined}
-                contextUsage={contextUsage}
-                modelLabel={agent.modelLabel}
-                onSend={async (text: string, whenBusy: WhenBusy) => {
-                  await api.sendMessage(project.id, "router", { text, whenBusy });
-                }}
-                onInterrupt={async () => {
-                  await api.interrupt(project.id, "router");
-                }}
-                onRetry={async () => {
-                  await api.retry(project.id, "router");
-                }}
-              />
-            </div>
-          )}
+              ) : undefined
+            }
+            inbox={conv.inbox}
+            draftKey={`router:${project.id}`}
+            projectId={project.id}
+            activeRef="router"
+            busy={conv.live.busy}
+            hasRunFailure={conv.live.runFailure !== undefined}
+            contextUsage={conv.contextUsage}
+            modelLabel={conv.agent.modelLabel}
+            onSend={conv.send}
+            onInterrupt={conv.interrupt}
+            onRetry={conv.retry}
+          />
         </div>
       </div>
     </section>

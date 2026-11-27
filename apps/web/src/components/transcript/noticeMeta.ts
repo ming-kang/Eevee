@@ -1,11 +1,19 @@
-import type { BackgroundTaskStatus } from "@eevee/protocol";
+import type {
+  BackgroundTaskStatus,
+  NoticeData,
+  TaskNotificationData,
+  TicketId,
+  WorkerId,
+} from "@eevee/protocol";
 import { taskStatusLabel, taskStatusStage, taskStatusTone } from "../../lib/format.ts";
-import type { DisplayItem, VisualStage } from "../../lib/transcript.ts";
+import type { NoticeInfo, VisualStage } from "../../lib/transcript.ts";
 
 export type NoticeLabelInfo = {
   readonly title: string;
   readonly tone: "default" | "danger";
   readonly stage: VisualStage;
+  readonly workerId?: WorkerId;
+  readonly ticketId?: TicketId;
   readonly badge?: {
     readonly text: string;
     readonly tone: "info" | "positive" | "warning" | "negative" | "neutral";
@@ -26,54 +34,62 @@ const TASK_TITLES: Record<
   stopping: { prefix: "后台任务" },
 };
 
-function taskNotificationLabel(
-  meta: Extract<DisplayItem, { kind: "notice" }>["meta"],
-): NoticeLabelInfo {
-  const idSuffix = meta.taskId ? ` · ${meta.taskId}` : "";
-  const status = meta.taskStatus;
-  if (status === undefined) {
-    return { title: `后台任务${idSuffix}`, tone: "default", stage: "done" };
-  }
-  const spec = TASK_TITLES[status];
+function taskNotificationLabel(data: TaskNotificationData): NoticeLabelInfo {
+  const spec = TASK_TITLES[data.status];
   const badgeText =
-    status === "cancelled" && meta.taskCancelReason === "user"
+    data.status === "cancelled" && data.cancelReason === "user"
       ? "cancelled (user)"
-      : taskStatusLabel(status, meta.taskExitCode);
+      : taskStatusLabel(data.status, data.exitCode);
   return {
-    title: `${spec.prefix}${idSuffix}`,
+    title: `${spec.prefix} · ${data.taskId}`,
     tone: spec.danger ? "danger" : "default",
-    stage: taskStatusStage(status),
-    badge: { text: badgeText, tone: taskStatusTone(status) },
+    stage: taskStatusStage(data.status),
+    badge: { text: badgeText, tone: taskStatusTone(data.status) },
   };
 }
 
-export function noticeMetaLabel(
-  meta: Extract<DisplayItem, { kind: "notice" }>["meta"],
-): NoticeLabelInfo {
-  switch (meta.type) {
+function noticeDataLabel(data: NoticeData): NoticeLabelInfo {
+  switch (data.type) {
     case "handoff":
       return {
-        title: `Worker 交棒 · ${meta.workerName ?? meta.workerId ?? ""}`,
+        title: `Worker 交棒 · ${data.workerName || data.workerId}`,
         tone: "default",
         stage: "done",
+        workerId: data.workerId,
+        ...(data.ticketId !== undefined ? { ticketId: data.ticketId } : {}),
       };
     case "worker_message":
       return {
-        title: `Worker 消息 · ${meta.workerName ?? meta.workerId ?? ""}`,
+        title: `Worker 消息 · ${data.workerName || data.workerId}`,
         tone: "default",
         stage: "done",
+        workerId: data.workerId,
+        ...(data.ticketId !== undefined ? { ticketId: data.ticketId } : {}),
       };
     case "worker_failed":
       return {
-        title: `Worker 失败 · ${meta.workerName ?? meta.workerId ?? ""}`,
+        title: `Worker 失败 · ${data.workerName || data.workerId}`,
         tone: "danger",
         stage: "blocked",
+        workerId: data.workerId,
+        ...(data.ticketId !== undefined ? { ticketId: data.ticketId } : {}),
       };
     case "question_answered":
-      return { title: `用户答复 · ${meta.questionId ?? ""}`, tone: "default", stage: "done" };
+      return {
+        title: `用户答复 · ${data.questionId}`,
+        tone: "default",
+        stage: "done",
+      };
+  }
+}
+
+export function noticeMetaLabel(meta: NoticeInfo): NoticeLabelInfo {
+  switch (meta.kind) {
+    case "notice":
+      return noticeDataLabel(meta.data);
     case "task_notification":
-      return taskNotificationLabel(meta);
-    default:
+      return taskNotificationLabel(meta.data);
+    case "generic":
       return { title: `通知 · ${meta.type}`, tone: "default", stage: "done" };
   }
 }

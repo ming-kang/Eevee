@@ -127,14 +127,14 @@ function isStepLive(status: ToolStep["status"]): boolean {
 }
 
 function makeToolsItem(
-  entryId: number,
+  keyPrefix: string,
   suffix: string,
   steps: readonly ToolStep[],
   at: number | undefined,
 ): DisplayItem {
   return {
     kind: "tools",
-    key: `e:${entryId}:tools:${suffix}`,
+    key: `${keyPrefix}:tools:${suffix}`,
     steps,
     live: steps.some((s) => isStepLive(s.status)),
     ...(at ? { at } : {}),
@@ -142,14 +142,14 @@ function makeToolsItem(
 }
 
 function makeDispatchItem(
-  entryId: number,
+  keyPrefix: string,
   suffix: string,
   actions: readonly DispatchAction[],
   at: number | undefined,
 ): DisplayItem {
   return {
     kind: "dispatch",
-    key: `e:${entryId}:dispatch:${suffix}`,
+    key: `${keyPrefix}:dispatch:${suffix}`,
     actions,
     live: actions.some((a) => a.status === "run"),
     ...(at ? { at } : {}),
@@ -186,12 +186,13 @@ function buildDispatchAction(
 }
 
 export function buildToolCallItems(
-  entryId: number,
-  calls: readonly ExtractedToolCall[],
+  scope: number | string,
+  calls: readonly (ExtractedToolCall & { readonly label?: string })[],
   resultsByCallId: ReadonlyMap<string, ToolResultRecord>,
   liveToolsById: ReadonlyMap<string, ToolStep>,
   at: number | undefined,
 ): DisplayItem[] {
+  const keyPrefix = typeof scope === "number" ? `e:${scope}` : scope;
   const items: DisplayItem[] = [];
   let genericSteps: ToolStep[] = [];
   let dispatchActions: DispatchAction[] = [];
@@ -209,18 +210,18 @@ export function buildToolCallItems(
 
     if (call.name === "bash" || call.name === "powershell") {
       if (genericSteps.length > 0) {
-        items.push(makeToolsItem(entryId, call.id, genericSteps, at));
+        items.push(makeToolsItem(keyPrefix, call.id, genericSteps, at));
         genericSteps = [];
       }
       if (dispatchActions.length > 0) {
-        items.push(makeDispatchItem(entryId, call.id, dispatchActions, at));
+        items.push(makeDispatchItem(keyPrefix, call.id, dispatchActions, at));
         dispatchActions = [];
       }
       const command =
         typeof call.arguments.command === "string" ? call.arguments.command : call.name;
       items.push({
         kind: "bash",
-        key: `e:${entryId}:bash:${call.id}`,
+        key: `${keyPrefix}:bash:${call.id}`,
         command,
         status: status === "done" ? "ok" : status === "error" ? "err" : "run",
         output: result?.text ?? slot?.streamingOutput ?? "",
@@ -231,18 +232,18 @@ export function buildToolCallItems(
 
     if (call.name === "edit" || call.name === "write") {
       if (genericSteps.length > 0) {
-        items.push(makeToolsItem(entryId, call.id, genericSteps, at));
+        items.push(makeToolsItem(keyPrefix, call.id, genericSteps, at));
         genericSteps = [];
       }
       if (dispatchActions.length > 0) {
-        items.push(makeDispatchItem(entryId, call.id, dispatchActions, at));
+        items.push(makeDispatchItem(keyPrefix, call.id, dispatchActions, at));
         dispatchActions = [];
       }
       const path = typeof call.arguments.path === "string" ? call.arguments.path : call.name;
       const { diff, added, removed } = buildEditDiff(call.name, call.arguments);
       items.push({
         kind: "edit",
-        key: `e:${entryId}:edit:${call.id}`,
+        key: `${keyPrefix}:edit:${call.id}`,
         action: call.name,
         path,
         status: status === "done" ? "ok" : status === "error" ? "err" : "run",
@@ -257,7 +258,7 @@ export function buildToolCallItems(
 
     if (DISPATCH_TOOLS.has(call.name)) {
       if (genericSteps.length > 0) {
-        items.push(makeToolsItem(entryId, call.id, genericSteps, at));
+        items.push(makeToolsItem(keyPrefix, call.id, genericSteps, at));
         genericSteps = [];
       }
       dispatchActions.push(buildDispatchAction(call, status, result));
@@ -265,22 +266,24 @@ export function buildToolCallItems(
     }
 
     if (dispatchActions.length > 0) {
-      items.push(makeDispatchItem(entryId, call.id, dispatchActions, at));
+      items.push(makeDispatchItem(keyPrefix, call.id, dispatchActions, at));
       dispatchActions = [];
     }
     genericSteps.push({
       id: call.id,
       name: call.name,
-      label: formatToolLabel(call.name, call.arguments),
+      label: call.label ?? formatToolLabel(call.name, call.arguments),
       arguments: call.arguments,
       status,
       ...(result ? { outputText: result.text, isError: result.isError } : {}),
-      ...(slot?.streamingOutput ? { streamingOutput: slot.streamingOutput } : {}),
+      ...(slot?.streamingOutput !== undefined ? { streamingOutput: slot.streamingOutput } : {}),
       ...(slot?.diagnostics ? { diagnostics: slot.diagnostics } : {}),
     });
   }
 
-  if (genericSteps.length > 0) items.push(makeToolsItem(entryId, "end", genericSteps, at));
-  if (dispatchActions.length > 0) items.push(makeDispatchItem(entryId, "end", dispatchActions, at));
+  if (genericSteps.length > 0) items.push(makeToolsItem(keyPrefix, "end", genericSteps, at));
+  if (dispatchActions.length > 0) {
+    items.push(makeDispatchItem(keyPrefix, "end", dispatchActions, at));
+  }
   return items;
 }

@@ -3,12 +3,16 @@ import {
   type EntryRecordPayload,
   parseNoticeData,
   parseTaskNotificationData,
-  type WorkerId,
 } from "@eevee/protocol";
 import { isRecord } from "../object.ts";
-import { extractText, extractThinking, extractToolCalls } from "./content.ts";
+import {
+  type ExtractedToolCall,
+  extractText,
+  extractThinking,
+  extractToolCalls,
+} from "./content.ts";
 import { buildToolCallItems, type ToolResultRecord } from "./tools.ts";
-import type { DisplayItem, LiveDocView, NoticeMeta, ToolStep } from "./types.ts";
+import type { DisplayItem, LiveDocView, NoticeInfo, ToolStep } from "./types.ts";
 
 export { activitySummary, formatToolLabel, toolActivity } from "./tools.ts";
 
@@ -38,56 +42,31 @@ function collectToolResults(entries: readonly EntryRecordPayload[]): Map<string,
   return results;
 }
 
-function parseNoticeMeta(entry: EntryRecordPayload): NoticeMeta {
+function parseNoticeInfo(entry: EntryRecordPayload): NoticeInfo {
   if (entry.kind === "eevee.task-notification") {
     const taskNote = parseTaskNotificationData(entry.data);
     if (taskNote) {
-      return {
-        type: "task_notification",
-        taskId: taskNote.taskId,
-        taskStatus: taskNote.status,
-        ...(taskNote.exitCode !== undefined ? { taskExitCode: taskNote.exitCode } : {}),
-        ...(taskNote.cancelReason !== undefined ? { taskCancelReason: taskNote.cancelReason } : {}),
-      };
+      return { kind: "task_notification", data: taskNote };
     }
-    const raw = isRecord(entry.data) ? entry.data : {};
-    return {
-      type: "task_notification",
-      ...(typeof raw.taskId === "string" ? { taskId: raw.taskId } : {}),
-      ...(typeof raw.exitCode === "number" ? { taskExitCode: raw.exitCode } : {}),
-    };
+    return { kind: "generic", type: "task_notification" };
   }
 
   const notice = parseNoticeData(entry.data);
   if (notice) {
-    switch (notice.type) {
-      case "question_answered":
-        return { type: notice.type, questionId: notice.questionId };
-      case "handoff":
-      case "worker_message":
-      case "worker_failed":
-        return {
-          type: notice.type,
-          workerId: notice.workerId,
-          workerName: notice.workerName,
-          ...(notice.ticketId !== undefined ? { ticketId: notice.ticketId } : {}),
-        };
-    }
+    return { kind: "notice", data: notice };
   }
 
   const raw = isRecord(entry.data) ? entry.data : {};
   return {
+    kind: "generic",
     type: typeof raw.type === "string" ? raw.type : "notice",
-    ...(typeof raw.workerId === "string" ? { workerId: raw.workerId as WorkerId } : {}),
-    ...(typeof raw.workerName === "string" ? { workerName: raw.workerName } : {}),
-    ...(typeof raw.ticketId === "string" ? { ticketId: raw.ticketId } : {}),
-    ...(typeof raw.questionId === "string" ? { questionId: raw.questionId } : {}),
   };
 }
 
 function buildAssistantItems(
   entry: EntryRecordPayload,
   msg: EntryModelMessagePayload | undefined,
+  calls: readonly ExtractedToolCall[],
   resultsByCallId: ReadonlyMap<string, ToolResultRecord>,
   liveToolsById: ReadonlyMap<string, ToolStep>,
   at: number | undefined,
@@ -103,15 +82,7 @@ function buildAssistantItems(
     });
   }
 
-  items.push(
-    ...buildToolCallItems(
-      entry.id,
-      extractToolCalls(msg?.content),
-      resultsByCallId,
-      liveToolsById,
-      at,
-    ),
-  );
+  items.push(...buildToolCallItems(entry.id, calls, resultsByCallId, liveToolsById, at));
 
   const text = extractText(msg?.content);
   const error =
@@ -130,12 +101,49 @@ function buildAssistantItems(
   return items;
 }
 
+function mergeLiveToolSteps(
+  partialTools: readonly ToolStep[],
+  activeTools: readonly ToolStep[],
+  renderedToolCallIds: ReadonlySet<string>,
+): ToolStep[] {
+  const activeById = new Map(activeTools.map((slot) => [slot.id, slot]));
+  const merged: ToolStep[] = [];
+  const seenIds = new Set<string>();
+
+  for (const step of partialTools) {
+    if (renderedToolCallIds.has(step.id)) continue;
+    seenIds.add(step.id);
+    const active = activeById.get(step.id);
+    merged.push(
+      active
+        ? {
+            ...step,
+            status: active.status,
+            ...(active.streamingOutput !== undefined
+              ? { streamingOutput: active.streamingOutput }
+              : {}),
+            ...(active.diagnostics !== undefined ? { diagnostics: active.diagnostics } : {}),
+          }
+        : step,
+    );
+  }
+
+  for (const active of activeTools) {
+    if (renderedToolCallIds.has(active.id) || seenIds.has(active.id)) continue;
+    seenIds.add(active.id);
+    merged.push(active);
+  }
+
+  return merged;
+}
+
 export function buildDisplayItems(
   entries: readonly EntryRecordPayload[],
   live: LiveDocView,
 ): DisplayItem[] {
   const resultsByCallId = collectToolResults(entries);
   const liveToolsById = new Map(live.activeTools.map((slot) => [slot.id, slot]));
+  const renderedToolCallIds = new Set<string>();
   const items: DisplayItem[] = [];
 
   for (const entry of entries) {
@@ -163,7 +171,7 @@ export function buildDisplayItems(
         key: `e:${entry.id}`,
         id: entry.id,
         text: extractText(firstMsg?.content),
-        meta: parseNoticeMeta(entry),
+        meta: parseNoticeInfo(entry),
         ...(at ? { at } : {}),
       });
     } else if (entry.kind === "pi.user" || firstMsg?.role === "user") {
@@ -178,7 +186,11 @@ export function buildDisplayItems(
         });
       }
     } else if (entry.kind === "pi.assistant" || firstMsg?.role === "assistant") {
-      items.push(...buildAssistantItems(entry, firstMsg, resultsByCallId, liveToolsById, at));
+      const calls = extractToolCalls(firstMsg?.content);
+      for (const call of calls) renderedToolCallIds.add(call.id);
+      items.push(
+        ...buildAssistantItems(entry, firstMsg, calls, resultsByCallId, liveToolsById, at),
+      );
     }
   }
 
@@ -191,8 +203,10 @@ export function buildDisplayItems(
         streaming: true,
       });
     }
-    if (live.partialTools.length > 0) {
-      items.push({ kind: "tools", key: "live:tools", steps: live.partialTools, live: true });
+    const liveTools = mergeLiveToolSteps(live.partialTools, live.activeTools, renderedToolCallIds);
+    if (liveTools.length > 0) {
+      const liveById = new Map(liveTools.map((step) => [step.id, step]));
+      items.push(...buildToolCallItems("live", liveTools, resultsByCallId, liveById, undefined));
     }
     if (live.partialText) {
       items.push({ kind: "assistant", key: "live:text", text: live.partialText, streaming: true });

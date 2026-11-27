@@ -38,10 +38,16 @@ export function TranscriptView({
   compact = false,
 }: TranscriptViewProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const itemNodesRef = useRef(new Map<string, HTMLElement>());
   const stickRef = useRef(true);
   const [query, setQuery] = useState("");
   const [matchIdx, setMatchIdx] = useState(0);
   const [activeOutline, setActiveOutline] = useState(0);
+
+  const registerItemNode = useCallback((key: string, el: HTMLElement | null) => {
+    if (el) itemNodesRef.current.set(key, el);
+    else itemNodesRef.current.delete(key);
+  }, []);
 
   const displayItems = useMemo(() => {
     const raw = buildDisplayItems(entries, live);
@@ -69,9 +75,7 @@ export function TranscriptView({
   const activeMatchKey = matches[matchIdx]?.key;
 
   const jumpToKey = useCallback((key: string) => {
-    const container = scrollRef.current;
-    if (!container) return;
-    const el = container.querySelector<HTMLElement>(`[data-item-key="${CSS.escape(key)}"]`);
+    const el = itemNodesRef.current.get(key);
     if (!el) return;
     stickRef.current = false;
     el.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -89,7 +93,7 @@ export function TranscriptView({
       const line = el.scrollTop + 120;
       let current = 0;
       outline.forEach((entry, idx) => {
-        const node = el.querySelector<HTMLElement>(`[data-item-key="${CSS.escape(entry.key)}"]`);
+        const node = itemNodesRef.current.get(entry.key);
         if (node && node.offsetTop <= line) current = idx;
       });
       setActiveOutline(current);
@@ -151,6 +155,7 @@ export function TranscriptView({
               item={item}
               onOpenWorker={onOpenWorker}
               highlightKey={activeMatchKey}
+              registerItemNode={registerItemNode}
             />
           ))}
 

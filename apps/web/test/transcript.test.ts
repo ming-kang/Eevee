@@ -5,6 +5,7 @@ import type {
   ConversationViewPayload,
   EntryRecordPayload,
 } from "@eevee/protocol";
+import { noticeMetaLabel } from "../src/components/transcript/noticeMeta.ts";
 import {
   buildDisplayItems,
   closedWorkedItems,
@@ -237,10 +238,13 @@ test("buildDisplayItems and foldTurns render tools, notices, edits, and fold com
   const noticeItem = raw.find((item) => item.kind === "notice");
   assert.ok(noticeItem && noticeItem.kind === "notice");
   assert.deepEqual(noticeItem.meta, {
-    type: "task_notification",
-    taskId: "task-1",
-    taskStatus: "cancelled",
-    taskCancelReason: "user",
+    kind: "task_notification",
+    data: {
+      taskId: "task-1",
+      status: "cancelled",
+      command: "npm run dev",
+      cancelReason: "user",
+    },
   });
 
   const folded = foldTurns(raw, false);
@@ -267,6 +271,293 @@ test("buildDisplayItems and foldTurns render tools, notices, edits, and fold com
     unfoldedWhileBusy.some((item) => item.kind === "worked"),
     false,
   );
+});
+
+test("buildDisplayItems merges live partialTools and activeTools through buildToolCallItems", () => {
+  const entries: EntryRecordPayload[] = [
+    {
+      id: 1,
+      conversationId: 1,
+      kind: "pi.user",
+      model: [{ role: "user", content: "Run checks", timestamp: 1000 }],
+    },
+    {
+      id: 2,
+      conversationId: 1,
+      kind: "pi.assistant",
+      model: [
+        {
+          role: "assistant",
+          timestamp: 1500,
+          content: [
+            {
+              type: "toolCall",
+              id: "persisted-call",
+              name: "bash",
+              arguments: { command: "echo hi" },
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const live = parseLiveDoc(
+    makeView({
+      "pi.live": {
+        run: { turns: 1 },
+        generation: {
+          message: {
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "planning" },
+              {
+                type: "toolCall",
+                id: "live-read",
+                name: "read",
+                arguments: { path: "src/index.ts", offset: 4 },
+              },
+              {
+                type: "toolCall",
+                id: "live-bash",
+                name: "bash",
+                arguments: { command: "npm test" },
+              },
+              {
+                type: "toolCall",
+                id: "live-edit",
+                name: "edit",
+                arguments: { path: "src/index.ts", oldText: "a", newText: "b\nc" },
+              },
+              {
+                type: "toolCall",
+                id: "live-dispatch",
+                name: "spawn_worker",
+                arguments: { name: "builder" },
+              },
+              { type: "text", text: "In progress" },
+            ],
+          },
+        },
+        tools: [
+          {
+            callId: "persisted-call",
+            name: "bash",
+            status: "running",
+            output: "hi...",
+          },
+          {
+            callId: "live-read",
+            name: "read",
+            status: "running",
+            output: "reading lines",
+            diagnostics: [{ severity: "info", message: "partial slice" }],
+          },
+          {
+            callId: "live-bash",
+            name: "bash",
+            status: "running",
+            output: "running suite...",
+          },
+          {
+            callId: "live-edit",
+            name: "edit",
+            status: "running",
+          },
+          {
+            callId: "standalone-grep",
+            name: "grep",
+            status: "waiting",
+            output: "queued search",
+          },
+        ],
+      },
+    }),
+  );
+
+  const items = buildDisplayItems(entries, live);
+  assert.deepEqual(
+    items.map((item) => item.kind),
+    ["user", "bash", "thinking", "tools", "bash", "edit", "dispatch", "tools", "assistant"],
+  );
+
+  const persistedBash = items[1];
+  assert.ok(persistedBash && persistedBash.kind === "bash");
+  assert.equal(persistedBash.key, "e:2:bash:persisted-call");
+  assert.equal(persistedBash.command, "echo hi");
+  assert.equal(persistedBash.status, "run");
+  assert.equal(persistedBash.output, "hi...");
+
+  const mergedGenericTools = items[3];
+  assert.ok(mergedGenericTools && mergedGenericTools.kind === "tools");
+  assert.equal(mergedGenericTools.live, true);
+  assert.deepEqual(mergedGenericTools.steps, [
+    {
+      id: "live-read",
+      name: "read",
+      label: "src/index.ts:4",
+      arguments: { path: "src/index.ts", offset: 4 },
+      status: "running",
+      streamingOutput: "reading lines",
+      diagnostics: [{ severity: "info", message: "partial slice" }],
+    },
+  ]);
+
+  const liveBash = items[4];
+  assert.ok(liveBash && liveBash.kind === "bash");
+  assert.equal(liveBash.key, "live:bash:live-bash");
+  assert.equal(liveBash.command, "npm test");
+  assert.equal(liveBash.status, "run");
+  assert.equal(liveBash.output, "running suite...");
+
+  const liveEdit = items[5];
+  assert.ok(liveEdit && liveEdit.kind === "edit");
+  assert.equal(liveEdit.key, "live:edit:live-edit");
+  assert.equal(liveEdit.path, "src/index.ts");
+  assert.equal(liveEdit.status, "run");
+  assert.equal(liveEdit.added, 2);
+  assert.equal(liveEdit.removed, 1);
+
+  const liveDispatch = items[6];
+  assert.ok(liveDispatch && liveDispatch.kind === "dispatch");
+  assert.equal(liveDispatch.live, true);
+  assert.equal(liveDispatch.actions[0]?.target, "builder");
+  assert.equal(liveDispatch.actions[0]?.status, "run");
+
+  const standaloneTools = items[7];
+  assert.ok(standaloneTools && standaloneTools.kind === "tools");
+  assert.equal(standaloneTools.live, true);
+  assert.deepEqual(standaloneTools.steps, [
+    {
+      id: "standalone-grep",
+      name: "grep",
+      label: "grep",
+      arguments: {},
+      status: "waiting",
+      streamingOutput: "queued search",
+    },
+  ]);
+
+  const folded = foldTurns(items, true);
+  assert.equal(
+    folded.some((item) => item.kind === "worked"),
+    false,
+  );
+});
+
+test("buildDisplayItems and noticeMetaLabel preserve strongly typed NoticeInfo variants", () => {
+  const entries: EntryRecordPayload[] = [
+    {
+      id: 1,
+      conversationId: 1,
+      kind: "eevee.notice",
+      data: { type: "handoff", workerId: "w1", workerName: "Builder", ticketId: "t1" },
+      model: [{ role: "user", content: "Handoff done" }],
+    },
+    {
+      id: 2,
+      conversationId: 1,
+      kind: "eevee.notice",
+      data: { type: "worker_message", workerId: "w2", workerName: "Reviewer" },
+      model: [{ role: "user", content: "Need feedback" }],
+    },
+    {
+      id: 3,
+      conversationId: 1,
+      kind: "eevee.notice",
+      data: {
+        type: "worker_failed",
+        workerId: "w3",
+        workerName: "Tester",
+        ticketId: "t2",
+        reason: "crash",
+      },
+      model: [{ role: "user", content: "Worker crashed" }],
+    },
+    {
+      id: 4,
+      conversationId: 1,
+      kind: "eevee.notice",
+      data: { type: "question_answered", questionId: "q1", answers: ["Yes"] },
+      model: [{ role: "user", content: "Answered Yes" }],
+    },
+    {
+      id: 5,
+      conversationId: 1,
+      kind: "eevee.task-notification",
+      data: { taskId: "bg-7", status: "failed", command: "npm run lint", exitCode: 2 },
+      model: [{ role: "user", content: "Lint failed" }],
+    },
+    {
+      id: 6,
+      conversationId: 1,
+      kind: "eevee.notice",
+      data: { type: "custom_event", detail: 42 },
+      model: [{ role: "user", content: "Custom notice" }],
+    },
+  ];
+
+  const notices = buildDisplayItems(entries, parseLiveDoc(undefined));
+  assert.equal(notices.length, 6);
+  for (const item of notices) {
+    assert.equal(item.kind, "notice");
+  }
+
+  const [handoff, workerMessage, workerFailed, questionAnswered, taskNote, generic] = notices as [
+    Extract<(typeof notices)[number], { kind: "notice" }>,
+    Extract<(typeof notices)[number], { kind: "notice" }>,
+    Extract<(typeof notices)[number], { kind: "notice" }>,
+    Extract<(typeof notices)[number], { kind: "notice" }>,
+    Extract<(typeof notices)[number], { kind: "notice" }>,
+    Extract<(typeof notices)[number], { kind: "notice" }>,
+  ];
+
+  assert.deepEqual(handoff.meta, {
+    kind: "notice",
+    data: { type: "handoff", workerId: "w1", workerName: "Builder", ticketId: "t1" },
+  });
+  assert.deepEqual(noticeMetaLabel(handoff.meta), {
+    title: "Worker 交棒 · Builder",
+    tone: "default",
+    stage: "done",
+    workerId: "w1",
+    ticketId: "t1",
+  });
+
+  assert.deepEqual(noticeMetaLabel(workerMessage.meta), {
+    title: "Worker 消息 · Reviewer",
+    tone: "default",
+    stage: "done",
+    workerId: "w2",
+  });
+
+  assert.deepEqual(noticeMetaLabel(workerFailed.meta), {
+    title: "Worker 失败 · Tester",
+    tone: "danger",
+    stage: "blocked",
+    workerId: "w3",
+    ticketId: "t2",
+  });
+
+  assert.deepEqual(noticeMetaLabel(questionAnswered.meta), {
+    title: "用户答复 · q1",
+    tone: "default",
+    stage: "done",
+  });
+
+  assert.deepEqual(noticeMetaLabel(taskNote.meta), {
+    title: "后台任务失败 · bg-7",
+    tone: "danger",
+    stage: "blocked",
+    badge: { text: "failed (2)", tone: "negative" },
+  });
+
+  assert.deepEqual(generic.meta, { kind: "generic", type: "custom_event" });
+  assert.deepEqual(noticeMetaLabel(generic.meta), {
+    title: "通知 · custom_event",
+    tone: "default",
+    stage: "done",
+  });
 });
 
 test("deriveBoardSummary computes stage priority across questions, workers, and tasks", () => {

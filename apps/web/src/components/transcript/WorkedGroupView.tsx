@@ -1,5 +1,5 @@
 import { ChevronRightIcon } from "@earendil-works/elanor-icons-react";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { formatDurationMs, shortPath } from "../../lib/format.ts";
 import {
   activitySummary,
@@ -11,15 +11,30 @@ import {
 export function WorkedGroupView({
   item,
   highlightKey,
+  registerNode,
   renderChild,
 }: {
   readonly item: Extract<DisplayItem, { kind: "worked" }>;
   readonly highlightKey?: string;
-  readonly renderChild: (child: DisplayItem) => ReactNode;
+  readonly registerNode?: (el: HTMLElement | null) => void;
+  readonly renderChild: (
+    child: DisplayItem,
+    revealedEditKey?: string,
+    flashEditKey?: string,
+  ) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [pathsOpen, setPathsOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [revealedEditKey, setRevealedEditKey] = useState<string | undefined>(undefined);
+  const [flashEditKey, setFlashEditKey] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (flashEditKey === undefined) return;
+    const timer = window.setTimeout(() => {
+      setFlashEditKey(undefined);
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [flashEditKey]);
 
   const label = item.ms !== undefined ? `耗时 ${formatDurationMs(item.ms)}` : "已完成执行";
   const summaryText = activitySummary(item.activity);
@@ -28,20 +43,13 @@ export function WorkedGroupView({
 
   const revealEdit = (key: string) => {
     setOpen(true);
-    window.requestAnimationFrame(() => {
-      const target = rootRef.current?.querySelector<HTMLElement>(
-        `[data-edit-key="${CSS.escape(key)}"]`,
-      );
-      if (!target) return;
-      target.scrollIntoView({ block: "center", behavior: "smooth" });
-      target.classList.add("flash");
-      window.setTimeout(() => target.classList.remove("flash"), 1200);
-    });
+    setRevealedEditKey(key);
+    setFlashEditKey(key);
   };
 
   return (
     <div
-      ref={rootRef}
+      ref={registerNode}
       className={`ev-worked${highlightKey === item.key ? " ev-find-current" : ""}`}
       data-item-key={item.key}
     >
@@ -50,7 +58,15 @@ export function WorkedGroupView({
           type="button"
           className="ev-worked-toggle"
           aria-expanded={open}
-          onClick={() => setOpen((prev) => !prev)}
+          onClick={() =>
+            setOpen((prev) => {
+              if (prev) {
+                setRevealedEditKey(undefined);
+                setFlashEditKey(undefined);
+              }
+              return !prev;
+            })
+          }
         >
           <ChevronRightIcon width={15} height={15} className="ev-proc-chev" />
           <span className="ev-truncate">{label}</span>
@@ -96,7 +112,7 @@ export function WorkedGroupView({
         </div>
       )}
 
-      {shown.map(renderChild)}
+      {shown.map((child) => renderChild(child, revealedEditKey, flashEditKey))}
     </div>
   );
 }
