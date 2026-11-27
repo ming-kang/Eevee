@@ -241,6 +241,7 @@ export {
   type ToolSearchToolDetails,
 } from "./extensions/tool-search/index.ts";
 export {
+  ALL_THINKING_LEVELS,
   AUTH_FILE,
   AuthStorage,
   type ComposeOptions,

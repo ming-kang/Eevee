@@ -13,7 +13,12 @@ import {
   wrapSection,
 } from "@earendil-works/pi-durable";
 import { bool, lit, num, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
-import { type ModelChoice, TaskManager, withToolPromptMeta } from "@eevee/agent";
+import {
+  ALL_THINKING_LEVELS,
+  type ModelChoice,
+  TaskManager,
+  withToolPromptMeta,
+} from "@eevee/agent";
 import {
   ProjectBoardDoc,
   readBoard,
@@ -36,8 +41,6 @@ import { resolveWorkerStatus } from "../status.ts";
 import { formatBoardOverview, readBoardView } from "../views.ts";
 import { createAskUserTool } from "./ask-user.ts";
 import { createInspectWorkerTool } from "./inspect-worker.ts";
-
-const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
 export type RouterProjectInfo = {
   readonly title: string;
@@ -99,7 +102,7 @@ export function createRouterExtension(deps: RouterExtensionDeps) {
           }),
         ),
         model: opt(str({ description: "Model override as provider/model-id" })),
-        thinkingLevel: opt(oneOf(THINKING_LEVELS, { description: "Thinking level override" })),
+        thinkingLevel: opt(oneOf(ALL_THINKING_LEVELS, { description: "Thinking level override" })),
         ticketTitle: opt(str({ minLength: 1, description: "Ticket title; defaults to name" })),
       }),
       structuredOutputSchema: obj({
@@ -220,7 +223,7 @@ export function createRouterExtension(deps: RouterExtensionDeps) {
           }),
         ),
         model: opt(str({ description: "Optional model override as provider/model-id" })),
-        thinkingLevel: opt(oneOf(THINKING_LEVELS, { description: "Optional thinking level" })),
+        thinkingLevel: opt(oneOf(ALL_THINKING_LEVELS, { description: "Optional thinking level" })),
         newTicket: opt(
           obj({
             title: str({ minLength: 1, description: "Title for the new ticket" }),

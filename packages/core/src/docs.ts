@@ -171,12 +171,10 @@ export async function readWorkers(
   board?: ProjectBoardState,
 ): Promise<WorkerDocState[]> {
   const resolved = board ?? (await readBoard(reader, context));
-  const workers: WorkerDocState[] = [];
-  for (const workerId of resolved?.workerOrder ?? []) {
-    const worker = await readWorker(reader, workerId, context);
-    if (worker !== undefined) workers.push(worker);
-  }
-  return workers;
+  const order = resolved?.workerOrder;
+  if (order === undefined || order.length === 0) return [];
+  const workers = await Promise.all(order.map((workerId) => readWorker(reader, workerId, context)));
+  return workers.filter((worker): worker is WorkerDocState => worker !== undefined);
 }
 
 export async function readTicket(
@@ -194,12 +192,10 @@ export async function readTickets(
   board?: ProjectBoardState,
 ): Promise<TicketDocState[]> {
   const resolved = board ?? (await readBoard(reader, context));
-  const tickets: TicketDocState[] = [];
-  for (const ticketId of resolved?.ticketOrder ?? []) {
-    const ticket = await readTicket(reader, ticketId, context);
-    if (ticket !== undefined) tickets.push(ticket);
-  }
-  return tickets;
+  const order = resolved?.ticketOrder;
+  if (order === undefined || order.length === 0) return [];
+  const tickets = await Promise.all(order.map((ticketId) => readTicket(reader, ticketId, context)));
+  return tickets.filter((ticket): ticket is TicketDocState => ticket !== undefined);
 }
 
 export async function readQuestion(
@@ -217,12 +213,12 @@ export async function readQuestions(
   board?: ProjectBoardState,
 ): Promise<QuestionDocState[]> {
   const resolved = board ?? (await readBoard(reader, context));
-  const questions: QuestionDocState[] = [];
-  for (const questionId of resolved?.questionOrder ?? []) {
-    const question = await readQuestion(reader, questionId, context);
-    if (question !== undefined) questions.push(question);
-  }
-  return questions;
+  const order = resolved?.questionOrder;
+  if (order === undefined || order.length === 0) return [];
+  const questions = await Promise.all(
+    order.map((questionId) => readQuestion(reader, questionId, context)),
+  );
+  return questions.filter((question): question is QuestionDocState => question !== undefined);
 }
 
 export async function findWorkerByConversation(

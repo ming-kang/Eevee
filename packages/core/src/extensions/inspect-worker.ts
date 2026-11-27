@@ -8,15 +8,19 @@ import {
 } from "@earendil-works/pi-durable";
 import { arr, bool, int, num, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import {
+  type BackgroundTaskRecord,
   describeTaskOutcome,
+  formatSize,
   listConversationTasks,
-  resolveTaskId,
+  MAX_FILTER_SCAN_BYTES,
   TASK_FILTER_MAX_CONTEXT_LINES,
   type TaskManager,
   withToolPromptMeta,
 } from "@eevee/agent";
 import { readWorker, type WorkerId } from "../docs.ts";
+import { ProjectError } from "../errors.ts";
 import { formatBoardOverview, readBoardView } from "../views.ts";
+import { resolveWorkerTask } from "../worker-ops.ts";
 
 export type InspectWorkerDeps = {
   readonly tasks: TaskManager;
@@ -264,18 +268,14 @@ export function createInspectWorkerTool(deps: InspectWorkerDeps) {
         }
 
         if (include === "tasks") {
-          const tasks = await listConversationTasks(api, worker.conversationId, context);
           if (args.taskId !== undefined) {
-            const resolution = resolveTaskId(tasks, args.taskId);
-            if (resolution.kind === "not_found") {
-              return errorResult(`Unknown task ${args.taskId} on worker ${workerId}.`);
+            let record: BackgroundTaskRecord;
+            try {
+              ({ record } = await resolveWorkerTask(api, workerId, args.taskId, context));
+            } catch (error) {
+              if (error instanceof ProjectError) return errorResult(error.message);
+              throw error;
             }
-            if (resolution.kind === "ambiguous") {
-              return errorResult(
-                `Ambiguous task id "${args.taskId}" on worker ${workerId}; matches: ${resolution.matches.map((m) => m.id).join(", ")}.`,
-              );
-            }
-            const record = resolution.record;
             let slice: Awaited<ReturnType<TaskManager["readOutput"]>>;
             try {
               slice = await deps.tasks.readOutput(worker.conversationId, record.id, record, {
@@ -291,7 +291,7 @@ export function createInspectWorkerTool(deps: InspectWorkerDeps) {
             }
             const rangeSummary =
               args.filter !== undefined && args.filter !== ""
-                ? `Matched ${slice.matchedLines ?? 0} of ${slice.totalMatchedLines ?? 0} lines in bytes ${slice.fromByte}..${slice.endByte} of ${slice.totalBytes}${slice.scanTruncated ? " (scan capped at 20 MiB)" : ""}`
+                ? `Matched ${slice.matchedLines ?? 0} of ${slice.totalMatchedLines ?? 0} lines in bytes ${slice.fromByte}..${slice.endByte} of ${slice.totalBytes}${slice.scanTruncated ? ` (scan capped at ${formatSize(MAX_FILTER_SCAN_BYTES)})` : ""}`
                 : `Bytes ${slice.fromByte}..${slice.endByte} of ${slice.totalBytes}${slice.truncated ? " (truncated)" : ""}`;
             const header = `Worker ${workerId} task ${record.id} (${describeTaskOutcome(record)}) — ${record.command}\n${rangeSummary}`;
             return {
@@ -320,6 +320,7 @@ export function createInspectWorkerTool(deps: InspectWorkerDeps) {
             };
           }
 
+          const tasks = await listConversationTasks(api, worker.conversationId, context);
           const lines =
             tasks.length === 0
               ? [`Worker ${workerId} (${worker.name}) has no background tasks.`]

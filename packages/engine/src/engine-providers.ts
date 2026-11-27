@@ -224,6 +224,7 @@ const PROJECT_ERROR_HTTP: Record<ProjectErrorCode, readonly [status: number, cod
   question_closed: [409, "question_closed"],
   invalid_answer: [400, "invalid_request"],
   task_not_found: [404, "task_not_found"],
+  task_ambiguous: [400, "task_ambiguous"],
   task_not_running: [409, "task_not_running"],
 };
 
@@ -232,12 +233,6 @@ export function toEngineError(error: unknown): unknown {
     return new EngineError(400, "invalid_request", error.message);
   }
   if (error instanceof ProjectError) {
-    if (
-      (error.code as string) === "task_ambiguous" ||
-      error.message.startsWith("Ambiguous task id ")
-    ) {
-      return new EngineError(400, "task_ambiguous", error.message);
-    }
     const [status, code] = PROJECT_ERROR_HTTP[error.code];
     return new EngineError(status, code, error.message);
   }

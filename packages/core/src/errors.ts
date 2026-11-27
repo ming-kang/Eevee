@@ -6,6 +6,7 @@ export type ProjectErrorCode =
   | "question_closed"
   | "invalid_answer"
   | "task_not_found"
+  | "task_ambiguous"
   | "task_not_running";
 
 export class ProjectError extends Error {
