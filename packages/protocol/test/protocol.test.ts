@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compile } from "@earendil-works/pi-schema";
 import {
+  AgentDocPayloadSchema,
   AnswerQuestionRequestSchema,
   AnswerQuestionResponseSchema,
   AuthTypeSchema,
@@ -10,8 +11,10 @@ import {
   BoardViewSchema,
   BuiltinModelMatchRequestSchema,
   BuiltinModelMatchResponseSchema,
+  buildTaskLineMatcher,
   CompatFieldInfoSchema,
   ConfigBundleSchema,
+  ContentBlockSchema,
   ConversationFailedEventSchema,
   ConversationPatchEventSchema,
   ConversationRefSchema,
@@ -28,27 +31,38 @@ import {
   HealthResponseSchema,
   ImportProviderModelsRequestSchema,
   ImportProviderModelsResponseSchema,
+  InboxDocPayloadSchema,
+  isActiveTaskStatus,
   KillWorkerTaskResponseSchema,
   ListEntriesResponseSchema,
   ListModelsResponseSchema,
   ListProjectsResponseSchema,
   ListProvidersResponseSchema,
   ListWorkerTasksResponseSchema,
+  LiveDocPayloadSchema,
   LoginAuthEventSchema,
   LoginCompleteEventSchema,
   LoginErrorEventSchema,
   LoginInputRequestSchema,
   LoginPromptEventSchema,
   type LoginStreamEvent,
+  MCP_EXPOSURES,
   McpExposureSchema,
+  McpHttpServerConfigSchema,
   McpLogsResponseSchema,
+  McpOAuthConfigSchema,
   McpOAuthEventSchema,
   McpOAuthInputRequestSchema,
+  McpServerConfigSchema,
+  McpServerEntryInputSchema,
+  McpServerOverrideSchema,
   McpServerRolesSchema,
   McpServerSnapshotSchema,
   McpServerStatusSchema,
   McpServerToolSummarySchema,
+  type McpStateResponse,
   McpStateResponseSchema,
+  McpStdioServerConfigSchema,
   ModelChoiceSchema,
   ModelDetailSchema,
   ModelInfoSchema,
@@ -56,6 +70,7 @@ import {
   ModelProfilesDocumentSchema,
   ModelSlotsOverrideSchema,
   ModelsConfigDiagnosticSchema,
+  NoticeDataSchema,
   OkResponseSchema,
   OutputSliceSchema,
   PROTOCOL_VERSION,
@@ -63,6 +78,7 @@ import {
   ProbeProviderResponseSchema,
   ProblemSchema,
   ProjectIdSchema,
+  type ProjectMcpStateResponse,
   ProjectMcpStateResponseSchema,
   ProjectMemoryResponseSchema,
   ProjectSummarySchema,
@@ -73,7 +89,12 @@ import {
   PutMcpConfigRequestSchema,
   PutProjectMemoryRequestSchema,
   PutSkillsPolicyRequestSchema,
+  parseAgentDocPayload,
+  parseInboxDocPayload,
+  parseLiveDocPayload,
+  parseNoticeData,
   parseSseStream,
+  parseTaskNotificationData,
   parseWithSchema,
   QuestionIdSchema,
   QuestionRecordSchema,
@@ -86,6 +107,8 @@ import {
   ROUTER_TOGGLEABLE_TOOLS,
   ScanOrderSchema,
   SchemaValidationError,
+  type ScopedMcpClient,
+  type ScopedSkillsClient,
   SendMessageRequestSchema,
   SendMessageResponseSchema,
   SetApiKeyRequestSchema,
@@ -101,8 +124,10 @@ import {
   StartMcpOAuthResponseSchema,
   StreamEndEventSchema,
   SubmissionStatusSchema,
+  TASK_FILTER_MAX_CONTEXT_LINES,
   TaskCancelReasonSchema,
   TaskListStatusFilterSchema,
+  TaskNotificationDataSchema,
   TaskOutputSliceSchema,
   TaskReadModeSchema,
   TaskShellSchema,
@@ -110,6 +135,7 @@ import {
   type TaskStreamEvent,
   TaskStreamSnapshotEventSchema,
   TaskStreamStatusEventSchema,
+  THINKING_LEVELS,
   ThinkingLevelConfigSchema,
   ThinkingLevelSchema,
   TicketIdSchema,
@@ -1794,5 +1820,376 @@ test("EeveeClient project-scoped MCP OAuth methods hit expected routes, bodies, 
       "POST /projects/proj-1/mcp/servers/srv%20one/oauth/login/poa-1/cancel",
       "DELETE /projects/proj-1/mcp/servers/srv%20one/oauth",
     ],
+  );
+});
+
+test("EeveeClient scoped mcp() and skills() sub-clients dispatch global and project routes", async () => {
+  const calls: { method: string; pathname: string; body?: string }[] = [];
+  const globalMcpState = {
+    servers: { docs: { command: "docs-mcp", exposure: "direct" } },
+    status: [{ name: "docs", status: "connected" as const, enabled: true, toolCount: 1 }],
+  };
+  const projectMcpState = {
+    globalServers: globalMcpState.servers,
+    projectServers: { docs: { enabled: false } },
+    effectiveServers: { docs: { command: "docs-mcp", exposure: "direct", enabled: false } },
+    status: [{ name: "docs", status: "disabled" as const, enabled: false, toolCount: 1 }],
+  };
+  const skillsList = {
+    skills: [],
+    diagnostics: [],
+    globalPolicy: { pdf: "model" as const },
+  };
+
+  const client = new EeveeClient({
+    baseUrl: "http://127.0.0.1:4173",
+    token: "scoped-tok",
+    fetch: async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? "GET";
+      calls.push({
+        method,
+        pathname: url.pathname,
+        body: typeof init?.body === "string" ? init.body : undefined,
+      });
+
+      if (url.pathname === "/mcp" || url.pathname === "/mcp/servers/srv%20a") {
+        return Response.json(globalMcpState);
+      }
+      if (
+        url.pathname === "/mcp/reconnect" ||
+        url.pathname === "/projects/proj%201/mcp/reconnect"
+      ) {
+        return Response.json({ status: globalMcpState.status });
+      }
+      if (url.pathname === "/mcp/servers/srv%20a/logs") {
+        return Response.json({ server: "srv a", lines: ["g1"] });
+      }
+      if (url.pathname === "/mcp/servers/srv%20a/oauth/login") {
+        return Response.json({ sessionId: "gs1", server: "srv a" }, { status: 201 });
+      }
+      if (url.pathname === "/mcp/servers/srv%20a/oauth/login/gs1/stream") {
+        return sseResponse([`event: complete\ndata: ${JSON.stringify({ type: "complete" })}\n\n`]);
+      }
+      if (
+        url.pathname === "/projects/proj%201/mcp" ||
+        url.pathname === "/projects/proj%201/mcp/servers/srv%20a"
+      ) {
+        return Response.json(projectMcpState);
+      }
+      if (url.pathname === "/projects/proj%201/mcp/servers/srv%20a/logs") {
+        return Response.json({ server: "srv a", lines: ["p1"] });
+      }
+      if (url.pathname === "/projects/proj%201/mcp/servers/srv%20a/oauth/login") {
+        return Response.json({ sessionId: "ps1", server: "srv a" }, { status: 201 });
+      }
+      if (url.pathname === "/projects/proj%201/mcp/servers/srv%20a/oauth/login/ps1/stream") {
+        return sseResponse([
+          `event: error\ndata: ${JSON.stringify({ type: "error", code: "denied", message: "No" })}\n\n`,
+        ]);
+      }
+      if (
+        url.pathname.endsWith("/oauth/login/gs1/input") ||
+        url.pathname.endsWith("/oauth/login/gs1/cancel") ||
+        url.pathname.endsWith("/oauth") ||
+        url.pathname.endsWith("/oauth/login/ps1/input") ||
+        url.pathname.endsWith("/oauth/login/ps1/cancel")
+      ) {
+        return Response.json({ ok: true });
+      }
+      if (
+        url.pathname === "/skills" ||
+        url.pathname === "/skills/policy" ||
+        url.pathname === "/projects/proj%201/skills" ||
+        url.pathname === "/projects/proj%201/skills/policy"
+      ) {
+        return Response.json(skillsList);
+      }
+      return Response.json({ code: "not_found", message: "missing" }, { status: 404 });
+    },
+  });
+
+  const globalMcp: ScopedMcpClient<McpStateResponse> = client.mcp();
+  const projMcp: ScopedMcpClient<ProjectMcpStateResponse> = client.mcp("proj 1");
+  const dynamicId: string | undefined = "proj 1";
+  const dynamicMcp: ScopedMcpClient = client.mcp(dynamicId);
+  const globalSkills: ScopedSkillsClient = client.skills();
+  const projSkills: ScopedSkillsClient = client.skills("proj 1");
+
+  assert.deepEqual(await globalMcp.getState(), globalMcpState);
+  assert.deepEqual(await globalMcp.putConfig({ servers: globalMcpState.servers }), globalMcpState);
+  assert.deepEqual(
+    await globalMcp.upsertServer("srv a", { config: { command: "docs-mcp" } }),
+    globalMcpState,
+  );
+  assert.deepEqual(await globalMcp.deleteServer("srv a"), globalMcpState);
+  assert.deepEqual(await globalMcp.reconnect({ server: "srv a" }), {
+    status: globalMcpState.status,
+  });
+  assert.deepEqual(await globalMcp.getLogs("srv a"), { server: "srv a", lines: ["g1"] });
+  assert.deepEqual(await globalMcp.startOAuth("srv a"), { sessionId: "gs1", server: "srv a" });
+  const globalOAuthEvents = [];
+  for await (const evt of globalMcp.streamOAuth("srv a", "gs1")) globalOAuthEvents.push(evt);
+  assert.deepEqual(globalOAuthEvents, [{ type: "complete" }]);
+  assert.deepEqual(
+    await globalMcp.submitOAuthInput("srv a", "gs1", { redirectUrl: "http://127.0.0.1/cb" }),
+    { ok: true },
+  );
+  assert.deepEqual(await globalMcp.cancelOAuth("srv a", "gs1"), { ok: true });
+  assert.deepEqual(await globalMcp.logoutOAuth("srv a"), { ok: true });
+
+  assert.deepEqual(await dynamicMcp.getState(), projectMcpState);
+  assert.deepEqual(
+    await projMcp.putConfig({ servers: { docs: { enabled: false } } }),
+    projectMcpState,
+  );
+  assert.deepEqual(
+    await projMcp.upsertServer("srv a", { config: { enabled: false } }),
+    projectMcpState,
+  );
+  assert.deepEqual(await projMcp.deleteServer("srv a"), projectMcpState);
+  assert.deepEqual(await projMcp.reconnect(), { status: globalMcpState.status });
+  assert.deepEqual(await projMcp.getLogs("srv a"), { server: "srv a", lines: ["p1"] });
+  assert.deepEqual(await projMcp.startOAuth("srv a"), { sessionId: "ps1", server: "srv a" });
+  const projOAuthEvents = [];
+  for await (const evt of projMcp.streamOAuth("srv a", "ps1")) projOAuthEvents.push(evt);
+  assert.deepEqual(projOAuthEvents, [{ type: "error", code: "denied", message: "No" }]);
+  assert.deepEqual(
+    await projMcp.submitOAuthInput("srv a", "ps1", { redirectUrl: "http://127.0.0.1/cb" }),
+    { ok: true },
+  );
+  assert.deepEqual(await projMcp.cancelOAuth("srv a", "ps1"), { ok: true });
+  assert.deepEqual(await projMcp.logoutOAuth("srv a"), { ok: true });
+
+  assert.deepEqual(await globalSkills.list(), skillsList);
+  assert.deepEqual(await globalSkills.putPolicy({ policy: { pdf: "disabled" } }), skillsList);
+  assert.deepEqual(await projSkills.list(), skillsList);
+  assert.deepEqual(await projSkills.putPolicy({ policy: null }), skillsList);
+
+  assert.equal(
+    calls.some((c) => c.pathname === "/projects/proj%201/mcp"),
+    true,
+  );
+  assert.equal(
+    calls.some((c) => c.pathname === "/projects/proj%201/skills/policy"),
+    true,
+  );
+});
+
+test("conversation doc and notice parsers, task helpers, and tightened MCP schemas behave accurately", () => {
+  assert.deepEqual(THINKING_LEVELS, ["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(MCP_EXPOSURES, ["deferred", "direct", "codemode", "hidden"]);
+
+  assert.equal(compile(ContentBlockSchema).check({ type: "text", text: "hi" }), true);
+  assert.equal(
+    compile(ContentBlockSchema).check({ type: "thinking", thinking: "hmm", redacted: false }),
+    true,
+  );
+  assert.equal(
+    compile(ContentBlockSchema).check({ type: "image", data: "YWJj", mimeType: "image/png" }),
+    true,
+  );
+  assert.equal(
+    compile(ContentBlockSchema).check({
+      type: "toolCall",
+      id: "c1",
+      name: "read",
+      arguments: { path: "a.ts" },
+    }),
+    true,
+  );
+  assert.equal(compile(ContentBlockSchema).check({ type: "video", url: "x" }), false);
+
+  const liveDoc = {
+    run: { taskId: 1, inputs: [2], turns: 3, first: 4 },
+    generation: {
+      attempt: 1,
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "plan" },
+          { type: "text", text: "ok" },
+          { type: "toolCall", id: "tc1", name: "bash", arguments: { command: "ls" } },
+        ],
+      },
+      retry: { at: 100, error: "rate limit" },
+    },
+    tools: [
+      {
+        callId: "tc1",
+        name: "bash",
+        status: "running",
+        output: "a\n",
+        diagnostics: [{ severity: "info", message: "running" }],
+      },
+    ],
+    runFailure: { taskId: 1, inputs: [2], reason: "model_error", detail: "500" },
+  };
+  assert.equal(compile(LiveDocPayloadSchema).check(liveDoc), true);
+  assert.deepEqual(parseLiveDocPayload(liveDoc), liveDoc);
+  assert.deepEqual(parseLiveDocPayload({}), {});
+  assert.equal(parseLiveDocPayload(undefined), undefined);
+  assert.equal(parseLiveDocPayload("not-object"), undefined);
+  assert.equal(
+    parseLiveDocPayload({ tools: [{ callId: "c1", name: "bash", status: "bogus" }] }),
+    undefined,
+  );
+
+  const inboxDoc = {
+    items: [
+      { id: 1, mode: "steer", content: "redirect", onAbort: "keep" },
+      { id: 2, mode: "followUp", content: [{ type: "text", text: "after" }] },
+      { id: 3, mode: "write", entry: { kind: "pi.reset" } },
+    ],
+  };
+  assert.equal(compile(InboxDocPayloadSchema).check(inboxDoc), true);
+  assert.deepEqual(parseInboxDocPayload(inboxDoc), inboxDoc);
+  assert.equal(
+    parseInboxDocPayload({ items: [{ id: "bad", mode: "steer", content: "x" }] }),
+    undefined,
+  );
+
+  const agentDoc = {
+    model: { provider: "openai", modelId: "gpt-4o" },
+    thinkingLevel: "high",
+    extensions: { add: ["ext-a"] },
+    tools: ["read", "bash"],
+    modelTools: { remove: ["bash"], add: ["mcp__x__y"] },
+    cwd: "/ws",
+    maxTurns: 10,
+  };
+  assert.equal(compile(AgentDocPayloadSchema).check(agentDoc), true);
+  assert.deepEqual(parseAgentDocPayload(agentDoc), agentDoc);
+  assert.equal(parseAgentDocPayload({ maxTurns: 0 }), undefined);
+  assert.equal(parseAgentDocPayload(null), undefined);
+
+  const failedNotice = {
+    type: "worker_failed",
+    workerId: "w1",
+    workerName: "builder",
+    ticketId: "t2",
+    taskId: 7,
+    reason: "model_error",
+    detail: "timeout",
+  };
+  const handoffNotice = {
+    type: "handoff",
+    workerId: "w1",
+    workerName: "builder",
+    answerEntryId: 9,
+  };
+  const msgNotice = { type: "worker_message", workerId: "w1", workerName: "builder" };
+  const answerNotice = { type: "question_answered", questionId: "q1", answers: ["yes"] };
+
+  for (const notice of [failedNotice, handoffNotice, msgNotice, answerNotice]) {
+    assert.equal(compile(NoticeDataSchema).check(notice), true);
+    assert.deepEqual(parseNoticeData(notice), notice);
+  }
+  assert.equal(parseNoticeData({ type: "unknown" }), undefined);
+  assert.equal(parseNoticeData({ type: "handoff", workerId: "bad", workerName: "x" }), undefined);
+
+  const taskNote = {
+    taskId: "task-1",
+    status: "completed",
+    command: "npm test",
+    exitCode: 0,
+  };
+  assert.equal(compile(TaskNotificationDataSchema).check(taskNote), true);
+  assert.deepEqual(parseTaskNotificationData(taskNote), taskNote);
+  assert.equal(
+    parseTaskNotificationData({ taskId: "", status: "completed", command: "x" }),
+    undefined,
+  );
+
+  assert.equal(TASK_FILTER_MAX_CONTEXT_LINES, 5);
+  assert.equal(isActiveTaskStatus("queued"), true);
+  assert.equal(isActiveTaskStatus("running"), true);
+  assert.equal(isActiveTaskStatus("stopping"), true);
+  for (const terminal of [
+    "completed",
+    "failed",
+    "timed_out",
+    "cancelled",
+    "interrupted",
+  ] as const) {
+    assert.equal(isActiveTaskStatus(terminal), false);
+  }
+
+  const subMatcher = buildTaskLineMatcher("ERR");
+  assert.equal(subMatcher("Fatal error occurred"), true);
+  assert.equal(subMatcher("all good"), false);
+  const regexMatcher = buildTaskLineMatcher("/fail-\\d+/gi");
+  assert.equal(regexMatcher("FAIL-1"), true);
+  assert.equal(regexMatcher("fail-2"), true);
+  assert.equal(regexMatcher("ok"), false);
+  assert.throws(() => buildTaskLineMatcher(""), /must not be empty/);
+  assert.throws(() => buildTaskLineMatcher("/[unclosed/"), /Invalid filter regular expression/);
+
+  const checkStdio = compile(McpStdioServerConfigSchema);
+  const checkHttp = compile(McpHttpServerConfigSchema);
+  const checkConfig = compile(McpServerConfigSchema);
+  const checkOverride = compile(McpServerOverrideSchema);
+  const checkEntry = compile(McpServerEntryInputSchema);
+  const checkOAuth = compile(McpOAuthConfigSchema);
+
+  assert.equal(
+    checkStdio.check({
+      type: "stdio",
+      command: "npx",
+      args: ["-y", "docs-mcp"],
+      env: { TOKEN: "1" },
+      cwd: "/ws",
+      exposure: "codemode-deferred",
+      toolExposure: { search: "codemode-deferred", ping: "direct" },
+      roles: { router: true, worker: false },
+      timeout: 1.5,
+      enabled: true,
+      description: "Docs",
+    }),
+    true,
+  );
+  assert.equal(
+    checkHttp.check({
+      type: "streamable-http",
+      url: "https://docs.example/mcp",
+      headers: { Authorization: "Bearer tok" },
+      oauth: { clientId: "cid", callbackPort: 8080, clientRegistration: "dcr" },
+      exposure: "codemode",
+    }),
+    true,
+  );
+  assert.equal(checkHttp.check({ type: "http", url: "http://127.0.0.1:8080/mcp" }), true);
+  assert.equal(checkOAuth.check({ callbackPort: 70000 }), false);
+
+  assert.equal(checkConfig.check({ command: "docs-mcp" }), true);
+  assert.equal(checkConfig.check({ url: "https://docs.example/mcp" }), true);
+  assert.equal(checkConfig.check({ enabled: false }), false);
+
+  assert.equal(checkOverride.check({}), true);
+  assert.equal(checkOverride.check({ enabled: false, roles: { router: false } }), true);
+  assert.equal(checkOverride.check({ command: "x" }), false);
+
+  assert.equal(checkEntry.check({}), true);
+  assert.equal(checkEntry.check({ enabled: false }), true);
+  assert.equal(checkEntry.check({ command: "docs-mcp", exposure: "direct" }), true);
+  assert.equal(
+    checkEntry.check({ type: "streamable-http", url: "https://docs.example/mcp" }),
+    true,
+  );
+  assert.equal(checkEntry.check({ command: "docs-mcp", url: "https://docs.example/mcp" }), false);
+  assert.equal(checkEntry.check({ type: "sse", url: "https://docs.example/mcp" }), false);
+  assert.equal(checkEntry.check({ command: "docs-mcp", exposure: "invalid" }), false);
+  assert.equal(checkEntry.check({ command: "docs-mcp", roles: { dreamer: true } }), false);
+  assert.equal(checkEntry.check({ command: "docs-mcp", timeout: 0 }), false);
+  assert.equal(checkEntry.check({ command: "docs-mcp", unknownProp: 1 }), false);
+  assert.equal(
+    compile(PutMcpConfigRequestSchema).check({
+      servers: { bad: { command: "x", exposure: "no" } },
+    }),
+    false,
+  );
+  assert.equal(
+    compile(UpsertMcpServerRequestSchema).check({ config: { command: "x", url: "https://y" } }),
+    false,
   );
 });
