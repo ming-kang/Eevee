@@ -766,9 +766,8 @@ test("GET /projects/:projectId/tasks aggregates, sorts deterministically, and pr
     const models = createModels();
     models.setProvider(faux.provider);
 
-    const nodeBin = JSON.stringify(process.execPath.replace(/\\/g, "/"));
-    const quickCmd = `${nodeBin} -e 'process.stdout.write("done\\n");'`;
-    const holdCmd = `${nodeBin} -e 'process.stdout.write("holding\\n"); setInterval(() => {}, 1000);'`;
+    const quickCmd = "echo done";
+    const holdCmd = "echo holding && sleep 60";
 
     const brain: FauxResponseFactory = (context) => {
       const last = lastMessage(context);
