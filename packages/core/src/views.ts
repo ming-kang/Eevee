@@ -134,6 +134,113 @@ function mergeModelUsage(
   }
 }
 
+export type DailyUsageBucket = {
+  readonly date: string;
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+  readonly totalTokens: number;
+  readonly cost: number;
+  readonly turns: number;
+};
+
+const DAILY_ENTRY_PAGE_LIMIT = 500;
+const DAILY_MAX_PAGES_PER_CONV = 20;
+
+function toUtcDateKey(timestampMs: number): string {
+  const d = new Date(timestampMs);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function asNonNegNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+export async function projectDailyUsage(
+  harness: Harness,
+  routerConversationId: ConversationId,
+  context: Context,
+): Promise<DailyUsageBucket[]> {
+  const board = await readBoard(harness, context);
+  const workers = await readWorkers(harness, context, board);
+  const convIds = new Set<ConversationId>([routerConversationId]);
+  for (const worker of workers) convIds.add(worker.conversationId);
+
+  const buckets = new Map<
+    string,
+    {
+      input: number;
+      output: number;
+      cacheRead: number;
+      cacheWrite: number;
+      totalTokens: number;
+      cost: number;
+      turns: number;
+    }
+  >();
+
+  for (const convId of convIds) {
+    const conv = await harness.conversation(convId, context);
+    if (!conv) continue;
+    let cursor: Parameters<typeof conv.entries>[2];
+    for (let pageIdx = 0; pageIdx < DAILY_MAX_PAGES_PER_CONV; pageIdx += 1) {
+      const page = await conv.entries(
+        { order: "ascending" },
+        DAILY_ENTRY_PAGE_LIMIT,
+        cursor,
+        context,
+      );
+      for (const entry of page.items) {
+        if (entry.kind !== "pi.assistant") continue;
+        const messages = entry.model ?? [];
+        for (const msg of messages) {
+          if (msg.role !== "assistant") continue;
+          const ts = asNonNegNumber(msg.timestamp);
+          if (ts <= 0) continue;
+          const usage = msg.usage;
+          if (!usage || typeof usage !== "object") continue;
+          const date = toUtcDateKey(ts);
+          const input = asNonNegNumber(usage.input);
+          const output = asNonNegNumber(usage.output);
+          const cacheRead = asNonNegNumber(usage.cacheRead);
+          const cacheWrite = asNonNegNumber(usage.cacheWrite);
+          const totalTokens =
+            asNonNegNumber(usage.totalTokens) || input + output + cacheRead + cacheWrite;
+          const cost =
+            usage.cost && typeof usage.cost === "object" ? asNonNegNumber(usage.cost.total) : 0;
+          const cur = buckets.get(date) ?? {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: 0,
+            turns: 0,
+          };
+          cur.input += input;
+          cur.output += output;
+          cur.cacheRead += cacheRead;
+          cur.cacheWrite += cacheWrite;
+          cur.totalTokens += totalTokens;
+          cur.cost += cost;
+          cur.turns += 1;
+          buckets.set(date, cur);
+        }
+      }
+      if (!page.next) break;
+      cursor = page.next;
+    }
+  }
+
+  return [...buckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, stats]) => ({ date, ...stats }));
+}
+
 export async function projectUsage(
   harness: Harness,
   routerConversationId: ConversationId,

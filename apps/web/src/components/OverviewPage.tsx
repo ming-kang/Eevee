@@ -302,7 +302,13 @@ export function OverviewPage({
             </div>
           ) : (
             <div className="ev-page-scroll">
-              <div className="ev-page-narrow ev-inbox-groups">
+              <div
+                className={
+                  laneFilter === "all"
+                    ? "ev-page-wide ev-inbox-board"
+                    : "ev-page-narrow ev-inbox-groups"
+                }
+              >
                 {renderGroup(
                   "pending",
                   t("overview.lane.pending"),

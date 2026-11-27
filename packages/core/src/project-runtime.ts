@@ -41,7 +41,13 @@ import {
 } from "./role-config.ts";
 import type { ModelSlots, ToolPolicy } from "./roles.ts";
 import { SerialPass } from "./serial-pass.ts";
-import { BoardFeed, type BoardView, projectUsage } from "./views.ts";
+import {
+  BoardFeed,
+  type BoardView,
+  type DailyUsageBucket,
+  projectDailyUsage,
+  projectUsage,
+} from "./views.ts";
 
 export const DEFAULT_ROUTER_CONTEXT_TOKENS = 80_000;
 
@@ -242,6 +248,10 @@ export class ProjectRuntime {
   async usage(context: Context): Promise<UsageState> {
     await this.#compactionUsage.idle();
     return projectUsage(this.#requireHarness(), this.#requireRoot().id, context);
+  }
+
+  async dailyUsage(context: Context): Promise<DailyUsageBucket[]> {
+    return projectDailyUsage(this.#requireHarness(), this.#requireRoot().id, context);
   }
 
   async syncMcpExtensions(context: Context): Promise<void> {

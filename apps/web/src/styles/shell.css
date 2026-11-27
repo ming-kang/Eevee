@@ -1035,10 +1035,18 @@
   gap: 24px;
 }
 
+.ev-inbox-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: start;
+  gap: 18px;
+}
+
 .ev-inbox-group {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .ev-inbox-group-head {

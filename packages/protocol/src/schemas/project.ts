@@ -112,9 +112,22 @@ export const UsageStateSchema = obj({
 });
 export type UsageStatePayload = Static<typeof UsageStateSchema>;
 
+export const DailyUsageBucketSchema = obj({
+  date: str({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
+  input: num({ minimum: 0 }),
+  output: num({ minimum: 0 }),
+  cacheRead: num({ minimum: 0 }),
+  cacheWrite: num({ minimum: 0 }),
+  totalTokens: num({ minimum: 0 }),
+  cost: num({ minimum: 0 }),
+  turns: int({ minimum: 0 }),
+});
+export type DailyUsageBucket = Static<typeof DailyUsageBucketSchema>;
+
 export const ProjectUsageResponseSchema = obj({
   projectId: ProjectIdSchema,
   usage: UsageStateSchema,
+  daily: opt(arr(DailyUsageBucketSchema)),
 });
 export type ProjectUsageResponse = Static<typeof ProjectUsageResponseSchema>;
 

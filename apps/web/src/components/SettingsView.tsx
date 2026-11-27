@@ -1,5 +1,14 @@
-import { CloseIcon } from "@earendil-works/elanor-icons-react";
-import { Heading, IconButton, Tabs } from "@earendil-works/elanor-react";
+import {
+  AutoAwesomeIcon,
+  CloseIcon,
+  CloudIcon,
+  ExtensionIcon,
+  PaletteIcon,
+  SmartToyIcon,
+  TuneIcon,
+} from "@earendil-works/elanor-icons-react";
+import { Heading, IconButton, SideNavigation, Tabs } from "@earendil-works/elanor-react";
+import type { ReactNode } from "react";
 import { type LocaleKey, useI18n } from "../lib/i18n.ts";
 import type { SettingsSection } from "../lib/router.ts";
 import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
@@ -11,13 +20,29 @@ import { ModelsTab } from "./settings/ModelsTab.tsx";
 import { ProvidersTab } from "./settings/ProvidersTab.tsx";
 import { SkillsTab } from "./settings/SkillsTab.tsx";
 
-const SECTIONS: readonly { readonly id: SettingsSection; readonly labelKey: LocaleKey }[] = [
-  { id: "general", labelKey: "settings.tab.general" },
-  { id: "providers", labelKey: "settings.tab.providers" },
-  { id: "models", labelKey: "settings.tab.models" },
-  { id: "mcp", labelKey: "settings.tab.mcp" },
-  { id: "skills", labelKey: "settings.tab.skills" },
-  { id: "config", labelKey: "settings.tab.config" },
+const SECTIONS: readonly {
+  readonly id: SettingsSection;
+  readonly labelKey: LocaleKey;
+  readonly icon: ReactNode;
+}[] = [
+  { id: "general", labelKey: "settings.tab.general", icon: <PaletteIcon width={16} height={16} /> },
+  {
+    id: "providers",
+    labelKey: "settings.tab.providers",
+    icon: <CloudIcon width={16} height={16} />,
+  },
+  {
+    id: "models",
+    labelKey: "settings.tab.models",
+    icon: <SmartToyIcon width={16} height={16} />,
+  },
+  { id: "mcp", labelKey: "settings.tab.mcp", icon: <ExtensionIcon width={16} height={16} /> },
+  {
+    id: "skills",
+    labelKey: "settings.tab.skills",
+    icon: <AutoAwesomeIcon width={16} height={16} />,
+  },
+  { id: "config", labelKey: "settings.tab.config", icon: <TuneIcon width={16} height={16} /> },
 ];
 
 function isSettingsSection(value: unknown): value is SettingsSection {
@@ -56,6 +81,8 @@ export function SettingsView({
     },
   });
 
+  const activeSectionMeta = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
+
   return (
     <div
       className="ev-control-overlay"
@@ -67,9 +94,9 @@ export function SettingsView({
         <Heading level={1} size={6} className="ev-page-title">
           {t("settings.title")}
         </Heading>
-        <span className="ev-header-divider" aria-hidden="true" />
+        <span className="ev-header-divider ev-settings-mobile-only" aria-hidden="true" />
         <Tabs.Root
-          className="ev-header-tabs-root"
+          className="ev-header-tabs-root ev-settings-mobile-only"
           value={section}
           onValueChange={(next) => {
             if (isSettingsSection(next)) onSelectSection(next);
@@ -93,14 +120,46 @@ export function SettingsView({
         </div>
       </header>
 
-      <div className="ev-page-scroll">
-        <div className="ev-page-wide">
-          {section === "general" && <GeneralTab />}
-          {section === "providers" && <ProvidersTab />}
-          {section === "models" && <ModelsTab />}
-          {section === "mcp" && <McpTab />}
-          {section === "skills" && <SkillsTab />}
-          {section === "config" && <ConfigTab />}
+      <div className="ev-settings-shell">
+        <aside className="ev-settings-nav-pane">
+          <SideNavigation.Root className="ev-settings-sidenav" aria-label={t("settings.groups")}>
+            <SideNavigation.List>
+              {SECTIONS.map((item) => (
+                <SideNavigation.Item key={item.id}>
+                  <SideNavigation.Link
+                    href={`#settings-${item.id}`}
+                    active={section === item.id}
+                    iconStart={item.icon}
+                    className="ev-settings-nav-link"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onSelectSection(item.id);
+                    }}
+                  >
+                    {t(item.labelKey)}
+                  </SideNavigation.Link>
+                </SideNavigation.Item>
+              ))}
+            </SideNavigation.List>
+          </SideNavigation.Root>
+        </aside>
+
+        <div className="ev-page-scroll ev-settings-main">
+          <div className="ev-page-wide">
+            {activeSectionMeta && (
+              <div className="ev-settings-section-banner">
+                <Heading level={2} size={5} className="ev-settings-section-title">
+                  {t(activeSectionMeta.labelKey)}
+                </Heading>
+              </div>
+            )}
+            {section === "general" && <GeneralTab />}
+            {section === "providers" && <ProvidersTab />}
+            {section === "models" && <ModelsTab />}
+            {section === "mcp" && <McpTab />}
+            {section === "skills" && <SkillsTab />}
+            {section === "config" && <ConfigTab />}
+          </div>
         </div>
       </div>
     </div>

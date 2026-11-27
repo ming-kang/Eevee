@@ -162,7 +162,7 @@
 
 .ev-task-card[data-expanded="true"] {
   background: var(--ev-surface);
-  box-shadow: var(--ev-shadow-stroke);
+  box-shadow: var(--ev-shadow-soft);
 }
 
 .ev-task-cmd {

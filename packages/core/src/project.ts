@@ -48,7 +48,7 @@ import { answerQuestion as submitQuestionAnswer } from "./extensions/ask-user.ts
 import type { RouterProjectInfo } from "./extensions/router.ts";
 import { DEFAULT_ROUTER_CONTEXT_TOKENS, ProjectRuntime } from "./project-runtime.ts";
 import type { ModelSlots, ToolPolicy } from "./roles.ts";
-import { type BoardView, readBoardView } from "./views.ts";
+import { type BoardView, type DailyUsageBucket, readBoardView } from "./views.ts";
 import {
   buildWorkerMessageSubmission,
   commitWorkerSubmission,
@@ -187,6 +187,7 @@ export type ProjectHandle = {
   tickets(context?: Context): Promise<TicketRecord[]>;
   questions(context?: Context): Promise<QuestionRecord[]>;
   usage(context?: Context): Promise<UsageState>;
+  dailyUsage(context?: Context): Promise<DailyUsageBucket[]>;
   syncMcpExtensions(context?: Context): Promise<void>;
   rebindMcpHub(mcpHub: McpHub | undefined, context?: Context): Promise<void>;
   reconfigureTools(context?: Context): Promise<void>;
@@ -276,6 +277,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     questions: async (context = BACKGROUND_CONTEXT) =>
       readQuestions(harness, context, await readBoard(harness, context)),
     usage: (context = BACKGROUND_CONTEXT) => runtime.usage(context),
+    dailyUsage: (context = BACKGROUND_CONTEXT) => runtime.dailyUsage(context),
     syncMcpExtensions: (context = BACKGROUND_CONTEXT) => runtime.syncMcpExtensions(context),
     rebindMcpHub: (nextHub, context = BACKGROUND_CONTEXT) => runtime.rebindMcpHub(nextHub, context),
     reconfigureTools: (context = BACKGROUND_CONTEXT) => runtime.reconfigureTools(context),

@@ -261,10 +261,17 @@ export async function getProjectUsage(
   deps: ProjectOpsDeps,
   projectId: string,
 ): Promise<ProjectUsageResponse> {
-  return inProject(deps, projectId, async (handle) => ({
-    projectId,
-    usage: await handle.usage(BACKGROUND_CONTEXT),
-  }));
+  return inProject(deps, projectId, async (handle) => {
+    const [usage, daily] = await Promise.all([
+      handle.usage(BACKGROUND_CONTEXT),
+      handle.dailyUsage(BACKGROUND_CONTEXT),
+    ]);
+    return {
+      projectId,
+      usage,
+      ...(daily.length > 0 ? { daily } : {}),
+    };
+  });
 }
 
 export async function listProjectFiles(
