@@ -1,4 +1,4 @@
-import { type DaemonStatus, runSupervisor, startForegroundEngine } from "@eevee/engine";
+import { type DaemonStatus, startForegroundEngine } from "@eevee/engine";
 
 export async function runForegroundEngine(options: {
   readonly env: NodeJS.ProcessEnv;
@@ -54,14 +54,6 @@ export async function runForegroundEngine(options: {
     process.on("SIGTERM", requestShutdown);
     process.on("message", onMessage);
   });
-}
-
-export async function runSupervisorProcess(options: {
-  readonly env: NodeJS.ProcessEnv;
-  readonly cliEntry: string;
-  readonly port: number;
-}): Promise<void> {
-  await runSupervisor(options);
 }
 
 export function formatDaemonStatus(status: DaemonStatus): string {

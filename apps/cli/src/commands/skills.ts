@@ -1,15 +1,8 @@
-import { connectLocalEngine } from "@eevee/engine";
 import { parseWithSchema, type SkillTriggerMode, SkillTriggerModeSchema } from "@eevee/protocol";
 import type { Command } from "commander";
-import { parseProjectIdFlag } from "../args.ts";
+import { parseNonEmpty, parseProjectIdFlag } from "../args.ts";
+import { runEngineCommand } from "../command-helpers.ts";
 import { formatSkillsList } from "../format.ts";
-
-function parseNonEmptySkillName(raw: string): string {
-  if (raw.trim().length === 0) {
-    throw new Error("Invalid skillName: must not be empty");
-  }
-  return raw;
-}
 
 function parseSkillPolicyMode(raw: string): SkillTriggerMode | "reset" {
   if (raw === "reset") return "reset";
@@ -32,16 +25,12 @@ export function registerSkillsCommands(program: Command, env: NodeJS.ProcessEnv)
     .option("--json", "Output JSON")
     .action(async (options: { project?: string; json?: boolean }) => {
       const projectId = parseProjectIdFlag(options.project);
-      const { client } = await connectLocalEngine(env);
-      const response =
-        projectId === undefined
-          ? await client.listSkills()
-          : await client.listProjectSkills(projectId);
-      if (options.json) {
-        console.log(JSON.stringify(response, null, 2));
-        return;
-      }
-      console.log(formatSkillsList(response));
+      await runEngineCommand(
+        env,
+        options,
+        (client) => client.skills(projectId).list(),
+        formatSkillsList,
+      );
     });
 
   skillsCommand
@@ -57,35 +46,29 @@ export function registerSkillsCommands(program: Command, env: NodeJS.ProcessEnv)
         rawMode: string,
         options: { project?: string; json?: boolean },
       ) => {
-        const skillName = parseNonEmptySkillName(rawSkillName);
+        const skillName = parseNonEmpty(rawSkillName, "skillName");
         const mode = parseSkillPolicyMode(rawMode);
         const projectId = parseProjectIdFlag(options.project);
 
-        const { client } = await connectLocalEngine(env);
-        const current =
-          projectId === undefined
-            ? await client.listSkills()
-            : await client.listProjectSkills(projectId);
-        const nextPolicy: Record<string, SkillTriggerMode> = {
-          ...(projectId === undefined ? current.globalPolicy : (current.projectPolicy ?? {})),
-        };
-
-        if (mode === "reset") {
-          delete nextPolicy[skillName];
-        } else {
-          nextPolicy[skillName] = mode;
-        }
-
-        const policy = Object.keys(nextPolicy).length === 0 ? null : nextPolicy;
-        const updated =
-          projectId === undefined
-            ? await client.putSkillsPolicy({ policy })
-            : await client.putProjectSkillsPolicy(projectId, { policy });
-        if (options.json) {
-          console.log(JSON.stringify(updated, null, 2));
-          return;
-        }
-        console.log(formatSkillsList(updated));
+        await runEngineCommand(
+          env,
+          options,
+          async (client) => {
+            const skills = client.skills(projectId);
+            const current = await skills.list();
+            const nextPolicy: Record<string, SkillTriggerMode> = {
+              ...(projectId === undefined ? current.globalPolicy : (current.projectPolicy ?? {})),
+            };
+            if (mode === "reset") {
+              delete nextPolicy[skillName];
+            } else {
+              nextPolicy[skillName] = mode;
+            }
+            const policy = Object.keys(nextPolicy).length === 0 ? null : nextPolicy;
+            return skills.putPolicy({ policy });
+          },
+          formatSkillsList,
+        );
       },
     );
 
@@ -96,15 +79,11 @@ export function registerSkillsCommands(program: Command, env: NodeJS.ProcessEnv)
     .option("--json", "Output JSON")
     .action(async (options: { project?: string; json?: boolean }) => {
       const projectId = parseProjectIdFlag(options.project);
-      const { client } = await connectLocalEngine(env);
-      const updated =
-        projectId === undefined
-          ? await client.putSkillsPolicy({ policy: null })
-          : await client.putProjectSkillsPolicy(projectId, { policy: null });
-      if (options.json) {
-        console.log(JSON.stringify(updated, null, 2));
-        return;
-      }
-      console.log(formatSkillsList(updated));
+      await runEngineCommand(
+        env,
+        options,
+        (client) => client.skills(projectId).putPolicy({ policy: null }),
+        formatSkillsList,
+      );
     });
 }

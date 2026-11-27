@@ -1,15 +1,16 @@
 import { resolve } from "node:path";
-import { connectLocalEngine } from "@eevee/engine";
 import type { ModelSlotsOverride, ToolsSettings, UpdateProjectRequest } from "@eevee/protocol";
 import type { Command } from "commander";
 import {
-  collectRepeatedFlag,
+  addModelSlotOptions,
+  addToolSettingsOptions,
   hasModelSlots,
   parseModelSlotFlags,
   parseToolsSettingsFlags,
   readTextInput,
 } from "../args.ts";
-import { formatProjectUsage } from "../format.ts";
+import { runEngineCommand } from "../command-helpers.ts";
+import { formatProjectUsage, tabular } from "../format.ts";
 
 export function mergeProjectModels(
   existing: ModelSlotsOverride | undefined,
@@ -48,15 +49,13 @@ export function mergeToolsSettings(
 export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv): void {
   const projectCommand = program.command("project").description("Manage Eevee projects");
 
-  projectCommand
+  const projectCreateCommand = projectCommand
     .command("create")
     .description("Create a new project")
     .argument("[workspaces...]", "Workspace directories (defaults to current working directory)")
     .option("--title <title>", "Human-readable project title")
-    .option("--memory <text>", "Initial project memory instructions")
-    .option("--router-model <provider/modelId>", "Router model override")
-    .option("--worker-model <provider/modelId>", "Worker model override")
-    .option("--dreamer-model <provider/modelId>", "Dreamer model override")
+    .option("--memory <text>", "Initial project memory instructions");
+  addModelSlotOptions(projectCreateCommand)
     .option("--json", "Output JSON")
     .action(
       async (
@@ -75,21 +74,19 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
         );
         const models = parseModelSlotFlags(options);
 
-        const { client } = await connectLocalEngine(env);
-        const response = await client.createProject({
-          workspaces: resolvedWorkspaces,
-          ...(options.title === undefined ? {} : { title: options.title }),
-          ...(options.memory === undefined ? {} : { memory: options.memory }),
-          ...(hasModelSlots(models) ? { models } : {}),
-        });
-
-        if (options.json) {
-          console.log(JSON.stringify(response, null, 2));
-          return;
-        }
-        const { project } = response;
-        console.log(`Created project ${project.id} (${project.title})`);
-        console.log(`Workspaces: ${project.workspaces.join(", ")}`);
+        await runEngineCommand(
+          env,
+          options,
+          (client) =>
+            client.createProject({
+              workspaces: resolvedWorkspaces,
+              ...(options.title === undefined ? {} : { title: options.title }),
+              ...(options.memory === undefined ? {} : { memory: options.memory }),
+              ...(hasModelSlots(models) ? { models } : {}),
+            }),
+          ({ project }) =>
+            `Created project ${project.id} (${project.title})\nWorkspaces: ${project.workspaces.join(", ")}`,
+        );
       },
     );
 
@@ -97,45 +94,31 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
     .command("list")
     .description("List projects hosted by the local Engine")
     .option("--json", "Output JSON")
-    .action(async (options: { json?: boolean }) => {
-      const { client } = await connectLocalEngine(env);
-      const response = await client.listProjects();
-      if (options.json) {
-        console.log(JSON.stringify(response, null, 2));
-        return;
-      }
-      if (response.projects.length === 0) {
-        console.log("No projects.");
-        return;
-      }
-      for (const project of response.projects) {
-        console.log(`${project.id}\t${project.title}\t${project.workspaces.join(", ")}`);
-      }
-    });
+    .action((options: { json?: boolean }) =>
+      runEngineCommand(
+        env,
+        options,
+        (client) => client.listProjects(),
+        (response) =>
+          response.projects.length === 0
+            ? "No projects."
+            : tabular(response.projects.map((p) => [p.id, p.title, p.workspaces.join(", ")])),
+      ),
+    );
 
-  projectCommand
+  const projectUpdateCommand = projectCommand
     .command("update")
     .description("Update project metadata, workspaces, memory, or model overrides")
     .argument("<project>", "Project ID")
     .option("--title <title>", "New project title")
     .option("--workspace <dirs...>", "Replace project workspace directories")
     .option("--memory <text>", "Set project memory instructions")
-    .option("--clear-memory", "Clear project memory instructions")
-    .option("--router-model <provider/modelId>", "Router model override")
-    .option("--worker-model <provider/modelId>", "Worker model override")
-    .option("--dreamer-model <provider/modelId>", "Dreamer model override")
-    .option("--clear-models", "Clear project model overrides")
-    .option("--router-tools <specs>", "Toggle Router tools, e.g. -ls,+grep", collectRepeatedFlag)
-    .option(
-      "--worker-tools <specs>",
-      "Toggle Worker tools, e.g. -bash,+powershell,+grep",
-      collectRepeatedFlag,
-    )
-    .option("--codemode-mode <mode>", "Codemode mode: off, on, or only")
-    .option(
-      "--codemode-inline-budget <n>",
-      "Estimated token budget for inline codemode declarations",
-    )
+    .option("--clear-memory", "Clear project memory instructions");
+  addModelSlotOptions(projectUpdateCommand).option(
+    "--clear-models",
+    "Clear project model overrides",
+  );
+  addToolSettingsOptions(projectUpdateCommand)
     .option("--clear-tools", "Clear project tool overrides to inherit global settings")
     .option("--json", "Output JSON")
     .action(
@@ -177,7 +160,6 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
           throw new Error("Cannot combine tool override flags with --clear-tools");
         }
         const tools = parseToolsSettingsFlags(options);
-
         const incomingModels = hasModelFlag ? parseModelSlotFlags(options) : undefined;
         const patch: UpdateProjectRequest = {};
         if (options.title !== undefined) patch.title = options.title;
@@ -186,38 +168,32 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
         }
         if (options.clearMemory) patch.memory = null;
         else if (options.memory !== undefined) patch.memory = options.memory;
-
-        if (options.clearModels) {
-          patch.models = null;
-        } else if (incomingModels !== undefined) {
-          patch.models = incomingModels;
-        }
-        if (options.clearTools) {
-          patch.tools = null;
-        } else if (tools !== undefined) {
-          patch.tools = tools;
-        }
+        if (options.clearModels) patch.models = null;
+        else if (incomingModels !== undefined) patch.models = incomingModels;
+        if (options.clearTools) patch.tools = null;
+        else if (tools !== undefined) patch.tools = tools;
 
         if (Object.keys(patch).length === 0) {
           throw new Error("Specify at least one field to update.");
         }
 
-        const { client } = await connectLocalEngine(env);
-        if (incomingModels !== undefined || (tools !== undefined && !options.clearTools)) {
-          const { project: existing } = await client.getProject(projectId);
-          if (incomingModels !== undefined) {
-            patch.models = mergeProjectModels(existing.models, incomingModels);
-          }
-          if (tools !== undefined && !options.clearTools) {
-            patch.tools = mergeToolsSettings(existing.tools, tools);
-          }
-        }
-        const response = await client.updateProject(projectId, patch);
-        if (options.json) {
-          console.log(JSON.stringify(response, null, 2));
-          return;
-        }
-        console.log(`Updated project ${response.project.id} (${response.project.title})`);
+        await runEngineCommand(
+          env,
+          options,
+          async (client) => {
+            if (incomingModels !== undefined || (tools !== undefined && !options.clearTools)) {
+              const { project: existing } = await client.getProject(projectId);
+              if (incomingModels !== undefined) {
+                patch.models = mergeProjectModels(existing.models, incomingModels);
+              }
+              if (tools !== undefined && !options.clearTools) {
+                patch.tools = mergeToolsSettings(existing.tools, tools);
+              }
+            }
+            return client.updateProject(projectId, patch);
+          },
+          ({ project }) => `Updated project ${project.id} (${project.title})`,
+        );
       },
     );
 
@@ -226,15 +202,14 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
     .description("Remove a project and its session data (never deletes workspace files)")
     .argument("<project>", "Project ID")
     .option("--json", "Output JSON")
-    .action(async (projectId: string, options: { json?: boolean }) => {
-      const { client } = await connectLocalEngine(env);
-      const response = await client.deleteProject(projectId);
-      if (options.json) {
-        console.log(JSON.stringify(response, null, 2));
-        return;
-      }
-      console.log(`Removed project ${response.id}`);
-    });
+    .action((projectId: string, options: { json?: boolean }) =>
+      runEngineCommand(
+        env,
+        options,
+        (client) => client.deleteProject(projectId),
+        (response) => `Removed project ${response.id}`,
+      ),
+    );
 
   const projectMemoryCommand = projectCommand
     .command("memory")
@@ -245,15 +220,14 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
     .description("Get project memory instructions")
     .argument("<project>", "Project ID")
     .option("--json", "Output JSON")
-    .action(async (projectId: string, options: { json?: boolean }) => {
-      const { client } = await connectLocalEngine(env);
-      const response = await client.getProjectMemory(projectId);
-      if (options.json) {
-        console.log(JSON.stringify(response, null, 2));
-        return;
-      }
-      console.log(response.memory ?? "(no project memory)");
-    });
+    .action((projectId: string, options: { json?: boolean }) =>
+      runEngineCommand(
+        env,
+        options,
+        (client) => client.getProjectMemory(projectId),
+        (response) => response.memory ?? "(no project memory)",
+      ),
+    );
 
   projectMemoryCommand
     .command("set")
@@ -282,16 +256,14 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
           : text !== undefined
             ? text
             : await readTextInput(options.file);
-        const { client } = await connectLocalEngine(env);
-        const response = await client.putProjectMemory(projectId, { memory });
-        if (options.json) {
-          console.log(JSON.stringify(response, null, 2));
-          return;
-        }
-        console.log(
-          response.memory === null
-            ? `Cleared project memory for ${response.projectId}`
-            : `Updated project memory for ${response.projectId}`,
+        await runEngineCommand(
+          env,
+          options,
+          (client) => client.putProjectMemory(projectId, { memory }),
+          (response) =>
+            response.memory === null
+              ? `Cleared project memory for ${response.projectId}`
+              : `Updated project memory for ${response.projectId}`,
         );
       },
     );
@@ -301,13 +273,12 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
     .description("Show accumulated model and tool usage for a project")
     .argument("<project>", "Project ID")
     .option("--json", "Output JSON")
-    .action(async (projectId: string, options: { json?: boolean }) => {
-      const { client } = await connectLocalEngine(env);
-      const response = await client.getProjectUsage(projectId);
-      if (options.json) {
-        console.log(JSON.stringify(response, null, 2));
-        return;
-      }
-      console.log(formatProjectUsage(response));
-    });
+    .action((projectId: string, options: { json?: boolean }) =>
+      runEngineCommand(
+        env,
+        options,
+        (client) => client.getProjectUsage(projectId),
+        formatProjectUsage,
+      ),
+    );
 }

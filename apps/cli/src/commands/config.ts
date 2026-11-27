@@ -1,10 +1,10 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { connectLocalEngine } from "@eevee/engine";
 import { ConfigBundleSchema, type EngineSettings, parseWithSchema } from "@eevee/protocol";
 import type { Command } from "commander";
 import {
-  collectRepeatedFlag,
+  addModelSlotOptions,
+  addToolSettingsOptions,
   hasModelSlots,
   parseModelSlotFlags,
   parseNonNegativeIntFlag,
@@ -12,6 +12,7 @@ import {
   parseToolsSettingsFlags,
   readJsonInput,
 } from "../args.ts";
+import { runEngineCommand } from "../command-helpers.ts";
 import { formatSettings } from "../format.ts";
 
 export function registerConfigCommands(program: Command, env: NodeJS.ProcessEnv): void {
@@ -23,37 +24,19 @@ export function registerConfigCommands(program: Command, env: NodeJS.ProcessEnv)
     .command("get")
     .description("Show global Engine settings")
     .option("--json", "Output JSON")
-    .action(async (options: { json?: boolean }) => {
-      const { client } = await connectLocalEngine(env);
-      const settings = await client.getSettings();
-      if (options.json) {
-        console.log(JSON.stringify(settings, null, 2));
-        return;
-      }
-      console.log(formatSettings(settings));
-    });
+    .action((options: { json?: boolean }) =>
+      runEngineCommand(env, options, (client) => client.getSettings(), formatSettings),
+    );
 
-  configCommand
+  const configSetCommand = configCommand
     .command("set")
     .description("Update global Engine settings")
     .option("--max-active-workers <n>", "Max concurrent active Workers per project")
     .option("--background-after-ms <n>", "Auto-background foreground commands after ms")
     .option("--router-context-tokens <n>", "Target Router context token budget")
-    .option("--idle-hibernate-ms <n>", "Idle project hibernation timeout in ms (0 disables)")
-    .option("--router-model <provider/modelId>", "Default Router model")
-    .option("--worker-model <provider/modelId>", "Default Worker model")
-    .option("--dreamer-model <provider/modelId>", "Default Dreamer model")
-    .option("--router-tools <specs>", "Toggle Router tools, e.g. -ls,+grep", collectRepeatedFlag)
-    .option(
-      "--worker-tools <specs>",
-      "Toggle Worker tools, e.g. -bash,+powershell,+grep",
-      collectRepeatedFlag,
-    )
-    .option("--codemode-mode <mode>", "Codemode mode: off, on, or only")
-    .option(
-      "--codemode-inline-budget <n>",
-      "Estimated token budget for inline codemode declarations",
-    )
+    .option("--idle-hibernate-ms <n>", "Idle project hibernation timeout in ms (0 disables)");
+  addModelSlotOptions(configSetCommand, "Default");
+  addToolSettingsOptions(configSetCommand)
     .option("--json", "Output JSON")
     .action(
       async (options: {
@@ -114,13 +97,12 @@ export function registerConfigCommands(program: Command, env: NodeJS.ProcessEnv)
           throw new Error("Specify at least one setting option to update.");
         }
 
-        const { client } = await connectLocalEngine(env);
-        const settings = await client.patchSettings(patch);
-        if (options.json) {
-          console.log(JSON.stringify(settings, null, 2));
-          return;
-        }
-        console.log(formatSettings(settings));
+        await runEngineCommand(
+          env,
+          options,
+          (client) => client.patchSettings(patch),
+          formatSettings,
+        );
       },
     );
 
@@ -129,21 +111,23 @@ export function registerConfigCommands(program: Command, env: NodeJS.ProcessEnv)
     .description("Export Engine settings, profiles, MCP servers, and models.json")
     .option("--file <path>", "Write exported config bundle to a file")
     .option("--json", "Output JSON")
-    .action(async (options: { file?: string; json?: boolean }) => {
-      const { client } = await connectLocalEngine(env);
-      const bundle = await client.exportConfig();
-      const text = `${JSON.stringify(bundle, null, 2)}\n`;
-      if (options.file !== undefined) {
-        await writeFile(resolve(options.file), text, "utf8");
-        if (options.json) {
-          console.log(JSON.stringify(bundle, null, 2));
-        } else {
-          console.log(`Exported configuration to ${resolve(options.file)}`);
-        }
-        return;
-      }
-      process.stdout.write(text);
-    });
+    .action((options: { file?: string; json?: boolean }) =>
+      runEngineCommand(
+        env,
+        options,
+        async (client) => {
+          const bundle = await client.exportConfig();
+          if (options.file !== undefined) {
+            await writeFile(resolve(options.file), `${JSON.stringify(bundle, null, 2)}\n`, "utf8");
+          }
+          return bundle;
+        },
+        (bundle) =>
+          options.file !== undefined
+            ? `Exported configuration to ${resolve(options.file)}`
+            : JSON.stringify(bundle, null, 2),
+      ),
+    );
 
   configCommand
     .command("import")
@@ -153,12 +137,11 @@ export function registerConfigCommands(program: Command, env: NodeJS.ProcessEnv)
     .action(async (options: { file?: string; json?: boolean }) => {
       const parsed = await readJsonInput(options.file);
       const bundle = parseWithSchema(ConfigBundleSchema, parsed, "ConfigBundle");
-      const { client } = await connectLocalEngine(env);
-      const applied = await client.importConfig(bundle);
-      if (options.json) {
-        console.log(JSON.stringify(applied, null, 2));
-        return;
-      }
-      console.log("Imported configuration bundle.");
+      await runEngineCommand(
+        env,
+        options,
+        (client) => client.importConfig(bundle),
+        () => "Imported configuration bundle.",
+      );
     });
 }

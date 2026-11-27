@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { EeveeClient } from "@eevee/protocol";
 import type { Command } from "commander";
-import { parseToolOverridesFlag, parseToolsSettingsFlags } from "../src/args.ts";
+import { parseNonEmpty, parseToolOverridesFlag, parseToolsSettingsFlags } from "../src/args.ts";
+import { runEngineCommand, withSignalAbort } from "../src/command-helpers.ts";
 import { mergeMcpAddConfig } from "../src/commands/mcp.ts";
 import { mergeProjectModels, mergeToolsSettings } from "../src/commands/project.ts";
 import {
@@ -35,6 +38,7 @@ import {
   TaskWatchRenderer,
 } from "../src/format.ts";
 import { createProgram } from "../src/index.ts";
+import { runMcpOAuthLogin, runProviderLogin } from "../src/login-ui.ts";
 
 test("CLI program registers core metadata and all 4A + 4B subcommands and options", () => {
   const program = createProgram({ EEVEE_HOME: "/tmp/eevee-cli-test" });
@@ -2706,6 +2710,400 @@ test("project update and mcp add merge existing configuration by default and sup
     });
   } finally {
     console.log = originalLog;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("parseNonEmpty, withSignalAbort, and runEngineCommand handle normal, JSON, error, and abort paths", async () => {
+  assert.equal(parseNonEmpty("docs", "server name"), "docs");
+  assert.equal(parseNonEmpty(" w1 ", "workerId"), " w1 ");
+  assert.throws(() => parseNonEmpty("", "taskId"), /Invalid taskId: must not be empty/);
+  assert.throws(
+    () => parseNonEmpty(" \t\n ", "server name"),
+    /Invalid server name: must not be empty/,
+  );
+
+  const beforeSigint = process.listenerCount("SIGINT");
+  const beforeSigterm = process.listenerCount("SIGTERM");
+
+  const normalValue = await withSignalAbort(async () => 42);
+  assert.equal(normalValue, 42);
+  assert.equal(process.listenerCount("SIGINT"), beforeSigint);
+  assert.equal(process.listenerCount("SIGTERM"), beforeSigterm);
+
+  await assert.rejects(
+    withSignalAbort(async () => {
+      throw new Error("boom");
+    }),
+    /boom/,
+  );
+  assert.equal(process.listenerCount("SIGINT"), beforeSigint);
+
+  let abortedCallbackCalled = false;
+  const beforeSet = new Set(process.listeners("SIGINT"));
+  const abortPromise = withSignalAbort(
+    (signal) =>
+      new Promise<string>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      }),
+    () => {
+      abortedCallbackCalled = true;
+    },
+  );
+  const addedSigint = process.listeners("SIGINT").filter((listener) => !beforeSet.has(listener));
+  assert.equal(addedSigint.length, 1);
+  addedSigint[0]?.("SIGINT");
+  const abortedResult = await abortPromise;
+  assert.equal(abortedResult, undefined);
+  assert.equal(abortedCallbackCalled, true);
+  assert.equal(process.listenerCount("SIGINT"), beforeSigint);
+
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/settings") {
+      writeHttpJson(res, 200, { maxActiveWorkers: 3 });
+      return;
+    }
+    writeHttpJson(res, 404, { code: "not_found", message: "Not found" });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const env: NodeJS.ProcessEnv = {
+    EEVEE_HOME: "/tmp/eevee-cli-helper-test",
+    EEVEE_URL: `http://127.0.0.1:${address.port}`,
+    EEVEE_TOKEN: "test-token",
+  };
+  const logs: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  try {
+    await runEngineCommand(
+      env,
+      {},
+      (client) => client.getSettings(),
+      (settings) => `workers=${settings.maxActiveWorkers}`,
+    );
+    assert.equal(logs[0], "workers=3");
+
+    logs.length = 0;
+    await runEngineCommand(
+      env,
+      { json: true },
+      (client) => client.getSettings(),
+      () => "should-not-format",
+    );
+    assert.deepEqual(JSON.parse(logs[0] ?? "{}"), { maxActiveWorkers: 3 });
+  } finally {
+    console.log = originalLog;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("login-ui drives provider login (menu, auth events, select, secret echo muting) and MCP OAuth", async () => {
+  const submittedInputs: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const cancelledUrls: string[] = [];
+  let mcpMode: "complete" | "error" | "eof" = "complete";
+
+  const server = createServer(async (req, res) => {
+    const method = req.method ?? "GET";
+    const url = req.url ?? "/";
+
+    if (method === "GET" && url === "/providers") {
+      writeHttpJson(res, 200, {
+        providers: [
+          {
+            id: "dual",
+            name: "Dual Provider",
+            authMethods: {
+              apiKey: true,
+              apiKeyLogin: true,
+              oauth: true,
+              oauthLabel: "Browser OAuth",
+            },
+            configured: false,
+            modelCount: 1,
+          },
+          {
+            id: "apikey-only",
+            name: "API Key Only",
+            authMethods: { apiKey: true, apiKeyLogin: false, oauth: false },
+            configured: false,
+            modelCount: 1,
+          },
+        ],
+      });
+      return;
+    }
+    if (method === "POST" && url === "/providers/dual/auth/login") {
+      const body = await readHttpJson(req);
+      writeHttpJson(res, 201, { sessionId: "prov-1", providerId: "dual", type: body.type });
+      return;
+    }
+    if (method === "GET" && url === "/providers/dual/auth/login/prov-1/stream") {
+      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+      res.write(
+        `event: auth\ndata: ${JSON.stringify({
+          type: "auth_url",
+          url: "https://dual.example/auth",
+          instructions: "Sign in via browser",
+        })}\n\n`,
+      );
+      res.write(
+        `event: auth\ndata: ${JSON.stringify({
+          type: "device_code",
+          userCode: "ABCD-1234",
+          verificationUri: "https://dual.example/device",
+        })}\n\n`,
+      );
+      res.write(
+        `event: prompt\ndata: ${JSON.stringify({
+          promptId: "p-region",
+          type: "select",
+          message: "Pick region",
+          options: [
+            { id: "us", label: "US East", description: "Default" },
+            { id: "eu", label: "EU West" },
+          ],
+        })}\n\n`,
+      );
+      res.write(
+        `event: prompt\ndata: ${JSON.stringify({
+          promptId: "p-secret",
+          type: "secret",
+          message: "Enter secret token",
+        })}\n\n`,
+      );
+      res.write(
+        `event: complete\ndata: ${JSON.stringify({ providerId: "dual", type: "oauth" })}\n\n`,
+      );
+      res.end();
+      return;
+    }
+    if (method === "POST" && url === "/providers/dual/auth/login/prov-1/input") {
+      submittedInputs.push({ url, body: await readHttpJson(req) });
+      writeHttpJson(res, 200, { ok: true });
+      return;
+    }
+    if (method === "POST" && url === "/providers/dual/auth/login/prov-1/cancel") {
+      cancelledUrls.push(url);
+      writeHttpJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (method === "POST" && url === "/projects/demo/mcp/servers/docs/oauth/login") {
+      writeHttpJson(res, 201, { sessionId: "mcp-1", server: "docs" });
+      return;
+    }
+    if (method === "GET" && url === "/projects/demo/mcp/servers/docs/oauth/login/mcp-1/stream") {
+      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+      res.write(
+        `event: auth_url\ndata: ${JSON.stringify({
+          type: "auth_url",
+          url: "https://mcp.example/authorize",
+          redirectUrl: "http://127.0.0.1:4000/cb",
+          instructions: "Paste redirect URL below.",
+        })}\n\n`,
+      );
+      if (mcpMode === "eof") {
+        res.end();
+        return;
+      }
+      if (mcpMode === "error") {
+        res.write(
+          `event: error\ndata: ${JSON.stringify({
+            type: "error",
+            code: "access_denied",
+            message: "User denied",
+          })}\n\n`,
+        );
+        res.end();
+        return;
+      }
+      // Keep stream open until redirect URL input arrives, then finish with complete.
+      const checkDone = setInterval(() => {
+        if (submittedInputs.some((entry) => entry.url.endsWith("/mcp-1/input"))) {
+          clearInterval(checkDone);
+          res.write(
+            `event: progress\ndata: ${JSON.stringify({ type: "progress", message: "Verified!" })}\n\n`,
+          );
+          res.write(`event: complete\ndata: ${JSON.stringify({ type: "complete" })}\n\n`);
+          res.end();
+        }
+      }, 15);
+      req.on("close", () => clearInterval(checkDone));
+      return;
+    }
+    if (method === "POST" && url === "/projects/demo/mcp/servers/docs/oauth/login/mcp-1/input") {
+      submittedInputs.push({ url, body: await readHttpJson(req) });
+      writeHttpJson(res, 200, { ok: true });
+      return;
+    }
+    writeHttpJson(res, 404, { code: "not_found", message: `Unhandled ${method} ${url}` });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const client = new EeveeClient({
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    token: "test-token",
+  });
+
+  const collectStream = (stream: PassThrough) => {
+    let text = "";
+    stream.on("data", (chunk: Buffer) => {
+      text += chunk.toString("utf8");
+    });
+    return () => text;
+  };
+
+  try {
+    await assert.rejects(
+      runProviderLogin({ client, providerId: "missing" }),
+      /Unknown provider "missing"/,
+    );
+    await assert.rejects(
+      runProviderLogin({ client, providerId: "apikey-only", oauth: true }),
+      /does not support OAuth login/,
+    );
+    await assert.rejects(
+      runProviderLogin({ client, providerId: "apikey-only" }),
+      /does not support interactive login; pass --api-key <key>/,
+    );
+
+    // Provider login in JSON mode routes prompts & auth events to stderr and mutes secret echo.
+    const provIn = new PassThrough();
+    const provOut = new PassThrough();
+    const provErr = new PassThrough();
+    const readProvOut = collectStream(provOut);
+    const readProvErr = collectStream(provErr);
+
+    const provPromise = runProviderLogin({
+      client,
+      providerId: "dual",
+      json: true,
+      streams: { stdin: provIn, stdout: provOut, stderr: provErr, isTTY: true },
+    });
+
+    const waitForPrompt = async (read: () => string, needle: string) => {
+      const deadline = Date.now() + 2000;
+      while (!read().includes(needle)) {
+        if (Date.now() > deadline)
+          throw new Error(`Timed out waiting for "${needle}" in:\n${read()}`);
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    };
+
+    await waitForPrompt(readProvErr, "Select [1/2]: ");
+    provIn.write("1\n");
+    await waitForPrompt(readProvErr, "Select option: ");
+    provIn.write("2\n");
+    await waitForPrompt(readProvErr, "Enter secret token: ");
+    provIn.write("super-secret-token\n");
+
+    const provResult = await provPromise;
+    assert.deepEqual(provResult, { providerId: "dual", type: "oauth" });
+    assert.equal(readProvOut(), "");
+    const errText = readProvErr();
+    assert.ok(errText.includes("Open URL: https://dual.example/auth"));
+    assert.ok(errText.includes("Enter code ABCD-1234 at https://dual.example/device"));
+    assert.ok(errText.includes("1) US East (us) — Default"));
+    assert.equal(errText.includes("super-secret-token"), false);
+    assert.deepEqual(submittedInputs.slice(0, 2), [
+      {
+        url: "/providers/dual/auth/login/prov-1/input",
+        body: { promptId: "p-region", value: "eu" },
+      },
+      {
+        url: "/providers/dual/auth/login/prov-1/input",
+        body: { promptId: "p-secret", value: "super-secret-token" },
+      },
+    ]);
+
+    // MCP OAuth manual redirect prompt + completion in human mode
+    mcpMode = "complete";
+    const mcpIn = new PassThrough();
+    const mcpOut = new PassThrough();
+    const mcpErr = new PassThrough();
+    const readMcpOut = collectStream(mcpOut);
+    const mcpPromise = runMcpOAuthLogin({
+      client,
+      serverName: "docs",
+      projectId: "demo",
+      streams: { stdin: mcpIn, stdout: mcpOut, stderr: mcpErr, isTTY: true },
+    });
+    await waitForPrompt(readMcpOut, "Paste redirect URL");
+    mcpIn.write("http://127.0.0.1:4000/cb?code=xyz\n");
+    const mcpResult = await mcpPromise;
+    assert.deepEqual(mcpResult, { ok: true, server: "docs", projectId: "demo" });
+    assert.ok(readMcpOut().includes("Open URL: https://mcp.example/authorize"));
+    assert.ok(readMcpOut().includes("Verified!"));
+    assert.deepEqual(submittedInputs.at(-1), {
+      url: "/projects/demo/mcp/servers/docs/oauth/login/mcp-1/input",
+      body: { redirectUrl: "http://127.0.0.1:4000/cb?code=xyz" },
+    });
+
+    // MCP OAuth error in human mode throws, in JSON mode returns error event & sets exitCode=1
+    mcpMode = "error";
+    await assert.rejects(
+      runMcpOAuthLogin({
+        client,
+        serverName: "docs",
+        projectId: "demo",
+        streams: {
+          stdin: new PassThrough(),
+          stdout: new PassThrough(),
+          stderr: new PassThrough(),
+          isTTY: false,
+        },
+      }),
+      /User denied \(access_denied\)/,
+    );
+
+    const prevExitCode = process.exitCode;
+    try {
+      const mcpErrJson = await runMcpOAuthLogin({
+        client,
+        serverName: "docs",
+        projectId: "demo",
+        json: true,
+        streams: {
+          stdin: new PassThrough(),
+          stdout: new PassThrough(),
+          stderr: new PassThrough(),
+          isTTY: false,
+        },
+      });
+      assert.deepEqual(mcpErrJson, {
+        type: "error",
+        code: "access_denied",
+        message: "User denied",
+      });
+      assert.equal(process.exitCode, 1);
+    } finally {
+      process.exitCode = prevExitCode;
+    }
+
+    // MCP OAuth unexpected EOF throws
+    mcpMode = "eof";
+    await assert.rejects(
+      runMcpOAuthLogin({
+        client,
+        serverName: "docs",
+        projectId: "demo",
+        streams: {
+          stdin: new PassThrough(),
+          stdout: new PassThrough(),
+          stderr: new PassThrough(),
+          isTTY: false,
+        },
+      }),
+      /MCP OAuth sign-in stream ended unexpectedly/,
+    );
+    assert.equal(cancelledUrls.length, 0);
+  } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

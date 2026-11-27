@@ -1,6 +1,8 @@
 import { connectLocalEngine } from "@eevee/engine";
 import {
+  buildTaskLineMatcher,
   parseWithSchema,
+  TASK_FILTER_MAX_CONTEXT_LINES,
   type TaskListStatusFilter,
   TaskListStatusFilterSchema,
   type TaskReadMode,
@@ -9,18 +11,17 @@ import {
 } from "@eevee/protocol";
 import type { Command } from "commander";
 import {
-  installSignalAbort,
+  addTaskReadOptions,
   parseIntRangeFlag,
   parseNonEmptyTaskId,
   parseNonNegativeIntFlag,
   parsePositiveIntFlag,
 } from "../args.ts";
+import { runEngineCommand, withSignalAbort } from "../command-helpers.ts";
 import {
   aggregateBoardTasks,
-  buildTaskLineMatcher,
   formatTaskList,
   formatTaskOutput,
-  TASK_FILTER_MAX_CONTEXT_LINES,
   TaskWatchRenderer,
 } from "../format.ts";
 
@@ -50,7 +51,7 @@ function parseTaskStreamOptions(options: {
 
   let filter: string | undefined;
   if (options.filter !== undefined) {
-    buildTaskLineMatcher(options.filter);
+    buildTaskLineMatcher(options.filter, "--filter");
     filter = options.filter;
   }
 
@@ -99,52 +100,44 @@ export function registerTaskCommands(program: Command, env: NodeJS.ProcessEnv): 
           rawWorker === undefined
             ? undefined
             : parseWithSchema(WorkerIdSchema, rawWorker, "worker");
-        let status: TaskListStatusFilter | undefined;
-        if (options.status !== undefined) {
-          status = parseWithSchema(TaskListStatusFilterSchema, options.status, "--status");
-        }
+        const status: TaskListStatusFilter | undefined =
+          options.status === undefined
+            ? undefined
+            : parseWithSchema(TaskListStatusFilterSchema, options.status, "--status");
         const limit =
           options.limit === undefined ? undefined : parsePositiveIntFlag(options.limit, "--limit");
-
-        const { client } = await connectLocalEngine(env);
-        if (workerId !== undefined) {
-          const response = await client.listWorkerTasks(projectId, workerId, {
-            ...(status === undefined ? {} : { status }),
-            ...(limit === undefined ? {} : { limit }),
-          });
-          if (options.json) {
-            console.log(JSON.stringify(response, null, 2));
-            return;
-          }
-          console.log(formatTaskList(response.tasks, { showWorker: false }));
-          return;
-        }
-
-        const board = await client.getBoard(projectId);
-        const tasks = aggregateBoardTasks(board, {
+        const query = {
           ...(status === undefined ? {} : { status }),
           ...(limit === undefined ? {} : { limit }),
-        });
-        if (options.json) {
-          console.log(JSON.stringify({ tasks }, null, 2));
+        };
+
+        if (workerId !== undefined) {
+          await runEngineCommand(
+            env,
+            options,
+            (client) => client.listWorkerTasks(projectId, workerId, query),
+            (response) => formatTaskList(response.tasks, { showWorker: false }),
+          );
           return;
         }
-        console.log(formatTaskList(tasks, { showWorker: true }));
+        await runEngineCommand(
+          env,
+          options,
+          async (client) => ({
+            tasks: aggregateBoardTasks(await client.getBoard(projectId), query),
+          }),
+          (response) => formatTaskList(response.tasks, { showWorker: true }),
+        );
       },
     );
 
-  taskCommand
+  const taskReadCommand = taskCommand
     .command("read")
     .description("Read output from a Worker background task")
     .argument("<project>", "Project ID")
     .argument("<worker>", "Worker ID (e.g. w1)")
-    .argument("<taskId>", "Task ID (e.g. task-1)")
-    .option("--mode <mode>", "Read mode: head or tail")
-    .option("--bytes <n>", "Max bytes to read")
-    .option("--since-bytes <n>", "Read output starting from byte offset")
-    .option("--end-byte <n>", "Read output ending at byte offset")
-    .option("--filter <pattern>", "Filter matching lines (substring or /regex/flags)")
-    .option("--context <0..5>", "Context lines (0..5) around --filter matches")
+    .argument("<taskId>", "Task ID (e.g. task-1)");
+  addTaskReadOptions(taskReadCommand, { includeEndByte: true })
     .option("--json", "Output JSON")
     .action(
       async (
@@ -169,30 +162,26 @@ export function registerTaskCommands(program: Command, env: NodeJS.ProcessEnv): 
             ? undefined
             : parseNonNegativeIntFlag(options.endByte, "--end-byte");
 
-        const { client } = await connectLocalEngine(env);
-        const response = await client.readWorkerTask(projectId, workerId, taskId, {
-          ...parsed,
-          ...(endByte === undefined ? {} : { endByte }),
-        });
-        if (options.json) {
-          console.log(JSON.stringify(response, null, 2));
-          return;
-        }
-        console.log(formatTaskOutput(workerId, response));
+        await runEngineCommand(
+          env,
+          options,
+          (client) =>
+            client.readWorkerTask(projectId, workerId, taskId, {
+              ...parsed,
+              ...(endByte === undefined ? {} : { endByte }),
+            }),
+          (response) => formatTaskOutput(workerId, response),
+        );
       },
     );
 
-  taskCommand
+  const taskWatchCommand = taskCommand
     .command("watch")
     .description("Stream live output and status for a Worker background task")
     .argument("<project>", "Project ID")
     .argument("<worker>", "Worker ID (e.g. w1)")
-    .argument("<taskId>", "Task ID (e.g. task-1)")
-    .option("--mode <mode>", "Initial snapshot mode: head or tail")
-    .option("--bytes <n>", "Max bytes in initial snapshot")
-    .option("--since-bytes <n>", "Stream output starting from byte offset")
-    .option("--filter <pattern>", "Filter matching lines (substring or /regex/flags)")
-    .option("--context <0..5>", "Context lines (0..5) around --filter matches")
+    .argument("<taskId>", "Task ID (e.g. task-1)");
+  addTaskReadOptions(taskWatchCommand)
     .option("--json", "Output NDJSON stream events")
     .action(
       async (
@@ -211,22 +200,19 @@ export function registerTaskCommands(program: Command, env: NodeJS.ProcessEnv): 
         const workerId = parseWithSchema(WorkerIdSchema, rawWorker, "worker");
         const taskId = parseNonEmptyTaskId(rawTaskId);
         const parsed = parseTaskStreamOptions(options);
-
         const { client } = await connectLocalEngine(env);
-        const controller = new AbortController();
-        const cleanup = installSignalAbort(controller);
         const renderer = new TaskWatchRenderer((chunk) => process.stdout.write(chunk), {
           workerId,
           ...(parsed.filter === undefined ? {} : { filter: parsed.filter }),
           ...(parsed.contextLines === undefined ? {} : { contextLines: parsed.contextLines }),
         });
 
-        try {
+        await withSignalAbort(async (signal) => {
           for await (const event of client.streamWorkerTask(projectId, workerId, taskId, {
             ...(parsed.mode === undefined ? {} : { mode: parsed.mode }),
             ...(parsed.bytes === undefined ? {} : { bytes: parsed.bytes }),
             ...(parsed.sinceBytes === undefined ? {} : { sinceBytes: parsed.sinceBytes }),
-            signal: controller.signal,
+            signal,
           })) {
             if (options.json) {
               process.stdout.write(`${JSON.stringify(event)}\n`);
@@ -244,11 +230,7 @@ export function registerTaskCommands(program: Command, env: NodeJS.ProcessEnv): 
               break;
             }
           }
-        } catch (error) {
-          if (!controller.signal.aborted) throw error;
-        } finally {
-          cleanup();
-        }
+        });
       },
     );
 
@@ -268,16 +250,17 @@ export function registerTaskCommands(program: Command, env: NodeJS.ProcessEnv): 
       ) => {
         const workerId = parseWithSchema(WorkerIdSchema, rawWorker, "worker");
         const taskId = parseNonEmptyTaskId(rawTaskId);
-        const { client } = await connectLocalEngine(env);
-        const response = await client.killWorkerTask(projectId, workerId, taskId);
-        if (options.json) {
-          console.log(JSON.stringify(response, null, 2));
-          return;
-        }
-        const reason =
-          response.task.cancelReason === undefined ? "" : `, reason: ${response.task.cancelReason}`;
-        console.log(
-          `Killed task ${response.task.id} on ${workerId} (status: ${response.task.status}${reason})`,
+        await runEngineCommand(
+          env,
+          options,
+          (client) => client.killWorkerTask(projectId, workerId, taskId),
+          (response) => {
+            const reason =
+              response.task.cancelReason === undefined
+                ? ""
+                : `, reason: ${response.task.cancelReason}`;
+            return `Killed task ${response.task.id} on ${workerId} (status: ${response.task.status}${reason})`;
+          },
         );
       },
     );

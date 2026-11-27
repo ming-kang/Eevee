@@ -1,4 +1,3 @@
-import { connectLocalEngine } from "@eevee/engine";
 import {
   type ModelProfilesDocument,
   ModelProfilesDocumentSchema,
@@ -6,6 +5,7 @@ import {
 } from "@eevee/protocol";
 import type { Command } from "commander";
 import { readJsonInput } from "../args.ts";
+import { runEngineCommand } from "../command-helpers.ts";
 import {
   formatModelProfiles,
   formatModels,
@@ -22,18 +22,18 @@ export function registerModelsCommands(program: Command, env: NodeJS.ProcessEnv)
     .option("--provider <id>", "Filter by provider ID")
     .option("--available", "Show only configured/available models")
     .option("--json", "Output JSON")
-    .action(async (options: { provider?: string; available?: boolean; json?: boolean }) => {
-      const { client } = await connectLocalEngine(env);
-      const response = await client.listModels({
-        ...(options.provider === undefined ? {} : { provider: options.provider }),
-        ...(options.available ? { available: true } : {}),
-      });
-      if (options.json) {
-        console.log(JSON.stringify(response, null, 2));
-        return;
-      }
-      console.log(formatModels(response));
-    });
+    .action((options: { provider?: string; available?: boolean; json?: boolean }) =>
+      runEngineCommand(
+        env,
+        options,
+        (client) =>
+          client.listModels({
+            ...(options.provider === undefined ? {} : { provider: options.provider }),
+            ...(options.available ? { available: true } : {}),
+          }),
+        formatModels,
+      ),
+    );
 
   modelsCommand
     .command("refresh")
@@ -41,32 +41,26 @@ export function registerModelsCommands(program: Command, env: NodeJS.ProcessEnv)
     .option("--provider <ids...>", "Restrict refresh to these provider IDs")
     .option("--force", "Bypass freshness checks")
     .option("--json", "Output JSON")
-    .action(async (options: { provider?: string[]; force?: boolean; json?: boolean }) => {
-      const { client } = await connectLocalEngine(env);
-      const response = await client.refreshModels({
-        ...(options.provider === undefined ? {} : { providers: options.provider }),
-        ...(options.force ? { force: true } : {}),
-      });
-      if (options.json) {
-        console.log(JSON.stringify(response, null, 2));
-        return;
-      }
-      console.log(formatRefreshModels(response));
-    });
+    .action((options: { provider?: string[]; force?: boolean; json?: boolean }) =>
+      runEngineCommand(
+        env,
+        options,
+        (client) =>
+          client.refreshModels({
+            ...(options.provider === undefined ? {} : { providers: options.provider }),
+            ...(options.force ? { force: true } : {}),
+          }),
+        formatRefreshModels,
+      ),
+    );
 
   modelsCommand
     .command("reload")
     .description("Reload models.json and report diagnostics")
     .option("--json", "Output JSON")
-    .action(async (options: { json?: boolean }) => {
-      const { client } = await connectLocalEngine(env);
-      const response = await client.reloadModels();
-      if (options.json) {
-        console.log(JSON.stringify(response, null, 2));
-        return;
-      }
-      console.log(formatReloadModels(response));
-    });
+    .action((options: { json?: boolean }) =>
+      runEngineCommand(env, options, (client) => client.reloadModels(), formatReloadModels),
+    );
 
   const profilesCommand = modelsCommand
     .command("profiles")
@@ -76,15 +70,9 @@ export function registerModelsCommands(program: Command, env: NodeJS.ProcessEnv)
     .command("get")
     .description("Get model profiles document")
     .option("--json", "Output JSON")
-    .action(async (options: { json?: boolean }) => {
-      const { client } = await connectLocalEngine(env);
-      const doc = await client.getModelProfiles();
-      if (options.json) {
-        console.log(JSON.stringify(doc, null, 2));
-        return;
-      }
-      console.log(formatModelProfiles(doc));
-    });
+    .action((options: { json?: boolean }) =>
+      runEngineCommand(env, options, (client) => client.getModelProfiles(), formatModelProfiles),
+    );
 
   profilesCommand
     .command("set")
@@ -98,12 +86,11 @@ export function registerModelsCommands(program: Command, env: NodeJS.ProcessEnv)
         parsed,
         "ModelProfilesDocument",
       );
-      const { client } = await connectLocalEngine(env);
-      const updated = await client.putModelProfiles(doc);
-      if (options.json) {
-        console.log(JSON.stringify(updated, null, 2));
-        return;
-      }
-      console.log(`Updated ${updated.profiles.length} model profile(s).`);
+      await runEngineCommand(
+        env,
+        options,
+        (client) => client.putModelProfiles(doc),
+        (updated) => `Updated ${updated.profiles.length} model profile(s).`,
+      );
     });
 }

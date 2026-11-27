@@ -8,7 +8,8 @@ import {
   WorkerIdSchema,
 } from "@eevee/protocol";
 import type { Command } from "commander";
-import { installSignalAbort, parseConversationRefArg, parsePositiveIntFlag } from "../args.ts";
+import { parseConversationRefArg, parsePositiveIntFlag } from "../args.ts";
+import { runEngineCommand, withSignalAbort } from "../command-helpers.ts";
 import { ConversationWatchRenderer, formatBoard, formatQuestionAnswered } from "../format.ts";
 
 export function registerConversationCommands(program: Command, env: NodeJS.ProcessEnv): void {
@@ -34,16 +35,16 @@ export function registerConversationCommands(program: Command, env: NodeJS.Proce
         if (options.whenBusy !== undefined) {
           whenBusy = parseWithSchema(WhenBusySchema, options.whenBusy, "--when-busy");
         }
-        const { client } = await connectLocalEngine(env);
-        const response = await client.sendMessage(projectId, ref, {
-          text,
-          ...(whenBusy === undefined ? {} : { whenBusy }),
-        });
-        if (options.json) {
-          console.log(JSON.stringify(response, null, 2));
-          return;
-        }
-        console.log(`Sent submission ${response.submissionId} (${response.status})`);
+        await runEngineCommand(
+          env,
+          options,
+          (client) =>
+            client.sendMessage(projectId, ref, {
+              text,
+              ...(whenBusy === undefined ? {} : { whenBusy }),
+            }),
+          (response) => `Sent submission ${response.submissionId} (${response.status})`,
+        );
       },
     );
 
@@ -54,21 +55,13 @@ export function registerConversationCommands(program: Command, env: NodeJS.Proce
     .option("--watch", "Stream live Board updates")
     .option("--json", "Output JSON")
     .action(async (projectId: string, options: { watch?: boolean; json?: boolean }) => {
-      const { client } = await connectLocalEngine(env);
       if (!options.watch) {
-        const board = await client.getBoard(projectId);
-        if (options.json) {
-          console.log(JSON.stringify(board, null, 2));
-          return;
-        }
-        console.log(formatBoard(board));
+        await runEngineCommand(env, options, (client) => client.getBoard(projectId), formatBoard);
         return;
       }
-
-      const controller = new AbortController();
-      const cleanup = installSignalAbort(controller);
-      try {
-        for await (const event of client.streamBoard(projectId, { signal: controller.signal })) {
+      const { client } = await connectLocalEngine(env);
+      await withSignalAbort(async (signal) => {
+        for await (const event of client.streamBoard(projectId, { signal })) {
           if (event.type === "board") {
             if (options.json) {
               console.log(JSON.stringify(event.board));
@@ -80,11 +73,7 @@ export function registerConversationCommands(program: Command, env: NodeJS.Proce
             break;
           }
         }
-      } catch (error) {
-        if (!controller.signal.aborted) throw error;
-      } finally {
-        cleanup();
-      }
+      });
     });
 
   program
@@ -109,17 +98,15 @@ export function registerConversationCommands(program: Command, env: NodeJS.Proce
             ? undefined
             : parsePositiveIntFlag(options.lastEventId, "--last-event-id");
         const { client } = await connectLocalEngine(env);
-        const controller = new AbortController();
-        const cleanup = installSignalAbort(controller);
         const renderer = new ConversationWatchRenderer((chunk) => {
           process.stdout.write(chunk);
         });
 
-        try {
+        await withSignalAbort(async (signal) => {
           for await (const event of client.streamConversation(projectId, ref, {
             ...(from === undefined ? {} : { from }),
             ...(lastEventId === undefined ? {} : { lastEventId }),
-            signal: controller.signal,
+            signal,
           })) {
             if (options.json) {
               process.stdout.write(`${JSON.stringify(event)}\n`);
@@ -137,11 +124,7 @@ export function registerConversationCommands(program: Command, env: NodeJS.Proce
               break;
             }
           }
-        } catch (error) {
-          if (!controller.signal.aborted) throw error;
-        } finally {
-          cleanup();
-        }
+        });
       },
     );
 
@@ -160,13 +143,12 @@ export function registerConversationCommands(program: Command, env: NodeJS.Proce
         options: { json?: boolean },
       ) => {
         const questionId = parseWithSchema(QuestionIdSchema, rawQuestionId, "questionId");
-        const { client } = await connectLocalEngine(env);
-        const response = await client.answerQuestion(projectId, questionId, { answers });
-        if (options.json) {
-          console.log(JSON.stringify(response, null, 2));
-          return;
-        }
-        console.log(formatQuestionAnswered(response));
+        await runEngineCommand(
+          env,
+          options,
+          (client) => client.answerQuestion(projectId, questionId, { answers }),
+          formatQuestionAnswered,
+        );
       },
     );
 
@@ -178,13 +160,12 @@ export function registerConversationCommands(program: Command, env: NodeJS.Proce
     .option("--json", "Output JSON")
     .action(async (projectId: string, rawRef: string, options: { json?: boolean }) => {
       const ref = parseConversationRefArg(rawRef);
-      const { client } = await connectLocalEngine(env);
-      const response = await client.interrupt(projectId, ref);
-      if (options.json) {
-        console.log(JSON.stringify(response, null, 2));
-        return;
-      }
-      console.log(`Interrupted ${ref}`);
+      await runEngineCommand(
+        env,
+        options,
+        (client) => client.interrupt(projectId, ref),
+        () => `Interrupted ${ref}`,
+      );
     });
 
   program
@@ -195,12 +176,11 @@ export function registerConversationCommands(program: Command, env: NodeJS.Proce
     .option("--json", "Output JSON")
     .action(async (projectId: string, rawRef: string, options: { json?: boolean }) => {
       const ref = parseConversationRefArg(rawRef);
-      const { client } = await connectLocalEngine(env);
-      const response = await client.retry(projectId, ref);
-      if (options.json) {
-        console.log(JSON.stringify(response, null, 2));
-        return;
-      }
-      console.log(`Retried ${ref} (submission ${response.submissionId}, ${response.status})`);
+      await runEngineCommand(
+        env,
+        options,
+        (client) => client.retry(projectId, ref),
+        (response) => `Retried ${ref} (submission ${response.submissionId}, ${response.status})`,
+      );
     });
 }

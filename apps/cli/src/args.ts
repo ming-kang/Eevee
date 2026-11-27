@@ -10,16 +10,13 @@ import {
   parseWithSchema,
   type ToolsSettings,
 } from "@eevee/protocol";
+import type { Command } from "commander";
 
 export function parsePort(raw: string): number {
   if (!/^[0-9]+$/.test(raw)) {
     throw new Error(`Invalid port "${raw}": expected integer 0..65535`);
   }
-  const port = Number(raw);
-  if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    throw new Error(`Invalid port "${raw}": expected integer 0..65535`);
-  }
-  return port;
+  return parseIntRangeFlag(raw, "port", 0, 65535);
 }
 
 export function parsePositiveIntFlag(raw: string, flagName: string): number {
@@ -59,11 +56,15 @@ export function parseConversationRefArg(raw: string | undefined): ConversationRe
   return parseWithSchema(ConversationRefSchema, raw ?? "router", "ref");
 }
 
-export function parseNonEmptyTaskId(raw: string): string {
+export function parseNonEmpty(raw: string, label: string): string {
   if (raw.trim().length === 0) {
-    throw new Error("Invalid taskId: must not be empty");
+    throw new Error(`Invalid ${label}: must not be empty`);
   }
   return raw;
+}
+
+export function parseNonEmptyTaskId(raw: string): string {
+  return parseNonEmpty(raw, "taskId");
 }
 
 export function parseProjectIdFlag(
@@ -253,4 +254,44 @@ export function parseKeyValueFlags(
     record[entry.slice(0, eq)] = entry.slice(eq + 1);
   }
   return record;
+}
+
+export function addModelSlotOptions(command: Command, prefix?: string): Command {
+  const describe = (role: string) =>
+    prefix === undefined ? `${role} model override` : `${prefix} ${role} model`;
+  return command
+    .option("--router-model <provider/modelId>", describe("Router"))
+    .option("--worker-model <provider/modelId>", describe("Worker"))
+    .option("--dreamer-model <provider/modelId>", describe("Dreamer"));
+}
+
+export function addToolSettingsOptions(command: Command): Command {
+  return command
+    .option("--router-tools <specs>", "Toggle Router tools, e.g. -ls,+grep", collectRepeatedFlag)
+    .option(
+      "--worker-tools <specs>",
+      "Toggle Worker tools, e.g. -bash,+powershell,+grep",
+      collectRepeatedFlag,
+    )
+    .option("--codemode-mode <mode>", "Codemode mode: off, on, or only")
+    .option(
+      "--codemode-inline-budget <n>",
+      "Estimated token budget for inline codemode declarations",
+    );
+}
+
+export function addTaskReadOptions(
+  command: Command,
+  options?: { readonly includeEndByte?: boolean },
+): Command {
+  command
+    .option("--mode <mode>", "Read mode: head or tail")
+    .option("--bytes <n>", "Max bytes to read")
+    .option("--since-bytes <n>", "Read output starting from byte offset");
+  if (options?.includeEndByte) {
+    command.option("--end-byte <n>", "Read output ending at byte offset");
+  }
+  return command
+    .option("--filter <pattern>", "Filter matching lines (substring or /regex/flags)")
+    .option("--context <0..5>", "Context lines (0..5) around --filter matches");
 }
