@@ -11,9 +11,19 @@
     <script>
       (function () {
         var pref = "system";
+        var preset = "paper";
         try {
           var saved = localStorage.getItem("eevee-theme");
           if (saved === "light" || saved === "dark" || saved === "system") pref = saved;
+          var savedPreset = localStorage.getItem("eevee-theme-preset");
+          if (
+            savedPreset === "paper" ||
+            savedPreset === "pi" ||
+            savedPreset === "graphite" ||
+            savedPreset === "lagoon"
+          ) {
+            preset = savedPreset;
+          }
         } catch (e) {}
         var dark =
           pref === "dark" ||
@@ -23,6 +33,7 @@
         var scheme = dark ? "dark" : "light";
         document.documentElement.dataset.colorScheme = scheme;
         document.documentElement.dataset.theme = scheme;
+        document.documentElement.dataset.themePreset = preset;
         try {
           var uiRaw = localStorage.getItem("eevee-ui-size");
           if (uiRaw && /^\d+$/.test(uiRaw)) {
@@ -34,6 +45,11 @@
             var code = Number(codeRaw);
             if (code >= 10 && code <= 22) document.documentElement.style.setProperty("--ev-code-size", code + "px");
           }
+          var widthRaw = localStorage.getItem("eevee-chat-width");
+          document.documentElement.dataset.chatWidth = widthRaw === "wide" ? "wide" : "standard";
+          var fontRaw = localStorage.getItem("eevee-prose-font");
+          document.documentElement.dataset.proseFont =
+            fontRaw === "sans" || fontRaw === "mono" || fontRaw === "wenkai" ? fontRaw : "wenkai";
           var savedLocale = localStorage.getItem("eevee-locale");
           var locale =
             savedLocale === "zh-CN" || savedLocale === "en"

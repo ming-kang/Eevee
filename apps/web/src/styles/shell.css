@@ -72,11 +72,11 @@
 }
 
 .ev-sidebar {
-  border-right: var(--ev-hairline) solid var(--ev-border);
+  border-right: var(--ev-hairline) solid var(--ev-separator);
 }
 
 .ev-rail {
-  border-left: var(--ev-hairline) solid var(--ev-border);
+  border-left: var(--ev-hairline) solid var(--ev-separator);
 }
 
 .ev-sidebar-inner {
@@ -1054,9 +1054,9 @@
 .ev-inbox-list {
   display: flex;
   flex-direction: column;
-  border-radius: 10px;
+  border-radius: var(--ev-radius-card, 11px);
   background: var(--ev-surface);
-  box-shadow: var(--ev-shadow-stroke);
+  box-shadow: var(--ev-shadow-soft);
   overflow: hidden;
 }
 

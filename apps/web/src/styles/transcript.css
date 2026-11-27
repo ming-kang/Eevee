@@ -1,11 +1,15 @@
 .ev-chat-shell {
-  --ev-chat-max: clamp(760px, 84cqi, 1120px);
+  --ev-chat-max: clamp(720px, 80cqi, 960px);
   --ev-gutter: clamp(14px, 3cqi, 32px);
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   position: relative;
+}
+
+:root[data-chat-width="wide"] .ev-chat-shell {
+  --ev-chat-max: clamp(820px, 90cqi, 1240px);
 }
 
 .ev-chat-shell.landing .ev-dock {
@@ -93,12 +97,13 @@
 .ev-msg-user {
   align-self: flex-end;
   max-width: 84%;
-  padding: 11px 15px;
-  border-radius: 14px 14px 4px 14px;
-  background: var(--ev-surface-2);
+  padding: 11px 16px;
+  border-radius: 16px 16px 5px 16px;
+  background: color-mix(in oklab, var(--ev-surface-2) 80%, var(--ev-surface));
   color: var(--ev-fg);
+  font-family: var(--semantic-font-family-prose);
   font-size: 1rem;
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
 @container main (max-width: 600px) {
@@ -112,8 +117,9 @@
   flex-direction: column;
   gap: 8px;
   color: var(--ev-fg);
+  font-family: var(--semantic-font-family-prose);
   font-size: 1rem;
-  line-height: 1.68;
+  line-height: 1.72;
 }
 
 .ev-live-status {
@@ -455,15 +461,12 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 11px 13px;
-  border-radius: 10px;
-  border: var(--ev-hairline) solid var(--ev-border);
-  background: var(--ev-surface);
-  box-shadow: var(--ev-shadow-stroke);
+  padding: 12px 14px;
+  border-radius: var(--ev-radius-card, 11px);
+  background: color-mix(in oklab, var(--ev-surface) 78%, var(--ev-sidebar));
 }
 
 .ev-notice-card[data-tone="danger"] {
-  border-color: color-mix(in oklab, var(--ev-danger) 40%, var(--ev-border));
   background: var(--ev-danger-soft);
 }
 
@@ -509,8 +512,9 @@
 
 .eevee-markdown {
   --semantic-dimension-size-max-width-text: 100%;
+  font-family: var(--semantic-font-family-prose);
   font-size: 1rem;
-  line-height: 1.68;
+  line-height: 1.74;
   word-break: break-word;
 }
 
@@ -523,11 +527,39 @@
 }
 
 .eevee-markdown p {
-  margin: 0.45em 0;
+  margin: 0.6em 0;
+}
+
+.eevee-markdown h1,
+.eevee-markdown h2,
+.eevee-markdown h3,
+.eevee-markdown h4 {
+  font-weight: 560;
+  letter-spacing: -0.015em;
+  color: var(--ev-fg);
+  margin: 1.25em 0 0.45em;
+  line-height: 1.35;
+}
+
+.eevee-markdown blockquote {
+  margin: 0.8em 0;
+  padding: 0.25em 0 0.25em 1em;
+  border-left: 2px solid var(--ev-border-strong);
+  color: var(--ev-fg-muted);
+}
+
+.eevee-markdown ul,
+.eevee-markdown ol {
+  margin: 0.55em 0;
+  padding-inline-start: 1.45em;
+}
+
+.eevee-markdown li + li {
+  margin-top: 0.25em;
 }
 
 .eevee-markdown pre {
-  margin: 0.65em 0;
+  margin: 0.8em 0;
 }
 
 @media (hover: none) {
