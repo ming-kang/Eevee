@@ -52,7 +52,7 @@ import type {
   UpsertProviderRequest,
 } from "@eevee/protocol";
 import { EngineError } from "./engine-error.ts";
-import { listProviders, type ProviderDeps } from "./engine-providers.ts";
+import { listProviders, type ProviderDeps, summarizeProvider } from "./engine-providers.ts";
 
 function runtime(deps: ProviderDeps): ModelRuntime {
   const value = deps.runtime?.();
@@ -158,11 +158,7 @@ async function providerDetail(
   providerId: string,
 ): Promise<ProviderDetailResponse> {
   const provider = providerOrThrow(deps, providerId);
-  const summaries = await listProviders(deps);
-  const summary = summaries.providers.find((candidate) => candidate.id === providerId);
-  if (summary === undefined) {
-    throw new EngineError(404, "provider_not_found", `Unknown provider ${providerId}`);
-  }
+  const summary = await summarizeProvider(deps, provider);
   const config = deps.runtime?.().config().providers[providerId];
   const available = new Set(
     (await deps.models().getAvailable(providerId)).map((model) => model.id),

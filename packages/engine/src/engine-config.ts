@@ -1,9 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { isMcpServerOverride } from "@earendil-works/pi-mcp";
 import {
+  isRecord,
   type McpHub,
   type McpOAuthCredentialStore,
   mcpOAuthStoreKey,
+  normalizeMcpServerMap,
   parseMcpConfig,
 } from "@eevee/agent";
 import {
@@ -184,12 +186,36 @@ export function mergeEngineSettings(
   };
 }
 
-export function normalizeMcpMap(
-  servers: readonly { readonly name: string; readonly config: object }[],
-): Record<string, Record<string, unknown>> {
-  return Object.fromEntries(
-    servers.map((entry) => [entry.name, { ...entry.config } as Record<string, unknown>]),
-  );
+export function putModelProfiles(
+  store: EngineStore,
+  doc: ModelProfilesDocument,
+): ModelProfilesDocument {
+  const validated = parseWithSchema(ModelProfilesDocumentSchema, doc, "ModelProfilesDocument");
+  store.setKv(KV_MODEL_PROFILES, validated);
+  return validated;
+}
+
+export async function patchEngineSettings(
+  store: EngineStore,
+  patch: EngineSettings,
+  applySettings: () => Promise<void>,
+): Promise<EngineSettings> {
+  const validated = parseWithSchema(EngineSettingsSchema, patch, "EngineSettings");
+  const next = mergeEngineSettings(readEngineSettings(store), validated);
+  store.setKv(KV_SETTINGS, next);
+  await applySettings();
+  return next;
+}
+
+export async function putEngineSettings(
+  store: EngineStore,
+  next: EngineSettings,
+  applySettings: () => Promise<void>,
+): Promise<EngineSettings> {
+  const validated = parseWithSchema(EngineSettingsSchema, next, "EngineSettings");
+  store.setKv(KV_SETTINGS, validated);
+  await applySettings();
+  return validated;
 }
 
 export type EngineKnobs = {
@@ -269,10 +295,6 @@ export type RemovedHttpMcpServer = {
   readonly name: string;
   readonly url: string;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 export function httpUrlOfMcpRecord(raw: unknown): string | undefined {
   if (!isRecord(raw)) return undefined;
@@ -462,7 +484,7 @@ export async function importEngineConfig(
     await deps.modelRuntime.reload();
   }
 
-  const normalizedMcp = normalizeMcpMap(parsedMcp.servers);
+  const normalizedMcp = normalizeMcpServerMap(parsedMcp.servers);
   const { removedHttpMcp, cancellations } = deps.store.transaction(() => {
     const previousMcp = getMcpServersRecord(deps.store);
     const removed = findRemovedHttpMcpServers(previousMcp, normalizedMcp);

@@ -2,12 +2,15 @@ import {
   type McpOAuthConfig,
   type McpOAuthCredentialStore,
   type McpOAuthSession,
+  McpOAuthSessionError,
   type McpOAuthSignInEvent,
   type OAuthChallenge,
   startMcpOAuthSignIn,
 } from "@eevee/agent";
 import type { McpOAuthEvent, StartMcpOAuthResponse } from "@eevee/protocol";
 import { EngineError } from "./engine-error.ts";
+import { KeyedSerialQueue } from "./serial-queue.ts";
+import { BufferedSessionStream } from "./session-stream.ts";
 
 export const GLOBAL_MCP_OAUTH_SCOPE = "global";
 
@@ -32,14 +35,8 @@ type ManagedOAuthSession = {
   readonly scopeKey: string;
   readonly serverName: string;
   readonly raw: McpOAuthSession;
-  readonly history: McpOAuthEvent[];
-  readonly subscribers: Set<(event: McpOAuthEvent) => void>;
-  terminal: boolean;
-  done: Promise<void>;
-  cleanupTimer?: ReturnType<typeof setTimeout>;
+  readonly stream: BufferedSessionStream<McpOAuthEvent>;
 };
-
-const SESSION_RETENTION_MS = 60_000;
 
 function toProtocolEvent(event: McpOAuthSignInEvent): McpOAuthEvent {
   switch (event.type) {
@@ -61,7 +58,7 @@ function toProtocolEvent(event: McpOAuthSignInEvent): McpOAuthEvent {
 
 export class McpOAuthSessionManager {
   readonly #sessions = new Map<string, ManagedOAuthSession>();
-  readonly #startChains = new Map<string, Promise<void>>();
+  readonly #startQueue = new KeyedSerialQueue();
   #closed = false;
 
   start(options: StartMcpOAuthSessionOptions): Promise<StartMcpOAuthResponse> {
@@ -70,23 +67,7 @@ export class McpOAuthSessionManager {
     }
     const scopeKey = options.scopeKey ?? GLOBAL_MCP_OAUTH_SCOPE;
     const chainKey = `${scopeKey}:${options.serverName}`;
-    return this.#enqueueStart(chainKey, () => this.#startNow(options, scopeKey));
-  }
-
-  #enqueueStart<T>(chainKey: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.#startChains.get(chainKey) ?? Promise.resolve();
-    const run = prev.then(() => fn());
-    const tail = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    const cleaned = tail.finally(() => {
-      if (this.#startChains.get(chainKey) === cleaned) {
-        this.#startChains.delete(chainKey);
-      }
-    });
-    this.#startChains.set(chainKey, cleaned);
-    return cleaned.then(() => run);
+    return this.#startQueue.enqueue(chainKey, () => this.#startNow(options, scopeKey));
   }
 
   async #startNow(
@@ -103,22 +84,16 @@ export class McpOAuthSessionManager {
     }
     options.beforeStart?.();
 
-    const history: McpOAuthEvent[] = [];
-    const subscribers = new Set<(event: McpOAuthEvent) => void>();
     let completed = false;
     let terminalError: McpOAuthEvent | undefined;
-    let managedRef: ManagedOAuthSession | undefined;
-
-    const emit = (event: McpOAuthEvent): void => {
-      history.push(event);
-      for (const subscriber of [...subscribers]) {
-        try {
-          subscriber(event);
-        } catch {
-          // Isolate stream subscriber failures.
+    let sessionId = "";
+    const stream = new BufferedSessionStream<McpOAuthEvent>({
+      onExpire: () => {
+        if (!this.#closed && sessionId !== "") {
+          this.#sessions.delete(sessionId);
         }
-      }
-    };
+      },
+    });
 
     const raw = startMcpOAuthSignIn({
       name: options.serverName,
@@ -136,57 +111,39 @@ export class McpOAuthSessionManager {
           terminalError = toProtocolEvent(event);
           return;
         }
-        emit(toProtocolEvent(event));
+        stream.emit(toProtocolEvent(event));
       },
     });
 
-    const sessionId = raw.id;
+    sessionId = raw.id;
     const managed: ManagedOAuthSession = {
       sessionId,
       scopeKey,
       serverName: options.serverName,
       raw,
-      history,
-      subscribers,
-      terminal: false,
-      done: Promise.resolve(),
+      stream,
     };
-    managedRef = managed;
     this.#sessions.set(sessionId, managed);
 
-    const scheduleCleanup = (): void => {
-      if (this.#closed) return;
-      managed.cleanupTimer = setTimeout(() => {
-        this.#sessions.delete(sessionId);
-      }, SESSION_RETENTION_MS);
-      managed.cleanupTimer.unref?.();
-    };
-
-    managed.done = (async () => {
-      try {
-        await raw.done;
-        if (completed && !this.#closed) {
-          await options.onComplete?.(options.serverName).catch(() => undefined);
+    stream.track(
+      (async () => {
+        try {
+          await raw.done;
+          if (completed && !this.#closed) {
+            await options.onComplete?.(options.serverName).catch(() => undefined);
+          }
+        } finally {
+          const terminalFrame: McpOAuthEvent = completed
+            ? { type: "complete" }
+            : (terminalError ?? {
+                type: "error",
+                code: "login_failed",
+                message: "MCP OAuth sign-in ended unexpectedly",
+              });
+          stream.complete(terminalFrame);
         }
-      } finally {
-        if (managedRef !== undefined) {
-          managedRef.terminal = true;
-        }
-        if (completed) {
-          emit({ type: "complete" });
-        } else if (terminalError !== undefined) {
-          emit(terminalError);
-        } else {
-          emit({
-            type: "error",
-            code: "login_failed",
-            message: "MCP OAuth sign-in ended unexpectedly",
-          });
-        }
-        subscribers.clear();
-        scheduleCleanup();
-      }
-    })();
+      })(),
+    );
 
     return { sessionId, server: options.serverName };
   }
@@ -197,17 +154,7 @@ export class McpOAuthSessionManager {
     onEvent: (event: McpOAuthEvent) => void,
     scopeKey = GLOBAL_MCP_OAUTH_SCOPE,
   ): () => void {
-    const session = this.#requireSession(serverName, sessionId, scopeKey);
-    for (const event of session.history) {
-      onEvent(event);
-    }
-    if (session.terminal) {
-      return () => {};
-    }
-    session.subscribers.add(onEvent);
-    return () => {
-      session.subscribers.delete(onEvent);
-    };
+    return this.#requireSession(serverName, sessionId, scopeKey).stream.subscribe(onEvent);
   }
 
   submitInput(
@@ -217,7 +164,7 @@ export class McpOAuthSessionManager {
     scopeKey = GLOBAL_MCP_OAUTH_SCOPE,
   ): void {
     const session = this.#requireSession(serverName, sessionId, scopeKey);
-    if (session.terminal) {
+    if (session.stream.terminal) {
       throw new EngineError(
         409,
         "mcp_oauth_session_closed",
@@ -227,20 +174,27 @@ export class McpOAuthSessionManager {
     try {
       session.raw.submitRedirectUrl(redirectUrl);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      if (msg.includes("has ended")) {
-        throw new EngineError(409, "mcp_oauth_session_closed", msg);
+      if (error instanceof McpOAuthSessionError) {
+        switch (error.code) {
+          case "session_closed":
+            throw new EngineError(409, "mcp_oauth_session_closed", error.message);
+          case "not_waiting":
+            throw new EngineError(409, "mcp_oauth_not_waiting", error.message);
+          case "invalid_redirect":
+            throw new EngineError(400, "invalid_request", error.message);
+        }
       }
-      if (msg.includes("not waiting")) {
-        throw new EngineError(409, "mcp_oauth_not_waiting", msg);
-      }
-      throw new EngineError(400, "invalid_request", msg);
+      throw new EngineError(
+        400,
+        "invalid_request",
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
   cancel(serverName: string, sessionId: string, scopeKey = GLOBAL_MCP_OAUTH_SCOPE): void {
     const session = this.#requireSession(serverName, sessionId, scopeKey);
-    if (session.terminal) return;
+    if (session.stream.terminal) return;
     session.raw.cancel();
   }
 
@@ -256,10 +210,10 @@ export class McpOAuthSessionManager {
       if (
         targets.has(session.serverName) &&
         (scopeKey === undefined || session.scopeKey === scopeKey) &&
-        !session.terminal
+        !session.stream.terminal
       ) {
         session.raw.cancel();
-        pending.push(session.done);
+        pending.push(session.stream.done);
       }
     }
     if (pending.length > 0) {
@@ -270,9 +224,9 @@ export class McpOAuthSessionManager {
   async cancelForScope(scopeKey: string): Promise<void> {
     const pending: Promise<void>[] = [];
     for (const session of this.#sessions.values()) {
-      if (session.scopeKey === scopeKey && !session.terminal) {
+      if (session.scopeKey === scopeKey && !session.stream.terminal) {
         session.raw.cancel();
-        pending.push(session.done);
+        pending.push(session.stream.done);
       }
     }
     if (pending.length > 0) {
@@ -283,24 +237,23 @@ export class McpOAuthSessionManager {
   async close(): Promise<void> {
     this.#closed = true;
     for (const session of this.#sessions.values()) {
-      if (!session.terminal) {
+      session.stream.cancelCleanup();
+      if (!session.stream.terminal) {
         session.raw.cancel();
       }
     }
-    while (this.#startChains.size > 0) {
-      await Promise.allSettled([...this.#startChains.values()]);
-    }
+    await this.#startQueue.drainAll();
     const sessions = [...this.#sessions.values()];
     for (const session of sessions) {
-      if (session.cleanupTimer !== undefined) {
-        clearTimeout(session.cleanupTimer);
-        session.cleanupTimer = undefined;
-      }
-      if (!session.terminal) {
+      session.stream.cancelCleanup();
+      if (!session.stream.terminal) {
         session.raw.cancel();
       }
     }
-    await Promise.allSettled(sessions.map((session) => session.done));
+    await Promise.allSettled(sessions.map((session) => session.stream.done));
+    for (const session of sessions) {
+      session.stream.dispose();
+    }
     this.#sessions.clear();
   }
 

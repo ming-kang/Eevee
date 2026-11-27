@@ -1,177 +1,38 @@
-import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
-import type { CredentialStore, Models } from "@earendil-works/pi-ai";
-import type {
-  ConversationWatch,
-  ConversationWindow,
-  EntryId,
-  EntryQuery,
-  Report,
-  Submission,
-} from "@earendil-works/pi-durable";
-import {
-  createMcpHub,
-  type McpHttpServerConfig,
-  type McpHub,
-  type McpHubOptions,
-  McpOAuthCredentialStore,
-  mcpOAuthStoreKey,
-  parseMcpConfig,
-  validateMcpServerEntry,
-  validateOutputReadOptions,
-} from "@eevee/agent";
-import { MODELS_FILE, ModelRuntime } from "@eevee/agent/models";
+import type { Models } from "@earendil-works/pi-ai";
+import type { ConversationWatch, ConversationWindow } from "@earendil-works/pi-durable";
+import type { McpHub, McpOAuthCredentialStore } from "@eevee/agent";
+import type { ModelRuntime } from "@eevee/agent/models";
 import type {
   BoardView,
   ListWorkerTasksOptions as CoreListWorkerTasksOptions,
-  QuestionId as CoreQuestionId,
-  WorkerId as CoreWorkerId,
-  ModelSlots,
   OutputReadOptions,
   ProjectHandle,
-  ProjectTarget,
 } from "@eevee/core";
+import type * as P from "@eevee/protocol";
+import type { DataDirLayout } from "./data-dir.ts";
+import * as cfg from "./engine-config.ts";
 import {
-  type AnswerQuestionRequest,
-  type AnswerQuestionResponse,
-  type BuiltinModelMatchRequest,
-  type BuiltinModelMatchResponse,
-  type ConfigBundle,
-  type ConversationRef,
-  type CreateProjectRequest,
-  type DeleteProjectResponse,
-  type EngineSettings,
-  EngineSettingsSchema,
-  type EntryRecordPayload,
-  type GetProjectResponse,
-  type ImportProviderModelsRequest,
-  type ImportProviderModelsResponse,
-  type KillWorkerTaskResponse,
-  type ListEntriesResponse,
-  type ListModelsResponse,
-  type ListProvidersResponse,
-  type ListWorkerTasksResponse,
-  type LoginInputRequest,
-  type McpLogsResponse,
-  type McpOAuthEvent,
-  type McpOAuthInputRequest,
-  type McpStateResponse,
-  type ModelProfilesDocument,
-  ModelProfilesDocumentSchema,
-  type OkResponse,
-  type ProbeProviderRequest,
-  type ProbeProviderResponse,
-  type ProjectMcpStateResponse,
-  type ProjectMemoryResponse,
-  type ProjectSummary,
-  type ProjectUsageResponse,
-  type ProviderCatalogResponse,
-  type ProviderDetailResponse,
-  type PutMcpConfigRequest,
-  type PutProjectMemoryRequest,
-  type PutSkillsPolicyRequest,
-  parseWithSchema,
-  type QuestionId,
-  type ReadWorkerTaskResponse,
-  type ReconnectMcpRequest,
-  type ReconnectMcpResponse,
-  type RefreshModelsRequest,
-  type RefreshModelsResponse,
-  type ReloadModelsResponse,
-  type ScanOrder,
-  type SendMessageRequest,
-  type SendMessageResponse,
-  type SetApiKeyRequest,
-  type SkillsListResponse,
-  type SmokeTestModelRequest,
-  type SmokeTestModelResponse,
-  type StartLoginRequest,
-  type StartLoginResponse,
-  type StartMcpOAuthResponse,
-  type UpdateProjectRequest,
-  type UpsertMcpServerRequest,
-  type UpsertProviderModelRequest,
-  type UpsertProviderRequest,
-  type WorkerId,
-} from "@eevee/protocol";
-import { type DataDirLayout, dataDirLayout, projectPaths, resolveDataDir } from "./data-dir.ts";
-import {
-  type EngineKnobs,
-  engineKnobs,
-  exportEngineConfig,
-  getMcpServersRecord,
-  importEngineConfig,
-  KV_MCP_SERVERS,
-  KV_MODEL_PROFILES,
-  KV_SETTINGS,
-  mergeEngineSettings,
-  readEngineSettings,
-  readModelProfiles,
-} from "./engine-config.ts";
+  disposeEngineContext,
+  type EngineContext,
+  type EngineLifecycleState,
+  type EngineOptions,
+  openEngineContext,
+} from "./engine-context.ts";
 import { EngineError } from "./engine-error.ts";
-import {
-  deleteMcpServer,
-  deleteProjectMcpServer,
-  getMcpLogs,
-  getMcpState,
-  getProjectMcpLogs,
-  getProjectMcpState,
-  type McpDeps,
-  putMcpConfig,
-  putProjectMcpConfig,
-  reconnectMcp,
-  reconnectProjectMcp,
-  resolveEffectiveProjectMcp,
-  upsertMcpServer,
-  upsertProjectMcpServer,
-} from "./engine-mcp.ts";
-import {
-  decodeCursor,
-  encodeCursor,
-  listModels,
-  listProviders,
-  logoutProvider,
-  type ProviderDeps,
-  refreshModels,
-  setProviderApiKey,
-  toEngineError,
-} from "./engine-providers.ts";
-import {
-  createProvider,
-  createProviderModel,
-  deleteProvider,
-  deleteProviderModel,
-  getProviderCatalog,
-  getProviderDetail,
-  importProviderModels,
-  matchBuiltinModel,
-  probeDraftProvider,
-  probeProvider,
-  reloadModels,
-  testProviderModel,
-  updateProvider,
-  updateProviderModel,
-} from "./engine-providers-manage.ts";
-import {
-  expandMessageSkills,
-  listSkills,
-  putGlobalSkillsPolicy,
-  putProjectSkillsPolicy,
-  type SkillsDeps,
-} from "./engine-skills.ts";
-import { subscribeWorkerTaskStream, type WorkerTaskStream } from "./engine-task-stream.ts";
-import { LoginSessionManager, type LoginSseFrame } from "./login-sessions.ts";
-import {
-  GLOBAL_MCP_OAUTH_SCOPE,
-  McpOAuthSessionManager,
-  projectMcpOAuthScope,
-} from "./mcp-oauth-sessions.ts";
-import { type OpenProjectStorage, ProjectPool } from "./project-pool.ts";
-import { EngineStore } from "./store.ts";
+import * as mcp from "./engine-mcp.ts";
+import * as proj from "./engine-projects.ts";
+import * as prov from "./engine-providers.ts";
+import * as pm from "./engine-providers-manage.ts";
+import * as sk from "./engine-skills.ts";
+import type { WorkerTaskStream } from "./engine-task-stream.ts";
+import type { LoginSseFrame } from "./login-sessions.ts";
+import type { EngineStore } from "./store.ts";
 
 export { formatModelProfiles } from "./engine-config.ts";
+export type { EngineOptions } from "./engine-context.ts";
 export { EngineError } from "./engine-error.ts";
+export type { ListEntriesParams } from "./engine-projects.ts";
 export {
   taskStatusPhase,
   type WorkerTaskStream,
@@ -180,41 +41,6 @@ export {
 export type { LoginSseFrame } from "./login-sessions.ts";
 export type { OpenProjectStorage } from "./project-pool.ts";
 
-export type ListEntriesParams = {
-  readonly order?: ScanOrder;
-  readonly limit?: number;
-  readonly minEntryId?: number;
-  readonly maxEntryId?: number;
-  readonly cursor?: string;
-};
-
-export type EngineOptions = {
-  readonly dataDir?: string;
-  readonly env?: Readonly<Record<string, string | undefined>>;
-  readonly userHomeDir?: string | null;
-  readonly models?: Models | (() => Models);
-  readonly credentials?: CredentialStore;
-  readonly openProjectStorage?: OpenProjectStorage;
-  readonly createMcpTransport?: McpHubOptions["createTransport"];
-  readonly defaultModelSlots?: ModelSlots;
-  readonly maxActiveWorkers?: number;
-  readonly backgroundAfterMs?: number;
-  readonly routerContextTokens?: number;
-  readonly idleHibernateMs?: number;
-  readonly fetch?: typeof globalThis.fetch;
-  readonly onReport?: (projectId: string, report: Report) => void;
-  readonly onPumpError?: (projectId: string, error: unknown) => void;
-};
-
-function conversationTarget(ref: ConversationRef): ProjectTarget {
-  return ref === "router" ? "router" : (ref as CoreWorkerId);
-}
-
-async function submissionResponse(submission: Submission): Promise<SendMessageResponse> {
-  const { status } = await submission.status(BACKGROUND_CONTEXT);
-  return { submissionId: submission.id, status };
-}
-
 export class Engine {
   readonly layout: DataDirLayout;
   readonly store: EngineStore;
@@ -222,214 +48,126 @@ export class Engine {
   readonly mcpHub: McpHub;
   readonly oauthStore: McpOAuthCredentialStore;
 
-  readonly #mcpLogPath: string;
-  readonly #options: EngineOptions;
-  readonly #knobs: EngineKnobs;
-  readonly #pool: ProjectPool;
-  readonly #loginSessions = new LoginSessionManager();
-  readonly #mcpOAuthSessions = new McpOAuthSessionManager();
-  #closed = false;
+  readonly #ctx: EngineContext;
+  readonly #state: EngineLifecycleState;
   #closePromise: Promise<void> | undefined;
 
-  private constructor(
-    layout: DataDirLayout,
-    store: EngineStore,
-    modelRuntime: ModelRuntime,
-    mcpHub: McpHub,
-    oauthStore: McpOAuthCredentialStore,
-    mcpLogPath: string,
-    options: EngineOptions,
-  ) {
-    this.layout = layout;
-    this.store = store;
-    this.modelRuntime = modelRuntime;
-    this.mcpHub = mcpHub;
-    this.oauthStore = oauthStore;
-    this.#mcpLogPath = mcpLogPath;
-    this.#options = options;
-    this.#knobs = engineKnobs(store, {
-      defaultModelSlots: options.defaultModelSlots,
-      maxActiveWorkers: options.maxActiveWorkers,
-      backgroundAfterMs: options.backgroundAfterMs,
-      routerContextTokens: options.routerContextTokens,
-      idleHibernateMs: options.idleHibernateMs,
-    });
-    this.#pool = new ProjectPool({
-      layout,
-      store,
-      mcpHub,
-      oauthStore,
-      models: () => this.models(),
-      knobs: this.#knobs,
-      env: options.env,
-      userHomeDir: options.userHomeDir,
-      createMcpTransport: options.createMcpTransport,
-      openProjectStorage: options.openProjectStorage,
-      onReport: options.onReport,
-      onPumpError: options.onPumpError,
-    });
+  private constructor(ctx: EngineContext, state: EngineLifecycleState) {
+    this.#ctx = ctx;
+    this.#state = state;
+    this.layout = ctx.layout;
+    this.store = ctx.store;
+    this.modelRuntime = ctx.modelRuntime;
+    this.mcpHub = ctx.mcpHub;
+    this.oauthStore = ctx.oauthStore;
   }
 
   static async open(options: EngineOptions = {}): Promise<Engine> {
-    const root = options.dataDir ?? resolveDataDir(options.env);
-    const layout = dataDirLayout(root);
-    await mkdir(layout.root, { recursive: true });
-    await mkdir(layout.projectsDir, { recursive: true });
-
-    const store = EngineStore.open(layout.engineDb);
-    let mcpHub: McpHub | undefined;
-    try {
-      const modelRuntime = await ModelRuntime.open({
-        dir: layout.root,
-        env: options.env,
-      });
-      const oauthStore = new McpOAuthCredentialStore(layout.root);
-      const mcpLogPath = join(layout.root, "logs", "mcp.log");
-      const storedMcp = store.getKv<Record<string, unknown>>(KV_MCP_SERVERS) ?? {};
-      const parsedMcp = parseMcpConfig({ mcpServers: storedMcp });
-      mcpHub = createMcpHub({
-        servers: parsedMcp.servers,
-        env: options.env,
-        oauthStore,
-        logPath: mcpLogPath,
-        ...(options.createMcpTransport === undefined
-          ? {}
-          : { createTransport: options.createMcpTransport }),
-      });
-      mcpHub.startBackground();
-      return new Engine(layout, store, modelRuntime, mcpHub, oauthStore, mcpLogPath, options);
-    } catch (error) {
-      await mcpHub?.close().catch(() => undefined);
-      store.close();
-      throw error;
-    }
+    const state: EngineLifecycleState = { closed: false };
+    const ctx = await openEngineContext(options, state);
+    return new Engine(ctx, state);
   }
 
   models(): Models {
-    const override = this.#options.models;
-    if (override !== undefined) {
-      return typeof override === "function" ? override() : override;
-    }
-    return this.modelRuntime.models();
+    return this.#ctx.models();
   }
 
-  async reloadModels(): Promise<ReloadModelsResponse> {
-    this.#assertOpen();
-    return reloadModels(this.#providerDeps());
+  reloadModels(): Promise<P.ReloadModelsResponse> {
+    return this.#call((c) => pm.reloadModels(c.providers));
   }
 
-  async getProviderCatalog(): Promise<ProviderCatalogResponse> {
-    this.#assertOpen();
-    return getProviderCatalog(this.#providerDeps());
+  getProviderCatalog(): Promise<P.ProviderCatalogResponse> {
+    return this.#call((c) => pm.getProviderCatalog(c.providers));
   }
 
-  async getProviderDetail(providerId: string): Promise<ProviderDetailResponse> {
-    this.#assertOpen();
-    return getProviderDetail(this.#providerDeps(), providerId);
+  getProviderDetail(providerId: string): Promise<P.ProviderDetailResponse> {
+    return this.#call((c) => pm.getProviderDetail(c.providers, providerId));
   }
 
-  async createProvider(input: UpsertProviderRequest): Promise<ProviderDetailResponse> {
-    this.#assertOpen();
-    return createProvider(this.#providerDeps(), input);
+  createProvider(input: P.UpsertProviderRequest): Promise<P.ProviderDetailResponse> {
+    return this.#call((c) => pm.createProvider(c.providers, input));
   }
 
-  async updateProvider(
+  updateProvider(id: string, input: P.UpsertProviderRequest): Promise<P.ProviderDetailResponse> {
+    return this.#call((c) => pm.updateProvider(c.providers, id, input));
+  }
+
+  deleteProvider(providerId: string): Promise<P.OkResponse> {
+    return this.#call((c) => pm.deleteProvider(c.providers, providerId));
+  }
+
+  createProviderModel(
     providerId: string,
-    input: UpsertProviderRequest,
-  ): Promise<ProviderDetailResponse> {
-    this.#assertOpen();
-    return updateProvider(this.#providerDeps(), providerId, input);
+    input: P.UpsertProviderModelRequest,
+  ): Promise<P.ProviderDetailResponse> {
+    return this.#call((c) => pm.createProviderModel(c.providers, providerId, input));
   }
 
-  async deleteProvider(providerId: string): Promise<OkResponse> {
-    this.#assertOpen();
-    return deleteProvider(this.#providerDeps(), providerId);
-  }
-
-  async createProviderModel(
-    providerId: string,
-    input: UpsertProviderModelRequest,
-  ): Promise<ProviderDetailResponse> {
-    this.#assertOpen();
-    return createProviderModel(this.#providerDeps(), providerId, input);
-  }
-
-  async updateProviderModel(
+  updateProviderModel(
     providerId: string,
     modelId: string,
-    input: UpsertProviderModelRequest,
-  ): Promise<ProviderDetailResponse> {
-    this.#assertOpen();
-    return updateProviderModel(this.#providerDeps(), providerId, modelId, input);
+    input: P.UpsertProviderModelRequest,
+  ): Promise<P.ProviderDetailResponse> {
+    return this.#call((c) => pm.updateProviderModel(c.providers, providerId, modelId, input));
   }
 
-  async deleteProviderModel(providerId: string, modelId: string): Promise<ProviderDetailResponse> {
-    this.#assertOpen();
-    return deleteProviderModel(this.#providerDeps(), providerId, modelId);
+  deleteProviderModel(providerId: string, modelId: string): Promise<P.ProviderDetailResponse> {
+    return this.#call((c) => pm.deleteProviderModel(c.providers, providerId, modelId));
   }
 
-  async probeDraftProvider(
-    input: ProbeProviderRequest,
+  probeDraftProvider(
+    input: P.ProbeProviderRequest,
     signal?: AbortSignal,
-  ): Promise<ProbeProviderResponse> {
-    this.#assertOpen();
-    return probeDraftProvider(this.#providerDeps(), input, signal);
+  ): Promise<P.ProbeProviderResponse> {
+    return this.#call((c) => pm.probeDraftProvider(c.providers, input, signal));
   }
 
-  async probeProvider(
+  probeProvider(
     providerId: string,
-    input: ProbeProviderRequest = {},
+    input: P.ProbeProviderRequest = {},
     signal?: AbortSignal,
-  ): Promise<ProbeProviderResponse> {
-    this.#assertOpen();
-    return probeProvider(this.#providerDeps(), providerId, input, signal);
+  ): Promise<P.ProbeProviderResponse> {
+    return this.#call((c) => pm.probeProvider(c.providers, providerId, input, signal));
   }
 
-  async importProviderModels(
+  importProviderModels(
     providerId: string,
-    input: ImportProviderModelsRequest,
-  ): Promise<ImportProviderModelsResponse> {
-    this.#assertOpen();
-    return importProviderModels(this.#providerDeps(), providerId, input);
+    input: P.ImportProviderModelsRequest,
+  ): Promise<P.ImportProviderModelsResponse> {
+    return this.#call((c) => pm.importProviderModels(c.providers, providerId, input));
   }
 
-  async matchBuiltinModel(
+  matchBuiltinModel(
     providerId: string,
     modelId: string,
-    input: BuiltinModelMatchRequest = {},
-  ): Promise<BuiltinModelMatchResponse> {
-    this.#assertOpen();
-    return matchBuiltinModel(this.#providerDeps(), providerId, modelId, input);
+    input: P.BuiltinModelMatchRequest = {},
+  ): Promise<P.BuiltinModelMatchResponse> {
+    return this.#call((c) => pm.matchBuiltinModel(c.providers, providerId, modelId, input));
   }
 
-  async testProviderModel(
+  testProviderModel(
     providerId: string,
     modelId: string,
-    input: SmokeTestModelRequest = {},
+    input: P.SmokeTestModelRequest = {},
     signal?: AbortSignal,
-  ): Promise<SmokeTestModelResponse> {
-    this.#assertOpen();
-    return testProviderModel(this.#providerDeps(), providerId, modelId, input, signal);
+  ): Promise<P.SmokeTestModelResponse> {
+    return this.#call((c) => pm.testProviderModel(c.providers, providerId, modelId, input, signal));
   }
 
-  async listProviders(): Promise<ListProvidersResponse> {
-    this.#assertOpen();
-    return listProviders(this.#providerDeps());
+  listProviders(): Promise<P.ListProvidersResponse> {
+    return this.#call((c) => prov.listProviders(c.providers));
   }
 
-  async setProviderApiKey(providerId: string, input: SetApiKeyRequest): Promise<OkResponse> {
-    this.#assertOpen();
-    return setProviderApiKey(this.#providerDeps(), providerId, input);
+  setProviderApiKey(providerId: string, input: P.SetApiKeyRequest): Promise<P.OkResponse> {
+    return this.#call((c) => prov.setProviderApiKey(c.providers, providerId, input));
   }
 
-  async logoutProvider(providerId: string): Promise<OkResponse> {
-    this.#assertOpen();
-    return logoutProvider(this.#providerDeps(), providerId);
+  logoutProvider(providerId: string): Promise<P.OkResponse> {
+    return this.#call((c) => prov.logoutProvider(c.providers, providerId));
   }
 
-  startProviderLogin(providerId: string, input: StartLoginRequest): StartLoginResponse {
-    this.#assertOpen();
-    return this.#loginSessions.start(this.models(), providerId, input.type);
+  startProviderLogin(providerId: string, input: P.StartLoginRequest): P.StartLoginResponse {
+    return this.#sync((c) => c.loginSessions.start(c.models(), providerId, input.type));
   }
 
   subscribeLoginSession(
@@ -437,643 +175,333 @@ export class Engine {
     sessionId: string,
     onFrame: (frame: LoginSseFrame) => void,
   ): () => void {
-    this.#assertOpen();
-    return this.#loginSessions.subscribe(providerId, sessionId, onFrame);
+    return this.#sync((c) => c.loginSessions.subscribe(providerId, sessionId, onFrame));
   }
 
-  submitLoginInput(providerId: string, sessionId: string, input: LoginInputRequest): OkResponse {
-    this.#assertOpen();
-    this.#loginSessions.submitInput(providerId, sessionId, input);
-    return { ok: true };
+  submitLoginInput(
+    providerId: string,
+    sessionId: string,
+    input: P.LoginInputRequest,
+  ): P.OkResponse {
+    return this.#sync((c) => c.loginSessions.submitInput(providerId, sessionId, input));
   }
 
-  cancelLoginSession(providerId: string, sessionId: string): OkResponse {
-    this.#assertOpen();
-    this.#loginSessions.cancel(providerId, sessionId);
-    return { ok: true };
+  cancelLoginSession(providerId: string, sessionId: string): P.OkResponse {
+    return this.#sync((c) => c.loginSessions.cancel(providerId, sessionId));
   }
 
-  async listModels(opts?: {
+  listModels(opts?: {
     readonly provider?: string;
     readonly available?: boolean;
-  }): Promise<ListModelsResponse> {
-    this.#assertOpen();
-    return listModels(this.#providerDeps(), opts);
+  }): Promise<P.ListModelsResponse> {
+    return this.#call((c) => prov.listModels(c.providers, opts));
   }
 
-  async refreshModels(input: RefreshModelsRequest = {}): Promise<RefreshModelsResponse> {
-    this.#assertOpen();
-    return refreshModels(this.#providerDeps(), input);
+  refreshModels(input: P.RefreshModelsRequest = {}): Promise<P.RefreshModelsResponse> {
+    return this.#call((c) => prov.refreshModels(c.providers, input));
   }
 
-  getModelProfiles(): ModelProfilesDocument {
-    this.#assertOpen();
-    return readModelProfiles(this.store);
+  getModelProfiles(): P.ModelProfilesDocument {
+    return this.#sync((c) => cfg.readModelProfiles(c.store));
   }
 
-  putModelProfiles(doc: ModelProfilesDocument): ModelProfilesDocument {
-    this.#assertOpen();
-    const validated = parseWithSchema(ModelProfilesDocumentSchema, doc, "ModelProfilesDocument");
-    this.store.setKv(KV_MODEL_PROFILES, validated);
-    return validated;
+  putModelProfiles(doc: P.ModelProfilesDocument): P.ModelProfilesDocument {
+    return this.#sync((c) => cfg.putModelProfiles(c.store, doc));
   }
 
-  async listSkills(): Promise<SkillsListResponse> {
-    this.#assertOpen();
-    return listSkills(this.#skillsDeps());
+  listSkills(): Promise<P.SkillsListResponse> {
+    return this.#call((c) => sk.listSkills(c.skills));
   }
 
-  async putSkillsPolicy(input: PutSkillsPolicyRequest): Promise<SkillsListResponse> {
-    this.#assertOpen();
-    return putGlobalSkillsPolicy(this.#skillsDeps(), input);
+  putSkillsPolicy(input: P.PutSkillsPolicyRequest): Promise<P.SkillsListResponse> {
+    return this.#call((c) => sk.putGlobalSkillsPolicy(c.skills, input));
   }
 
-  async listProjectSkills(projectId: string): Promise<SkillsListResponse> {
-    this.#assertOpen();
-    return listSkills(this.#skillsDeps(), projectId);
+  listProjectSkills(projectId: string): Promise<P.SkillsListResponse> {
+    return this.#call((c) => sk.listSkills(c.skills, projectId));
   }
 
-  async putProjectSkillsPolicy(
+  putProjectSkillsPolicy(
     projectId: string,
-    input: PutSkillsPolicyRequest,
-  ): Promise<SkillsListResponse> {
-    this.#assertOpen();
-    return putProjectSkillsPolicy(this.#skillsDeps(), projectId, input);
+    input: P.PutSkillsPolicyRequest,
+  ): Promise<P.SkillsListResponse> {
+    return this.#call((c) => sk.putProjectSkillsPolicy(c.skills, projectId, input));
   }
 
-  getMcpState(): McpStateResponse {
-    this.#assertOpen();
-    return getMcpState(this.#mcpDeps());
+  getMcpState(): P.McpStateResponse {
+    return this.#sync((c) => mcp.getMcpState(c.mcp));
   }
 
-  async putMcpConfig(input: PutMcpConfigRequest): Promise<McpStateResponse> {
-    this.#assertOpen();
-    return putMcpConfig(this.#mcpDeps(), input);
+  putMcpConfig(input: P.PutMcpConfigRequest): Promise<P.McpStateResponse> {
+    return this.#call((c) => mcp.putMcpConfig(c.mcp, input));
   }
 
-  async upsertMcpServer(name: string, input: UpsertMcpServerRequest): Promise<McpStateResponse> {
-    this.#assertOpen();
-    return upsertMcpServer(this.#mcpDeps(), name, input);
+  upsertMcpServer(name: string, input: P.UpsertMcpServerRequest): Promise<P.McpStateResponse> {
+    return this.#call((c) => mcp.upsertMcpServer(c.mcp, name, input));
   }
 
-  async deleteMcpServer(name: string): Promise<McpStateResponse> {
-    this.#assertOpen();
-    return deleteMcpServer(this.#mcpDeps(), name);
+  deleteMcpServer(name: string): Promise<P.McpStateResponse> {
+    return this.#call((c) => mcp.deleteMcpServer(c.mcp, name));
   }
 
-  async reconnectMcp(input: ReconnectMcpRequest = {}): Promise<ReconnectMcpResponse> {
-    this.#assertOpen();
-    return reconnectMcp(this.#mcpDeps(), input);
+  reconnectMcp(input: P.ReconnectMcpRequest = {}): Promise<P.ReconnectMcpResponse> {
+    return this.#call((c) => mcp.reconnectMcp(c.mcp, input));
   }
 
-  getMcpLogs(serverName: string): McpLogsResponse {
-    this.#assertOpen();
-    return getMcpLogs(this.#mcpDeps(), serverName);
+  getMcpLogs(serverName: string): P.McpLogsResponse {
+    return this.#sync((c) => mcp.getMcpLogs(c.mcp, serverName));
   }
 
-  async startMcpOAuth(serverName: string): Promise<StartMcpOAuthResponse> {
-    this.#assertOpen();
-    const config = this.#requireGlobalHttpMcpServer(serverName, true);
-    const storeKey = mcpOAuthStoreKey(serverName, config.url);
-    return this.#mcpOAuthSessions.start({
-      scopeKey: GLOBAL_MCP_OAUTH_SCOPE,
-      serverName,
-      serverUrl: config.url,
-      store: this.oauthStore,
-      ...(config.oauth === undefined ? {} : { settings: config.oauth }),
-      env: this.#options.env,
-      challenge: this.mcpHub.getAuthChallenge(serverName),
-      beforeStart: () => {
-        this.#assertOpen();
-        this.#requireGlobalHttpMcpServer(serverName, true);
-      },
-      onComplete: async (name) => {
-        await this.mcpHub.reconnect(name).catch(() => undefined);
-        await this.#pool.reconnectServerOnProjectHubs(name, storeKey);
-        await this.#pool.syncMcpExtensions();
-      },
-    });
+  startMcpOAuth(serverName: string): Promise<P.StartMcpOAuthResponse> {
+    return this.#call((c) => c.globalOAuth.start(serverName));
   }
 
   subscribeMcpOAuthSession(
     serverName: string,
     sessionId: string,
-    onEvent: (event: McpOAuthEvent) => void,
+    onEvent: (event: P.McpOAuthEvent) => void,
   ): () => void {
-    this.#assertOpen();
-    return this.#mcpOAuthSessions.subscribe(serverName, sessionId, onEvent, GLOBAL_MCP_OAUTH_SCOPE);
+    return this.#sync((c) => c.globalOAuth.subscribe(serverName, sessionId, onEvent));
   }
 
   submitMcpOAuthInput(
     serverName: string,
     sessionId: string,
-    input: McpOAuthInputRequest,
-  ): OkResponse {
-    this.#assertOpen();
-    this.#mcpOAuthSessions.submitInput(
-      serverName,
-      sessionId,
-      input.redirectUrl,
-      GLOBAL_MCP_OAUTH_SCOPE,
-    );
-    return { ok: true };
+    input: P.McpOAuthInputRequest,
+  ): P.OkResponse {
+    return this.#sync((c) => c.globalOAuth.submitInput(serverName, sessionId, input));
   }
 
-  cancelMcpOAuth(serverName: string, sessionId: string): OkResponse {
-    this.#assertOpen();
-    this.#mcpOAuthSessions.cancel(serverName, sessionId, GLOBAL_MCP_OAUTH_SCOPE);
-    return { ok: true };
+  cancelMcpOAuth(serverName: string, sessionId: string): P.OkResponse {
+    return this.#sync((c) => c.globalOAuth.cancel(serverName, sessionId));
   }
 
-  async logoutMcpOAuth(serverName: string): Promise<OkResponse> {
-    this.#assertOpen();
-    const config = this.#requireGlobalHttpMcpServer(serverName, false);
-    await this.#mcpOAuthSessions.cancelForServer(serverName, GLOBAL_MCP_OAUTH_SCOPE);
-    await this.oauthStore.remove(serverName, config.url);
-    if (config.enabled !== false) {
-      await this.mcpHub.reconnect(serverName).catch(() => undefined);
-      await this.#pool.reconnectServerOnProjectHubs(
-        serverName,
-        mcpOAuthStoreKey(serverName, config.url),
-      );
-      await this.#pool.syncMcpExtensions();
-    }
-    return { ok: true };
+  logoutMcpOAuth(serverName: string): Promise<P.OkResponse> {
+    return this.#call((c) => c.globalOAuth.logout(serverName));
   }
 
-  async startProjectMcpOAuth(
-    projectId: string,
-    serverName: string,
-  ): Promise<StartMcpOAuthResponse> {
-    this.#assertOpen();
-    const config = this.#requireEffectiveProjectHttpMcpServer(projectId, serverName, true);
-    const scopeKey = projectMcpOAuthScope(projectId);
-    const expectedStoreKey = mcpOAuthStoreKey(serverName, config.url);
-    return this.#mcpOAuthSessions.start({
-      scopeKey,
-      serverName,
-      serverUrl: config.url,
-      store: this.oauthStore,
-      ...(config.oauth === undefined ? {} : { settings: config.oauth }),
-      env: this.#options.env,
-      challenge: this.#pool.getProjectMcpHub(projectId)?.getAuthChallenge(serverName),
-      beforeStart: () => {
-        this.#assertOpen();
-        const current = this.#requireEffectiveProjectHttpMcpServer(projectId, serverName, true);
-        if (mcpOAuthStoreKey(serverName, current.url) !== expectedStoreKey) {
-          throw new EngineError(
-            409,
-            "mcp_server_changed",
-            `MCP server "${serverName}" configuration changed before sign-in started`,
-          );
-        }
-      },
-      onComplete: async (name) => {
-        if (this.#closed || this.#pool.isDeleting(projectId)) return;
-        if (this.store.getProject(projectId) === undefined) return;
-        const { entries } = resolveEffectiveProjectMcp(
-          getMcpServersRecord(this.store),
-          this.store.getProjectMcpServers(projectId) ?? {},
-          false,
-        );
-        const current = entries.find((item) => item.name === name);
-        if (
-          current === undefined ||
-          !("url" in current.config) ||
-          current.config.enabled === false ||
-          mcpOAuthStoreKey(name, current.config.url) !== expectedStoreKey
-        ) {
-          return;
-        }
-        await this.#reconnectAfterProjectOAuth(projectId, name, config.url);
-      },
-    });
+  startProjectMcpOAuth(projectId: string, serverName: string): Promise<P.StartMcpOAuthResponse> {
+    return this.#call((c) => c.projectOAuth(projectId).start(serverName));
   }
 
   subscribeProjectMcpOAuthSession(
     projectId: string,
     serverName: string,
     sessionId: string,
-    onEvent: (event: McpOAuthEvent) => void,
+    onEvent: (event: P.McpOAuthEvent) => void,
   ): () => void {
-    this.#assertOpen();
-    this.getProject(projectId);
-    return this.#mcpOAuthSessions.subscribe(
-      serverName,
-      sessionId,
-      onEvent,
-      projectMcpOAuthScope(projectId),
-    );
+    return this.#sync((c) => c.projectOAuth(projectId).subscribe(serverName, sessionId, onEvent));
   }
 
   submitProjectMcpOAuthInput(
     projectId: string,
     serverName: string,
     sessionId: string,
-    input: McpOAuthInputRequest,
-  ): OkResponse {
-    this.#assertOpen();
-    this.getProject(projectId);
-    this.#mcpOAuthSessions.submitInput(
-      serverName,
-      sessionId,
-      input.redirectUrl,
-      projectMcpOAuthScope(projectId),
-    );
-    return { ok: true };
+    input: P.McpOAuthInputRequest,
+  ): P.OkResponse {
+    return this.#sync((c) => c.projectOAuth(projectId).submitInput(serverName, sessionId, input));
   }
 
-  cancelProjectMcpOAuth(projectId: string, serverName: string, sessionId: string): OkResponse {
-    this.#assertOpen();
-    this.getProject(projectId);
-    this.#mcpOAuthSessions.cancel(serverName, sessionId, projectMcpOAuthScope(projectId));
-    return { ok: true };
+  cancelProjectMcpOAuth(projectId: string, serverName: string, sessionId: string): P.OkResponse {
+    return this.#sync((c) => c.projectOAuth(projectId).cancel(serverName, sessionId));
   }
 
-  async logoutProjectMcpOAuth(projectId: string, serverName: string): Promise<OkResponse> {
-    this.#assertOpen();
-    const config = this.#requireEffectiveProjectHttpMcpServer(projectId, serverName, false);
-    await this.#mcpOAuthSessions.cancelForServer(serverName, projectMcpOAuthScope(projectId));
-    await this.oauthStore.remove(serverName, config.url);
-    await this.#reconnectAfterProjectOAuth(
-      projectId,
-      serverName,
-      config.url,
-      config.enabled !== false,
-    );
-    return { ok: true };
+  logoutProjectMcpOAuth(projectId: string, serverName: string): Promise<P.OkResponse> {
+    return this.#call((c) => c.projectOAuth(projectId).logout(serverName));
   }
 
-  getProjectMcpState(projectId: string): ProjectMcpStateResponse {
-    this.#assertOpen();
-    return getProjectMcpState(this.#mcpDeps(), projectId);
+  getProjectMcpState(projectId: string): P.ProjectMcpStateResponse {
+    return this.#sync((c) => mcp.getProjectMcpState(c.mcp, projectId));
   }
 
-  async putProjectMcpConfig(
+  putProjectMcpConfig(
     projectId: string,
-    input: PutMcpConfigRequest,
-  ): Promise<ProjectMcpStateResponse> {
-    this.#assertOpen();
-    return putProjectMcpConfig(this.#mcpDeps(), projectId, input);
+    input: P.PutMcpConfigRequest,
+  ): Promise<P.ProjectMcpStateResponse> {
+    return this.#call((c) => mcp.putProjectMcpConfig(c.mcp, projectId, input));
   }
 
-  async upsertProjectMcpServer(
+  upsertProjectMcpServer(
     projectId: string,
     serverName: string,
-    input: UpsertMcpServerRequest,
-  ): Promise<ProjectMcpStateResponse> {
-    this.#assertOpen();
-    return upsertProjectMcpServer(this.#mcpDeps(), projectId, serverName, input);
+    input: P.UpsertMcpServerRequest,
+  ): Promise<P.ProjectMcpStateResponse> {
+    return this.#call((c) => mcp.upsertProjectMcpServer(c.mcp, projectId, serverName, input));
   }
 
-  async deleteProjectMcpServer(
+  deleteProjectMcpServer(
     projectId: string,
     serverName: string,
-  ): Promise<ProjectMcpStateResponse> {
-    this.#assertOpen();
-    return deleteProjectMcpServer(this.#mcpDeps(), projectId, serverName);
+  ): Promise<P.ProjectMcpStateResponse> {
+    return this.#call((c) => mcp.deleteProjectMcpServer(c.mcp, projectId, serverName));
   }
 
-  async reconnectProjectMcp(
+  reconnectProjectMcp(
     projectId: string,
-    input: ReconnectMcpRequest = {},
-  ): Promise<ReconnectMcpResponse> {
-    this.#assertOpen();
-    return reconnectProjectMcp(this.#mcpDeps(), projectId, input);
+    input: P.ReconnectMcpRequest = {},
+  ): Promise<P.ReconnectMcpResponse> {
+    return this.#call((c) => mcp.reconnectProjectMcp(c.mcp, projectId, input));
   }
 
-  getProjectMcpLogs(projectId: string, serverName: string): McpLogsResponse {
-    this.#assertOpen();
-    return getProjectMcpLogs(this.#mcpDeps(), projectId, serverName);
+  getProjectMcpLogs(projectId: string, serverName: string): P.McpLogsResponse {
+    return this.#sync((c) => mcp.getProjectMcpLogs(c.mcp, projectId, serverName));
   }
 
-  getSettings(): EngineSettings {
-    this.#assertOpen();
-    return readEngineSettings(this.store);
+  getSettings(): P.EngineSettings {
+    return this.#sync((c) => cfg.readEngineSettings(c.store));
   }
 
-  async patchSettings(patch: EngineSettings): Promise<EngineSettings> {
-    this.#assertOpen();
-    const validated = parseWithSchema(EngineSettingsSchema, patch, "EngineSettings");
-    const next = mergeEngineSettings(this.getSettings(), validated);
-    this.store.setKv(KV_SETTINGS, next);
-    await this.#pool.applySettingsLive();
-    return next;
-  }
-
-  async putSettings(next: EngineSettings): Promise<EngineSettings> {
-    this.#assertOpen();
-    const validated = parseWithSchema(EngineSettingsSchema, next, "EngineSettings");
-    this.store.setKv(KV_SETTINGS, validated);
-    await this.#pool.applySettingsLive();
-    return validated;
-  }
-
-  async exportConfig(): Promise<ConfigBundle> {
-    this.#assertOpen();
-    return exportEngineConfig({ layout: this.layout, store: this.store });
-  }
-
-  async importConfig(input: ConfigBundle): Promise<ConfigBundle> {
-    this.#assertOpen();
-    return importEngineConfig(
-      {
-        layout: this.layout,
-        store: this.store,
-        modelRuntime: this.modelRuntime,
-        mcpHub: this.mcpHub,
-        oauthStore: this.oauthStore,
-        cancelOAuthForServers: (serverNames, scopeKey) =>
-          this.#mcpOAuthSessions.cancelAllForServers(serverNames, scopeKey),
-        env: this.#options.env,
-        syncProjects: () => this.#pool.reloadGlobalMcpChanges(),
-        applySettings: () => this.#pool.applySettingsLive(),
-      },
-      input,
+  patchSettings(patch: P.EngineSettings): Promise<P.EngineSettings> {
+    return this.#call((c) =>
+      cfg.patchEngineSettings(c.store, patch, () => c.pool.applySettingsLive()),
     );
   }
 
-  createProject(input: CreateProjectRequest): ProjectSummary {
-    this.#assertOpen();
-    if (input.workspaces.length === 0) {
-      throw new EngineError(
-        400,
-        "invalid_request",
-        "workspaces must contain at least one directory",
-      );
-    }
-    try {
-      return this.store.createProject(input);
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new EngineError(400, "invalid_request", error.message);
-      }
-      throw error;
-    }
+  putSettings(next: P.EngineSettings): Promise<P.EngineSettings> {
+    return this.#call((c) =>
+      cfg.putEngineSettings(c.store, next, () => c.pool.applySettingsLive()),
+    );
   }
 
-  listProjects(): ProjectSummary[] {
-    this.#assertOpen();
-    return this.store.listProjects();
+  exportConfig(): Promise<P.ConfigBundle> {
+    return this.#call((c) => cfg.exportEngineConfig({ layout: c.layout, store: c.store }));
   }
 
-  getProject(projectId: string): ProjectSummary {
-    this.#assertOpen();
-    if (this.#pool.isDeleting(projectId)) {
-      throw new EngineError(404, "project_not_found", `Unknown project ${projectId}`);
-    }
-    const project = this.store.getProject(projectId);
-    if (project === undefined) {
-      throw new EngineError(404, "project_not_found", `Unknown project ${projectId}`);
-    }
-    return project;
+  importConfig(input: P.ConfigBundle): Promise<P.ConfigBundle> {
+    return this.#call((c) => cfg.importEngineConfig(c.configImport, input));
   }
 
-  async updateProject(projectId: string, patch: UpdateProjectRequest): Promise<GetProjectResponse> {
-    this.#assertOpen();
-    this.getProject(projectId);
-    let updated: ProjectSummary | undefined;
-    try {
-      updated = this.store.updateProject(projectId, patch);
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new EngineError(400, "invalid_request", error.message);
-      }
-      throw error;
-    }
-    if (updated === undefined) {
-      throw new EngineError(404, "project_not_found", `Unknown project ${projectId}`);
-    }
-    const openHandle = this.#pool.getOpenHandle(projectId);
-    if (openHandle !== undefined) {
-      this.#pool.touch(projectId);
-      if (patch.models !== undefined) {
-        await openHandle.reconfigureRouterModel(this.#knobs.modelSlots(projectId).router);
-      }
-      if (patch.workspaces !== undefined) {
-        await openHandle.reconfigureWorkspaces(updated.workspaces);
-        await this.#pool.updateProjectMcpRoots(projectId, updated.workspaces);
-      }
-      if (patch.tools !== undefined) {
-        await openHandle.reconfigureTools();
-      }
-    }
-    return { project: updated };
+  createProject(input: P.CreateProjectRequest): P.ProjectSummary {
+    return this.#sync((c) => proj.createProject(c.projects, input));
   }
 
-  async deleteProject(projectId: string): Promise<DeleteProjectResponse> {
-    this.#assertOpen();
-    this.getProject(projectId);
-    await this.#mcpOAuthSessions.cancelForScope(projectMcpOAuthScope(projectId));
-    await this.#pool.deleteOpenProject(projectId, async () => {
-      this.store.deleteProject(projectId);
-      const paths = projectPaths(this.layout, projectId);
-      await rm(paths.dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-    });
-    return { ok: true, id: projectId };
+  listProjects(): P.ProjectSummary[] {
+    return this.#sync((c) => proj.listProjects(c.projects));
   }
 
-  getProjectMemory(projectId: string): ProjectMemoryResponse {
-    const project = this.getProject(projectId);
-    return { projectId: project.id, memory: project.memory ?? null };
+  getProject(projectId: string): P.ProjectSummary {
+    return this.#sync((c) => proj.getProject(c.projects, projectId));
   }
 
-  putProjectMemory(projectId: string, input: PutProjectMemoryRequest): ProjectMemoryResponse {
-    this.#assertOpen();
-    this.getProject(projectId);
-    const updated = this.store.updateProject(projectId, { memory: input.memory });
-    if (updated === undefined) {
-      throw new EngineError(404, "project_not_found", `Unknown project ${projectId}`);
-    }
-    this.#pool.touch(projectId);
-    return { projectId: updated.id, memory: updated.memory ?? null };
+  updateProject(projectId: string, patch: P.UpdateProjectRequest): Promise<P.GetProjectResponse> {
+    return this.#call((c) => proj.updateProject(c.projects, projectId, patch));
   }
 
-  async getProjectUsage(projectId: string): Promise<ProjectUsageResponse> {
-    const handle = await this.openProject(projectId);
-    const usage = await handle.usage(BACKGROUND_CONTEXT);
-    return { projectId, usage };
+  deleteProject(projectId: string): Promise<P.DeleteProjectResponse> {
+    return this.#call((c) => proj.deleteProject(c.projects, projectId));
   }
 
-  async recoverProjects(): Promise<void> {
-    this.#assertOpen();
-    await this.#pool.recoverProjects();
+  getProjectMemory(projectId: string): P.ProjectMemoryResponse {
+    return this.#sync((c) => proj.getProjectMemory(c.projects, projectId));
+  }
+
+  putProjectMemory(projectId: string, input: P.PutProjectMemoryRequest): P.ProjectMemoryResponse {
+    return this.#sync((c) => proj.putProjectMemory(c.projects, projectId, input));
+  }
+
+  getProjectUsage(projectId: string): Promise<P.ProjectUsageResponse> {
+    return this.#call((c) => proj.getProjectUsage(c.projects, projectId));
+  }
+
+  recoverProjects(): Promise<void> {
+    return this.#call((c) => c.pool.recoverProjects());
   }
 
   isProjectOpen(projectId: string): boolean {
-    return this.#pool.isProjectOpen(projectId);
+    return this.#ctx.pool.isProjectOpen(projectId);
   }
 
   acquireStream(projectId: string): () => void {
-    return this.#pool.acquireStream(projectId);
+    return this.#ctx.pool.acquireStream(projectId);
   }
 
-  async hibernateIdleProjects(now = Date.now()): Promise<string[]> {
-    return this.#pool.hibernateIdleProjects(now);
+  hibernateIdleProjects(now = Date.now()): Promise<string[]> {
+    return this.#ctx.pool.hibernateIdleProjects(now);
   }
 
-  async openProject(projectId: string): Promise<ProjectHandle> {
-    this.#assertOpen();
-    return this.#pool.openProject(projectId);
+  openProject(projectId: string): Promise<ProjectHandle> {
+    return this.#call((c) => c.pool.openProject(projectId));
   }
 
-  async sendMessage(
+  sendMessage(
     projectId: string,
-    ref: ConversationRef,
-    input: SendMessageRequest,
-  ): Promise<SendMessageResponse> {
-    this.#assertOpen();
-    const expandedText = await expandMessageSkills(this.#skillsDeps(), projectId, input.text);
-    const options = input.whenBusy === undefined ? undefined : { whenBusy: input.whenBusy };
-    return this.#inProject(projectId, async (handle) =>
-      submissionResponse(await handle.send(conversationTarget(ref), expandedText, options)),
-    );
+    ref: P.ConversationRef,
+    input: P.SendMessageRequest,
+  ): Promise<P.SendMessageResponse> {
+    return this.#call((c) => proj.sendMessage(c.projects, projectId, ref, input));
   }
 
-  async listEntries(
+  listEntries(
     projectId: string,
-    ref: ConversationRef,
-    params: ListEntriesParams = {},
-  ): Promise<ListEntriesResponse> {
-    const limit = params.limit ?? 50;
-    if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
-      throw new EngineError(400, "invalid_query", "limit must be an integer between 1 and 500");
-    }
-    const cursor = params.cursor === undefined ? undefined : decodeCursor(params.cursor);
-    const query: Omit<EntryQuery, "conversationId"> = {
-      ...(params.order === undefined ? {} : { order: params.order }),
-      ...(params.minEntryId === undefined ? {} : { minEntryId: params.minEntryId as EntryId }),
-      ...(params.maxEntryId === undefined ? {} : { maxEntryId: params.maxEntryId as EntryId }),
-    };
-    return this.#inProject(projectId, async (handle) => {
-      const page = await handle.listEntries(
-        conversationTarget(ref),
-        query,
-        limit,
-        cursor,
-        BACKGROUND_CONTEXT,
-      );
-      return {
-        entries: page.items as unknown as EntryRecordPayload[],
-        ...(page.next === undefined ? {} : { nextCursor: encodeCursor(page.next) }),
-      };
-    });
+    ref: P.ConversationRef,
+    params: proj.ListEntriesParams = {},
+  ): Promise<P.ListEntriesResponse> {
+    return this.#call((c) => proj.listEntries(c.projects, projectId, ref, params));
   }
 
-  async interrupt(projectId: string, ref: ConversationRef): Promise<OkResponse> {
-    return this.#inProject(projectId, async (handle) => {
-      await handle.interrupt(conversationTarget(ref), BACKGROUND_CONTEXT);
-      return { ok: true };
-    });
+  interrupt(projectId: string, ref: P.ConversationRef): Promise<P.OkResponse> {
+    return this.#call((c) => proj.interrupt(c.projects, projectId, ref));
   }
 
-  async retry(projectId: string, ref: ConversationRef): Promise<SendMessageResponse> {
-    return this.#inProject(projectId, async (handle) =>
-      submissionResponse(await handle.retry(conversationTarget(ref), BACKGROUND_CONTEXT)),
-    );
+  retry(projectId: string, ref: P.ConversationRef): Promise<P.SendMessageResponse> {
+    return this.#call((c) => proj.retry(c.projects, projectId, ref));
   }
 
-  async answerQuestion(
+  answerQuestion(
     projectId: string,
-    questionId: QuestionId,
-    input: AnswerQuestionRequest,
-  ): Promise<AnswerQuestionResponse> {
-    return this.#inProject(projectId, async (handle) => ({
-      question: await handle.answerQuestion(
-        questionId as CoreQuestionId,
-        input.answers,
-        BACKGROUND_CONTEXT,
-      ),
-    }));
+    questionId: P.QuestionId,
+    input: P.AnswerQuestionRequest,
+  ): Promise<P.AnswerQuestionResponse> {
+    return this.#call((c) => proj.answerQuestion(c.projects, projectId, questionId, input));
   }
 
-  async listWorkerTasks(
+  listWorkerTasks(
     projectId: string,
-    workerId: WorkerId,
+    workerId: P.WorkerId,
     options?: CoreListWorkerTasksOptions,
-  ): Promise<ListWorkerTasksResponse> {
-    if (
-      options?.limit !== undefined &&
-      (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100)
-    ) {
-      throw new EngineError(400, "invalid_query", "limit must be an integer between 1 and 100");
-    }
-    return this.#inProject(projectId, async (handle) => ({
-      tasks: [
-        ...(await handle.listWorkerTasks(workerId as CoreWorkerId, options, BACKGROUND_CONTEXT)),
-      ],
-    }));
+  ): Promise<P.ListWorkerTasksResponse> {
+    return this.#call((c) => proj.listWorkerTasks(c.projects, projectId, workerId, options));
   }
 
-  async readWorkerTask(
+  readWorkerTask(
     projectId: string,
-    workerId: WorkerId,
+    workerId: P.WorkerId,
     taskId: string,
     options?: OutputReadOptions,
-  ): Promise<ReadWorkerTaskResponse> {
-    if (options !== undefined) {
-      try {
-        validateOutputReadOptions(options);
-      } catch (error) {
-        throw new EngineError(
-          400,
-          "invalid_query",
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-    }
-    return this.#inProject(projectId, (handle) =>
-      handle.readWorkerTaskOutput(workerId as CoreWorkerId, taskId, options, BACKGROUND_CONTEXT),
-    );
+  ): Promise<P.ReadWorkerTaskResponse> {
+    return this.#call((c) => proj.readWorkerTask(c.projects, projectId, workerId, taskId, options));
   }
 
-  async subscribeWorkerTaskStream(
+  subscribeWorkerTaskStream(
     projectId: string,
-    workerId: WorkerId,
+    workerId: P.WorkerId,
     taskId: string,
     options?: OutputReadOptions,
   ): Promise<WorkerTaskStream> {
-    if (options !== undefined) {
-      try {
-        validateOutputReadOptions(options);
-      } catch (error) {
-        throw new EngineError(
-          400,
-          "invalid_query",
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-    }
-
-    return this.#inProject(projectId, (handle) =>
-      subscribeWorkerTaskStream(handle, workerId, taskId, options),
+    return this.#call((c) =>
+      proj.subscribeTaskStream(c.projects, projectId, workerId, taskId, options),
     );
   }
 
-  async killWorkerTask(
+  killWorkerTask(
     projectId: string,
-    workerId: WorkerId,
+    workerId: P.WorkerId,
     taskId: string,
-  ): Promise<KillWorkerTaskResponse> {
-    return this.#inProject(projectId, async (handle) => ({
-      task: await handle.killWorkerTask(workerId as CoreWorkerId, taskId, BACKGROUND_CONTEXT),
-    }));
+  ): Promise<P.KillWorkerTaskResponse> {
+    return this.#call((c) => proj.killWorkerTask(c.projects, projectId, workerId, taskId));
   }
 
-  async getBoard(projectId: string): Promise<BoardView> {
-    const handle = await this.openProject(projectId);
-    return handle.board(BACKGROUND_CONTEXT);
+  getBoard(projectId: string): Promise<BoardView> {
+    return this.#call((c) => proj.getBoard(c.projects, projectId));
   }
 
-  async watchConversation(
+  watchConversation(
     projectId: string,
-    ref: ConversationRef,
+    ref: P.ConversationRef,
     context: Context = BACKGROUND_CONTEXT,
     window?: ConversationWindow,
   ): Promise<ConversationWatch> {
-    return this.#inProject(projectId, (handle) =>
-      handle.watchConversation(conversationTarget(ref), context, window),
-    );
+    return this.#call((c) => proj.watchConversation(c.projects, projectId, ref, context, window));
   }
 
   close(): Promise<void> {
@@ -1082,154 +510,23 @@ export class Engine {
   }
 
   #assertOpen(): void {
-    if (this.#closed) {
+    if (this.#state.closed) {
       throw new EngineError(503, "engine_closed", "Engine is closing");
     }
   }
 
-  #providerDeps(): ProviderDeps {
-    return {
-      models: () => this.models(),
-      ...(this.#options.models === undefined
-        ? {
-            runtime: () => this.modelRuntime,
-            modelsFile: () => join(this.layout.root, MODELS_FILE),
-          }
-        : {}),
-      ...(this.#options.fetch === undefined ? {} : { fetch: this.#options.fetch }),
-      credentials: () => {
-        if (this.#options.credentials !== undefined) return this.#options.credentials;
-        if (this.#options.models === undefined) return this.modelRuntime.credentials;
-        return undefined;
-      },
-    };
+  async #call<T>(fn: (ctx: EngineContext) => Promise<T>): Promise<T> {
+    this.#assertOpen();
+    return fn(this.#ctx);
   }
 
-  #skillsDeps(): SkillsDeps {
-    return {
-      store: this.store,
-      ...(this.#options.userHomeDir === undefined
-        ? {}
-        : { userHomeDir: this.#options.userHomeDir }),
-      requireProject: (projectId) => this.getProject(projectId),
-    };
-  }
-
-  #requireGlobalHttpMcpServer(serverName: string, requireEnabled: boolean): McpHttpServerConfig {
-    const servers = getMcpServersRecord(this.store);
-    if (!Object.hasOwn(servers, serverName)) {
-      throw new EngineError(404, "mcp_server_not_found", `Unknown MCP server "${serverName}"`);
-    }
-    const config = validateMcpServerEntry(serverName, servers[serverName]);
-    if (typeof config === "string") {
-      throw new EngineError(400, "invalid_mcp_config", config);
-    }
-    if (!("url" in config)) {
-      throw new EngineError(
-        400,
-        "mcp_oauth_unsupported",
-        `MCP server "${serverName}" does not use HTTP transport`,
-      );
-    }
-    if (requireEnabled && config.enabled === false) {
-      throw new EngineError(409, "mcp_server_disabled", `MCP server "${serverName}" is disabled`);
-    }
-    return config;
-  }
-
-  #requireEffectiveProjectHttpMcpServer(
-    projectId: string,
-    serverName: string,
-    requireEnabled: boolean,
-  ): McpHttpServerConfig {
-    this.getProject(projectId);
-    const globalServers = getMcpServersRecord(this.store);
-    const projectServers = this.store.getProjectMcpServers(projectId) ?? {};
-    const { entries } = resolveEffectiveProjectMcp(globalServers, projectServers, false);
-    const entry = entries.find((item) => item.name === serverName);
-    if (entry === undefined) {
-      throw new EngineError(404, "mcp_server_not_found", `Unknown MCP server "${serverName}"`);
-    }
-    if (!("url" in entry.config)) {
-      throw new EngineError(
-        400,
-        "mcp_oauth_unsupported",
-        `MCP server "${serverName}" does not use HTTP transport`,
-      );
-    }
-    if (requireEnabled && entry.config.enabled === false) {
-      throw new EngineError(409, "mcp_server_disabled", `MCP server "${serverName}" is disabled`);
-    }
-    return entry.config;
-  }
-
-  async #reconnectAfterProjectOAuth(
-    projectId: string,
-    serverName: string,
-    serverUrl: string,
-    reconnectProject = true,
-  ): Promise<void> {
-    const storeKey = mcpOAuthStoreKey(serverName, serverUrl);
-    if (reconnectProject) {
-      await this.#pool.reconnectServerOnProject(projectId, serverName);
-    }
-    const globalServers = getMcpServersRecord(this.store);
-    const globalRaw = Object.hasOwn(globalServers, serverName)
-      ? globalServers[serverName]
-      : undefined;
-    const globalConfig =
-      globalRaw === undefined ? undefined : validateMcpServerEntry(serverName, globalRaw);
-    const sharesGlobal =
-      globalConfig !== undefined &&
-      typeof globalConfig !== "string" &&
-      "url" in globalConfig &&
-      globalConfig.enabled !== false &&
-      mcpOAuthStoreKey(serverName, globalConfig.url) === storeKey;
-
-    if (sharesGlobal) {
-      await this.mcpHub.reconnect(serverName).catch(() => undefined);
-    }
-    await this.#pool.reconnectServerOnProjectHubs(serverName, storeKey, projectId);
-    if (sharesGlobal) {
-      await this.#pool.syncMcpExtensions();
-    }
-  }
-
-  #mcpDeps(): McpDeps {
-    return {
-      layout: this.layout,
-      store: this.store,
-      mcpHub: this.mcpHub,
-      oauthStore: this.oauthStore,
-      cancelOAuthForServers: (serverNames, scopeKey) =>
-        this.#mcpOAuthSessions.cancelAllForServers(serverNames, scopeKey),
-      globalLogPath: this.#mcpLogPath,
-      requireProject: (projectId) => this.getProject(projectId),
-      syncProjects: () => this.#pool.reloadGlobalMcpChanges(),
-      syncExtensions: () => this.#pool.syncMcpExtensions(),
-      getProjectMcpHub: (projectId) => this.#pool.getProjectMcpHub(projectId),
-      openProjectMcpHub: (projectId) => this.#pool.openProjectMcpHub(projectId),
-      syncProjectMcp: (projectId) => this.#pool.syncProjectMcp(projectId),
-    };
-  }
-
-  async #inProject<T>(projectId: string, run: (handle: ProjectHandle) => Promise<T>): Promise<T> {
-    const handle = await this.openProject(projectId);
-    try {
-      return await run(handle);
-    } catch (error) {
-      throw toEngineError(error);
-    } finally {
-      this.#pool.touch(projectId);
-    }
+  #sync<T>(fn: (ctx: EngineContext) => T): T {
+    this.#assertOpen();
+    return fn(this.#ctx);
   }
 
   async #dispose(): Promise<void> {
-    this.#closed = true;
-    await this.#loginSessions.close().catch(() => undefined);
-    await this.#mcpOAuthSessions.close().catch(() => undefined);
-    await this.#pool.closeAll();
-    await this.mcpHub.close().catch(() => undefined);
-    this.store.close();
+    this.#state.closed = true;
+    await disposeEngineContext(this.#ctx);
   }
 }

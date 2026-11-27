@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { CreateWebSessionRequestSchema, SchemaValidationError } from "@eevee/protocol";
 import { verifyBearerToken } from "./auth.ts";
 import { type Engine, EngineError } from "./engine.ts";
-import { toEngineError } from "./engine-providers.ts";
+import { toEngineError } from "./engine-error.ts";
 import {
   matchesPattern,
   parsePathParams,

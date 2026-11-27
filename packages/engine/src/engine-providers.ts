@@ -2,15 +2,15 @@ import {
   type CredentialStore,
   getSupportedThinkingLevels,
   type Models,
+  type Provider,
 } from "@earendil-works/pi-ai";
-import { ConversationBusy, type Cursor, StorageRequestError } from "@earendil-works/pi-durable";
-import { isBuiltinProviderId, type ModelRuntime, ModelsConfigError } from "@eevee/agent/models";
-import { ProjectError, type ProjectErrorCode } from "@eevee/core";
+import { isBuiltinProviderId, type ModelRuntime, type ModelsConfig } from "@eevee/agent/models";
 import type {
   ListModelsResponse,
   ListProvidersResponse,
   ModelInfo,
   OkResponse,
+  ProviderSummary,
   RefreshModelsRequest,
   RefreshModelsResponse,
   SetApiKeyRequest,
@@ -25,54 +25,67 @@ export type ProviderDeps = {
   readonly fetch?: typeof globalThis.fetch;
 };
 
+export type ProviderSummaryContext = {
+  readonly models?: Models;
+  readonly runtime?: ModelRuntime;
+  readonly config?: ModelsConfig;
+};
+
+export async function summarizeProvider(
+  deps: ProviderDeps,
+  provider: Provider,
+  context?: ProviderSummaryContext,
+): Promise<ProviderSummary> {
+  const models = context?.models ?? deps.models();
+  const runtime = context?.runtime ?? deps.runtime?.();
+  const config = context?.config ?? runtime?.config();
+  const check = await models.checkAuth(provider.id);
+  const auth = runtime ? await runtime.getAuthSummary(provider.id) : undefined;
+  const providerConfig = config?.providers[provider.id];
+  let modelCount = 0;
+  try {
+    modelCount = provider.getModels().length;
+  } catch {
+    modelCount = 0;
+  }
+  return {
+    id: provider.id,
+    name: provider.name,
+    ...(provider.baseUrl === undefined ? {} : { baseUrl: provider.baseUrl }),
+    authMethods: {
+      apiKey: provider.auth.apiKey !== undefined,
+      apiKeyLogin: provider.auth.apiKey?.login !== undefined,
+      oauth: provider.auth.oauth !== undefined,
+      ...(provider.auth.oauth?.name === undefined ? {} : { oauthName: provider.auth.oauth.name }),
+      ...(provider.auth.oauth?.loginLabel === undefined
+        ? {}
+        : { oauthLabel: provider.auth.oauth.loginLabel }),
+    },
+    configured: auth?.configured ?? check !== undefined,
+    ...((auth?.type ?? check?.type) === undefined ? {} : { authType: auth?.type ?? check?.type }),
+    ...((auth?.source ?? check?.source) === undefined
+      ? {}
+      : { authSource: auth?.source ?? check?.source }),
+    modelCount,
+    kind: isBuiltinProviderId(provider.id) ? ("builtin" as const) : ("custom" as const),
+    ...(providerConfig?.api === undefined ? {} : { api: providerConfig.api }),
+    hasConfigOverride: providerConfig !== undefined,
+    customModelCount: providerConfig?.models?.length ?? 0,
+    overrideCount: Object.keys(providerConfig?.modelOverrides ?? {}).length,
+    ...(auth?.preview === undefined ? {} : { authPreview: auth.preview }),
+    ...(auth?.accountLabel === undefined ? {} : { authAccountLabel: auth.accountLabel }),
+    ...(auth?.expiresAt === undefined ? {} : { authExpiresAt: auth.expiresAt }),
+  };
+}
+
 export async function listProviders(deps: ProviderDeps): Promise<ListProvidersResponse> {
   const models = deps.models();
   const runtime = deps.runtime?.();
   const config = runtime?.config();
   const providers = await Promise.all(
-    models.getProviders().map(async (provider) => {
-      const check = await models.checkAuth(provider.id);
-      const auth = runtime ? await runtime.getAuthSummary(provider.id) : undefined;
-      const providerConfig = config?.providers[provider.id];
-      let modelCount = 0;
-      try {
-        modelCount = provider.getModels().length;
-      } catch {
-        modelCount = 0;
-      }
-      return {
-        id: provider.id,
-        name: provider.name,
-        ...(provider.baseUrl === undefined ? {} : { baseUrl: provider.baseUrl }),
-        authMethods: {
-          apiKey: provider.auth.apiKey !== undefined,
-          apiKeyLogin: provider.auth.apiKey?.login !== undefined,
-          oauth: provider.auth.oauth !== undefined,
-          ...(provider.auth.oauth?.name === undefined
-            ? {}
-            : { oauthName: provider.auth.oauth.name }),
-          ...(provider.auth.oauth?.loginLabel === undefined
-            ? {}
-            : { oauthLabel: provider.auth.oauth.loginLabel }),
-        },
-        configured: auth?.configured ?? check !== undefined,
-        ...((auth?.type ?? check?.type) === undefined
-          ? {}
-          : { authType: auth?.type ?? check?.type }),
-        ...((auth?.source ?? check?.source) === undefined
-          ? {}
-          : { authSource: auth?.source ?? check?.source }),
-        modelCount,
-        kind: isBuiltinProviderId(provider.id) ? ("builtin" as const) : ("custom" as const),
-        ...(providerConfig?.api === undefined ? {} : { api: providerConfig.api }),
-        hasConfigOverride: providerConfig !== undefined,
-        customModelCount: providerConfig?.models?.length ?? 0,
-        overrideCount: Object.keys(providerConfig?.modelOverrides ?? {}).length,
-        ...(auth?.preview === undefined ? {} : { authPreview: auth.preview }),
-        ...(auth?.accountLabel === undefined ? {} : { authAccountLabel: auth.accountLabel }),
-        ...(auth?.expiresAt === undefined ? {} : { authExpiresAt: auth.expiresAt }),
-      };
-    }),
+    models
+      .getProviders()
+      .map((provider) => summarizeProvider(deps, provider, { models, runtime, config })),
   );
   return { providers, diagnostics: [...(runtime?.configDiagnostics() ?? [])] };
 }
@@ -187,63 +200,4 @@ export async function refreshModels(
     errors[providerId] = error.message;
   }
   return { refreshed: true, errors };
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
-export function encodeCursor(cursor: Cursor): string {
-  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
-}
-
-export function decodeCursor(raw: string): Cursor {
-  if (raw.length === 0 || !/^[A-Za-z0-9_-]+$/.test(raw)) {
-    throw new EngineError(400, "invalid_query", "Invalid pagination cursor");
-  }
-  try {
-    const json = Buffer.from(raw, "base64url").toString("utf8");
-    const parsed: unknown = JSON.parse(json);
-    if (!isPlainObject(parsed)) {
-      throw new EngineError(400, "invalid_query", "Invalid pagination cursor");
-    }
-    return parsed as Cursor;
-  } catch (error) {
-    if (error instanceof EngineError) throw error;
-    throw new EngineError(400, "invalid_query", "Invalid pagination cursor");
-  }
-}
-
-const PROJECT_ERROR_HTTP: Record<ProjectErrorCode, readonly [status: number, code: string]> = {
-  worker_not_found: [404, "worker_not_found"],
-  worker_closed: [409, "worker_closed"],
-  worker_queued: [409, "worker_queued"],
-  question_not_found: [404, "question_not_found"],
-  question_closed: [409, "question_closed"],
-  invalid_answer: [400, "invalid_request"],
-  task_not_found: [404, "task_not_found"],
-  task_ambiguous: [400, "task_ambiguous"],
-  task_not_running: [409, "task_not_running"],
-};
-
-export function toEngineError(error: unknown): unknown {
-  if (error instanceof ModelsConfigError) {
-    return new EngineError(400, "invalid_request", error.message);
-  }
-  if (error instanceof ProjectError) {
-    const [status, code] = PROJECT_ERROR_HTTP[error.code];
-    return new EngineError(status, code, error.message);
-  }
-  if (error instanceof ConversationBusy) {
-    return new EngineError(409, "conversation_busy", error.message);
-  }
-  if (error instanceof StorageRequestError) {
-    return new EngineError(400, "invalid_query", error.message);
-  }
-  if (error instanceof RangeError) {
-    return new EngineError(400, "invalid_request", error.message);
-  }
-  return error;
 }

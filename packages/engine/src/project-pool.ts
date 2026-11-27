@@ -25,6 +25,7 @@ import {
 } from "./engine-config.ts";
 import { EngineError } from "./engine-error.ts";
 import { hasProjectMcpOverrides, resolveEffectiveProjectMcpForStore } from "./engine-mcp.ts";
+import { KeyedSerialQueue } from "./serial-queue.ts";
 import type { EngineStore } from "./store.ts";
 
 export type OpenProjectStorage = (
@@ -59,7 +60,7 @@ export class ProjectPool {
   readonly #projects = new Map<string, OpenProjectEntry>();
   readonly #opening = new Map<string, Promise<ProjectHandle>>();
   readonly #closingProjects = new Map<string, Promise<void>>();
-  readonly #projectMcpChains = new Map<string, Promise<void>>();
+  readonly #mcpQueue = new KeyedSerialQueue();
   readonly #deletingProjects = new Set<string>();
   readonly #streamCounts = new Map<string, number>();
   #hibernateTimer: ReturnType<typeof setInterval> | undefined;
@@ -236,11 +237,11 @@ export class ProjectPool {
   }
 
   async syncProjectMcp(projectId: string): Promise<void> {
-    await this.#enqueueProjectMcp(projectId, () => this.#syncProjectMcpNow(projectId));
+    await this.#mcpQueue.enqueue(projectId, () => this.#syncProjectMcpNow(projectId));
   }
 
   async updateProjectMcpRoots(projectId: string, workspaces: readonly string[]): Promise<void> {
-    await this.#enqueueProjectMcp(projectId, async () => {
+    await this.#mcpQueue.enqueue(projectId, async () => {
       if (this.#closed || this.#deletingProjects.has(projectId)) return;
       const entry = this.#projects.get(projectId);
       if (entry?.projectMcpHub !== undefined) {
@@ -250,7 +251,7 @@ export class ProjectPool {
   }
 
   async reconnectServerOnProject(projectId: string, serverName: string): Promise<void> {
-    await this.#enqueueProjectMcp(projectId, async () => {
+    await this.#mcpQueue.enqueue(projectId, async () => {
       if (this.#closed || this.#deletingProjects.has(projectId)) return;
       const opening = this.#opening.get(projectId);
       if (opening !== undefined) {
@@ -275,7 +276,7 @@ export class ProjectPool {
     );
     await Promise.all(
       projectIds.map((projectId) =>
-        this.#enqueueProjectMcp(projectId, async () => {
+        this.#mcpQueue.enqueue(projectId, async () => {
           if (this.#closed || this.#deletingProjects.has(projectId)) return;
           const opening = this.#opening.get(projectId);
           if (opening !== undefined) {
@@ -324,9 +325,7 @@ export class ProjectPool {
     }
     await Promise.allSettled([...this.#opening.values()]);
     await Promise.allSettled([...this.#closingProjects.values()]);
-    while (this.#projectMcpChains.size > 0) {
-      await Promise.allSettled([...this.#projectMcpChains.values()]);
-    }
+    await this.#mcpQueue.drainAll();
     const entries = [...this.#projects.entries()];
     this.#projects.clear();
     await Promise.allSettled(
@@ -339,22 +338,6 @@ export class ProjectPool {
         }
       }),
     );
-  }
-
-  #enqueueProjectMcp<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.#projectMcpChains.get(projectId) ?? Promise.resolve();
-    const run = prev.then(() => fn());
-    const tail = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    const cleaned = tail.finally(() => {
-      if (this.#projectMcpChains.get(projectId) === cleaned) {
-        this.#projectMcpChains.delete(projectId);
-      }
-    });
-    this.#projectMcpChains.set(projectId, cleaned);
-    return cleaned.then(() => run);
   }
 
   async #syncProjectMcpNow(projectId: string): Promise<void> {
@@ -459,17 +442,13 @@ export class ProjectPool {
     if (entry === undefined) {
       const existingClosing = this.#closingProjects.get(projectId);
       if (existingClosing !== undefined) await existingClosing;
-      while (this.#projectMcpChains.has(projectId)) {
-        await this.#projectMcpChains.get(projectId);
-      }
+      await this.#mcpQueue.drain(projectId);
       return;
     }
     this.#projects.delete(projectId);
     entry.observation.detach();
     const closing = (async () => {
-      while (this.#projectMcpChains.has(projectId)) {
-        await this.#projectMcpChains.get(projectId);
-      }
+      await this.#mcpQueue.drain(projectId);
       try {
         await entry.handle.close();
       } finally {

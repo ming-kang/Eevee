@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
-import type { ConversationWindow } from "@earendil-works/pi-durable";
+import type { ConversationWatch, ConversationWindow } from "@earendil-works/pi-durable";
 import type { ConversationRef, McpOAuthEvent, WorkerId } from "@eevee/protocol";
 import type { Engine, LoginSseFrame, WorkerTaskStream } from "./engine.ts";
 import type { StreamWorkerTaskQuery } from "./http-io.ts";
@@ -55,6 +55,18 @@ export type SseStreamHandlers = {
   ) => void;
 };
 
+type SseFrame = {
+  readonly event: string;
+  readonly data: unknown;
+  readonly id?: string | number;
+  readonly terminal?: boolean;
+};
+
+type SseOpenOptions = {
+  readonly onServerClose?: () => SseFrame | undefined;
+  readonly onCleanup?: () => Promise<void> | void;
+};
+
 function writeSseEvent(
   res: ServerResponse,
   event: string,
@@ -77,7 +89,7 @@ function writeSseComment(res: ServerResponse, comment: string): void {
   res.write(`: ${comment}\n\n`);
 }
 
-function openSseStream(res: ServerResponse): ReturnType<typeof setInterval> {
+function openSseHeaders(res: ServerResponse): ReturnType<typeof setInterval> {
   res.setTimeout(0);
   res.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
@@ -93,8 +105,171 @@ function openSseStream(res: ServerResponse): ReturnType<typeof setInterval> {
   return keepalive;
 }
 
+class SseStream {
+  readonly #req: IncomingMessage;
+  readonly #res: ServerResponse;
+  readonly #isClosing: () => boolean;
+  readonly #trackCloser: SseStreamDeps["trackCloser"];
+  readonly #buffered: SseFrame[] = [];
+  #opened = false;
+  #ready = false;
+  #ended = false;
+  #keepalive: ReturnType<typeof setInterval> | undefined;
+  #untrackCloser: () => void = () => {};
+  #onServerClose: (() => SseFrame | undefined) | undefined;
+  #onCleanup: (() => Promise<void> | void) | undefined;
+
+  constructor(
+    req: IncomingMessage,
+    res: ServerResponse,
+    deps: Pick<SseStreamDeps, "isClosing" | "trackCloser">,
+  ) {
+    this.#req = req;
+    this.#res = res;
+    this.#isClosing = deps.isClosing;
+    this.#trackCloser = deps.trackCloser;
+  }
+
+  get opened(): boolean {
+    return this.#opened;
+  }
+
+  get ended(): boolean {
+    return this.#ended;
+  }
+
+  open(options: SseOpenOptions = {}): boolean {
+    if (this.#ended || this.#isClosing() || this.#res.destroyed || this.#req.socket.destroyed) {
+      this.#buffered.length = 0;
+      return false;
+    }
+    this.#opened = true;
+    this.#onServerClose = options.onServerClose;
+    this.#onCleanup = options.onCleanup;
+    this.#keepalive = openSseHeaders(this.#res);
+    this.#untrackCloser = this.#trackCloser(async () => {
+      const frame = this.#ended ? undefined : this.#onServerClose?.();
+      await this.finish(frame);
+    });
+    this.#res.on("close", () => {
+      void this.finish();
+    });
+    return true;
+  }
+
+  flush(): void {
+    if (!this.#opened || this.#ended) return;
+    this.#ready = true;
+    for (const frame of this.#buffered) {
+      if (this.#ended) break;
+      this.#emit(frame);
+    }
+    this.#buffered.length = 0;
+  }
+
+  send(event: string, data: unknown, id?: string | number, terminal = false): void {
+    if (this.#ended) return;
+    const frame: SseFrame = {
+      event,
+      data,
+      ...(id === undefined ? {} : { id }),
+      ...(terminal ? { terminal: true } : {}),
+    };
+    if (!this.#ready) {
+      this.#buffered.push(frame);
+      return;
+    }
+    this.#emit(frame);
+  }
+
+  async finish(terminalFrame?: SseFrame): Promise<void> {
+    if (this.#ended) return;
+    this.#ended = true;
+    this.#untrackCloser();
+    if (this.#keepalive !== undefined) {
+      clearInterval(this.#keepalive);
+      this.#keepalive = undefined;
+    }
+    this.#buffered.length = 0;
+    if (terminalFrame !== undefined) {
+      writeSseEvent(this.#res, terminalFrame.event, terminalFrame.data, terminalFrame.id);
+    }
+    if (!this.#res.writableEnded && !this.#res.destroyed) {
+      this.#res.end();
+    }
+    await this.#onCleanup?.();
+  }
+
+  #emit(frame: SseFrame): void {
+    writeSseEvent(this.#res, frame.event, frame.data, frame.id);
+    if (frame.terminal) {
+      void this.finish();
+    }
+  }
+}
+
+const MCP_OAUTH_SHUTDOWN_FRAME: SseFrame = {
+  event: "error",
+  data: { type: "error", code: "engine_closed", message: "Engine is closing" },
+};
+
+function toMcpOAuthSseFrame(event: McpOAuthEvent): SseFrame {
+  return {
+    event: event.type,
+    data: event,
+    terminal: event.type === "complete" || event.type === "error",
+  };
+}
+
+function conversationEndFrame(
+  watchEnd: Awaited<ConversationWatch["closed"]>,
+  closing: boolean,
+): SseFrame {
+  if (closing) return { event: "end", data: { reason: "closed" } };
+  switch (watchEnd.kind) {
+    case "ended":
+      return { event: "end", data: { reason: "ended" } };
+    case "aborted":
+    case "stopped":
+      return { event: "end", data: { reason: "aborted" } };
+    case "failed":
+    case "listener_error": {
+      const message =
+        watchEnd.error instanceof Error ? watchEnd.error.message : String(watchEnd.error);
+      return {
+        event: "end",
+        data: { reason: "failed", ...(message ? { message } : {}) },
+      };
+    }
+  }
+}
+
 export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers {
-  const { engine, isClosing, trackCloser } = deps;
+  const { engine, isClosing } = deps;
+
+  function streamBufferedSession<TEvent>(
+    req: IncomingMessage,
+    res: ServerResponse,
+    subscribe: (onEvent: (event: TEvent) => void) => () => void,
+    toFrame: (event: TEvent) => SseFrame,
+    shutdownFrame: SseFrame,
+  ): void {
+    const stream = new SseStream(req, res, deps);
+    const unsubscribe = subscribe((event) => {
+      const frame = toFrame(event);
+      stream.send(frame.event, frame.data, frame.id, frame.terminal);
+    });
+    if (
+      !stream.open({
+        onServerClose: () => shutdownFrame,
+        onCleanup: unsubscribe,
+      })
+    ) {
+      unsubscribe();
+      return;
+    }
+    stream.flush();
+  }
 
   function handleLoginStream(
     req: IncomingMessage,
@@ -102,62 +277,17 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     providerId: string,
     sessionId: string,
   ): void {
-    const buffered: LoginSseFrame[] = [];
-    let streamReady = false;
-    let ended = false;
-    let unsubscribe = () => {};
-    let keepalive: ReturnType<typeof setInterval> | undefined;
-    let closeForServer = async () => {};
-    let untrackCloser: () => void = () => {};
-
-    const finish = async (): Promise<void> => {
-      if (ended) return;
-      ended = true;
-      untrackCloser();
-      if (keepalive !== undefined) clearInterval(keepalive);
-      unsubscribe();
-      if (!res.writableEnded && !res.destroyed) res.end();
-    };
-
-    const emitFrame = (frame: LoginSseFrame): void => {
-      if (ended) return;
-      writeSseEvent(res, frame.event, frame.data);
-      if (frame.event === "complete" || frame.event === "error") {
-        void finish();
-      }
-    };
-
-    unsubscribe = engine.subscribeLoginSession(providerId, sessionId, (frame) => {
-      if (!streamReady) {
-        buffered.push(frame);
-        return;
-      }
-      emitFrame(frame);
-    });
-
-    if (isClosing() || res.destroyed || req.socket.destroyed) {
-      unsubscribe();
-      return;
-    }
-
-    keepalive = openSseStream(res);
-
-    closeForServer = async () => {
-      if (!ended) {
-        writeSseEvent(res, "error", { code: "engine_closed", message: "Engine is closing" });
-      }
-      await finish();
-    };
-    untrackCloser = trackCloser(closeForServer);
-
-    res.on("close", () => {
-      void finish();
-    });
-
-    streamReady = true;
-    for (const frame of buffered) {
-      emitFrame(frame);
-    }
+    streamBufferedSession<LoginSseFrame>(
+      req,
+      res,
+      (onFrame) => engine.subscribeLoginSession(providerId, sessionId, onFrame),
+      (frame) => ({
+        event: frame.event,
+        data: frame.data,
+        terminal: frame.event === "complete" || frame.event === "error",
+      }),
+      { event: "error", data: { code: "engine_closed", message: "Engine is closing" } },
+    );
   }
 
   async function handleBoardStream(
@@ -166,52 +296,40 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     projectId: string,
   ): Promise<void> {
     const releaseStream = engine.acquireStream(projectId);
+    let unsubscribe = () => {};
+    const stream = new SseStream(req, res, deps);
     try {
       const handle = await engine.openProject(projectId);
       const initial = await handle.board(BACKGROUND_CONTEXT);
-
-      if (isClosing() || res.destroyed || req.socket.destroyed) {
+      if (
+        !stream.open({
+          onServerClose: () => ({ event: "end", data: { reason: "closed" } }),
+          onCleanup: () => {
+            unsubscribe();
+            releaseStream();
+          },
+        })
+      ) {
         releaseStream();
         return;
       }
 
-      const keepalive = openSseStream(res);
-      let ended = false;
       let lastSignature = JSON.stringify(initial);
-      writeSseEvent(res, "board", initial);
+      stream.flush();
+      stream.send("board", initial);
 
-      let unsubscribe = () => {};
-      let untrackCloser: () => void = () => {};
-
-      const finish = async (reason?: "closed"): Promise<void> => {
-        if (ended) return;
-        ended = true;
-        untrackCloser();
-        clearInterval(keepalive);
-        unsubscribe();
-        releaseStream();
-        if (reason !== undefined) {
-          writeSseEvent(res, "end", { reason });
-        }
-        if (!res.writableEnded && !res.destroyed) res.end();
-      };
-
-      const closeForServer = () => finish("closed");
-      untrackCloser = trackCloser(closeForServer);
-
-      res.on("close", () => {
-        void finish();
-      });
-
-      unsubscribe = handle.subscribeBoard((board) => {
-        if (ended) return;
-        const signature = JSON.stringify(board);
-        if (signature === lastSignature) return;
-        lastSignature = signature;
-        writeSseEvent(res, "board", board);
-      });
+      if (!stream.ended) {
+        unsubscribe = handle.subscribeBoard((board) => {
+          if (stream.ended) return;
+          const signature = JSON.stringify(board);
+          if (signature === lastSignature) return;
+          lastSignature = signature;
+          stream.send("board", board);
+        });
+      }
     } catch (error) {
-      releaseStream();
+      if (stream.opened) await stream.finish();
+      else releaseStream();
       throw error;
     }
   }
@@ -224,90 +342,61 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     window: ConversationWindow | undefined,
   ): Promise<void> {
     const releaseStream = engine.acquireStream(projectId);
+    const stream = new SseStream(req, res, deps);
+    let watchClosed = false;
+    const watchAbort = new AbortController();
+    let watch: Awaited<ReturnType<Engine["watchConversation"]>> | undefined;
     try {
-      const watchAbort = new AbortController();
       const watchContext = withAbortSignal(watchAbort.signal, BACKGROUND_CONTEXT);
-      const watch = await engine.watchConversation(projectId, ref, watchContext, window);
+      watch = await engine.watchConversation(projectId, ref, watchContext, window);
 
-      if (isClosing() || res.destroyed || req.socket.destroyed) {
+      if (
+        !stream.open({
+          onServerClose: () => ({ event: "end", data: { reason: "closed" } }),
+          onCleanup: async () => {
+            releaseStream();
+            if (!watchClosed && watch !== undefined) {
+              watchAbort.abort();
+              await watch.stop().catch(() => undefined);
+            }
+          },
+        })
+      ) {
         watchAbort.abort();
         await watch.stop().catch(() => undefined);
         releaseStream();
         return;
       }
 
-      const keepalive = openSseStream(res);
-      let ended = false;
-      let untrackCloser: () => void = () => {};
-
-      const finish = async (
-        endPayload?: {
-          readonly reason: "ended" | "aborted" | "closed" | "failed";
-          readonly message?: string;
-        },
-        stopWatch = true,
-      ): Promise<void> => {
-        if (ended) return;
-        ended = true;
-        untrackCloser();
-        clearInterval(keepalive);
-        releaseStream();
-        if (endPayload !== undefined) {
-          writeSseEvent(res, "end", endPayload);
-        }
-        if (!res.writableEnded && !res.destroyed) res.end();
-        if (stopWatch) {
-          watchAbort.abort();
-          await watch.stop().catch(() => undefined);
-        }
-      };
-
-      const closeForServer = () => finish({ reason: "closed" }, true);
-      untrackCloser = trackCloser(closeForServer);
-
-      res.on("close", () => {
-        void finish(undefined, true);
-      });
-
+      stream.flush();
       const initialId = watch.value.entries.at(-1)?.id ?? watch.value.before;
-      writeSseEvent(res, "snapshot", { view: watch.value }, initialId);
+      stream.send("snapshot", { view: watch.value }, initialId);
 
       watch.start(async (call) => {
-        if (ended) return;
+        if (stream.ended) return;
         if (call.kind === "value") {
           const entryId = call.value.entries.at(-1)?.id ?? call.value.before;
-          writeSseEvent(res, "patch", { ops: call.ops, retired: call.retired }, entryId);
+          stream.send("patch", { ops: call.ops, retired: call.retired }, entryId);
         } else {
           const message = call.error instanceof Error ? call.error.message : String(call.error);
-          writeSseEvent(res, "failed", { message: message || "Conversation watch failed" });
+          stream.send("failed", { message: message || "Conversation watch failed" });
         }
       });
 
       void watch.closed.then((watchEnd) => {
-        if (ended) return;
-        if (isClosing()) {
-          void finish({ reason: "closed" }, false);
-          return;
-        }
-        switch (watchEnd.kind) {
-          case "ended":
-            void finish({ reason: "ended" }, false);
-            break;
-          case "aborted":
-          case "stopped":
-            void finish({ reason: "aborted" }, false);
-            break;
-          case "failed":
-          case "listener_error": {
-            const message =
-              watchEnd.error instanceof Error ? watchEnd.error.message : String(watchEnd.error);
-            void finish({ reason: "failed", ...(message ? { message } : {}) }, false);
-            break;
-          }
+        watchClosed = true;
+        if (!stream.ended) {
+          void stream.finish(conversationEndFrame(watchEnd, isClosing()));
         }
       });
     } catch (error) {
-      releaseStream();
+      if (stream.opened) {
+        await stream.finish();
+      } else {
+        watchAbort.abort();
+        await watch?.stop().catch(() => undefined);
+        releaseStream();
+      }
       throw error;
     }
   }
@@ -321,134 +410,50 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     query: StreamWorkerTaskQuery,
   ): Promise<void> {
     const releaseStream = engine.acquireStream(projectId);
-    let stream: WorkerTaskStream | undefined;
+    let taskStream: WorkerTaskStream | undefined;
+    const stream = new SseStream(req, res, deps);
     try {
-      stream = await engine.subscribeWorkerTaskStream(projectId, workerId, taskId, query);
-
-      if (isClosing() || res.destroyed || req.socket.destroyed) {
-        stream.close();
+      taskStream = await engine.subscribeWorkerTaskStream(projectId, workerId, taskId, query);
+      if (
+        !stream.open({
+          onServerClose: () => ({ event: "end", data: { reason: "closed" } }),
+          onCleanup: () => {
+            taskStream?.close();
+            releaseStream();
+          },
+        })
+      ) {
+        taskStream.close();
         releaseStream();
         return;
       }
 
-      const keepalive = openSseStream(res);
-      let ended = false;
-      let untrackCloser: () => void = () => {};
+      stream.flush();
+      stream.send("snapshot", taskStream.snapshot);
 
-      const finish = async (endPayload?: {
-        readonly reason: "completed" | "terminal" | "failed" | "closed";
-        readonly message?: string;
-      }): Promise<void> => {
-        if (ended) return;
-        ended = true;
-        untrackCloser();
-        clearInterval(keepalive);
-        stream?.close();
-        releaseStream();
-        if (endPayload !== undefined) {
-          writeSseEvent(res, "end", endPayload);
-        }
-        if (!res.writableEnded && !res.destroyed) res.end();
-      };
-
-      const closeForServer = () => finish({ reason: "closed" });
-      untrackCloser = trackCloser(closeForServer);
-
-      res.on("close", () => {
-        void finish();
-      });
-
-      writeSseEvent(res, "snapshot", stream.snapshot);
-
-      if (stream.terminal) {
-        await finish({ reason: "terminal" });
+      if (taskStream.terminal) {
+        await stream.finish({ event: "end", data: { reason: "terminal" } });
         return;
       }
 
-      stream.start({
-        onChunk: (chunk) => {
-          if (ended) return;
-          writeSseEvent(res, "chunk", chunk);
-        },
-        onStatus: (task) => {
-          if (ended) return;
-          writeSseEvent(res, "status", { task });
-        },
+      taskStream.start({
+        onChunk: (chunk) => stream.send("chunk", chunk),
+        onStatus: (task) => stream.send("status", { task }),
         onEnd: (reason, message) => {
-          void finish({ reason, ...(message === undefined ? {} : { message }) });
+          void stream.finish({
+            event: "end",
+            data: { reason, ...(message === undefined ? {} : { message }) },
+          });
         },
       });
     } catch (error) {
-      stream?.close();
-      releaseStream();
+      if (stream.opened) {
+        await stream.finish();
+      } else {
+        taskStream?.close();
+        releaseStream();
+      }
       throw error;
-    }
-  }
-
-  function streamMcpOAuth(
-    req: IncomingMessage,
-    res: ServerResponse,
-    subscribe: (onEvent: (event: McpOAuthEvent) => void) => () => void,
-  ): void {
-    const buffered: McpOAuthEvent[] = [];
-    let streamReady = false;
-    let ended = false;
-    let unsubscribe = () => {};
-    let keepalive: ReturnType<typeof setInterval> | undefined;
-    let closeForServer = async () => {};
-    let untrackCloser: () => void = () => {};
-
-    const finish = async (): Promise<void> => {
-      if (ended) return;
-      ended = true;
-      untrackCloser();
-      if (keepalive !== undefined) clearInterval(keepalive);
-      unsubscribe();
-      if (!res.writableEnded && !res.destroyed) res.end();
-    };
-
-    const emitEvent = (event: McpOAuthEvent): void => {
-      if (ended) return;
-      writeSseEvent(res, event.type, event);
-      if (event.type === "complete" || event.type === "error") {
-        void finish();
-      }
-    };
-
-    unsubscribe = subscribe((event) => {
-      if (!streamReady) {
-        buffered.push(event);
-        return;
-      }
-      emitEvent(event);
-    });
-
-    if (isClosing() || res.destroyed || req.socket.destroyed) {
-      unsubscribe();
-      return;
-    }
-
-    keepalive = openSseStream(res);
-
-    closeForServer = async () => {
-      if (!ended) {
-        writeSseEvent(res, "error", {
-          type: "error",
-          code: "engine_closed",
-          message: "Engine is closing",
-        });
-      }
-      await finish();
-    };
-    untrackCloser = trackCloser(closeForServer);
-
-    res.on("close", () => {
-      void finish();
-    });
-
-    streamReady = true;
-    for (const event of buffered) {
-      emitEvent(event);
     }
   }
 
@@ -458,8 +463,12 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     serverName: string,
     sessionId: string,
   ): void {
-    streamMcpOAuth(req, res, (onEvent) =>
-      engine.subscribeMcpOAuthSession(serverName, sessionId, onEvent),
+    streamBufferedSession<McpOAuthEvent>(
+      req,
+      res,
+      (onEvent) => engine.subscribeMcpOAuthSession(serverName, sessionId, onEvent),
+      toMcpOAuthSseFrame,
+      MCP_OAUTH_SHUTDOWN_FRAME,
     );
   }
 
@@ -470,8 +479,13 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     serverName: string,
     sessionId: string,
   ): void {
-    streamMcpOAuth(req, res, (onEvent) =>
-      engine.subscribeProjectMcpOAuthSession(projectId, serverName, sessionId, onEvent),
+    streamBufferedSession<McpOAuthEvent>(
+      req,
+      res,
+      (onEvent) =>
+        engine.subscribeProjectMcpOAuthSession(projectId, serverName, sessionId, onEvent),
+      toMcpOAuthSseFrame,
+      MCP_OAUTH_SHUTDOWN_FRAME,
     );
   }
 

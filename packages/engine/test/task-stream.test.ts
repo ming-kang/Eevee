@@ -107,6 +107,16 @@ function createStubHandle(options: {
       },
     ],
     listWorkerTasks: async () => [currentTask],
+    resolveWorkerTask: async () => ({
+      worker: {
+        id: workerId,
+        name: "worker",
+        conversationId: options.conversationId,
+        cwd: ".",
+        createdAt: 1,
+      },
+      record: currentTask,
+    }),
     readWorkerTaskOutput: async (
       _workerId: CoreWorkerId,
       _taskId: string,

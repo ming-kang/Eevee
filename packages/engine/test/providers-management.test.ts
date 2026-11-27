@@ -4,9 +4,16 @@ import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { getBuiltinProviderIds, getBuiltinProviderInfo } from "@eevee/agent/models";
+import { createModels, fauxProvider, type Models, type Provider } from "@earendil-works/pi-ai";
+import {
+  getBuiltinProviderIds,
+  getBuiltinProviderInfo,
+  type ModelRuntime,
+} from "@eevee/agent/models";
 import { EeveeApiError, EeveeClient, type ThinkingLevelConfig } from "@eevee/protocol";
 import { Engine } from "../src/engine.ts";
+import type { ProviderDeps } from "../src/engine-providers.ts";
+import { getProviderDetail } from "../src/engine-providers-manage.ts";
 import { startEngineHttpServer } from "../src/http.ts";
 
 function thinkingLevels(overrides: Partial<ThinkingLevelConfig> = {}): ThinkingLevelConfig {
@@ -319,4 +326,73 @@ test("models reload reports malformed models.json diagnostics and recovers on th
     assert.ok(recovered.modelCount > 0);
     assert.equal((await client.getProviderDetail("local")).provider.models[0]?.id, "one");
   });
+});
+
+test("getProviderDetail only inspects the requested provider without scanning unrelated providers", async () => {
+  const targetFaux = fauxProvider({ provider: "target-p", models: [{ id: "m1" }] });
+  const otherFaux = fauxProvider({ provider: "other-p", models: [{ id: "m2" }] });
+  let otherModelsCalls = 0;
+  const wrappedOther: Provider = {
+    ...otherFaux.provider,
+    getModels: () => {
+      otherModelsCalls += 1;
+      return otherFaux.provider.getModels();
+    },
+  };
+
+  const baseModels = createModels();
+  baseModels.setProvider(targetFaux.provider);
+  baseModels.setProvider(wrappedOther);
+
+  let getProvidersCalls = 0;
+  const checkAuthCalls: string[] = [];
+  const getAvailableCalls: (string | undefined)[] = [];
+  const authSummaryCalls: string[] = [];
+
+  const spiedModels: Models = new Proxy(baseModels, {
+    get(target, prop, receiver) {
+      if (prop === "getProviders") {
+        return () => {
+          getProvidersCalls += 1;
+          return target.getProviders();
+        };
+      }
+      if (prop === "checkAuth") {
+        return (providerId: string) => {
+          checkAuthCalls.push(providerId);
+          return target.checkAuth(providerId);
+        };
+      }
+      if (prop === "getAvailable") {
+        return (providerId?: string) => {
+          getAvailableCalls.push(providerId);
+          return target.getAvailable(providerId);
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+
+  const spiedRuntime = {
+    config: () => ({ providers: {} }),
+    getAuthSummary: async (providerId: string) => {
+      authSummaryCalls.push(providerId);
+      return { configured: false };
+    },
+  } as unknown as ModelRuntime;
+
+  const deps: ProviderDeps = {
+    models: () => spiedModels,
+    credentials: () => undefined,
+    runtime: () => spiedRuntime,
+  };
+
+  const detail = await getProviderDetail(deps, "target-p");
+  assert.equal(detail.provider.id, "target-p");
+  assert.equal(detail.provider.models.length, 1);
+  assert.equal(getProvidersCalls, 0);
+  assert.equal(otherModelsCalls, 0);
+  assert.deepEqual(checkAuthCalls, ["target-p"]);
+  assert.deepEqual(authSummaryCalls, ["target-p"]);
+  assert.deepEqual(getAvailableCalls, ["target-p"]);
 });

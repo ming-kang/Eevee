@@ -7,9 +7,11 @@ import type {
   LoginErrorEvent,
   LoginInputRequest,
   LoginPromptEvent,
+  OkResponse,
   StartLoginResponse,
 } from "@eevee/protocol";
 import { EngineError } from "./engine-error.ts";
+import { BufferedSessionStream } from "./session-stream.ts";
 
 export type LoginSseFrame =
   | { readonly event: "auth"; readonly data: LoginAuthEvent }
@@ -28,16 +30,10 @@ type LoginSession = {
   readonly providerId: string;
   readonly type: AuthType;
   readonly abortController: AbortController;
-  readonly history: LoginSseFrame[];
-  readonly subscribers: Set<(frame: LoginSseFrame) => void>;
+  readonly stream: BufferedSessionStream<LoginSseFrame>;
   pendingPrompt?: PendingPrompt;
-  terminal: boolean;
   cancelled: boolean;
-  done: Promise<void>;
-  cleanupTimer?: ReturnType<typeof setTimeout>;
 };
-
-const SESSION_RETENTION_MS = 60_000;
 
 function serializeAuthEvent(event: AuthEvent): LoginAuthEvent {
   switch (event.type) {
@@ -125,116 +121,98 @@ export class LoginSessionManager {
 
     const sessionId = randomUUID();
     const abortController = new AbortController();
+    const stream = new BufferedSessionStream<LoginSseFrame>({
+      onExpire: () => {
+        if (!this.#closed) {
+          this.#sessions.delete(sessionId);
+        }
+      },
+    });
     const session: LoginSession = {
       sessionId,
       providerId,
       type,
       abortController,
-      history: [],
-      subscribers: new Set(),
-      terminal: false,
+      stream,
       cancelled: false,
-      done: Promise.resolve(),
     };
     this.#sessions.set(sessionId, session);
 
-    const emit = (frame: LoginSseFrame): void => {
-      session.history.push(frame);
-      for (const subscriber of [...session.subscribers]) {
+    stream.track(
+      (async () => {
         try {
-          subscriber(frame);
-        } catch {
-          // Isolate stream subscriber failures.
-        }
-      }
-    };
-
-    const scheduleCleanup = (): void => {
-      if (this.#closed) return;
-      session.cleanupTimer = setTimeout(() => {
-        this.#sessions.delete(sessionId);
-      }, SESSION_RETENTION_MS);
-      session.cleanupTimer.unref?.();
-    };
-
-    session.done = (async () => {
-      try {
-        await models.login(
-          providerId,
-          type,
-          {
-            signal: abortController.signal,
-            notify: (event) => {
-              if (!session.terminal) emit({ event: "auth", data: serializeAuthEvent(event) });
-            },
-            prompt: (prompt) =>
-              new Promise<string>((resolve, reject) => {
-                if (abortController.signal.aborted || session.terminal) {
-                  reject(new Error("Login cancelled"));
-                  return;
-                }
-                if (prompt.signal?.aborted) {
-                  reject(
-                    prompt.signal.reason instanceof Error
-                      ? prompt.signal.reason
-                      : new Error("Prompt aborted"),
-                  );
-                  return;
-                }
-                const promptId = randomUUID();
-                let onPromptAbort: (() => void) | undefined;
-                const cleanup = () => {
-                  if (prompt.signal !== undefined && onPromptAbort !== undefined) {
-                    prompt.signal.removeEventListener("abort", onPromptAbort);
+          await models.login(
+            providerId,
+            type,
+            {
+              signal: abortController.signal,
+              notify: (event) => {
+                stream.emit({ event: "auth", data: serializeAuthEvent(event) });
+              },
+              prompt: (prompt) =>
+                new Promise<string>((resolve, reject) => {
+                  if (abortController.signal.aborted || stream.terminal) {
+                    reject(new Error("Login cancelled"));
+                    return;
                   }
-                };
-                if (prompt.signal !== undefined) {
-                  onPromptAbort = () => {
-                    if (session.pendingPrompt?.promptId === promptId) {
-                      session.pendingPrompt = undefined;
+                  if (prompt.signal?.aborted) {
+                    reject(
+                      prompt.signal.reason instanceof Error
+                        ? prompt.signal.reason
+                        : new Error("Prompt aborted"),
+                    );
+                    return;
+                  }
+                  const promptId = randomUUID();
+                  let onPromptAbort: (() => void) | undefined;
+                  const cleanup = () => {
+                    if (prompt.signal !== undefined && onPromptAbort !== undefined) {
+                      prompt.signal.removeEventListener("abort", onPromptAbort);
                     }
-                    const reason = prompt.signal?.reason;
-                    reject(reason instanceof Error ? reason : new Error("Prompt aborted"));
                   };
-                  prompt.signal.addEventListener("abort", onPromptAbort, { once: true });
-                }
-                session.pendingPrompt = {
-                  promptId,
-                  resolve: (value) => {
-                    cleanup();
-                    resolve(value);
-                  },
-                  reject: (error) => {
-                    cleanup();
-                    reject(error);
-                  },
-                };
-                emit({ event: "prompt", data: serializePrompt(promptId, prompt) });
-              }),
-          },
-          { agentName: "eevee" },
-        );
+                  if (prompt.signal !== undefined) {
+                    onPromptAbort = () => {
+                      if (session.pendingPrompt?.promptId === promptId) {
+                        session.pendingPrompt = undefined;
+                      }
+                      const reason = prompt.signal?.reason;
+                      reject(reason instanceof Error ? reason : new Error("Prompt aborted"));
+                    };
+                    prompt.signal.addEventListener("abort", onPromptAbort, { once: true });
+                  }
+                  session.pendingPrompt = {
+                    promptId,
+                    resolve: (value) => {
+                      cleanup();
+                      resolve(value);
+                    },
+                    reject: (error) => {
+                      cleanup();
+                      reject(error);
+                    },
+                  };
+                  stream.emit({ event: "prompt", data: serializePrompt(promptId, prompt) });
+                }),
+            },
+            { agentName: "eevee" },
+          );
 
-        session.pendingPrompt = undefined;
-        session.terminal = true;
-        emit({ event: "complete", data: { providerId, type } });
-      } catch (error) {
-        const pending = session.pendingPrompt;
-        session.pendingPrompt = undefined;
-        pending?.reject(error instanceof Error ? error : new Error(String(error)));
-        session.terminal = true;
-        const code = session.cancelled ? "login_cancelled" : "login_failed";
-        const message = session.cancelled
-          ? "Login cancelled"
-          : error instanceof Error
-            ? error.message
-            : String(error);
-        emit({ event: "error", data: { code, message } });
-      } finally {
-        session.subscribers.clear();
-        scheduleCleanup();
-      }
-    })();
+          session.pendingPrompt = undefined;
+          stream.complete({ event: "complete", data: { providerId, type } });
+        } catch (error) {
+          const pending = session.pendingPrompt;
+          session.pendingPrompt = undefined;
+          pending?.reject(error instanceof Error ? error : new Error(String(error)));
+          const code = session.cancelled ? "login_cancelled" : "login_failed";
+          const message = session.cancelled
+            ? "Login cancelled"
+            : error instanceof Error
+              ? error.message
+              : String(error);
+          stream.complete({ event: "error", data: { code, message } });
+        }
+      })(),
+    );
 
     return { sessionId, providerId, type };
   }
@@ -244,22 +222,12 @@ export class LoginSessionManager {
     sessionId: string,
     onFrame: (frame: LoginSseFrame) => void,
   ): () => void {
-    const session = this.#requireSession(providerId, sessionId);
-    for (const frame of session.history) {
-      onFrame(frame);
-    }
-    if (session.terminal) {
-      return () => {};
-    }
-    session.subscribers.add(onFrame);
-    return () => {
-      session.subscribers.delete(onFrame);
-    };
+    return this.#requireSession(providerId, sessionId).stream.subscribe(onFrame);
   }
 
-  submitInput(providerId: string, sessionId: string, input: LoginInputRequest): void {
+  submitInput(providerId: string, sessionId: string, input: LoginInputRequest): OkResponse {
     const session = this.#requireSession(providerId, sessionId);
-    if (session.terminal) {
+    if (session.stream.terminal) {
       throw new EngineError(409, "login_session_closed", `Login session ${sessionId} has ended`);
     }
     if (session.pendingPrompt === undefined || session.pendingPrompt.promptId !== input.promptId) {
@@ -272,27 +240,26 @@ export class LoginSessionManager {
     const pending = session.pendingPrompt;
     session.pendingPrompt = undefined;
     pending.resolve(input.value);
+    return { ok: true };
   }
 
-  cancel(providerId: string, sessionId: string): void {
+  cancel(providerId: string, sessionId: string): OkResponse {
     const session = this.#requireSession(providerId, sessionId);
-    if (session.terminal) return;
+    if (session.stream.terminal) return { ok: true };
     session.cancelled = true;
     const pending = session.pendingPrompt;
     session.pendingPrompt = undefined;
     pending?.reject(new Error("Login cancelled"));
     session.abortController.abort(new Error("Login cancelled"));
+    return { ok: true };
   }
 
   async close(): Promise<void> {
     this.#closed = true;
     const sessions = [...this.#sessions.values()];
     for (const session of sessions) {
-      if (session.cleanupTimer !== undefined) {
-        clearTimeout(session.cleanupTimer);
-        session.cleanupTimer = undefined;
-      }
-      if (!session.terminal) {
+      session.stream.cancelCleanup();
+      if (!session.stream.terminal) {
         session.cancelled = true;
         const pending = session.pendingPrompt;
         session.pendingPrompt = undefined;
@@ -300,7 +267,10 @@ export class LoginSessionManager {
         session.abortController.abort(new Error("Engine is closing"));
       }
     }
-    await Promise.allSettled(sessions.map((session) => session.done));
+    await Promise.allSettled(sessions.map((session) => session.stream.done));
+    for (const session of sessions) {
+      session.stream.dispose();
+    }
     this.#sessions.clear();
   }
 

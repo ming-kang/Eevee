@@ -3,17 +3,15 @@ import {
   clampReadBytes,
   getConversationTask,
   isTaskTerminalStatus,
-  resolveTaskId,
   sliceRetainedOutput,
   TASK_READ_MAX_BYTES,
 } from "@eevee/agent";
-import {
-  type BoardView,
-  type WorkerId as CoreWorkerId,
-  type OutputReadOptions,
-  type OutputSlice,
-  ProjectError,
-  type ProjectHandle,
+import type {
+  BoardView,
+  WorkerId as CoreWorkerId,
+  OutputReadOptions,
+  OutputSlice,
+  ProjectHandle,
 } from "@eevee/core";
 import type {
   BackgroundTaskRecordPayload,
@@ -22,7 +20,6 @@ import type {
   TaskStreamChunkEvent,
   WorkerId,
 } from "@eevee/protocol";
-import { EngineError } from "./engine-error.ts";
 
 export type WorkerTaskStreamCallbacks = {
   readonly onChunk: (chunk: TaskStreamChunkEvent) => void;
@@ -81,31 +78,14 @@ export async function subscribeWorkerTaskStream(
   taskId: string,
   options?: OutputReadOptions,
 ): Promise<WorkerTaskStream> {
-  const workers = await handle.workers(BACKGROUND_CONTEXT);
-  const worker = workers.find((candidate) => candidate.id === workerId);
-  if (worker === undefined) {
-    throw new ProjectError("worker_not_found", `Unknown worker ${workerId}`);
-  }
-
-  const tasks = await handle.listWorkerTasks(
+  const { worker, record } = await handle.resolveWorkerTask(
     workerId as CoreWorkerId,
-    undefined,
+    taskId,
     BACKGROUND_CONTEXT,
   );
-  const resolution = resolveTaskId(tasks, taskId);
-  if (resolution.kind === "not_found") {
-    throw new ProjectError("task_not_found", `Unknown task ${taskId} on worker ${workerId}`);
-  }
-  if (resolution.kind === "ambiguous") {
-    throw new EngineError(
-      400,
-      "task_ambiguous",
-      `Ambiguous task id "${taskId}" on worker ${workerId}`,
-    );
-  }
-  const resolvedId = resolution.record.id;
+  const resolvedId = record.id;
 
-  if (isTaskTerminalStatus(resolution.record.status)) {
+  if (isTaskTerminalStatus(record.status)) {
     const snapshot = await handle.readWorkerTaskOutput(
       workerId as CoreWorkerId,
       resolvedId,
@@ -244,7 +224,7 @@ export async function subscribeWorkerTaskStream(
           resolvedId,
           BACKGROUND_CONTEXT,
         );
-        const task = freshTask ?? resolution.record;
+        const task = freshTask ?? record;
         if (isTaskTerminalStatus(task.status)) {
           cleanup();
           const finalSnapshot = await handle.readWorkerTaskOutput(

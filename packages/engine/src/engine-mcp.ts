@@ -1,13 +1,13 @@
 import { join } from "node:path";
-import { isMcpServerOverride } from "@earendil-works/pi-mcp";
 import {
-  DEFAULT_MCP_EXPOSURE,
-  isMcpServerEnabledForRole,
   type McpHub,
   type McpOAuthCredentialStore,
   type McpServerEntry,
   type McpServerSnapshot,
+  normalizeMcpServerMap,
   parseMcpConfig,
+  resolveEffectiveMcpServers,
+  synthesizeOfflineMcpSnapshots,
   validateMcpServerEntry,
 } from "@eevee/agent";
 import type {
@@ -28,7 +28,6 @@ import {
   findRemovedHttpMcpServers,
   getMcpServersRecord,
   KV_MCP_SERVERS,
-  normalizeMcpMap,
   pruneOrphanProjectMcpOverrides,
 } from "./engine-config.ts";
 import { EngineError } from "./engine-error.ts";
@@ -52,10 +51,6 @@ export type McpDeps = {
   readonly openProjectMcpHub: (projectId: string) => Promise<McpHub>;
   readonly syncProjectMcp: (projectId: string) => Promise<void>;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function toSnapshotPayload(
   snap: McpServerSnapshot,
@@ -99,26 +94,6 @@ function projectScopeOf(
   return "global";
 }
 
-function mergeProjectServerRaw(
-  globalEntry: Record<string, unknown>,
-  override: Record<string, unknown>,
-): Record<string, unknown> {
-  const roles =
-    isRecord(globalEntry.roles) && isRecord(override.roles)
-      ? { ...globalEntry.roles, ...override.roles }
-      : (override.roles ?? globalEntry.roles);
-  const toolExposure =
-    isRecord(globalEntry.toolExposure) && isRecord(override.toolExposure)
-      ? { ...globalEntry.toolExposure, ...override.toolExposure }
-      : (override.toolExposure ?? globalEntry.toolExposure);
-  return {
-    ...globalEntry,
-    ...override,
-    ...(roles === undefined ? {} : { roles }),
-    ...(toolExposure === undefined ? {} : { toolExposure }),
-  };
-}
-
 export function resolveEffectiveProjectMcp(
   globalServers: Record<string, Record<string, unknown>>,
   projectServers: Record<string, Record<string, unknown>>,
@@ -128,51 +103,14 @@ export function resolveEffectiveProjectMcp(
   readonly effectiveServers: Record<string, Record<string, unknown>>;
   readonly normalizedProjectServers: Record<string, Record<string, unknown>>;
 } {
-  const mergedRaw: Record<string, Record<string, unknown>> = { ...globalServers };
-  const normalizedProjectServers: Record<string, Record<string, unknown>> = {};
-
-  for (const [name, raw] of Object.entries(projectServers)) {
-    if (!isRecord(raw)) {
-      if (strict) {
-        throw new EngineError(400, "invalid_mcp_config", `server "${name}" must be an object`);
-      }
-      continue;
-    }
-    if (isMcpServerOverride(raw)) {
-      const globalEntry = Object.hasOwn(globalServers, name) ? globalServers[name] : undefined;
-      if (globalEntry === undefined) {
-        if (strict) {
-          throw new EngineError(
-            400,
-            "invalid_mcp_config",
-            `server "${name}" needs either "command" (stdio) or "url" (streamable HTTP)`,
-          );
-        }
-        continue;
-      }
-      mergedRaw[name] = mergeProjectServerRaw(globalEntry, raw);
-      normalizedProjectServers[name] = { ...raw };
-    } else {
-      const validated = validateMcpServerEntry(name, raw);
-      if (typeof validated === "string") {
-        if (strict) {
-          throw new EngineError(400, "invalid_mcp_config", validated);
-        }
-        continue;
-      }
-      mergedRaw[name] = { ...validated };
-      normalizedProjectServers[name] = { ...validated };
-    }
-  }
-
-  const parsed = parseMcpConfig({ mcpServers: mergedRaw });
-  if (parsed.errors.length > 0 && strict) {
-    throw new EngineError(400, "invalid_mcp_config", parsed.errors.join("; "));
+  const resolved = resolveEffectiveMcpServers(globalServers, projectServers);
+  if (strict && resolved.errors.length > 0) {
+    throw new EngineError(400, "invalid_mcp_config", resolved.errors.join("; "));
   }
   return {
-    entries: parsed.servers,
-    effectiveServers: normalizeMcpMap(parsed.servers),
-    normalizedProjectServers,
+    entries: resolved.entries,
+    effectiveServers: resolved.effectiveServers,
+    normalizedProjectServers: resolved.normalizedProjectServers,
   };
 }
 
@@ -188,31 +126,6 @@ export function resolveEffectiveProjectMcpForStore(
 export function hasProjectMcpOverrides(store: EngineStore, projectId: string): boolean {
   const projectServers = store.getProjectMcpServers(projectId);
   return projectServers !== undefined && Object.keys(projectServers).length > 0;
-}
-
-function synthesizeOfflineSnapshots(
-  entries: readonly McpServerEntry[],
-  globalServers: Record<string, Record<string, unknown>>,
-  projectServers: Record<string, Record<string, unknown>>,
-): McpServerSnapshotPayload[] {
-  return entries.map((entry) => {
-    const enabled = entry.config.enabled !== false;
-    return {
-      name: entry.name,
-      status: enabled ? "idle" : "disabled",
-      enabled,
-      ...(entry.config.description === undefined ? {} : { description: entry.config.description }),
-      toolCount: 0,
-      transport: "url" in entry.config ? "http" : "stdio",
-      roles: {
-        router: isMcpServerEnabledForRole(entry.config, "router"),
-        worker: isMcpServerEnabledForRole(entry.config, "worker"),
-      },
-      exposure: entry.config.exposure ?? DEFAULT_MCP_EXPOSURE,
-      hasResources: false,
-      scope: projectScopeOf(entry.name, globalServers, projectServers),
-    };
-  });
 }
 
 export function getMcpState(deps: McpDeps): McpStateResponse {
@@ -244,7 +157,7 @@ async function replaceMcpServers(
     throw new EngineError(400, "invalid_mcp_config", parsed.errors.join("; "));
   }
   const previousGlobal = getMcpServersRecord(deps.store);
-  const nextGlobal = normalizeMcpMap(parsed.servers);
+  const nextGlobal = normalizeMcpServerMap(parsed.servers);
   const removedHttp = findRemovedHttpMcpServers(previousGlobal, nextGlobal);
   const cancellations = collectGlobalMcpOAuthCancellations(deps.store, removedHttp);
   deps.store.setKv(KV_MCP_SERVERS, nextGlobal);
@@ -320,14 +233,10 @@ export function getProjectMcpState(deps: McpDeps, projectId: string): ProjectMcp
     false,
   );
   const hub = deps.getProjectMcpHub(projectId);
-  const status =
-    hub !== undefined
-      ? hub
-          .status()
-          .map((snap) =>
-            toSnapshotPayload(snap, projectScopeOf(snap.name, globalServers, projectServers)),
-          )
-      : synthesizeOfflineSnapshots(entries, globalServers, projectServers);
+  const snapshots = hub !== undefined ? hub.status() : synthesizeOfflineMcpSnapshots(entries);
+  const status = snapshots.map((snap) =>
+    toSnapshotPayload(snap, projectScopeOf(snap.name, globalServers, projectServers)),
+  );
 
   return {
     globalServers,
