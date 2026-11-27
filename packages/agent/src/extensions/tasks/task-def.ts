@@ -28,9 +28,14 @@ export type BackgroundShellInput = {
   readonly shell?: TaskShell;
 };
 
-export type BackgroundShellCheckpoint = {
-  readonly phase: "run";
+export type EvictedTask = {
+  readonly id: string;
+  readonly logPath?: string;
 };
+
+export type BackgroundShellCheckpoint =
+  | { readonly phase: "run" }
+  | { readonly phase: "evict"; readonly evicted: readonly EvictedTask[] };
 
 const NOTIFICATION_TAIL_BYTES = 8192;
 const TERMINAL_COMPLETED = {
@@ -89,11 +94,6 @@ function logFooter(outcome: CommandOutcome, killed: boolean, killReason?: TaskKi
     : `\n[error: ${outcome.message}]\n`;
 }
 
-type EvictedTask = {
-  readonly id: string;
-  readonly logPath?: string;
-};
-
 async function evictFinishedTasks(
   tx: Tx,
   conversationId: ConversationId,
@@ -123,11 +123,12 @@ async function commitTerminalState(
   options: {
     readonly taskId: string;
     readonly terminalState: TerminalState;
+    readonly evictInPhase?: boolean;
     readonly conv?: ConversationHandle;
     readonly updateDoc: (doc: BackgroundTaskRecord) => TerminalNotification | undefined;
   },
 ): Promise<void> {
-  const { taskId, terminalState, conv, updateDoc } = options;
+  const { taskId, terminalState, evictInPhase = true, conv, updateDoc } = options;
   const conversationId = runtime.conversationId;
   let evicted: EvictedTask[] = [];
   await runtime.commit(async (tx) => {
@@ -149,10 +150,13 @@ async function commitTerminalState(
       }
     }
     evicted = await evictFinishedTasks(tx, conversationId, manager.maxFinishedPerConversation);
-    return evicted.length === 0 ? terminalState : undefined;
+    if (evicted.length === 0) return terminalState;
+    return evictInPhase
+      ? ({ status: "running", checkpoint: { phase: "evict", evicted } } as const)
+      : undefined;
   }, context);
 
-  if (evicted.length > 0) {
+  if (!evictInPhase && evicted.length > 0) {
     for (const item of evicted) {
       await manager.evict(conversationId, item.id, item.logPath);
     }
@@ -286,10 +290,24 @@ export function createBackgroundShellTask(manager: TaskManager): BackgroundShell
           },
         });
       },
+      evict: async (task, runtime, context) => {
+        const conversationId = runtime.conversationId;
+        for (const item of task.state.checkpoint.evicted) {
+          await manager.evict(conversationId, item.id, item.logPath);
+        }
+        await runtime.commit(() => TERMINAL_COMPLETED, context);
+      },
     },
     abort: async (task, runtime, context) => {
       const { taskId } = task.input;
       const conversationId = runtime.conversationId;
+      if (task.state.checkpoint.phase === "evict") {
+        for (const item of task.state.checkpoint.evicted) {
+          await manager.evict(conversationId, item.id, item.logPath);
+        }
+        await runtime.commit(() => TERMINAL_ABORTED, context);
+        return;
+      }
       const running = manager.get(conversationId, taskId);
       let killReason: TaskKillReason = "abort";
       if (running !== undefined) {
@@ -303,6 +321,7 @@ export function createBackgroundShellTask(manager: TaskManager): BackgroundShell
       await commitTerminalState(runtime, context, manager, {
         taskId,
         terminalState: TERMINAL_ABORTED,
+        evictInPhase: false,
         updateDoc: (doc) => {
           doc.status = "cancelled";
           doc.cancelReason = doc.cancelReason ?? killReason;

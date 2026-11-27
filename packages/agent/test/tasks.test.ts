@@ -4,19 +4,42 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import { fauxAssistantMessage, fauxToolCall, type TranscriptContext } from "@earendil-works/pi-ai";
-import type { Conversation, ConversationId, EntryRecord, TaskId } from "@earendil-works/pi-durable";
-import { ExecutionError, err } from "@earendil-works/pi-durable/env";
+import type {
+  Conversation,
+  ConversationId,
+  EntryId,
+  EntryRecord,
+  GenerationHooks,
+  HookApi,
+  TaskId,
+  ToolExecutionApi,
+  ToolRegistration,
+} from "@earendil-works/pi-durable";
+import { defineExtension } from "@earendil-works/pi-durable";
+import {
+  ExecutionError,
+  err,
+  ok,
+  type Result,
+  type ShellExecResult,
+} from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import { createCachedCompactionExtension } from "../src/extensions/cached-compaction/index.ts";
 import { createCodingToolsExtension } from "../src/extensions/coding-tools/index.ts";
 import {
+  createCompactionReminderHook,
+  MAX_REMINDED_CONVERSATIONS,
+} from "../src/extensions/tasks/compaction-reminder.ts";
+import {
   type BackgroundTaskRecord,
   clampReadBytes,
+  createBackgroundShellTask,
   createTasksExtension,
   getConversationTask,
+  killConversationTask,
   listConversationTasks,
   type RunningCommand,
   readOutputFileSlice,
@@ -28,8 +51,10 @@ import {
   TASK_READ_MAX_BYTES,
   TASK_READ_MIN_BYTES,
   TaskManager,
+  TaskRecordDoc,
   TasksBoardDoc,
 } from "../src/extensions/tasks/index.ts";
+import { adoptCommand } from "../src/extensions/tasks/shell-wrap.ts";
 import { createTestHarness, type TestHarness } from "./harness.ts";
 
 type ToolResultEntry = {
@@ -1467,4 +1492,590 @@ test("startCommand separates kill(reason) from detachCancel() and settles ready 
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("adoptCommand cleans up stale TaskManager attachments on commit retries, failures, and late settle", async () => {
+  const manager = new TaskManager();
+  const backgroundShellTask = createBackgroundShellTask(manager);
+  const convId = 7 as ConversationId;
+  let detachCount = 0;
+  let settled = false;
+
+  const running: RunningCommand = {
+    shell: "bash",
+    command: "sleep 60",
+    rewrittenNul: false,
+    get settled() {
+      return settled;
+    },
+    ready: Promise.resolve(),
+    killed: false,
+    done: new Promise(() => {}),
+    output: () => ({ text: "", totalBytes: 0, droppedBytes: 0 }),
+    onOutput: () => () => {},
+    kill: () => {},
+    detachCancel: () => {
+      detachCount += 1;
+    },
+  };
+
+  let attempt = 0;
+  const createdIds: string[] = [];
+  const retryApi = {
+    conversationId: convId,
+    now: () => 1000,
+    commit: async (fn: (tx: unknown) => Promise<unknown>) => {
+      for (;;) {
+        attempt += 1;
+        const board = { nextSeq: attempt, order: [] as string[] };
+        const records = new Map<string, BackgroundTaskRecord>();
+        const tx = {
+          doc: async (token: unknown, _cid: ConversationId, key?: string) => {
+            if (token === TasksBoardDoc) return board;
+            assert.ok(key !== undefined);
+            let rec = records.get(key);
+            if (rec === undefined) {
+              rec = { id: "", command: "", status: "running", startedAt: 0 };
+              records.set(key, rec);
+            }
+            return rec;
+          },
+          createTask: async (_task: unknown, input: { taskId: string }) => {
+            createdIds.push(input.taskId);
+            if (attempt === 1) {
+              // Simulate optimistic retry after manager.attach ran in attempt 1.
+              throw new Error("simulated_conflict");
+            }
+            return 42 as TaskId;
+          },
+        };
+        try {
+          return await fn(tx);
+        } catch (error) {
+          if (attempt === 1 && error instanceof Error && error.message === "simulated_conflict") {
+            continue;
+          }
+          throw error;
+        }
+      }
+    },
+  } as unknown as ToolExecutionApi;
+
+  const adopted = await adoptCommand({
+    api: retryApi,
+    manager,
+    backgroundShellTask,
+    running,
+    shell: "bash",
+    command: "sleep 60",
+    context: BACKGROUND_CONTEXT,
+  });
+
+  assert.deepEqual(adopted, { taskId: "task-2", durableTaskId: 42 });
+  assert.deepEqual(createdIds, ["task-1", "task-2"]);
+  assert.equal(manager.get(convId, "task-1"), undefined, "retried task-1 must not remain");
+  assert.equal(manager.get(convId, "task-2"), running);
+  assert.equal(manager.activeCount(convId), 1);
+
+  manager.delete(convId, "task-2", false);
+  assert.equal(manager.activeCount(convId), 0);
+
+  // Permanent commit failure cleans up and calls detachCancel().
+  const failApi = {
+    conversationId: convId,
+    now: () => 1000,
+    commit: async (fn: (tx: unknown) => Promise<unknown>) => {
+      const board = { nextSeq: 3, order: [] as string[] };
+      const tx = {
+        doc: async () => board,
+        createTask: async () => {
+          throw new Error("commit_failed");
+        },
+      };
+      return await fn(tx);
+    },
+  } as unknown as ToolExecutionApi;
+
+  await assert.rejects(
+    adoptCommand({
+      api: failApi,
+      manager,
+      backgroundShellTask,
+      running,
+      shell: "bash",
+      command: "sleep 60",
+      context: BACKGROUND_CONTEXT,
+    }),
+    /commit_failed/,
+  );
+  assert.equal(manager.get(convId, "task-3"), undefined);
+  assert.equal(manager.activeCount(convId), 0);
+  assert.equal(detachCount, 1);
+
+  // skipIfSettled across retry cleans up attempt 1's attachment and skips creating task 2.
+  attempt = 0;
+  let createCallsOnAttempt2 = 0;
+  const settleOnRetryApi = {
+    conversationId: convId,
+    now: () => 1000,
+    commit: async (fn: (tx: unknown) => Promise<unknown>) => {
+      for (;;) {
+        attempt += 1;
+        const board = { nextSeq: attempt, order: [] as string[] };
+        const tx = {
+          doc: async () => board,
+          createTask: async () => {
+            if (attempt === 1) throw new Error("conflict_before_settle");
+            createCallsOnAttempt2 += 1;
+            return 99 as TaskId;
+          },
+        };
+        try {
+          return await fn(tx);
+        } catch (error) {
+          if (attempt === 1) {
+            settled = true;
+            continue;
+          }
+          throw error;
+        }
+      }
+    },
+  } as unknown as ToolExecutionApi;
+
+  const skipped = await adoptCommand({
+    api: settleOnRetryApi,
+    manager,
+    backgroundShellTask,
+    running,
+    shell: "bash",
+    command: "sleep 60",
+    skipIfSettled: true,
+    context: BACKGROUND_CONTEXT,
+  });
+  assert.equal(skipped, undefined);
+  assert.equal(createCallsOnAttempt2, 0);
+  assert.equal(manager.activeCount(convId), 0);
+  assert.equal(manager.get(convId, "task-1"), undefined);
+});
+
+test("foreground command settling during handoff checkAdmission or commit returns inline foreground result", async () => {
+  for (const settleStage of ["snapshot", "commit"] as const) {
+    const dir = await mkdtemp(join(tmpdir(), `eevee-tasks-handoff-settle-${settleStage}-`));
+    const env = new NodeExecutionEnv({ cwd: dir });
+    let resolveExec: ((result: Result<ShellExecResult, ExecutionError>) => void) | undefined;
+    let emitOutput: ((text: string) => void) | undefined;
+    let execSettledPromise: Promise<void> | undefined;
+
+    env.exec = (_cmd, opts) => {
+      emitOutput = (text: string) =>
+        opts?.onOutput?.(text, BACKGROUND_CONTEXT, { stream: "stdout" });
+      const p = new Promise<Result<ShellExecResult, ExecutionError>>((resolve) => {
+        resolveExec = resolve;
+      });
+      execSettledPromise = p.then(() => undefined);
+      return p;
+    };
+
+    const manager = new TaskManager();
+    let triggered = false;
+    const triggerSettle = async () => {
+      if (triggered) return;
+      triggered = true;
+      emitOutput?.(`settled-in-${settleStage}\n`);
+      resolveExec?.(ok({ exitCode: 0 }));
+      await execSettledPromise;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    };
+
+    const spyExtension = defineExtension<ToolRegistration>({
+      name: "test.bash-handoff-spy",
+      wraps: [
+        {
+          tool: "bash",
+          wrap: (base: ToolRegistration) => ({
+            ...base,
+            execute: (args: unknown, api: ToolExecutionApi, context: Context) => {
+              const interceptedApi: ToolExecutionApi = {
+                ...api,
+                snapshot: (async (...snapshotArgs: unknown[]) => {
+                  if (settleStage === "snapshot") await triggerSettle();
+                  return (api.snapshot as (...a: unknown[]) => Promise<unknown>)(...snapshotArgs);
+                }) as ToolExecutionApi["snapshot"],
+                commit: (async (...commitArgs: Parameters<ToolExecutionApi["commit"]>) => {
+                  if (settleStage === "commit") await triggerSettle();
+                  return api.commit(...commitArgs);
+                }) as ToolExecutionApi["commit"],
+              };
+              return base.execute(args, interceptedApi, context);
+            },
+          }),
+        },
+      ],
+    });
+
+    const th = await createTestHarness({
+      env,
+      extensions: [
+        createCodingToolsExtension(),
+        createTasksExtension({ manager, backgroundAfterMs: 25 }),
+        spyExtension,
+      ],
+    });
+
+    try {
+      th.faux.setResponses([
+        fauxAssistantMessage([fauxToolCall("bash", { command: "echo ok" })], {
+          stopReason: "toolUse",
+        }),
+        fauxAssistantMessage("done"),
+      ]);
+      const conv = await th.createConversation();
+      await (await conv.submit({ type: "input", content: "go" }, BACKGROUND_CONTEXT)).wait(
+        BACKGROUND_CONTEXT,
+      );
+
+      const results = await toolResults(conv);
+      const bash = results.find((entry) => entry.toolName === "bash");
+      assert.ok(bash);
+      assert.equal(bash.isError, false);
+      const text = resultText(bash);
+      assert.ok(text.includes(`settled-in-${settleStage}`), text);
+      assert.equal(text.includes("moved to background task"), false, text);
+      assert.equal(
+        (await listConversationTasks(th.harness, conv.id, BACKGROUND_CONTEXT)).length,
+        0,
+      );
+      assert.equal(manager.activeCount(conv.id), 0);
+      assert.equal(await hasNotification(conv), false);
+    } finally {
+      await manager.close();
+      await th.cleanup();
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("evict checkpoint phase recovers across restart and deletes evicted log files", async () => {
+  const logRoot = await mkdtemp(join(tmpdir(), "eevee-tasks-evict-recover-"));
+  const baseStorage = new MemoryStorage();
+  baseStorage.close = () => Promise.resolve();
+
+  let closeOnEvictCheckpoint: ((taskId: TaskId) => void) | undefined;
+  let sawEvictCheckpoint = false;
+
+  const interceptedStorage = new Proxy(baseStorage, {
+    get(target, prop, receiver) {
+      if (prop === "commit") {
+        return async (
+          batches: Parameters<MemoryStorage["commit"]>[0],
+          receive: Parameters<MemoryStorage["commit"]>[1],
+          context: Parameters<MemoryStorage["commit"]>[2],
+        ) => {
+          const result = await target.commit(batches, receive, context);
+          for (const batch of batches) {
+            for (const write of batch) {
+              if (
+                write.type === "task" &&
+                write.value.state.status === "running" &&
+                typeof write.value.state.checkpoint === "object" &&
+                write.value.state.checkpoint !== null &&
+                "phase" in write.value.state.checkpoint &&
+                write.value.state.checkpoint.phase === "evict"
+              ) {
+                sawEvictCheckpoint = true;
+                closeOnEvictCheckpoint?.(write.value.id);
+              }
+            }
+          }
+          return result;
+        };
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+
+  const manager1 = new TaskManager({
+    maxFinishedPerConversation: 2,
+    logPath: (conversationId, taskId) => join(logRoot, `${conversationId}-${taskId}.log`),
+  });
+  const th1 = await createTestHarness({
+    storage: interceptedStorage,
+    extensions: [createCodingToolsExtension(), createTasksExtension({ manager: manager1 })],
+  });
+
+  let convId!: ConversationId;
+  let rec1LogPath!: string;
+  let task3DurableId!: TaskId;
+
+  try {
+    th1.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("bash", { command: "echo first", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("s1"),
+      fauxAssistantMessage("n1"),
+    ]);
+    const conv = await th1.createConversation();
+    convId = conv.id;
+    await (await conv.submit({ type: "input", content: "1" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    const rec1 = await waitForRecord(th1, convId, "task-1", "completed");
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+    assert.ok(rec1.logPath && existsSync(rec1.logPath));
+    rec1LogPath = rec1.logPath;
+
+    th1.faux.appendResponses([
+      fauxAssistantMessage([fauxToolCall("bash", { command: "echo second", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("s2"),
+      fauxAssistantMessage("n2"),
+    ]);
+    await (await conv.submit({ type: "input", content: "2" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+    await waitForRecord(th1, convId, "task-2", "completed");
+    await conv.waitForIdle(BACKGROUND_CONTEXT);
+
+    let closePromise: Promise<void> | undefined;
+    closeOnEvictCheckpoint = (durableTaskId) => {
+      task3DurableId = durableTaskId;
+      closePromise ??= th1.harness.close(BACKGROUND_CONTEXT);
+    };
+
+    th1.faux.appendResponses([
+      fauxAssistantMessage([fauxToolCall("bash", { command: "echo third", background: true })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("s3"),
+      fauxAssistantMessage("n3"),
+    ]);
+    await (await conv.submit({ type: "input", content: "3" }, BACKGROUND_CONTEXT)).wait(
+      BACKGROUND_CONTEXT,
+    );
+
+    await waitFor(() => sawEvictCheckpoint, "evict checkpoint commit");
+    assert.ok(closePromise !== undefined);
+    await closePromise;
+    assert.equal(
+      existsSync(rec1LogPath),
+      true,
+      "evicted log file should still exist when closed before phases.evict ran",
+    );
+    const durableBefore = await baseStorage.task(task3DurableId, BACKGROUND_CONTEXT);
+    assert.equal(durableBefore?.state.status, "pending");
+  } finally {
+    manager1.killAll();
+    await th1.cleanup().catch(() => undefined);
+  }
+
+  const manager2 = new TaskManager({
+    maxFinishedPerConversation: 2,
+    logPath: (conversationId, taskId) => join(logRoot, `${conversationId}-${taskId}.log`),
+  });
+  const th2 = await createTestHarness({
+    storage: baseStorage,
+    env: th1.env,
+    extensions: [createCodingToolsExtension(), createTasksExtension({ manager: manager2 })],
+  });
+  try {
+    th2.faux.setResponses([fauxAssistantMessage("recovered notice")]);
+    th2.harness.resume();
+    await th2.harness.waitForTask(task3DurableId, BACKGROUND_CONTEXT);
+
+    assert.equal(
+      existsSync(rec1LogPath),
+      false,
+      "phases.evict on recovery must delete the evicted log file",
+    );
+    const remaining = await listConversationTasks(th2.harness, convId, BACKGROUND_CONTEXT);
+    assert.deepEqual(
+      remaining.map((r) => r.id),
+      ["task-2", "task-3"],
+    );
+    const conv2 = await th2.harness.conversation(convId, BACKGROUND_CONTEXT);
+    await conv2?.waitForIdle(BACKGROUND_CONTEXT);
+  } finally {
+    await manager2.close();
+    await th2.cleanup();
+    await rm(logRoot, { recursive: true, force: true });
+  }
+});
+
+test("killConversationTask handles missing live handles with and without abortTask", async () => {
+  const manager = new TaskManager();
+  const convId = 11 as ConversationId;
+  const recordDoc: BackgroundTaskRecord = {
+    id: "task-1",
+    durableTaskId: 77,
+    command: "sleep 60",
+    status: "running",
+    startedAt: 10,
+  };
+
+  let abortedTaskId: TaskId | undefined;
+  let waitedTaskId: TaskId | undefined;
+  const statusesSeen: string[] = [];
+
+  const resultWithAbort = await killConversationTask(
+    manager,
+    convId,
+    recordDoc,
+    "user",
+    {
+      commit: async (fn) => {
+        const tx = {
+          doc: async () => recordDoc,
+        };
+        const res = await fn(tx as never);
+        statusesSeen.push(recordDoc.status);
+        return res;
+      },
+      snapshot: async () => ({ ...recordDoc }),
+      abortTask: async (id) => {
+        abortedTaskId = id;
+        recordDoc.status = "cancelled";
+        recordDoc.cancelReason = "user";
+        recordDoc.endedAt = 20;
+      },
+      waitForTask: async (id) => {
+        waitedTaskId = id;
+      },
+      now: () => 20,
+    },
+    BACKGROUND_CONTEXT,
+  );
+
+  assert.deepEqual(statusesSeen, ["stopping"]);
+  assert.equal(abortedTaskId, 77);
+  assert.equal(waitedTaskId, 77);
+  assert.equal(resultWithAbort.status, "cancelled");
+  assert.equal(resultWithAbort.record?.cancelReason, "user");
+
+  // Without abortTask (ToolExecutionApi style) when !hadLive, it marks cancelled directly.
+  const toolRecord: BackgroundTaskRecord = {
+    id: "task-2",
+    durableTaskId: 88,
+    command: "sleep 60",
+    status: "running",
+    startedAt: 10,
+  };
+  let waitedToolTask: TaskId | undefined;
+  const resultWithoutAbort = await killConversationTask(
+    manager,
+    convId,
+    toolRecord,
+    "tool",
+    {
+      commit: async (fn) => fn({ doc: async () => toolRecord } as never),
+      snapshot: async () => ({ ...toolRecord }),
+      waitForTask: async (id) => {
+        waitedToolTask = id;
+      },
+      now: () => 55,
+    },
+    BACKGROUND_CONTEXT,
+  );
+
+  assert.equal(waitedToolTask, 88);
+  assert.equal(resultWithoutAbort.status, "cancelled");
+  assert.equal(resultWithoutAbort.record?.cancelReason, "tool");
+  assert.equal(resultWithoutAbort.record?.endedAt, 55);
+});
+
+test("compaction reminder hook clears conversation state on ResetEntry and bounds tracked conversations", async () => {
+  const hookReg = createCompactionReminderHook();
+  const handlers = hookReg.handlers as Partial<GenerationHooks>;
+  assert.ok(handlers.beforeRequest);
+  const beforeRequest = handlers.beforeRequest;
+
+  const entriesByConv = new Map<ConversationId, EntryRecord[]>();
+  const tasksByConv = new Map<ConversationId, BackgroundTaskRecord[]>();
+
+  const makeApi = (conversationId: ConversationId): HookApi =>
+    ({
+      taskId: 1 as TaskId,
+      conversationId,
+      now: () => 500,
+      snapshot: async (token: unknown, cid: ConversationId, key?: string) => {
+        const list = tasksByConv.get(cid) ?? [];
+        if (token === TasksBoardDoc) {
+          return { nextSeq: list.length + 1, order: list.map((t) => t.id) };
+        }
+        if (token === TaskRecordDoc) {
+          return list.find((t) => t.id === key);
+        }
+        return undefined;
+      },
+      entries: async () => ({
+        items: [...(entriesByConv.get(conversationId) ?? [])].reverse(),
+      }),
+    }) as unknown as HookApi;
+
+  const c1 = 1 as ConversationId;
+  tasksByConv.set(c1, [{ id: "task-1", command: "sleep 60", status: "running", startedAt: 10 }]);
+  entriesByConv.set(c1, [
+    {
+      id: 10 as EntryId,
+      conversationId: c1,
+      kind: "pi.compaction",
+      model: [{ role: "user", content: [], timestamp: 20 }],
+    },
+  ]);
+
+  const first = await beforeRequest({ messages: [] }, makeApi(c1), BACKGROUND_CONTEXT);
+  assert.ok(first !== undefined);
+  assert.equal(
+    await beforeRequest({ messages: [] }, makeApi(c1), BACKGROUND_CONTEXT),
+    undefined,
+    "same compaction should not remind twice",
+  );
+
+  // Reset clears the remembered compaction for c1, so a later compaction with the same id or new id reminds again.
+  entriesByConv.set(c1, [
+    ...(entriesByConv.get(c1) ?? []),
+    { id: 11 as EntryId, conversationId: c1, kind: "pi.reset" },
+  ]);
+  assert.equal(
+    await beforeRequest({ messages: [] }, makeApi(c1), BACKGROUND_CONTEXT),
+    undefined,
+    "reset hides older compaction",
+  );
+
+  entriesByConv.set(c1, [
+    ...(entriesByConv.get(c1) ?? []),
+    {
+      id: 10 as EntryId,
+      conversationId: c1,
+      kind: "pi.compaction",
+      model: [{ role: "user", content: [], timestamp: 20 }],
+    },
+  ]);
+  assert.ok(
+    (await beforeRequest({ messages: [] }, makeApi(c1), BACKGROUND_CONTEXT)) !== undefined,
+    "clearing on ResetEntry allows reminding again after reset",
+  );
+
+  // Exceed MAX_REMINDED_CONVERSATIONS so c1 is evicted as oldest, then verify c1 reminds again.
+  for (let i = 2; i <= MAX_REMINDED_CONVERSATIONS + 5; i += 1) {
+    const cid = i as ConversationId;
+    tasksByConv.set(cid, [{ id: "task-1", command: "sleep 60", status: "running", startedAt: 10 }]);
+    entriesByConv.set(cid, [
+      {
+        id: (100 + i) as EntryId,
+        conversationId: cid,
+        kind: "pi.compaction",
+        model: [{ role: "user", content: [], timestamp: 20 }],
+      },
+    ]);
+    await beforeRequest({ messages: [] }, makeApi(cid), BACKGROUND_CONTEXT);
+  }
+
+  assert.ok(
+    (await beforeRequest({ messages: [] }, makeApi(c1), BACKGROUND_CONTEXT)) !== undefined,
+    "oldest conversation entry should be evicted once map exceeds MAX_REMINDED_CONVERSATIONS",
+  );
 });

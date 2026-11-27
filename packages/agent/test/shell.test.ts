@@ -8,6 +8,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { ok } from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { startCommand } from "../src/extensions/tasks/runner.ts";
+import { normalizeCommandForEnv } from "../src/shell/env.ts";
 import {
   createManagedExecutionEnv,
   killProcessTree,
@@ -537,5 +538,53 @@ test("tasks startCommand respects ManagedExecutionEnv platform without double no
     assert.equal(running.command, "echo hi 2>nul");
     assert.equal(running.rewrittenNul, true);
     assert.deepEqual(recorded, ["echo hi 2>/dev/null"]);
+  });
+});
+
+test("normalizePosixBashCommand is idempotent and ManagedExecutionEnv exposes platform cleanly", async () => {
+  const inputs = [
+    "echo hi >nul",
+    "cmd 2>nul && cmd 2>/dev/null",
+    "cmd 2>nul#comment",
+    "cat <<EOF 2>nul\n2>nul\nEOF\necho done >nul",
+    'echo "$(cmd 2>nul)"',
+  ];
+  for (const input of inputs) {
+    const first = normalizePosixBashCommand(input, "win32");
+    assert.equal(first.rewrittenNul, true, `first pass should rewrite: ${input}`);
+    const second = normalizePosixBashCommand(first.command, "win32");
+    assert.equal(second.command, first.command, `second pass should be unchanged: ${input}`);
+    assert.equal(second.rewrittenNul, false, `second pass should not rewrite: ${input}`);
+  }
+
+  await withTempDir(async (dir) => {
+    const recorded: Array<string | readonly string[]> = [];
+    const inner = new NodeExecutionEnv({ cwd: dir });
+    inner.exec = async (command) => {
+      recorded.push(command);
+      return ok({ exitCode: 0 });
+    };
+
+    const defaultEnv = createManagedExecutionEnv({ cwd: dir, execEnv: inner });
+    assert.equal(defaultEnv.platform, process.platform);
+
+    const winEnv = createManagedExecutionEnv({ cwd: dir, platform: "win32", execEnv: inner });
+    assert.equal(winEnv.platform, "win32");
+
+    const linuxEnv = createManagedExecutionEnv({ cwd: dir, platform: "linux", execEnv: inner });
+    assert.equal(linuxEnv.platform, "linux");
+
+    assert.deepEqual(normalizeCommandForEnv(winEnv, "echo hi 2>nul"), {
+      command: "echo hi 2>/dev/null",
+      rewrittenNul: true,
+    });
+    assert.deepEqual(normalizeCommandForEnv(linuxEnv, "echo hi 2>nul"), {
+      command: "echo hi 2>nul",
+      rewrittenNul: false,
+    });
+
+    await winEnv.exec("echo a 2>nul", undefined, BACKGROUND_CONTEXT);
+    await winEnv.exec("echo a 2>/dev/null", undefined, BACKGROUND_CONTEXT);
+    assert.deepEqual(recorded, ["echo a 2>/dev/null", "echo a 2>/dev/null"]);
   });
 });

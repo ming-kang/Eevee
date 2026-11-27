@@ -15,7 +15,7 @@ import type {
 import { errorMessage } from "../../shared/guards.ts";
 import { alignUtf8Start, formatSize, utf8HeadBytes } from "../../shared/truncate.ts";
 import { type ResolvedPowerShell, resolvePowerShell } from "../../shell/discovery.ts";
-import { markExecOptionsNormalized, normalizeCommandForEnv } from "../../shell/env.ts";
+import { normalizeCommandForEnv } from "../../shell/env.ts";
 import type { BackgroundTaskRecord } from "./docs.ts";
 import {
   clampReadBytes,
@@ -137,9 +137,6 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
     ...(options.spill === undefined ? {} : { spill: options.spill }),
     onOutput: (text: string) => push(text),
   };
-  if (shell === "bash") {
-    markExecOptionsNormalized(execOptions);
-  }
 
   const toOutcome = (
     result:
@@ -324,10 +321,13 @@ type LogSink = {
   readonly state: MutableLogState;
 };
 
-type AttachedCommand = {
+type TaskEntry = {
   readonly conversationId: ConversationId;
   readonly taskId: string;
-  readonly running: RunningCommand;
+  running?: RunningCommand;
+  sink?: LogSink;
+  logState?: MutableLogState;
+  memoryLog?: CommandOutput;
 };
 
 function clampPositiveInt(value: number | undefined, fallback: number, minimum = 1): number {
@@ -362,10 +362,7 @@ export class TaskManager {
   readonly maxActivePerConversation: number;
   readonly maxActiveTotal: number;
   readonly maxFinishedPerConversation: number;
-  readonly #commands = new Map<TaskKey, AttachedCommand>();
-  readonly #sinks = new Map<TaskKey, LogSink>();
-  readonly #logStates = new Map<TaskKey, MutableLogState>();
-  readonly #memoryLogs = new Map<TaskKey, CommandOutput>();
+  readonly #entries = new Map<TaskKey, TaskEntry>();
 
   constructor(options: TaskManagerOptions = {}) {
     this.#logPath = options.logPath;
@@ -387,26 +384,46 @@ export class TaskManager {
     return `${conversationId}:${taskId}`;
   }
 
+  #getOrCreateEntry(conversationId: ConversationId, taskId: string): TaskEntry {
+    const key = this.#key(conversationId, taskId);
+    let entry = this.#entries.get(key);
+    if (entry === undefined) {
+      entry = { conversationId, taskId };
+      this.#entries.set(key, entry);
+    }
+    return entry;
+  }
+
+  #pruneEntry(key: TaskKey): void {
+    const entry = this.#entries.get(key);
+    if (
+      entry !== undefined &&
+      entry.running === undefined &&
+      entry.sink === undefined &&
+      entry.logState === undefined &&
+      entry.memoryLog === undefined
+    ) {
+      this.#entries.delete(key);
+    }
+  }
+
   logPathOf(conversationId: ConversationId, taskId: string): string | undefined {
     return this.#logPath?.(conversationId, taskId);
   }
 
   attach(conversationId: ConversationId, taskId: string, running: RunningCommand): void {
-    this.#commands.set(this.#key(conversationId, taskId), {
-      conversationId,
-      taskId,
-      running,
-    });
+    const entry = this.#getOrCreateEntry(conversationId, taskId);
+    entry.running = running;
   }
 
   get(conversationId: ConversationId, taskId: string): RunningCommand | undefined {
-    return this.#commands.get(this.#key(conversationId, taskId))?.running;
+    return this.#entries.get(this.#key(conversationId, taskId))?.running;
   }
 
   activeCount(conversationId?: ConversationId): number {
     let count = 0;
-    for (const entry of this.#commands.values()) {
-      if (entry.running.settled) continue;
+    for (const entry of this.#entries.values()) {
+      if (entry.running === undefined || entry.running.settled) continue;
       if (conversationId === undefined || entry.conversationId === conversationId) {
         count += 1;
       }
@@ -416,8 +433,8 @@ export class TaskManager {
 
   listActive(conversationId?: ConversationId): ActiveTaskEntry[] {
     const active: ActiveTaskEntry[] = [];
-    for (const entry of this.#commands.values()) {
-      if (entry.running.settled) continue;
+    for (const entry of this.#entries.values()) {
+      if (entry.running === undefined || entry.running.settled) continue;
       if (conversationId === undefined || entry.conversationId === conversationId) {
         active.push({
           conversationId: entry.conversationId,
@@ -432,25 +449,30 @@ export class TaskManager {
   /** Detach the live command, keeping a bounded tail in the memory log unless `retain` is false. */
   delete(conversationId: ConversationId, taskId: string, retain = true): void {
     const key = this.#key(conversationId, taskId);
-    const entry = this.#commands.get(key);
-    if (entry === undefined) return;
-    this.#commands.delete(key);
+    const entry = this.#entries.get(key);
+    if (entry === undefined || entry.running === undefined) return;
+    const running = entry.running;
+    entry.running = undefined;
     if (!retain) {
-      this.#logStates.delete(key);
+      entry.logState = undefined;
+      this.#pruneEntry(key);
       return;
     }
-    const output = entry.running.output();
-    if (output.totalBytes === 0) return;
+    const output = running.output();
+    if (output.totalBytes === 0) {
+      this.#pruneEntry(key);
+      return;
+    }
     const tail = utf8Tail(output.text, MEMORY_LOG_BYTES);
-    this.#memoryLogs.set(key, {
+    entry.memoryLog = {
       text: tail.text,
       totalBytes: output.totalBytes,
       droppedBytes: output.droppedBytes + tail.fromByte,
-    });
+    };
   }
 
   kill(conversationId: ConversationId, taskId: string, reason: TaskKillReason = "tool"): boolean {
-    const running = this.#commands.get(this.#key(conversationId, taskId))?.running;
+    const running = this.#entries.get(this.#key(conversationId, taskId))?.running;
     if (running === undefined) return false;
     running.kill(reason);
     return true;
@@ -466,7 +488,7 @@ export class TaskManager {
   }
 
   logStatus(conversationId: ConversationId, taskId: string): TaskLogStatus {
-    const state = this.#logStates.get(this.#key(conversationId, taskId));
+    const state = this.#entries.get(this.#key(conversationId, taskId))?.logState;
     if (state === undefined) return { logTruncated: false };
     return {
       logTruncated: state.logTruncated,
@@ -481,7 +503,7 @@ export class TaskManager {
    */
   async openLog(conversationId: ConversationId, taskId: string, running: RunningCommand) {
     const key = this.#key(conversationId, taskId);
-    if (this.#sinks.has(key)) return;
+    if (this.#entries.get(key)?.sink !== undefined) return;
     const path = this.#logPath?.(conversationId, taskId);
     if (path === undefined) return;
 
@@ -491,7 +513,8 @@ export class TaskManager {
       writtenBytes: 0,
       stopped: false,
     };
-    this.#logStates.set(key, state);
+    const entry = this.#getOrCreateEntry(conversationId, taskId);
+    entry.logState = state;
 
     let stream: WriteStream;
     try {
@@ -539,7 +562,7 @@ export class TaskManager {
 
     const snapshot = running.output();
     const detach = running.onOutput(writeChunk);
-    this.#sinks.set(key, { stream, detach, state });
+    entry.sink = { stream, detach, state };
     if (snapshot.droppedBytes > 0) {
       writeChunk(`[${snapshot.droppedBytes} bytes of earlier output were dropped]\n`);
     }
@@ -550,9 +573,11 @@ export class TaskManager {
     key: TaskKey,
     options?: { readonly footer?: string; readonly timeoutMs?: number },
   ): Promise<void> {
-    const sink = this.#sinks.get(key);
-    if (sink === undefined) return;
-    this.#sinks.delete(key);
+    const entry = this.#entries.get(key);
+    const sink = entry?.sink;
+    if (entry === undefined || sink === undefined) return;
+    entry.sink = undefined;
+    this.#pruneEntry(key);
     sink.detach();
     if (sink.stream.destroyed) return;
     await new Promise<void>((resolve) => {
@@ -597,8 +622,12 @@ export class TaskManager {
 
   async evict(conversationId: ConversationId, taskId: string, logPath?: string): Promise<void> {
     const key = this.#key(conversationId, taskId);
-    this.#memoryLogs.delete(key);
-    this.#logStates.delete(key);
+    const entry = this.#entries.get(key);
+    if (entry !== undefined) {
+      entry.memoryLog = undefined;
+      entry.logState = undefined;
+      this.#pruneEntry(key);
+    }
     if (logPath !== undefined) {
       await cleanupLog(logPath);
     }
@@ -611,8 +640,8 @@ export class TaskManager {
     options: OutputReadOptions = {},
   ): Promise<OutputSlice> {
     validateOutputReadOptions(options);
-    const key = this.#key(conversationId, taskId);
-    const running = this.#commands.get(key)?.running;
+    const entry = this.#entries.get(this.#key(conversationId, taskId));
+    const running = entry?.running;
     if (running !== undefined) {
       const output = running.output();
       if (record.logPath !== undefined && needsDiskFallback(output, options)) {
@@ -636,7 +665,7 @@ export class TaskManager {
         // Fall through to retained memory log when the disk file is missing or unreadable.
       }
     }
-    const log = this.#memoryLogs.get(key);
+    const log = entry?.memoryLog;
     if (log !== undefined) {
       return sliceRetainedOutput(
         Buffer.from(log.text, "utf8"),
@@ -649,24 +678,25 @@ export class TaskManager {
   }
 
   killAll(): void {
-    for (const entry of this.#commands.values()) entry.running.detachCancel();
-    this.#commands.clear();
-    for (const sink of this.#sinks.values()) {
-      sink.detach();
-      sink.stream.destroy();
+    for (const entry of this.#entries.values()) {
+      entry.running?.detachCancel();
+      if (entry.sink !== undefined) {
+        entry.sink.detach();
+        entry.sink.stream.destroy();
+      }
     }
-    this.#sinks.clear();
-    this.#memoryLogs.clear();
-    this.#logStates.clear();
+    this.#entries.clear();
   }
 
   async close(graceMs = 3_000): Promise<void> {
-    const entries = [...this.#commands.values()];
-    for (const entry of entries) {
+    const running: RunningCommand[] = [];
+    for (const entry of this.#entries.values()) {
+      if (entry.running === undefined) continue;
       entry.running.detachCancel();
+      running.push(entry.running);
     }
-    if (entries.length > 0) {
-      const waitDone = Promise.allSettled(entries.map((entry) => entry.running.done));
+    if (running.length > 0) {
+      const waitDone = Promise.allSettled(running.map((command) => command.done));
       const bounded = Math.max(0, graceMs);
       let timer: NodeJS.Timeout | undefined;
       try {
@@ -681,13 +711,17 @@ export class TaskManager {
         if (timer !== undefined) clearTimeout(timer);
       }
     }
-    this.#commands.clear();
+    for (const [key, entry] of this.#entries) {
+      entry.running = undefined;
+      this.#pruneEntry(key);
+    }
 
-    await Promise.all(
-      [...this.#sinks.keys()].map((key) => this.#closeSink(key, { timeoutMs: 500 })),
-    );
-    this.#memoryLogs.clear();
-    this.#logStates.clear();
+    const sinkKeys: TaskKey[] = [];
+    for (const [key, entry] of this.#entries) {
+      if (entry.sink !== undefined) sinkKeys.push(key);
+    }
+    await Promise.all(sinkKeys.map((key) => this.#closeSink(key, { timeoutMs: 500 })));
+    this.#entries.clear();
   }
 }
 

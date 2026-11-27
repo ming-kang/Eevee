@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { win32 } from "node:path";
+import { errorCode } from "../shared/guards.ts";
 
 const DEFAULT_EXIT_STDIO_GRACE_MS = 100;
 const DEFAULT_MAX_STDIO_GRACE_MS = 2000;
@@ -15,12 +16,6 @@ export type WaitForChildProcessOptions = {
   readonly maxGraceMs?: number;
   readonly isDraining?: () => boolean;
 };
-
-function errorCode(error: unknown): string | undefined {
-  return typeof error === "object" && error !== null && "code" in error
-    ? String((error as { code: unknown }).code)
-    : undefined;
-}
 
 function tryKill(targetPid: number, signal: NodeJS.Signals): boolean {
   try {

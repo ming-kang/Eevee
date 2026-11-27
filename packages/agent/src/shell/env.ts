@@ -20,27 +20,23 @@ export type ManagedExecutionEnvOptions = {
   readonly execEnv?: ExecutionEnv;
 };
 
-const managedPlatforms = new WeakMap<ExecutionEnv, NodeJS.Platform>();
-const preNormalizedOptions = new WeakSet<ShellExecOptions>();
+function isPlatformEnv(
+  env: ExecutionEnv,
+): env is ExecutionEnv & { readonly platform: NodeJS.Platform } {
+  return "platform" in env && typeof env.platform === "string";
+}
 
 export function normalizeCommandForEnv(
   env: ExecutionEnv,
   command: string,
   platform?: NodeJS.Platform,
 ): NormalizeCommandResult {
-  return normalizePosixBashCommand(
-    command,
-    platform ?? managedPlatforms.get(env) ?? process.platform,
-  );
-}
-
-export function markExecOptionsNormalized(options: ShellExecOptions): ShellExecOptions {
-  preNormalizedOptions.add(options);
-  return options;
+  const effectivePlatform = platform ?? (isPlatformEnv(env) ? env.platform : process.platform);
+  return normalizePosixBashCommand(command, effectivePlatform);
 }
 
 class ManagedExecutionEnv extends NodeExecutionEnv {
-  readonly #platform: NodeJS.Platform;
+  readonly platform: NodeJS.Platform;
   readonly #explicitShellPath: string | undefined;
   readonly #shellEnv: NodeJS.ProcessEnv | undefined;
   readonly #watch: NodeWatchOptions | undefined;
@@ -55,17 +51,16 @@ class ManagedExecutionEnv extends NodeExecutionEnv {
       ...(options.shellEnv === undefined ? {} : { shellEnv: options.shellEnv }),
       ...(options.watch === undefined ? {} : { watch: options.watch }),
     });
-    this.#platform = options.platform ?? process.platform;
+    this.platform = options.platform ?? process.platform;
     this.#explicitShellPath = options.shellPath;
     this.#shellEnv = options.shellEnv;
     this.#watch = options.watch;
     this.#execEnv = options.execEnv;
-    managedPlatforms.set(this, this.#platform);
   }
 
   #resolveBash(): Promise<BashShellConfig | undefined> {
     this.#resolvedBash ??= resolveBashShell({
-      platform: this.#platform,
+      platform: this.platform,
       ...(this.#shellEnv === undefined ? {} : { env: this.#shellEnv }),
     });
     return this.#resolvedBash;
@@ -83,10 +78,7 @@ class ManagedExecutionEnv extends NodeExecutionEnv {
       return super.exec(command, options, context);
     }
 
-    const effectiveCommand =
-      options !== undefined && preNormalizedOptions.has(options)
-        ? command
-        : normalizePosixBashCommand(command, this.#platform).command;
+    const effectiveCommand = normalizePosixBashCommand(command, this.platform).command;
 
     if (this.#execEnv !== undefined) {
       return this.#execEnv.exec(effectiveCommand, options, context);
@@ -98,7 +90,7 @@ class ManagedExecutionEnv extends NodeExecutionEnv {
 
     const resolved = await this.#resolveBash();
     if (resolved === undefined) {
-      if (this.#platform === "win32") {
+      if (this.platform === "win32") {
         return err(
           new ExecutionError(
             "shell_unavailable",
@@ -135,6 +127,8 @@ class ManagedExecutionEnv extends NodeExecutionEnv {
   }
 }
 
-export function createManagedExecutionEnv(options: ManagedExecutionEnvOptions): NodeExecutionEnv {
+export function createManagedExecutionEnv(
+  options: ManagedExecutionEnvOptions,
+): NodeExecutionEnv & { readonly platform: NodeJS.Platform } {
   return new ManagedExecutionEnv(options);
 }
