@@ -4,6 +4,7 @@ import { EeveeApiError } from "@eevee/protocol";
 import { type KeyboardEvent, useRef, useState } from "react";
 import { api } from "../lib/api.ts";
 import { useI18n } from "../lib/i18n.ts";
+import { EvTooltip } from "./EvTooltip.tsx";
 
 export function mergeWorkspacePaths(
   existing: readonly string[],
@@ -117,18 +118,19 @@ export function WorkspacesField({
             {value.map((dir) => (
               <div key={dir} className="ev-workspace-row">
                 <FolderIcon width={14} height={14} className="ev-workspace-row-icon" />
-                <span className="ev-mono ev-truncate ev-workspace-row-path" title={dir}>
-                  {dir}
-                </span>
-                <IconButton
-                  type="button"
-                  aria-label={t("project.workspace.remove")}
-                  title={t("project.workspace.remove")}
-                  disabled={disabled}
-                  onClick={() => handleRemove(dir)}
-                >
-                  <CloseIcon width={14} height={14} />
-                </IconButton>
+                <EvTooltip content={dir} side="top">
+                  <span className="ev-mono ev-truncate ev-workspace-row-path">{dir}</span>
+                </EvTooltip>
+                <EvTooltip content={t("project.workspace.remove")} side="top">
+                  <IconButton
+                    type="button"
+                    aria-label={t("project.workspace.remove")}
+                    disabled={disabled}
+                    onClick={() => handleRemove(dir)}
+                  >
+                    <CloseIcon width={14} height={14} />
+                  </IconButton>
+                </EvTooltip>
               </div>
             ))}
           </div>

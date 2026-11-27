@@ -1,5 +1,14 @@
 import { CodeIcon, DownloadIcon, UploadIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Field, Heading, Input, Separator, TextArea } from "@earendil-works/elanor-react";
+import {
+  Button,
+  Field,
+  Heading,
+  Input,
+  PageHeader,
+  Section,
+  Separator,
+  TextArea,
+} from "@earendil-works/elanor-react";
 import {
   ConfigBundleSchema,
   type EngineSettings,
@@ -173,164 +182,174 @@ export function ConfigTab() {
 
   return (
     <div className="ev-settings-stack ev-settings-narrow">
-      <div className="ev-settings-head">
-        <Heading level={2} size={5}>
-          {t("config.runPolicyTitle")}
-        </Heading>
-        <div className="ev-inline-actions">
-          <Button
-            hierarchy="secondary"
-            density="compact"
-            iconStart={<CodeIcon width={15} height={15} />}
-            onClick={() => setTransferOpen((prev) => !prev)}
-          >
-            {t("config.transferTitle")}
-          </Button>
-          <Button
-            hierarchy="primary"
-            density="compact"
-            pending={saving}
-            onClick={() => void saveSettings()}
-          >
-            {t("common.save")}
-          </Button>
-        </div>
-      </div>
-
-      {error && <div className="ev-error-banner">{error}</div>}
-
-      {transferOpen && (
-        <div className="ev-settings-card">
-          <div className="ev-settings-head">
-            <Heading level={3} size={6}>
-              {t("config.transferTitle")}
-            </Heading>
-            <div className="ev-inline-actions">
+      <Section.Root className="ev-settings-section">
+        <PageHeader.Root className="ev-section-header">
+          <PageHeader.Row>
+            <PageHeader.Title level={2} className="ev-section-title">
+              {t("config.runPolicyTitle")}
+            </PageHeader.Title>
+            <PageHeader.Actions>
               <Button
                 hierarchy="secondary"
                 density="compact"
-                iconStart={<DownloadIcon width={15} height={15} />}
-                onClick={() => void handleExport()}
+                iconStart={<CodeIcon width={15} height={15} />}
+                onClick={() => setTransferOpen((prev) => !prev)}
               >
-                {t("config.export")}
+                {t("config.transferTitle")}
               </Button>
               <Button
                 hierarchy="primary"
                 density="compact"
-                iconStart={<UploadIcon width={15} height={15} />}
-                disabled={bundleJson.trim().length === 0}
-                pending={importing}
-                onClick={() => void handleImport()}
+                pending={saving}
+                onClick={() => void saveSettings()}
               >
-                {t("config.import")}
+                {t("common.save")}
               </Button>
+            </PageHeader.Actions>
+          </PageHeader.Row>
+        </PageHeader.Root>
+
+        {error && <div className="ev-error-banner">{error}</div>}
+
+        {transferOpen && (
+          <div className="ev-settings-card">
+            <div className="ev-settings-head">
+              <Heading level={3} size={6}>
+                {t("config.transferTitle")}
+              </Heading>
+              <div className="ev-inline-actions">
+                <Button
+                  hierarchy="secondary"
+                  density="compact"
+                  iconStart={<DownloadIcon width={15} height={15} />}
+                  onClick={() => void handleExport()}
+                >
+                  {t("config.export")}
+                </Button>
+                <Button
+                  hierarchy="primary"
+                  density="compact"
+                  iconStart={<UploadIcon width={15} height={15} />}
+                  disabled={bundleJson.trim().length === 0}
+                  pending={importing}
+                  onClick={() => void handleImport()}
+                >
+                  {t("config.import")}
+                </Button>
+              </div>
             </div>
+            <TextArea
+              monospace
+              rows={10}
+              value={bundleJson}
+              onValueChange={setBundleJson}
+              placeholder="ConfigBundle JSON"
+            />
           </div>
-          <TextArea
-            monospace
-            rows={10}
-            value={bundleJson}
-            onValueChange={setBundleJson}
-            placeholder="ConfigBundle JSON"
-          />
-        </div>
-      )}
+        )}
 
-      <div className="ev-settings-card">
-        <div className="ev-settings-grid-2">
-          <Field.Root>
-            <Field.Label>{t("config.maxActiveWorkers")}</Field.Label>
-            <Input
-              type="text"
-              value={form.maxActiveWorkers}
-              onValueChange={(maxActiveWorkers) => patchForm({ maxActiveWorkers })}
-            />
-          </Field.Root>
-          <Field.Root>
-            <Field.Label>{t("config.backgroundAfterMs")}</Field.Label>
-            <Input
-              type="text"
-              value={form.backgroundAfterMs}
-              onValueChange={(backgroundAfterMs) => patchForm({ backgroundAfterMs })}
-            />
-          </Field.Root>
-          <Field.Root>
-            <Field.Label>{t("config.routerContextTokens")}</Field.Label>
-            <Input
-              type="text"
-              value={form.routerContextTokens}
-              onValueChange={(routerContextTokens) => patchForm({ routerContextTokens })}
-            />
-          </Field.Root>
-          <Field.Root>
-            <Field.Label>{t("config.idleHibernateMs")}</Field.Label>
-            <Input
-              type="text"
-              value={form.idleHibernateMs}
-              onValueChange={(idleHibernateMs) => patchForm({ idleHibernateMs })}
-            />
-          </Field.Root>
-        </div>
-
-        <Separator />
-
-        <div className="ev-settings-grid-3">
-          <Field.Root>
-            <Field.Label>{t("config.routerModel")}</Field.Label>
-            <ModelChoiceMenu
-              value={form.routerModel}
-              models={availableModels}
-              placeholder={t("modelMenu.choose")}
-              variant="field"
-              ariaLabel={t("config.routerModel")}
-              onOpen={() => void refreshSharedModels(false)}
-              onChange={(routerModel) => patchForm({ routerModel })}
-            />
-          </Field.Root>
-          <Field.Root>
-            <Field.Label>{t("config.workerModel")}</Field.Label>
-            <ModelChoiceMenu
-              value={form.workerModel}
-              models={availableModels}
-              placeholder={t("modelMenu.followRouter")}
-              clearLabel={t("modelMenu.followRouter")}
-              variant="field"
-              ariaLabel={t("config.workerModel")}
-              onOpen={() => void refreshSharedModels(false)}
-              onChange={(workerModel) => patchForm({ workerModel })}
-            />
-          </Field.Root>
-          <Field.Root>
-            <Field.Label>{t("config.dreamerModel")}</Field.Label>
-            <ModelChoiceMenu
-              value={form.dreamerModel}
-              models={availableModels}
-              placeholder={t("modelMenu.disabled")}
-              clearLabel={t("modelMenu.disabled")}
-              variant="field"
-              align="end"
-              ariaLabel={t("config.dreamerModel")}
-              onOpen={() => void refreshSharedModels(false)}
-              onChange={(dreamerModel) => patchForm({ dreamerModel })}
-            />
-          </Field.Root>
-        </div>
-      </div>
-
-      <div className="ev-settings-section">
-        <Heading level={2} size={5}>
-          {t("config.toolsTitle")}
-        </Heading>
         <div className="ev-settings-card">
-          <ToolsSettingsEditor
-            variant="global"
-            value={form.tools}
-            onChange={(tools) => patchForm({ tools })}
-            inlineBudget={form.inlineBudget}
-            onInlineBudgetChange={(inlineBudget) => patchForm({ inlineBudget })}
-          />
+          <div className="ev-settings-grid-2">
+            <Field.Root>
+              <Field.Label>{t("config.maxActiveWorkers")}</Field.Label>
+              <Input
+                type="text"
+                value={form.maxActiveWorkers}
+                onValueChange={(maxActiveWorkers) => patchForm({ maxActiveWorkers })}
+              />
+            </Field.Root>
+            <Field.Root>
+              <Field.Label>{t("config.backgroundAfterMs")}</Field.Label>
+              <Input
+                type="text"
+                value={form.backgroundAfterMs}
+                onValueChange={(backgroundAfterMs) => patchForm({ backgroundAfterMs })}
+              />
+            </Field.Root>
+            <Field.Root>
+              <Field.Label>{t("config.routerContextTokens")}</Field.Label>
+              <Input
+                type="text"
+                value={form.routerContextTokens}
+                onValueChange={(routerContextTokens) => patchForm({ routerContextTokens })}
+              />
+            </Field.Root>
+            <Field.Root>
+              <Field.Label>{t("config.idleHibernateMs")}</Field.Label>
+              <Input
+                type="text"
+                value={form.idleHibernateMs}
+                onValueChange={(idleHibernateMs) => patchForm({ idleHibernateMs })}
+              />
+            </Field.Root>
+          </div>
+
+          <Separator />
+
+          <div className="ev-settings-grid-3">
+            <Field.Root>
+              <Field.Label>{t("config.routerModel")}</Field.Label>
+              <ModelChoiceMenu
+                value={form.routerModel}
+                models={availableModels}
+                placeholder={t("modelMenu.choose")}
+                variant="field"
+                ariaLabel={t("config.routerModel")}
+                onOpen={() => void refreshSharedModels(false)}
+                onChange={(routerModel) => patchForm({ routerModel })}
+              />
+            </Field.Root>
+            <Field.Root>
+              <Field.Label>{t("config.workerModel")}</Field.Label>
+              <ModelChoiceMenu
+                value={form.workerModel}
+                models={availableModels}
+                placeholder={t("modelMenu.followRouter")}
+                clearLabel={t("modelMenu.followRouter")}
+                variant="field"
+                ariaLabel={t("config.workerModel")}
+                onOpen={() => void refreshSharedModels(false)}
+                onChange={(workerModel) => patchForm({ workerModel })}
+              />
+            </Field.Root>
+            <Field.Root>
+              <Field.Label>{t("config.dreamerModel")}</Field.Label>
+              <ModelChoiceMenu
+                value={form.dreamerModel}
+                models={availableModels}
+                placeholder={t("modelMenu.disabled")}
+                clearLabel={t("modelMenu.disabled")}
+                variant="field"
+                align="end"
+                ariaLabel={t("config.dreamerModel")}
+                onOpen={() => void refreshSharedModels(false)}
+                onChange={(dreamerModel) => patchForm({ dreamerModel })}
+              />
+            </Field.Root>
+          </div>
         </div>
-      </div>
+      </Section.Root>
+
+      <Section.Root className="ev-settings-section">
+        <PageHeader.Root className="ev-section-header">
+          <PageHeader.Row>
+            <PageHeader.Title level={2} className="ev-section-title">
+              {t("config.toolsTitle")}
+            </PageHeader.Title>
+          </PageHeader.Row>
+        </PageHeader.Root>
+        <Section.Content>
+          <div className="ev-settings-card">
+            <ToolsSettingsEditor
+              variant="global"
+              value={form.tools}
+              onChange={(tools) => patchForm({ tools })}
+              inlineBudget={form.inlineBudget}
+              onInlineBudgetChange={(inlineBudget) => patchForm({ inlineBudget })}
+            />
+          </div>
+        </Section.Content>
+      </Section.Root>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Separator } from "@earendil-works/elanor-react";
+import { Section } from "@earendil-works/elanor-react";
 import type { ModelInfo, ModelProfile } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api.ts";
@@ -113,7 +113,7 @@ export function ModelsTab() {
         onSave={() => void saveProfiles()}
       />
 
-      <Separator />
+      <Section.Separator />
 
       <ModelCatalogSection
         allModels={allModels}

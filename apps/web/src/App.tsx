@@ -4,7 +4,7 @@ import {
   RightPanelCloseIcon,
   RightPanelOpenIcon,
 } from "@earendil-works/elanor-icons-react";
-import { Button, IconButton } from "@earendil-works/elanor-react";
+import { Button, IconButton, Tooltip } from "@earendil-works/elanor-react";
 import type { ProjectId, ProjectSummary, WorkerId } from "@eevee/protocol";
 import {
   type CSSProperties,
@@ -19,6 +19,7 @@ import {
 import { BrandLogo } from "./components/BrandLogo.tsx";
 import { ChatPage } from "./components/ChatPage.tsx";
 import { CommandPalette } from "./components/CommandPalette.tsx";
+import { EvTooltip } from "./components/EvTooltip.tsx";
 import { LoginView } from "./components/LoginView.tsx";
 import { MemoryPage } from "./components/MemoryPage.tsx";
 import { OverviewPage } from "./components/OverviewPage.tsx";
@@ -309,234 +310,241 @@ export function App() {
   } as CSSProperties;
 
   return (
-    <div className="ev-viewport">
-      <div className="ev-side-trigger-anchor">
-        <IconButton
-          aria-label={layout.sideVisible ? t("app.collapseSide") : t("app.expandSide")}
-          title={t("app.toggleSide", { shortcut: `${modLabel()} B` })}
-          onClick={layout.toggleSide}
-        >
-          {layout.sideVisible ? (
-            <LeftPanelCloseIcon width={18} height={18} />
-          ) : (
-            <LeftPanelOpenIcon width={18} height={18} />
-          )}
-        </IconButton>
-      </div>
-
-      {withRail && (
-        <div className="ev-rail-trigger-anchor">
-          <div className="ev-rail-toggle-wrap">
-            {!layout.railVisible && collapsedRailStage && (
-              <span className="ev-dot" data-stage={collapsedRailStage} />
-            )}
+    <Tooltip.Provider delay={320} closeDelay={80}>
+      <div className="ev-viewport">
+        <div className="ev-side-trigger-anchor">
+          <EvTooltip content={t("app.toggleSide", { shortcut: `${modLabel()} B` })} side="bottom">
             <IconButton
-              aria-label={layout.railVisible ? t("app.collapseRail") : t("app.expandRail")}
-              title={t("app.toggleRail", { shortcut: `${modLabel()} Alt B` })}
-              onClick={layout.toggleRail}
+              aria-label={layout.sideVisible ? t("app.collapseSide") : t("app.expandSide")}
+              onClick={layout.toggleSide}
             >
-              {layout.railVisible ? (
-                <RightPanelCloseIcon width={18} height={18} />
+              {layout.sideVisible ? (
+                <LeftPanelCloseIcon width={18} height={18} />
               ) : (
-                <RightPanelOpenIcon width={18} height={18} />
+                <LeftPanelOpenIcon width={18} height={18} />
               )}
             </IconButton>
-          </div>
+          </EvTooltip>
         </div>
-      )}
 
-      <div
-        className={`ev-frame${withRail ? " with-rail" : ""}${layout.sideCollapsed ? " side-collapsed" : ""}${layout.railCollapsed ? " rail-collapsed" : ""}`}
-        style={frameStyle}
-      >
-        <nav
-          className={`ev-sidebar${layout.drawer === "side" ? " drawer-open" : ""}`}
-          aria-label={t("app.mainNav")}
-        >
-          <div className="ev-sidebar-inner">
-            <Sidebar
-              projects={projects}
-              boards={boards}
-              activeProject={activeProject}
-              route={surfaceRoute}
-              themePreference={theme.preference}
-              themeScheme={theme.scheme}
-              onOpenOverview={openOverview}
-              onOpenProject={(pid, view, wid) => openProject(pid, view, wid)}
-              onOpenQuestion={openQuestion}
-              onNewProject={() => setCreateOpen(true)}
-              onEditProject={setEditingProject}
-              onDeleteProject={setDeletingProject}
-              onOpenPalette={() => setPaletteOpen(true)}
-              onOpenControl={() => openControl("general")}
-              onOpenShortcuts={() => setShortcutsOpen(true)}
-              onCycleTheme={theme.cycle}
-              onLogout={() => void logout()}
-            />
-          </div>
-        </nav>
-
-        <main className="ev-main">
-          {surfaceRoute.name === "overview" || !activeProject ? (
-            <OverviewPage
-              projects={projects}
-              boards={boards}
-              projectsError={projectsStore.error}
-              projectsLoading={projectsStore.loading}
-              onRetryProjects={() => void projectsStore.reload()}
-              onNewProject={() => setCreateOpen(true)}
-              onOpenProject={(pid, wid) => openProject(pid, "chat", wid)}
-              onOpenQuestion={openQuestion}
-            />
-          ) : surfaceRoute.view === "memory" ? (
-            <MemoryPage
-              project={activeProject}
-              onSelectView={(v) => openProject(activeProject.id, v)}
-              onEditProject={() => setEditingProject(activeProject)}
-              onProjectUpdated={projectsStore.upsertProject}
-            />
-          ) : surfaceRoute.view === "usage" ? (
-            <UsagePage
-              project={activeProject}
-              onSelectView={(v) => openProject(activeProject.id, v)}
-              onEditProject={() => setEditingProject(activeProject)}
-            />
-          ) : (
-            <ChatPage
-              project={activeProject}
-              board={activeBoard}
-              activeWorkerId={activeWorkerId}
-              questionFocusNonce={questionFocusNonce}
-              findOpen={findOpen}
-              onOpenFind={() => setFindOpen(true)}
-              onCloseFind={() => setFindOpen(false)}
-              onSelectView={(v) => openProject(activeProject.id, v)}
-              onEditProject={() => setEditingProject(activeProject)}
-              onOpenWorker={(wid) => openProject(activeProject.id, "chat", wid)}
-              onOpenRouter={() => openProject(activeProject.id, "chat")}
-              onOpenQuestion={() => openQuestion(activeProject.id)}
-            />
-          )}
-          {projectsStore.error && surfaceRoute.name === "project" && activeProject && (
-            <div className="ev-page-banner">
-              <div className="ev-error-banner ev-error-row" role="alert">
-                <span className="ev-flex-1">
-                  {t("app.projectsRefreshError", { error: projectsStore.error })}
-                </span>
-                <Button
-                  type="button"
-                  hierarchy="secondary"
-                  density="compact"
-                  pending={projectsStore.loading}
-                  onClick={() => void projectsStore.reload()}
+        {withRail && (
+          <div className="ev-rail-trigger-anchor">
+            <div className="ev-rail-toggle-wrap">
+              {!layout.railVisible && collapsedRailStage && (
+                <span className="ev-dot" data-stage={collapsedRailStage} />
+              )}
+              <EvTooltip
+                content={t("app.toggleRail", { shortcut: `${modLabel()} Alt B` })}
+                side="bottom"
+              >
+                <IconButton
+                  aria-label={layout.railVisible ? t("app.collapseRail") : t("app.expandRail")}
+                  onClick={layout.toggleRail}
                 >
-                  {t("common.retry")}
-                </Button>
-              </div>
+                  {layout.railVisible ? (
+                    <RightPanelCloseIcon width={18} height={18} />
+                  ) : (
+                    <RightPanelOpenIcon width={18} height={18} />
+                  )}
+                </IconButton>
+              </EvTooltip>
             </div>
-          )}
-        </main>
+          </div>
+        )}
 
-        {withRail && activeProject && (
-          <aside
-            className={`ev-rail${layout.drawer === "rail" ? " drawer-open" : ""}`}
-            aria-label={t("app.railLabel")}
+        <div
+          className={`ev-frame${withRail ? " with-rail" : ""}${layout.sideCollapsed ? " side-collapsed" : ""}${layout.railCollapsed ? " rail-collapsed" : ""}`}
+          style={frameStyle}
+        >
+          <nav
+            className={`ev-sidebar${layout.drawer === "side" ? " drawer-open" : ""}`}
+            aria-label={t("app.mainNav")}
           >
-            <div className="ev-rail-inner">
-              <RightRail
-                projectId={activeProject.id}
-                board={activeBoard}
-                activeWorkerId={activeWorkerId}
-                onOpenWorker={(wid) => openProject(activeProject.id, "chat", wid)}
+            <div className="ev-sidebar-inner">
+              <Sidebar
+                projects={projects}
+                boards={boards}
+                activeProject={activeProject}
+                route={surfaceRoute}
+                themePreference={theme.preference}
+                themeScheme={theme.scheme}
+                onOpenOverview={openOverview}
+                onOpenProject={(pid, view, wid) => openProject(pid, view, wid)}
+                onOpenQuestion={openQuestion}
+                onNewProject={() => setCreateOpen(true)}
+                onEditProject={setEditingProject}
+                onDeleteProject={setDeletingProject}
+                onOpenPalette={() => setPaletteOpen(true)}
+                onOpenControl={() => openControl("general")}
+                onOpenShortcuts={() => setShortcutsOpen(true)}
+                onCycleTheme={theme.cycle}
+                onLogout={() => void logout()}
               />
             </div>
-          </aside>
+          </nav>
+
+          <main className="ev-main">
+            {surfaceRoute.name === "overview" || !activeProject ? (
+              <OverviewPage
+                projects={projects}
+                boards={boards}
+                projectsError={projectsStore.error}
+                projectsLoading={projectsStore.loading}
+                onRetryProjects={() => void projectsStore.reload()}
+                onNewProject={() => setCreateOpen(true)}
+                onOpenProject={(pid, wid) => openProject(pid, "chat", wid)}
+                onOpenQuestion={openQuestion}
+              />
+            ) : surfaceRoute.view === "memory" ? (
+              <MemoryPage
+                project={activeProject}
+                onSelectView={(v) => openProject(activeProject.id, v)}
+                onEditProject={() => setEditingProject(activeProject)}
+                onProjectUpdated={projectsStore.upsertProject}
+              />
+            ) : surfaceRoute.view === "usage" ? (
+              <UsagePage
+                project={activeProject}
+                onSelectView={(v) => openProject(activeProject.id, v)}
+                onEditProject={() => setEditingProject(activeProject)}
+              />
+            ) : (
+              <ChatPage
+                project={activeProject}
+                board={activeBoard}
+                activeWorkerId={activeWorkerId}
+                questionFocusNonce={questionFocusNonce}
+                findOpen={findOpen}
+                onOpenFind={() => setFindOpen(true)}
+                onCloseFind={() => setFindOpen(false)}
+                onSelectView={(v) => openProject(activeProject.id, v)}
+                onEditProject={() => setEditingProject(activeProject)}
+                onOpenWorker={(wid) => openProject(activeProject.id, "chat", wid)}
+                onOpenRouter={() => openProject(activeProject.id, "chat")}
+                onOpenQuestion={() => openQuestion(activeProject.id)}
+              />
+            )}
+            {projectsStore.error && surfaceRoute.name === "project" && activeProject && (
+              <div className="ev-page-banner">
+                <div className="ev-error-banner ev-error-row" role="alert">
+                  <span className="ev-flex-1">
+                    {t("app.projectsRefreshError", { error: projectsStore.error })}
+                  </span>
+                  <Button
+                    type="button"
+                    hierarchy="secondary"
+                    density="compact"
+                    pending={projectsStore.loading}
+                    onClick={() => void projectsStore.reload()}
+                  >
+                    {t("common.retry")}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {withRail && activeProject && (
+            <aside
+              className={`ev-rail${layout.drawer === "rail" ? " drawer-open" : ""}`}
+              aria-label={t("app.railLabel")}
+            >
+              <div className="ev-rail-inner">
+                <RightRail
+                  projectId={activeProject.id}
+                  board={activeBoard}
+                  activeWorkerId={activeWorkerId}
+                  onOpenWorker={(wid) => openProject(activeProject.id, "chat", wid)}
+                />
+              </div>
+            </aside>
+          )}
+
+          {!layout.sideDrawerMode && !layout.sideCollapsed && (
+            <Sash
+              side="left"
+              label={t("app.resizeSide")}
+              min={210}
+              max={400}
+              now={layout.effectiveSideWidth}
+              onResize={layout.setSideWidth}
+              onReset={layout.resetSideWidth}
+            />
+          )}
+
+          {withRail && !layout.railDrawerMode && !layout.railCollapsed && (
+            <Sash
+              side="right"
+              label={t("app.resizeRail")}
+              min={300}
+              max={640}
+              now={layout.effectiveRailWidth}
+              onResize={layout.setRailWidth}
+              onReset={layout.resetRailWidth}
+            />
+          )}
+        </div>
+
+        <div
+          className={`ev-drawer-backdrop${layout.drawer !== null ? " on" : ""}`}
+          aria-hidden="true"
+          onClick={layout.closeDrawer}
+        />
+
+        {route.name === "control" && (
+          <Suspense fallback={null}>
+            <SettingsView
+              section={route.section}
+              onSelectSection={(sec) => openControl(sec)}
+              onClose={closeControl}
+            />
+          </Suspense>
         )}
 
-        {!layout.sideDrawerMode && !layout.sideCollapsed && (
-          <Sash
-            side="left"
-            label={t("app.resizeSide")}
-            min={210}
-            max={400}
-            now={layout.effectiveSideWidth}
-            onResize={layout.setSideWidth}
-            onReset={layout.resetSideWidth}
-          />
+        <CommandPalette
+          open={paletteOpen}
+          items={paletteItems}
+          onClose={() => setPaletteOpen(false)}
+        />
+
+        <ShortcutSheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+
+        <ProjectModal
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          onCreated={(created) => {
+            projectsStore.upsertProject(created);
+            openProject(created.id, "chat");
+          }}
+        />
+
+        {editingProject && (
+          <Suspense fallback={null}>
+            <EditProjectModal
+              project={editingProject}
+              onClose={() => setEditingProject(undefined)}
+              onUpdated={projectsStore.upsertProject}
+            />
+          </Suspense>
         )}
 
-        {withRail && !layout.railDrawerMode && !layout.railCollapsed && (
-          <Sash
-            side="right"
-            label={t("app.resizeRail")}
-            min={300}
-            max={640}
-            now={layout.effectiveRailWidth}
-            onResize={layout.setRailWidth}
-            onReset={layout.resetRailWidth}
-          />
+        {deletingProject && (
+          <Suspense fallback={null}>
+            <DeleteProjectModal
+              project={deletingProject}
+              onClose={() => setDeletingProject(undefined)}
+              onDeleted={(id) => {
+                projectsStore.removeProject(id);
+                if (surfaceRoute.name === "project" && surfaceRoute.pid === id) {
+                  navigate({ name: "overview" });
+                }
+              }}
+            />
+          </Suspense>
         )}
+
+        <ToastHost />
       </div>
-
-      <div
-        className={`ev-drawer-backdrop${layout.drawer !== null ? " on" : ""}`}
-        aria-hidden="true"
-        onClick={layout.closeDrawer}
-      />
-
-      {route.name === "control" && (
-        <Suspense fallback={null}>
-          <SettingsView
-            section={route.section}
-            onSelectSection={(sec) => openControl(sec)}
-            onClose={closeControl}
-          />
-        </Suspense>
-      )}
-
-      <CommandPalette
-        open={paletteOpen}
-        items={paletteItems}
-        onClose={() => setPaletteOpen(false)}
-      />
-
-      <ShortcutSheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
-
-      <ProjectModal
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        onCreated={(created) => {
-          projectsStore.upsertProject(created);
-          openProject(created.id, "chat");
-        }}
-      />
-
-      {editingProject && (
-        <Suspense fallback={null}>
-          <EditProjectModal
-            project={editingProject}
-            onClose={() => setEditingProject(undefined)}
-            onUpdated={projectsStore.upsertProject}
-          />
-        </Suspense>
-      )}
-
-      {deletingProject && (
-        <Suspense fallback={null}>
-          <DeleteProjectModal
-            project={deletingProject}
-            onClose={() => setDeletingProject(undefined)}
-            onDeleted={(id) => {
-              projectsStore.removeProject(id);
-              if (surfaceRoute.name === "project" && surfaceRoute.pid === id) {
-                navigate({ name: "overview" });
-              }
-            }}
-          />
-        </Suspense>
-      )}
-
-      <ToastHost />
-    </div>
+    </Tooltip.Provider>
   );
 }

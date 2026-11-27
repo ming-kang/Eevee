@@ -5,6 +5,7 @@ import { type FormEvent, useReducer, useState } from "react";
 import { api } from "../../lib/api.ts";
 import { useI18n } from "../../lib/i18n.ts";
 import { ConfirmModal } from "../ConfirmModal.tsx";
+import { EvDropdown } from "../EvDropdown.tsx";
 import { ModelBasicSection } from "./model-editor/ModelBasicSection.tsx";
 import { ModelBuiltinMatcher } from "./model-editor/ModelBuiltinMatcher.tsx";
 import { ModelCompatSection } from "./model-editor/ModelCompatSection.tsx";
@@ -160,20 +161,18 @@ export function ModelEditorModal({
                     <section className="ev-editor-section">
                       <div className="ev-editor-section-title">{t("modelEditor.smokeSection")}</div>
                       <div className="ev-smoke-controls">
-                        <select
-                          className="ev-select"
+                        <EvDropdown
+                          ariaLabel="Thinking"
                           value={testLevel}
-                          onChange={(event) =>
-                            setTestLevel(event.target.value as "" | ThinkingLevel)
-                          }
-                        >
-                          <option value="">{t("modelEditor.smokeDefaultThinking")}</option>
-                          {model.supportedThinkingLevels.map((level) => (
-                            <option key={level} value={level}>
-                              {level}
-                            </option>
-                          ))}
-                        </select>
+                          options={[
+                            { value: "", label: t("modelEditor.smokeDefaultThinking") },
+                            ...model.supportedThinkingLevels.map((level) => ({
+                              value: level,
+                              label: level,
+                            })),
+                          ]}
+                          onChange={(next) => setTestLevel(next as "" | ThinkingLevel)}
+                        />
                         <label className="ev-check-row">
                           <input
                             type="checkbox"

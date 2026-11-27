@@ -1,5 +1,13 @@
 import { RefreshIcon, UndoIcon, WarningIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Heading, SegmentedControl } from "@earendil-works/elanor-react";
+import {
+  Button,
+  PageHeader,
+  SearchAndFilterBar,
+  Section,
+  SegmentedControl,
+  Skeleton,
+  SkeletonText,
+} from "@earendil-works/elanor-react";
 import type {
   SkillDiagnostic,
   SkillEntry,
@@ -13,6 +21,7 @@ import { shortPath } from "../../lib/format.ts";
 import { type LocaleKey, useI18n } from "../../lib/i18n.ts";
 import { showToast } from "../../lib/toasts.ts";
 import { useAbortableAsync } from "../../lib/useAbortableAsync.ts";
+import { EvTooltip } from "../EvTooltip.tsx";
 import { SearchField } from "../SearchField.tsx";
 
 type ProjectSkillChoice = SkillTriggerMode | "inherit";
@@ -173,54 +182,65 @@ export function SkillsTab({
   };
 
   return (
-    <div className="ev-settings-section">
-      <div className="ev-settings-head">
-        <div className="ev-skill-head-title">
-          <Heading level={compact ? 3 : 2} size={compact ? 6 : 5}>
-            Skills
-            <span className="ev-num ev-heading-count">{summary.total}</span>
-          </Heading>
-          {projectId && projectOverrideCount > 0 && (
-            <span className="eevee-badge ev-num" data-tone="warning">
-              {t("skills.projectOverrideCount", { count: projectOverrideCount })}
-            </span>
-          )}
-        </div>
-        <div className="ev-catalog-toolbar">
-          <SearchField
-            size="compact"
-            className="ev-catalog-search"
-            value={query}
-            onChange={setQuery}
-            placeholder={t("skills.searchPlaceholder")}
-            ariaLabel={t("skills.searchLabel")}
-            clearOnEscape
-          />
-          {projectId && projectOverrideCount > 0 && (
-            <Button
-              type="button"
-              hierarchy="secondary"
-              density="compact"
-              iconStart={<UndoIcon width={14} height={14} />}
-              disabled={pendingSkill !== undefined}
-              pending={resetting}
-              onClick={() => void handleResetProjectOverrides()}
+    <Section.Root className="ev-settings-section">
+      <PageHeader.Root className="ev-section-header">
+        <PageHeader.Row>
+          <div className="ev-skill-head-title">
+            <PageHeader.Title level={compact ? 3 : 2} className="ev-section-title">
+              Skills
+              <span className="ev-num ev-heading-count">{summary.total}</span>
+            </PageHeader.Title>
+            {projectId && projectOverrideCount > 0 && (
+              <span className="eevee-badge ev-num" data-tone="warning">
+                {t("skills.projectOverrideCount", { count: projectOverrideCount })}
+              </span>
+            )}
+          </div>
+          <PageHeader.Actions>
+            <SearchAndFilterBar.Root
+              role="search"
+              aria-label={t("skills.searchLabel")}
+              className="ev-inline-filter-bar"
             >
-              {t("skills.resetOverrides")}
-            </Button>
-          )}
-          <Button
-            type="button"
-            hierarchy="secondary"
-            density="compact"
-            iconStart={<RefreshIcon width={15} height={15} />}
-            pending={loading}
-            onClick={() => void load()}
-          >
-            {t("common.refresh")}
-          </Button>
-        </div>
-      </div>
+              <SearchAndFilterBar.Search className="ev-catalog-search">
+                <SearchField
+                  size="compact"
+                  value={query}
+                  onChange={setQuery}
+                  placeholder={t("skills.searchPlaceholder")}
+                  ariaLabel={t("skills.searchLabel")}
+                  clearOnEscape
+                />
+              </SearchAndFilterBar.Search>
+              <SearchAndFilterBar.Filters className="ev-catalog-toolbar">
+                {projectId && projectOverrideCount > 0 && (
+                  <Button
+                    type="button"
+                    hierarchy="secondary"
+                    density="compact"
+                    iconStart={<UndoIcon width={14} height={14} />}
+                    disabled={pendingSkill !== undefined}
+                    pending={resetting}
+                    onClick={() => void handleResetProjectOverrides()}
+                  >
+                    {t("skills.resetOverrides")}
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  hierarchy="secondary"
+                  density="compact"
+                  iconStart={<RefreshIcon width={15} height={15} />}
+                  pending={loading}
+                  onClick={() => void load()}
+                >
+                  {t("common.refresh")}
+                </Button>
+              </SearchAndFilterBar.Filters>
+            </SearchAndFilterBar.Root>
+          </PageHeader.Actions>
+        </PageHeader.Row>
+      </PageHeader.Root>
 
       {error && <div className="ev-error-banner">{error}</div>}
 
@@ -240,9 +260,9 @@ export function SkillsTab({
                   {t(diagnosticLabelKey(diag.type))}
                 </span>
                 {diag.skillName && <span className="ev-mono">{diag.skillName}</span>}
-                <span className="ev-mono ev-inline-muted" title={diag.path}>
-                  {diag.path}
-                </span>
+                <EvTooltip content={diag.path} side="top">
+                  <span className="ev-mono ev-inline-muted">{diag.path}</span>
+                </EvTooltip>
                 <span>{diag.message}</span>
               </div>
             ))}
@@ -251,7 +271,21 @@ export function SkillsTab({
       )}
 
       {loading && data === undefined ? (
-        <div className="ev-empty-box">{t("skills.loading")}</div>
+        <div
+          className="ev-settings-list"
+          role="status"
+          aria-busy="true"
+          aria-label={t("skills.loading")}
+        >
+          {[0, 1, 2].map((row) => (
+            <div key={row} className="ev-settings-row ev-skeleton-row">
+              <Skeleton className="ev-skeleton-chip">skill</Skeleton>
+              <div className="ev-skeleton-row-body">
+                <SkeletonText lines={2} />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : filteredSkills.length === 0 ? (
         <div className="ev-empty-box">
           {skills.length === 0
@@ -278,18 +312,19 @@ export function SkillsTab({
                     <div className="ev-skill-title-row">
                       <strong className="ev-mono">{skill.name}</strong>
                       {projectId && (
-                        <span
-                          className="eevee-badge"
-                          data-tone={skill.source === "workspace" ? "info" : undefined}
-                          title={skill.path}
-                        >
-                          {sourceLabel}
-                        </span>
+                        <EvTooltip content={skill.path} side="top">
+                          <span
+                            className="eevee-badge"
+                            data-tone={skill.source === "workspace" ? "info" : undefined}
+                          >
+                            {sourceLabel}
+                          </span>
+                        </EvTooltip>
                       )}
                       {skill.disableModelInvocation && (
-                        <span className="eevee-badge" title={t("skills.frontmatterUserOnlyTitle")}>
-                          {t("skills.frontmatterUserOnly")}
-                        </span>
+                        <EvTooltip content={t("skills.frontmatterUserOnlyTitle")} side="top">
+                          <span className="eevee-badge">{t("skills.frontmatterUserOnly")}</span>
+                        </EvTooltip>
                       )}
                       {((!projectId && skill.globalOverride !== undefined) ||
                         (projectId && skill.projectOverride !== undefined)) && (
@@ -299,9 +334,11 @@ export function SkillsTab({
                       )}
                     </div>
                     {skill.description && <div className="ev-skill-desc">{skill.description}</div>}
-                    <div className="ev-skill-path ev-mono ev-truncate" title={skill.path}>
-                      {shortPath(skill.path)}
-                    </div>
+                    <EvTooltip content={skill.path} side="top">
+                      <div className="ev-skill-path ev-mono ev-truncate">
+                        {shortPath(skill.path)}
+                      </div>
+                    </EvTooltip>
                   </div>
 
                   <div className="ev-skill-control">
@@ -322,12 +359,14 @@ export function SkillsTab({
                       }}
                     >
                       {projectId && (
-                        <SegmentedControl.Item
-                          value="inherit"
-                          title={t("skills.inheritTitle", { mode: inheritedModeLabel })}
+                        <EvTooltip
+                          content={t("skills.inheritTitle", { mode: inheritedModeLabel })}
+                          side="top"
                         >
-                          {t("skills.mode.inherit")}
-                        </SegmentedControl.Item>
+                          <SegmentedControl.Item value="inherit">
+                            {t("skills.mode.inherit")}
+                          </SegmentedControl.Item>
+                        </EvTooltip>
                       )}
                       <SegmentedControl.Item value="model">
                         {t("skills.mode.model")}
@@ -346,6 +385,6 @@ export function SkillsTab({
           })}
         </div>
       )}
-    </div>
+    </Section.Root>
   );
 }

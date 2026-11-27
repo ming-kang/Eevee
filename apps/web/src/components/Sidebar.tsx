@@ -14,7 +14,7 @@ import {
   SettingsIcon,
   SubdirectoryArrowRightIcon,
 } from "@earendil-works/elanor-icons-react";
-import { IconButton, Menu } from "@earendil-works/elanor-react";
+import { IconButton, ProjectSwitcher } from "@earendil-works/elanor-react";
 import type { BoardViewPayload, ProjectId, ProjectSummary, WorkerId } from "@eevee/protocol";
 import { useMemo, useState } from "react";
 import { useI18n } from "../lib/i18n.ts";
@@ -29,6 +29,7 @@ import {
   workerStage,
 } from "../lib/workspace-nav.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
+import { EvTooltip } from "./EvTooltip.tsx";
 
 export type SidebarProps = {
   readonly projects: readonly ProjectSummary[];
@@ -119,27 +120,20 @@ export function Sidebar({
           <span>Eevee</span>
         </button>
         <span className="ev-flex-1" />
-        <button
-          type="button"
-          className="ev-kbd-pill"
-          title={`${t("shortcuts.palette")} (${modLabel()} K)`}
-          onClick={onOpenPalette}
-        >
-          {modLabel()} K
-        </button>
+        <EvTooltip content={`${t("shortcuts.palette")} (${modLabel()} K)`} side="bottom">
+          <button type="button" className="ev-kbd-pill" onClick={onOpenPalette}>
+            {modLabel()} K
+          </button>
+        </EvTooltip>
       </div>
 
       <div className="ev-project-switcher-wrap">
-        <Menu.Root>
-          <Menu.Trigger
-            render={
-              <button
-                type="button"
-                className="ev-project-switcher-btn"
-                aria-label={t("sidebar.switchProject")}
-                title={activeProject?.workspaces.join(" · ") ?? switcherLabel}
-              >
-                <span className="ev-truncate ev-project-switcher-label">{switcherLabel}</span>
+        <ProjectSwitcher.Root>
+          <EvTooltip content={activeProject?.workspaces.join(" · ") ?? switcherLabel} side="right">
+            <ProjectSwitcher.Trigger
+              className="ev-project-switcher-btn"
+              aria-label={t("sidebar.switchProject")}
+              indicator={
                 <span className="ev-project-switcher-end">
                   {switcherAttentionStage !== "idle" && (
                     <span className="ev-dot" data-stage={switcherAttentionStage} />
@@ -150,13 +144,15 @@ export function Sidebar({
                     className="ev-project-switcher-chev"
                   />
                 </span>
-              </button>
-            }
-          />
-          <Menu.Portal>
-            <Menu.Positioner align="start" sideOffset={4}>
-              <Menu.Popup className="ev-project-menu">
-                <Menu.Item
+              }
+            >
+              <span className="ev-truncate ev-project-switcher-label">{switcherLabel}</span>
+            </ProjectSwitcher.Trigger>
+          </EvTooltip>
+          <ProjectSwitcher.Portal>
+            <ProjectSwitcher.Positioner align="start" sideOffset={4}>
+              <ProjectSwitcher.Popup className="ev-project-menu">
+                <ProjectSwitcher.Item
                   icon={
                     !activeProject ? (
                       <CheckIcon width={14} height={14} />
@@ -172,9 +168,9 @@ export function Sidebar({
                   onClick={onOpenOverview}
                 >
                   {t("sidebar.overview")}
-                </Menu.Item>
+                </ProjectSwitcher.Item>
 
-                {projects.length > 0 && <Menu.Separator />}
+                {projects.length > 0 && <ProjectSwitcher.Separator />}
 
                 {projects.length > 0 && (
                   <div className="ev-project-menu-list">
@@ -182,7 +178,7 @@ export function Sidebar({
                       const summary = deriveBoardSummary(boards[project.id]);
                       const selected = activeProject?.id === project.id;
                       return (
-                        <Menu.Item
+                        <ProjectSwitcher.Item
                           key={project.id}
                           icon={
                             selected ? (
@@ -199,39 +195,42 @@ export function Sidebar({
                           onClick={() => onOpenProject(project.id, "chat")}
                         >
                           {project.title}
-                        </Menu.Item>
+                        </ProjectSwitcher.Item>
                       );
                     })}
                   </div>
                 )}
 
-                <Menu.Separator />
+                <ProjectSwitcher.Separator />
 
-                <Menu.Item icon={<AddIcon width={14} height={14} />} onClick={onNewProject}>
+                <ProjectSwitcher.Item
+                  icon={<AddIcon width={14} height={14} />}
+                  onClick={onNewProject}
+                >
                   {t("sidebar.newProject")}
-                </Menu.Item>
+                </ProjectSwitcher.Item>
 
                 {activeProject && (
                   <>
-                    <Menu.Item
+                    <ProjectSwitcher.Item
                       icon={<EditIcon width={14} height={14} />}
                       onClick={() => onEditProject(activeProject)}
                     >
                       {t("sidebar.editProject")}
-                    </Menu.Item>
-                    <Menu.Item
+                    </ProjectSwitcher.Item>
+                    <ProjectSwitcher.Item
                       className="ev-project-menu-danger"
                       icon={<DeleteIcon width={14} height={14} />}
                       onClick={() => onDeleteProject(activeProject)}
                     >
                       {t("sidebar.deleteProject")}
-                    </Menu.Item>
+                    </ProjectSwitcher.Item>
                   </>
                 )}
-              </Menu.Popup>
-            </Menu.Positioner>
-          </Menu.Portal>
-        </Menu.Root>
+              </ProjectSwitcher.Popup>
+            </ProjectSwitcher.Positioner>
+          </ProjectSwitcher.Portal>
+        </ProjectSwitcher.Root>
       </div>
 
       {activeProject ? (
@@ -249,23 +248,24 @@ export function Sidebar({
             </div>
 
             {openQuestions.length > 0 && (
-              <button
-                type="button"
-                className="ev-side-question-row"
-                data-active={isRouterActive}
-                title={firstQuestionText ?? t("sidebar.questionRow")}
-                onClick={() => onOpenQuestion(activeProject.id)}
-              >
-                <SubdirectoryArrowRightIcon
-                  width={13}
-                  height={13}
-                  className="ev-side-question-icon"
-                />
-                <span className="ev-truncate ev-side-question-text">
-                  {firstQuestionText || t("sidebar.questionRow")}
-                </span>
-                <span className="ev-dot" data-stage="answer" />
-              </button>
+              <EvTooltip content={firstQuestionText ?? t("sidebar.questionRow")} side="right">
+                <button
+                  type="button"
+                  className="ev-side-question-row"
+                  data-active={isRouterActive}
+                  onClick={() => onOpenQuestion(activeProject.id)}
+                >
+                  <SubdirectoryArrowRightIcon
+                    width={13}
+                    height={13}
+                    className="ev-side-question-icon"
+                  />
+                  <span className="ev-truncate ev-side-question-text">
+                    {firstQuestionText || t("sidebar.questionRow")}
+                  </span>
+                  <span className="ev-dot" data-stage="answer" />
+                </button>
+              </EvTooltip>
             )}
           </div>
 
@@ -287,35 +287,41 @@ export function Sidebar({
                   const active = isProjectChat && activeWorkerId === worker.id;
                   return (
                     <div key={worker.id} className="ev-nav-row ev-worker-row" data-active={active}>
-                      <button
-                        type="button"
-                        className="ev-nav-row-btn ev-worker-row-btn"
-                        title={
+                      <EvTooltip
+                        content={
                           ticket
                             ? `${ticket.title} (${worker.id})`
                             : `${worker.name} (${worker.id})`
                         }
-                        onClick={() => onOpenProject(activeProject.id, "chat", worker.id)}
+                        side="right"
                       >
-                        {ticket ? (
-                          <div className="ev-worker-row-main">
-                            <span className="ev-truncate ev-worker-row-title">{ticket.title}</span>
-                            <span className="ev-truncate ev-worker-row-sub">
-                              <span className="ev-mono">{worker.id}</span>
-                              {" · "}
-                              {worker.name}
-                            </span>
-                          </div>
-                        ) : (
-                          <>
-                            <span className="ev-truncate ev-worker-row-title ev-flex-1">
-                              {worker.name}
-                            </span>
-                            <span className="ev-mono ev-worker-row-id">{worker.id}</span>
-                          </>
-                        )}
-                        <span className="ev-dot" data-stage={workerStage(worker)} />
-                      </button>
+                        <button
+                          type="button"
+                          className="ev-nav-row-btn ev-worker-row-btn"
+                          onClick={() => onOpenProject(activeProject.id, "chat", worker.id)}
+                        >
+                          {ticket ? (
+                            <div className="ev-worker-row-main">
+                              <span className="ev-truncate ev-worker-row-title">
+                                {ticket.title}
+                              </span>
+                              <span className="ev-truncate ev-worker-row-sub">
+                                <span className="ev-mono">{worker.id}</span>
+                                {" · "}
+                                {worker.name}
+                              </span>
+                            </div>
+                          ) : (
+                            <>
+                              <span className="ev-truncate ev-worker-row-title ev-flex-1">
+                                {worker.name}
+                              </span>
+                              <span className="ev-mono ev-worker-row-id">{worker.id}</span>
+                            </>
+                          )}
+                          <span className="ev-dot" data-stage={workerStage(worker)} />
+                        </button>
+                      </EvTooltip>
                     </div>
                   );
                 })}
@@ -344,17 +350,18 @@ export function Sidebar({
                             className="ev-nav-row ev-worker-row muted"
                             data-active={active}
                           >
-                            <button
-                              type="button"
-                              className="ev-nav-row-btn ev-worker-row-btn"
-                              title={`${worker.name} (${worker.id})`}
-                              onClick={() => onOpenProject(activeProject.id, "chat", worker.id)}
-                            >
-                              <span className="ev-truncate ev-worker-row-title ev-flex-1">
-                                {worker.name}
-                              </span>
-                              <span className="ev-mono ev-worker-row-id">{worker.id}</span>
-                            </button>
+                            <EvTooltip content={`${worker.name} (${worker.id})`} side="right">
+                              <button
+                                type="button"
+                                className="ev-nav-row-btn ev-worker-row-btn"
+                                onClick={() => onOpenProject(activeProject.id, "chat", worker.id)}
+                              >
+                                <span className="ev-truncate ev-worker-row-title ev-flex-1">
+                                  {worker.name}
+                                </span>
+                                <span className="ev-mono ev-worker-row-id">{worker.id}</span>
+                              </button>
+                            </EvTooltip>
                           </div>
                         );
                       })}
@@ -368,13 +375,11 @@ export function Sidebar({
         <>
           <div className="ev-side-section">
             <span>{t("sidebar.projects")}</span>
-            <IconButton
-              aria-label={t("sidebar.newProject")}
-              title={t("sidebar.newProject")}
-              onClick={onNewProject}
-            >
-              <AddIcon width={16} height={16} />
-            </IconButton>
+            <EvTooltip content={t("sidebar.newProject")} side="right">
+              <IconButton aria-label={t("sidebar.newProject")} onClick={onNewProject}>
+                <AddIcon width={16} height={16} />
+              </IconButton>
+            </EvTooltip>
           </div>
 
           <div className="ev-side-list">
@@ -385,17 +390,18 @@ export function Sidebar({
                 const summary = deriveBoardSummary(boards[project.id]);
                 return (
                   <div key={project.id} className="ev-nav-row">
-                    <button
-                      type="button"
-                      className="ev-nav-row-btn"
-                      title={project.workspaces.join(" · ")}
-                      onClick={() => onOpenProject(project.id, "chat")}
-                    >
-                      <span className="ev-truncate ev-flex-1">{project.title}</span>
-                      {summary.stage !== "idle" && (
-                        <span className="ev-dot" data-stage={summary.stage} />
-                      )}
-                    </button>
+                    <EvTooltip content={project.workspaces.join(" · ")} side="right">
+                      <button
+                        type="button"
+                        className="ev-nav-row-btn"
+                        onClick={() => onOpenProject(project.id, "chat")}
+                      >
+                        <span className="ev-truncate ev-flex-1">{project.title}</span>
+                        {summary.stage !== "idle" && (
+                          <span className="ev-dot" data-stage={summary.stage} />
+                        )}
+                      </button>
+                    </EvTooltip>
                   </div>
                 );
               })
@@ -405,36 +411,35 @@ export function Sidebar({
       )}
 
       <div className="ev-side-footer">
-        <button
-          type="button"
-          className="ev-nav-row-btn ev-side-footer-settings"
-          title={`${t("sidebar.settings")} (${modLabel()} ,)`}
-          onClick={onOpenControl}
-        >
-          <SettingsIcon width={15} height={15} className="ev-nav-row-icon" />
-          <span className="ev-truncate">{t("sidebar.settings")}</span>
-        </button>
-        <IconButton
-          aria-label={t("sidebar.shortcuts")}
-          title={`${t("sidebar.shortcuts")} (?)`}
-          onClick={onOpenShortcuts}
-        >
-          <KeyboardIcon width={16} height={16} />
-        </IconButton>
-        <IconButton
-          aria-label={t("sidebar.theme", { theme: themeLabel })}
-          title={t("sidebar.theme", { theme: themeLabel })}
-          onClick={onCycleTheme}
-        >
-          {themeScheme === "dark" ? (
-            <LightModeIcon width={16} height={16} />
-          ) : (
-            <DarkModeIcon width={16} height={16} />
-          )}
-        </IconButton>
-        <IconButton aria-label={t("sidebar.logout")} title={t("sidebar.logout")} onClick={onLogout}>
-          <LogoutIcon width={16} height={16} />
-        </IconButton>
+        <EvTooltip content={`${t("sidebar.settings")} (${modLabel()} ,)`} side="top">
+          <button
+            type="button"
+            className="ev-nav-row-btn ev-side-footer-settings"
+            onClick={onOpenControl}
+          >
+            <SettingsIcon width={15} height={15} className="ev-nav-row-icon" />
+            <span className="ev-truncate">{t("sidebar.settings")}</span>
+          </button>
+        </EvTooltip>
+        <EvTooltip content={`${t("sidebar.shortcuts")} (?)`} side="top">
+          <IconButton aria-label={t("sidebar.shortcuts")} onClick={onOpenShortcuts}>
+            <KeyboardIcon width={16} height={16} />
+          </IconButton>
+        </EvTooltip>
+        <EvTooltip content={t("sidebar.theme", { theme: themeLabel })} side="top">
+          <IconButton aria-label={t("sidebar.theme", { theme: themeLabel })} onClick={onCycleTheme}>
+            {themeScheme === "dark" ? (
+              <LightModeIcon width={16} height={16} />
+            ) : (
+              <DarkModeIcon width={16} height={16} />
+            )}
+          </IconButton>
+        </EvTooltip>
+        <EvTooltip content={t("sidebar.logout")} side="top">
+          <IconButton aria-label={t("sidebar.logout")} onClick={onLogout}>
+            <LogoutIcon width={16} height={16} />
+          </IconButton>
+        </EvTooltip>
       </div>
     </>
   );

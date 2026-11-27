@@ -4,7 +4,7 @@ import {
   EditIcon,
   ExperimentIcon,
 } from "@earendil-works/elanor-icons-react";
-import { Button, Heading, Text } from "@earendil-works/elanor-react";
+import { Button, Heading, KeyValue, SearchAndFilterBar, Text } from "@earendil-works/elanor-react";
 import type { ProviderDetail } from "@eevee/protocol";
 import { useState } from "react";
 import { formatTokens } from "../../../lib/format.ts";
@@ -49,40 +49,47 @@ export function ProviderModelsList({
               : `${detailModels.length} / ${detail.models.length}`}
           </span>
         </Heading>
-        <div className="ev-provider-models-toolbar">
-          <SearchField
-            size="compact"
-            className="ev-provider-model-search"
-            value={modelFilter}
-            onChange={setModelFilter}
-            placeholder={t("providers.models.filterPlaceholder")}
-            clearOnEscape
-          />
-          <Button
-            type="button"
-            hierarchy="secondary"
-            density="compact"
-            iconStart={<CloudDownloadIcon width={14} height={14} />}
-            onClick={() => onOpenProbe(detail.id)}
-          >
-            {t("providers.models.probeAndImport")}
-          </Button>
-          <Button
-            type="button"
-            hierarchy="primary"
-            density="compact"
-            iconStart={<AddIcon width={14} height={14} />}
-            onClick={() =>
-              onAddModel({
-                providerId: detail.id,
-                providerApi: detail.config?.api ?? detail.api ?? detail.models[0]?.api,
-                providerBaseUrl: detail.baseUrl,
-              })
-            }
-          >
-            {t("providers.models.addModel")}
-          </Button>
-        </div>
+        <SearchAndFilterBar.Root
+          role="search"
+          aria-label={t("providers.models.filterPlaceholder")}
+          className="ev-inline-filter-bar"
+        >
+          <SearchAndFilterBar.Search className="ev-provider-model-search">
+            <SearchField
+              size="compact"
+              value={modelFilter}
+              onChange={setModelFilter}
+              placeholder={t("providers.models.filterPlaceholder")}
+              clearOnEscape
+            />
+          </SearchAndFilterBar.Search>
+          <SearchAndFilterBar.Filters className="ev-provider-models-toolbar">
+            <Button
+              type="button"
+              hierarchy="secondary"
+              density="compact"
+              iconStart={<CloudDownloadIcon width={14} height={14} />}
+              onClick={() => onOpenProbe(detail.id)}
+            >
+              {t("providers.models.probeAndImport")}
+            </Button>
+            <Button
+              type="button"
+              hierarchy="primary"
+              density="compact"
+              iconStart={<AddIcon width={14} height={14} />}
+              onClick={() =>
+                onAddModel({
+                  providerId: detail.id,
+                  providerApi: detail.config?.api ?? detail.api ?? detail.models[0]?.api,
+                  providerBaseUrl: detail.baseUrl,
+                })
+              }
+            >
+              {t("providers.models.addModel")}
+            </Button>
+          </SearchAndFilterBar.Filters>
+        </SearchAndFilterBar.Root>
       </div>
 
       {detailModels.length === 0 ? (
@@ -120,10 +127,18 @@ export function ProviderModelsList({
                       {model.input.includes("image") && <span className="eevee-badge">image</span>}
                     </div>
                     <div className="ev-provider-model-meta">
-                      <span className="ev-mono">{model.api}</span>
-                      <span className="ev-num">
-                        {formatTokens(model.contextWindow)} / {formatTokens(model.maxTokens)}
-                      </span>
+                      <KeyValue.Inline className="ev-kv-muted">
+                        <KeyValue.Key>API</KeyValue.Key>
+                        <KeyValue.Value className="ev-mono">{model.api}</KeyValue.Value>
+                        <KeyValue.Key>Context</KeyValue.Key>
+                        <KeyValue.Value className="ev-num">
+                          {formatTokens(model.contextWindow)}
+                        </KeyValue.Value>
+                        <KeyValue.Key>Max Out</KeyValue.Key>
+                        <KeyValue.Value className="ev-num">
+                          {formatTokens(model.maxTokens)}
+                        </KeyValue.Value>
+                      </KeyValue.Inline>
                       {model.supportedThinkingLevels.length > 0 && (
                         <span className="ev-thinking-pills">
                           {model.supportedThinkingLevels.map((level) => (

@@ -1,6 +1,7 @@
 import { Field, Input, Switch } from "@earendil-works/elanor-react";
 import type { Dispatch } from "react";
 import { useI18n } from "../../../lib/i18n.ts";
+import { EvDropdown } from "../../EvDropdown.tsx";
 import type { ModelEditorAction, ModelEditorDraft, ModelEditorTarget } from "./state.ts";
 
 export type ModelBasicSectionProps = {
@@ -84,27 +85,25 @@ export function ModelBasicSection({
           <>
             <Field.Root>
               <Field.Label>{t("modelEditor.field.overrideApi")}</Field.Label>
-              <select
-                className="ev-select"
+              <EvDropdown
+                ariaLabel={t("modelEditor.field.overrideApi")}
                 value={draft.apiValue}
-                onChange={(event) =>
+                options={[
+                  {
+                    value: "",
+                    label: target.providerApi
+                      ? t("modelEditor.inheritProvider", { value: target.providerApi })
+                      : t("modelEditor.selectApi"),
+                  },
+                  ...supportedApis.map((item) => ({ value: item, label: item })),
+                ]}
+                onChange={(apiValue) =>
                   dispatch({
                     type: "patch",
-                    patch: { apiValue: event.target.value, apiTouched: true },
+                    patch: { apiValue, apiTouched: true },
                   })
                 }
-              >
-                <option value="">
-                  {target.providerApi
-                    ? t("modelEditor.inheritProvider", { value: target.providerApi })
-                    : t("modelEditor.selectApi")}
-                </option>
-                {supportedApis.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
+              />
             </Field.Root>
             <Field.Root>
               <Field.Label>{t("modelEditor.field.overrideBaseUrl")}</Field.Label>

@@ -747,17 +747,88 @@
   flex: none;
 }
 
-.ev-header-nav {
+.ev-header-tabs-root {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  align-self: stretch;
+}
+
+.ev-header-tabs {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
+  height: 100%;
+  border-block-end: 0;
   overflow-x: auto;
   scrollbar-width: none;
 }
 
-.ev-header-nav::-webkit-scrollbar {
+.ev-header-tabs::-webkit-scrollbar {
   display: none;
+}
+
+.ev-header-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  min-inline-size: auto;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ev-fg-muted);
+  font-size: 0.875rem;
+  font-weight: 400;
+  white-space: nowrap;
+  flex: none;
+  cursor: pointer;
+  transition:
+    background-color var(--ev-dur-fast) var(--ev-ease-out),
+    color var(--ev-dur-fast) var(--ev-ease-out);
+}
+
+.ev-header-tab:hover:not([data-disabled]):after {
+  display: none;
+}
+
+.ev-header-tab:hover:not([data-disabled]) {
+  background: var(--ev-hover);
+  color: var(--ev-fg);
+}
+
+.ev-header-tab[data-active] {
+  color: var(--ev-fg);
+  font-weight: 500;
+}
+
+.ev-header-tabs-indicator {
+  background: var(--ev-accent);
+  block-size: 2px;
+  border-radius: 999px;
+  inset-block-end: 0;
+}
+
+.ev-worker-kv {
+  font-size: 0.8125rem;
+  gap: 4px 10px;
+}
+
+.ev-worker-kv dt {
+  color: var(--ev-fg-subtle);
+  font-weight: 500;
+}
+
+.ev-worker-kv dd {
+  color: var(--ev-fg-muted);
+}
+
+.ev-note-content {
+  width: min(780px, 100%);
+  min-height: 100%;
+  display: flex;
 }
 
 .ev-tab-link {
@@ -804,7 +875,7 @@
   .ev-project-header .ev-header-divider {
     display: none;
   }
-  .ev-project-header .ev-header-nav {
+  .ev-project-header .ev-header-tabs-root {
     order: 10;
     flex-basis: 100%;
     padding-top: 2px;
@@ -820,7 +891,7 @@
   .ev-settings-header .ev-header-divider {
     display: none;
   }
-  .ev-settings-header .ev-header-nav {
+  .ev-settings-header .ev-header-tabs-root {
     order: 10;
     flex-basis: 100%;
     padding-top: 2px;

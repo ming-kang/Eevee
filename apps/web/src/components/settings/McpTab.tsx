@@ -1,5 +1,5 @@
 import { AddIcon, CodeIcon, RefreshIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Heading } from "@earendil-works/elanor-react";
+import { Button, PageHeader, Section, Skeleton, SkeletonText } from "@earendil-works/elanor-react";
 import type { McpServerSnapshotPayload } from "@eevee/protocol";
 import { useState } from "react";
 import { useI18n } from "../../lib/i18n.ts";
@@ -175,50 +175,52 @@ function McpTabContent({
   const projectConfigCount = Object.keys(scope.projectServers).length;
 
   return (
-    <div className="ev-settings-section">
-      <div className="ev-settings-head">
-        <div className="ev-skill-head-title">
-          <Heading level={compact ? 3 : 2} size={compact ? 6 : 5}>
-            MCP
-            <span className="ev-num ev-heading-count">{scope.statuses.length}</span>
-          </Heading>
-          {isProject && projectConfigCount > 0 && (
-            <span className="eevee-badge ev-num" data-tone="warning">
-              {t("mcp.projectConfigCount", { count: projectConfigCount })}
-            </span>
-          )}
-        </div>
-        <div className="ev-inline-actions">
-          <Button
-            type="button"
-            hierarchy="primary"
-            density="compact"
-            iconStart={<AddIcon width={15} height={15} />}
-            onClick={() => setFormState(createBlankForm())}
-          >
-            {t("mcp.addServer")}
-          </Button>
-          <Button
-            type="button"
-            hierarchy="secondary"
-            density="compact"
-            iconStart={<CodeIcon width={15} height={15} />}
-            onClick={() => setJsonPanelOpen((prev) => !prev)}
-          >
-            {t("mcp.jsonImportExport")}
-          </Button>
-          <Button
-            type="button"
-            hierarchy="secondary"
-            density="compact"
-            iconStart={<RefreshIcon width={15} height={15} />}
-            pending={reconnecting || scope.loading}
-            onClick={() => void handleReconnect()}
-          >
-            {t("mcp.reconnectAll")}
-          </Button>
-        </div>
-      </div>
+    <Section.Root className="ev-settings-section">
+      <PageHeader.Root className="ev-section-header">
+        <PageHeader.Row>
+          <div className="ev-skill-head-title">
+            <PageHeader.Title level={compact ? 3 : 2} className="ev-section-title">
+              MCP
+              <span className="ev-num ev-heading-count">{scope.statuses.length}</span>
+            </PageHeader.Title>
+            {isProject && projectConfigCount > 0 && (
+              <span className="eevee-badge ev-num" data-tone="warning">
+                {t("mcp.projectConfigCount", { count: projectConfigCount })}
+              </span>
+            )}
+          </div>
+          <PageHeader.Actions>
+            <Button
+              type="button"
+              hierarchy="primary"
+              density="compact"
+              iconStart={<AddIcon width={15} height={15} />}
+              onClick={() => setFormState(createBlankForm())}
+            >
+              {t("mcp.addServer")}
+            </Button>
+            <Button
+              type="button"
+              hierarchy="secondary"
+              density="compact"
+              iconStart={<CodeIcon width={15} height={15} />}
+              onClick={() => setJsonPanelOpen((prev) => !prev)}
+            >
+              {t("mcp.jsonImportExport")}
+            </Button>
+            <Button
+              type="button"
+              hierarchy="secondary"
+              density="compact"
+              iconStart={<RefreshIcon width={15} height={15} />}
+              pending={reconnecting || scope.loading}
+              onClick={() => void handleReconnect()}
+            >
+              {t("mcp.reconnectAll")}
+            </Button>
+          </PageHeader.Actions>
+        </PageHeader.Row>
+      </PageHeader.Root>
 
       {scope.error && <div className="ev-error-banner">{scope.error}</div>}
 
@@ -243,7 +245,21 @@ function McpTabContent({
       )}
 
       {scope.loading && scope.statuses.length === 0 ? (
-        <div className="ev-empty-box">{t("mcp.loading")}</div>
+        <div
+          className="ev-settings-list"
+          role="status"
+          aria-busy="true"
+          aria-label={t("mcp.loading")}
+        >
+          {[0, 1].map((row) => (
+            <div key={row} className="ev-settings-row ev-skeleton-row">
+              <Skeleton className="ev-skeleton-chip">mcp</Skeleton>
+              <div className="ev-skeleton-row-body">
+                <SkeletonText lines={2} />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : scope.statuses.length === 0 ? (
         <div className="ev-empty-box">{t(isProject ? "mcp.emptyProject" : "mcp.emptyGlobal")}</div>
       ) : (
@@ -295,6 +311,6 @@ function McpTabContent({
           ))}
         </div>
       )}
-    </div>
+    </Section.Root>
   );
 }

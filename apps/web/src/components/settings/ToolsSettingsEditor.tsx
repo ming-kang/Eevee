@@ -9,6 +9,7 @@ import {
 } from "@eevee/protocol";
 import { useId } from "react";
 import { t, useI18n } from "../../lib/i18n.ts";
+import { EvTooltip } from "../EvTooltip.tsx";
 
 type EditorVariant = "global" | "project";
 type ToolRole = "router" | "worker";
@@ -134,24 +135,24 @@ function ToolGrid({
               ? translate("tools.chipInheritedTitle", { name, state })
               : translate("tools.chipGlobalTitle", { name, state });
           return (
-            <button
-              key={name}
-              type="button"
-              className="ev-tool-chip"
-              data-active={enabled}
-              data-overridden={overridden}
-              aria-pressed={enabled}
-              aria-label={title}
-              title={title}
-              disabled={disabled}
-              onClick={() => onToggle(toolRole, name)}
-            >
-              <span className="ev-tool-chip-check" aria-hidden="true">
-                {enabled && <CheckIcon width={12} height={12} />}
-              </span>
-              <span>{name}</span>
-              {overridden && <span className="ev-tool-override-dot" aria-hidden="true" />}
-            </button>
+            <EvTooltip key={name} content={title} side="top">
+              <button
+                type="button"
+                className="ev-tool-chip"
+                data-active={enabled}
+                data-overridden={overridden}
+                aria-pressed={enabled}
+                aria-label={title}
+                disabled={disabled}
+                onClick={() => onToggle(toolRole, name)}
+              >
+                <span className="ev-tool-chip-check" aria-hidden="true">
+                  {enabled && <CheckIcon width={12} height={12} />}
+                </span>
+                <span>{name}</span>
+                {overridden && <span className="ev-tool-override-dot" aria-hidden="true" />}
+              </button>
+            </EvTooltip>
           );
         })}
       </div>
@@ -241,27 +242,28 @@ export function ToolsSettingsEditor({
             </SegmentedControl.Item>
           </SegmentedControl.Root>
           {effectiveMode !== "off" && (
-            <label
-              htmlFor={budgetId}
-              className="ev-inline-budget"
-              title={translate(
+            <EvTooltip
+              content={translate(
                 project ? "tools.inlineBudgetProjectTitle" : "tools.inlineBudgetGlobalTitle",
               )}
+              side="top"
             >
-              <span className="ev-mono">inlineBudget</span>
-              <Input
-                id={budgetId}
-                className="ev-inline-budget-input"
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                aria-label="Codemode inlineBudget"
-                value={inlineBudget}
-                placeholder={budgetPlaceholder}
-                disabled={disabled}
-                onValueChange={onInlineBudgetChange}
-              />
-            </label>
+              <label htmlFor={budgetId} className="ev-inline-budget">
+                <span className="ev-mono">inlineBudget</span>
+                <Input
+                  id={budgetId}
+                  className="ev-inline-budget-input"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  aria-label="Codemode inlineBudget"
+                  value={inlineBudget}
+                  placeholder={budgetPlaceholder}
+                  disabled={disabled}
+                  onValueChange={onInlineBudgetChange}
+                />
+              </label>
+            </EvTooltip>
           )}
         </div>
       </div>

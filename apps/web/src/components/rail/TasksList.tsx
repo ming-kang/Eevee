@@ -13,6 +13,7 @@ import {
   taskStatusStage,
 } from "../../lib/format.ts";
 import { useI18n } from "../../lib/i18n.ts";
+import { EvTooltip } from "../EvTooltip.tsx";
 import { TaskLogViewer } from "./TaskLogViewer.tsx";
 
 export function TasksList({
@@ -107,24 +108,18 @@ export function TasksList({
                   <span>·</span>
                   <span className="ev-num">{formatRelativeTime(effectiveTask.startedAt)}</span>
                   {effectiveTask.logError && (
-                    <span
-                      className="eevee-badge"
-                      data-tone="negative"
-                      title={effectiveTask.logError}
-                    >
-                      {t("rail.tasks.logError")}
-                    </span>
+                    <EvTooltip content={effectiveTask.logError} side="top">
+                      <span className="eevee-badge" data-tone="negative">
+                        {t("rail.tasks.logError")}
+                      </span>
+                    </EvTooltip>
                   )}
                   {effectiveTask.logTruncated && (
-                    <span
-                      className="eevee-badge"
-                      data-tone="warning"
-                      title={
-                        effectiveTask.logTruncated ? t("rail.tasks.truncatedTitle") : undefined
-                      }
-                    >
-                      {t("rail.tasks.truncated")}
-                    </span>
+                    <EvTooltip content={t("rail.tasks.truncatedTitle")} side="top">
+                      <span className="eevee-badge" data-tone="warning">
+                        {t("rail.tasks.truncated")}
+                      </span>
+                    </EvTooltip>
                   )}
                 </div>
               </div>

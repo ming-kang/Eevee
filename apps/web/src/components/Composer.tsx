@@ -4,7 +4,7 @@ import {
   SendIcon,
   StopIcon,
 } from "@earendil-works/elanor-icons-react";
-import { Button, IconButton, SegmentedControl, Stack } from "@earendil-works/elanor-react";
+import { Button, IconButton, Meter, SegmentedControl, Stack } from "@earendil-works/elanor-react";
 import {
   type BoardViewPayload,
   type ConversationRef,
@@ -24,6 +24,7 @@ import {
 import { toProtocolAttachments } from "../lib/attachments.ts";
 import { formatBytes, formatTokens } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
+import { findModelInfo } from "../lib/model-choice.ts";
 import { showToast } from "../lib/toasts.ts";
 import type { ContextUsage } from "../lib/transcript.ts";
 import { updateGlobalRouterModel, useEngineSettingsAndModels } from "../lib/useEngineSettings.ts";
@@ -32,6 +33,7 @@ import { AttachmentPills } from "./AttachmentPills.tsx";
 import { ComposerAutocompleteMenu } from "./composer/ComposerAutocompleteMenu.tsx";
 import { useComposerAutocomplete } from "./composer/useComposerAutocomplete.ts";
 import { useComposerDraft } from "./composer/useComposerDraft.ts";
+import { EvTooltip } from "./EvTooltip.tsx";
 import { ModelChoiceMenu } from "./ModelChoiceMenu.tsx";
 
 export type ComposerProps = {
@@ -214,6 +216,21 @@ export function Composer({
   const canSend =
     (draft.text.trim().length > 0 || draft.attachments.length > 0) && !submitting && !disabled;
 
+  const activeModelInfo = isRouterComposer
+    ? findModelInfo(availableModels, globalSettings?.models?.router)
+    : undefined;
+  const contextWindow = activeModelInfo?.contextWindow;
+  const ctxPct =
+    contextUsage && contextWindow && contextWindow > 0
+      ? Math.min(100, Math.round((contextUsage.used / contextWindow) * 100))
+      : undefined;
+  const ctxSemantic =
+    ctxPct !== undefined && ctxPct >= 90
+      ? "negative"
+      : ctxPct !== undefined && ctxPct >= 75
+        ? "warning"
+        : "neutral";
+
   return (
     <>
       <form
@@ -297,15 +314,16 @@ export function Composer({
 
         <div className="ev-composer-bar">
           <Stack direction="row" gap="xSmall" align="center" className="ev-composer-bar-group">
-            <IconButton
-              type="button"
-              aria-label={t("composer.attach")}
-              title={t("composer.attach")}
-              disabled={disabled || draft.attachments.length >= MAX_MESSAGE_ATTACHMENTS}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <AttachFileIcon width={16} height={16} />
-            </IconButton>
+            <EvTooltip content={t("composer.attach")} side="top">
+              <IconButton
+                type="button"
+                aria-label={t("composer.attach")}
+                disabled={disabled || draft.attachments.length >= MAX_MESSAGE_ATTACHMENTS}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <AttachFileIcon width={16} height={16} />
+              </IconButton>
+            </EvTooltip>
 
             {busy && (
               <SegmentedControl.Root
@@ -343,15 +361,31 @@ export function Composer({
 
           <Stack direction="row" gap="xSmall" align="center" className="ev-push-end">
             {contextUsage && (
-              <span
-                className="ev-mono ev-num ev-composer-meta"
-                title={t("composer.ctxTooltip", {
+              <EvTooltip
+                content={t("composer.ctxTooltip", {
                   used: formatTokens(contextUsage.used),
                   cached: formatTokens(contextUsage.cached),
                 })}
+                side="top"
               >
-                CTX {formatTokens(contextUsage.used)}
-              </span>
+                <span className="ev-mono ev-num ev-composer-meta">
+                  <span>CTX {formatTokens(contextUsage.used)}</span>
+                  {contextWindow !== undefined && contextWindow > 0 && (
+                    <Meter.Root
+                      className="ev-composer-meter"
+                      value={Math.min(contextUsage.used, contextWindow)}
+                      min={0}
+                      max={contextWindow}
+                      semantic={ctxSemantic}
+                      aria-label={`Context ${ctxPct ?? 0}%`}
+                    >
+                      <Meter.Track>
+                        <Meter.Indicator />
+                      </Meter.Track>
+                    </Meter.Root>
+                  )}
+                </span>
+              </EvTooltip>
             )}
             {hasRunFailure && !busy && (
               <Button
@@ -365,15 +399,16 @@ export function Composer({
               </Button>
             )}
             {busy && (
-              <button
-                type="button"
-                className="ev-round-btn stop"
-                aria-label={t("composer.interrupt")}
-                title={t("composer.interruptTitle")}
-                onClick={() => void runAction(onInterrupt)}
-              >
-                <StopIcon width={15} height={15} />
-              </button>
+              <EvTooltip content={t("composer.interruptTitle")} side="top">
+                <button
+                  type="button"
+                  className="ev-round-btn stop"
+                  aria-label={t("composer.interrupt")}
+                  onClick={() => void runAction(onInterrupt)}
+                >
+                  <StopIcon width={15} height={15} />
+                </button>
+              </EvTooltip>
             )}
             <button
               type="submit"

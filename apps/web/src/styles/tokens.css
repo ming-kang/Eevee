@@ -243,16 +243,6 @@
   flex-wrap: wrap;
 }
 
-.ev-select {
-  height: 34px;
-  padding: 0 10px;
-  border-radius: 7px;
-  border: var(--ev-hairline) solid var(--ev-border);
-  background: var(--ev-surface);
-  color: var(--ev-fg);
-  font-size: 0.875rem;
-}
-
 .ev-pre {
   margin: 0;
   padding: 11px 13px;
@@ -341,12 +331,9 @@
 }
 
 .ev-search-field {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  height: 34px;
   min-width: 0;
-  padding: 0 7px 0 10px;
+  height: 34px;
+  padding-inline: 10px 7px;
   border-radius: 8px;
   border: var(--ev-hairline) solid var(--ev-border);
   background: var(--ev-surface);
@@ -359,7 +346,7 @@
 .ev-search-field.compact {
   height: 32px;
   border-radius: 7px;
-  padding: 0 6px 0 9px;
+  padding-inline: 9px 6px;
 }
 
 .ev-search-field:focus-within {
@@ -406,4 +393,192 @@
 .ev-search-clear:hover {
   background: var(--ev-hover);
   color: var(--ev-fg);
+}
+
+.ev-tooltip-positioner {
+  z-index: 1400;
+  pointer-events: none;
+}
+
+.ev-tooltip-popup {
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 5px 9px;
+  border-radius: 7px;
+  border: var(--ev-hairline) solid var(--ev-border);
+  background: var(--ev-surface);
+  color: var(--ev-fg);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  word-break: break-word;
+  box-shadow: var(--ev-shadow-panel);
+}
+
+.ev-dropdown-positioner {
+  z-index: 1300;
+}
+
+.ev-dropdown-trigger {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: 34px;
+  padding: 0 9px 0 11px;
+  border-radius: 8px;
+  border: var(--ev-hairline) solid var(--ev-border);
+  background: var(--ev-surface);
+  color: var(--ev-fg);
+  font-size: 0.875rem;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ev-overview-project-filter {
+  width: auto;
+  min-width: 148px;
+}
+
+.ev-dropdown-trigger[data-density="compact"] {
+  height: 32px;
+  font-size: 0.8125rem;
+}
+
+.ev-dropdown-trigger:hover:not(:disabled, [data-disabled]) {
+  background: var(--ev-hover);
+  border-color: var(--ev-border-strong);
+}
+
+.ev-dropdown-popup {
+  min-width: max(var(--anchor-width, 160px), 160px);
+  max-width: min(360px, calc(100vw - 24px));
+  max-height: 280px;
+  overflow-y: auto;
+  border-radius: 10px;
+  border: var(--ev-hairline) solid var(--ev-border);
+  background: var(--ev-surface);
+  box-shadow: var(--ev-shadow-prominent);
+  padding: 4px;
+}
+
+.ev-dropdown-item {
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.ev-dropdown-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ev-dropdown-item-desc {
+  font-size: 0.75rem;
+  color: var(--ev-fg-subtle);
+}
+
+.ev-skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ev-skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 4px;
+}
+
+.ev-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: var(--ev-hairline) solid var(--ev-separator);
+}
+
+.ev-skeleton-row:first-child {
+  border-top: 0;
+}
+
+.ev-skeleton-row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ev-skeleton-chip {
+  width: 34px;
+  height: 20px;
+  flex: none;
+}
+
+.ev-skeleton-title {
+  width: 180px;
+  height: 20px;
+}
+
+.ev-skeleton-table {
+  padding: 16px;
+}
+
+.ev-provider-skeleton-item {
+  padding: 8px 10px;
+}
+
+.ev-kv-muted {
+  font-size: 0.8125rem;
+  color: var(--ev-fg-muted);
+  gap: 4px 10px;
+}
+
+.ev-kv-muted dt {
+  color: var(--ev-fg-subtle);
+  font-weight: 500;
+}
+
+.ev-kv-muted dd {
+  color: var(--ev-fg-muted);
+}
+
+.ev-section-header {
+  gap: 4px;
+}
+
+.ev-section-title {
+  font-size: 1.0625rem;
+  font-weight: 500;
+  line-height: 1.35;
+  margin: 0;
+  color: var(--ev-fg);
+}
+
+.ev-filter-bar {
+  width: 100%;
+}
+
+.ev-filter-bar > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ev-filter-bar-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ev-inline-filter-bar {
+  width: auto;
+  max-width: 100%;
+}
+
+.ev-inline-filter-bar > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }

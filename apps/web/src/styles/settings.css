@@ -66,6 +66,20 @@
   font-variant-numeric: tabular-nums;
 }
 
+.ev-stat-meter {
+  margin-top: 6px;
+  width: 100%;
+}
+
+.ev-stat-meter > div {
+  height: 4px;
+  border-radius: 999px;
+}
+
+.ev-usage-section {
+  gap: 10px;
+}
+
 .ev-table-frame {
   width: 100%;
   border-radius: 10px;
@@ -375,25 +389,25 @@
   overflow: hidden;
 }
 
-.ev-tool-disclosure > summary {
+.ev-tool-disclosure-trigger {
   display: flex;
   align-items: center;
   gap: 7px;
+  width: 100%;
   min-height: 40px;
   padding: 8px 12px;
+  border: 0;
+  background: transparent;
   color: var(--ev-fg-muted);
+  font: inherit;
   font-size: 0.875rem;
   font-weight: 500;
-  list-style: none;
+  text-align: left;
   cursor: pointer;
   user-select: none;
 }
 
-.ev-tool-disclosure > summary::-webkit-details-marker {
-  display: none;
-}
-
-.ev-tool-disclosure > summary:hover {
+.ev-tool-disclosure-trigger:hover {
   background: var(--ev-hover);
   color: var(--ev-fg);
 }
@@ -404,8 +418,18 @@
   transition: transform var(--ev-dur-fast) var(--ev-ease-out);
 }
 
-.ev-tool-disclosure[open] > summary .ev-tool-disclosure-chevron {
+.ev-tool-disclosure-trigger[aria-expanded="true"] .ev-tool-disclosure-chevron,
+.ev-tool-disclosure-trigger[data-panel-open] .ev-tool-disclosure-chevron {
   transform: rotate(90deg);
+}
+
+.ev-tool-disclosure-panel:not([hidden]) {
+  padding-inline-start: 0;
+}
+
+.ev-tool-disclosure-panel:not([hidden])::before,
+.ev-tool-disclosure-panel:not([hidden])::after {
+  display: none;
 }
 
 .ev-tool-disclosure-body {
@@ -414,7 +438,6 @@
   gap: 10px;
   padding: 12px;
   border-top: var(--ev-hairline) solid var(--ev-separator);
-  animation: ev-fade var(--ev-dur-base) var(--ev-ease-out);
 }
 
 .ev-skill-head-title {

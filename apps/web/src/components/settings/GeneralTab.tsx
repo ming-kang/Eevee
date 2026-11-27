@@ -1,8 +1,9 @@
 import { AddIcon, RemoveIcon } from "@earendil-works/elanor-icons-react";
 import {
   Button,
-  Heading,
   IconButton,
+  PageHeader,
+  Section,
   SegmentedControl,
   Separator,
 } from "@earendil-works/elanor-react";
@@ -59,86 +60,100 @@ export function GeneralTab() {
 
   return (
     <div className="ev-settings-stack ev-settings-narrow">
-      <div className="ev-settings-section">
-        <Heading level={2} size={5}>
-          {t("general.appearanceTitle")}
-        </Heading>
-        <div className="ev-settings-card">
-          <div className="ev-pref-row">
-            <div className="ev-pref-label">{t("general.language")}</div>
-            <SegmentedControl.Root
-              density="compact"
-              value={[locale]}
-              onValueChange={(vals) => {
-                const next = vals[0];
-                if (next === "zh-CN" || next === "en") setLocale(next as Locale);
-              }}
-            >
-              <SegmentedControl.Item value="zh-CN">简体中文</SegmentedControl.Item>
-              <SegmentedControl.Item value="en">English</SegmentedControl.Item>
-            </SegmentedControl.Root>
-          </div>
+      <Section.Root className="ev-settings-section">
+        <PageHeader.Root className="ev-section-header">
+          <PageHeader.Row>
+            <PageHeader.Title level={2} className="ev-section-title">
+              {t("general.appearanceTitle")}
+            </PageHeader.Title>
+          </PageHeader.Row>
+        </PageHeader.Root>
+        <Section.Content>
+          <div className="ev-settings-card">
+            <div className="ev-pref-row">
+              <div className="ev-pref-label">{t("general.language")}</div>
+              <SegmentedControl.Root
+                density="compact"
+                value={[locale]}
+                onValueChange={(vals) => {
+                  const next = vals[0];
+                  if (next === "zh-CN" || next === "en") setLocale(next as Locale);
+                }}
+              >
+                <SegmentedControl.Item value="zh-CN">简体中文</SegmentedControl.Item>
+                <SegmentedControl.Item value="en">English</SegmentedControl.Item>
+              </SegmentedControl.Root>
+            </div>
 
-          <Separator />
+            <Separator />
 
-          <div className="ev-pref-row">
-            <div className="ev-pref-label">{t("general.theme")}</div>
-            <SegmentedControl.Root
-              density="compact"
-              value={[theme.preference]}
-              onValueChange={(vals) => {
-                const next = vals[0];
-                if (next === "system" || next === "light" || next === "dark") {
-                  theme.setPreference(next as ThemePreference);
-                }
-              }}
-            >
-              <SegmentedControl.Item value="system">
-                {t("sidebar.theme.system")}
-              </SegmentedControl.Item>
-              <SegmentedControl.Item value="light">
-                {t("sidebar.theme.light")}
-              </SegmentedControl.Item>
-              <SegmentedControl.Item value="dark">{t("sidebar.theme.dark")}</SegmentedControl.Item>
-            </SegmentedControl.Root>
+            <div className="ev-pref-row">
+              <div className="ev-pref-label">{t("general.theme")}</div>
+              <SegmentedControl.Root
+                density="compact"
+                value={[theme.preference]}
+                onValueChange={(vals) => {
+                  const next = vals[0];
+                  if (next === "system" || next === "light" || next === "dark") {
+                    theme.setPreference(next as ThemePreference);
+                  }
+                }}
+              >
+                <SegmentedControl.Item value="system">
+                  {t("sidebar.theme.system")}
+                </SegmentedControl.Item>
+                <SegmentedControl.Item value="light">
+                  {t("sidebar.theme.light")}
+                </SegmentedControl.Item>
+                <SegmentedControl.Item value="dark">
+                  {t("sidebar.theme.dark")}
+                </SegmentedControl.Item>
+              </SegmentedControl.Root>
+            </div>
           </div>
-        </div>
-      </div>
+        </Section.Content>
+      </Section.Root>
 
-      <div className="ev-settings-section">
-        <div className="ev-settings-head">
-          <Heading level={2} size={5}>
-            {t("general.typographyTitle")}
-          </Heading>
-          {!isDefaultSizes && (
-            <Button hierarchy="tertiary" density="compact" onClick={typography.reset}>
-              {t("general.resetSizes")}
-            </Button>
-          )}
-        </div>
-        <div className="ev-settings-card">
-          <FontSizeStepper
-            label={t("general.uiSize")}
-            value={typography.uiSize}
-            min={UI_SIZE_BOUNDS.min}
-            max={UI_SIZE_BOUNDS.max}
-            onChange={typography.setUiSize}
-          />
-          <Separator />
-          <FontSizeStepper
-            label={t("general.codeSize")}
-            value={typography.codeSize}
-            min={CODE_SIZE_BOUNDS.min}
-            max={CODE_SIZE_BOUNDS.max}
-            onChange={typography.setCodeSize}
-          />
-          <Separator />
-          <div className="ev-typography-preview">
-            <div className="ev-typography-preview-prose">{t("general.previewProse")}</div>
-            <pre className="ev-pre">{t("general.previewCode")}</pre>
+      <Section.Root className="ev-settings-section">
+        <PageHeader.Root className="ev-section-header">
+          <PageHeader.Row>
+            <PageHeader.Title level={2} className="ev-section-title">
+              {t("general.typographyTitle")}
+            </PageHeader.Title>
+            {!isDefaultSizes && (
+              <PageHeader.Actions>
+                <Button hierarchy="tertiary" density="compact" onClick={typography.reset}>
+                  {t("general.resetSizes")}
+                </Button>
+              </PageHeader.Actions>
+            )}
+          </PageHeader.Row>
+        </PageHeader.Root>
+        <Section.Content>
+          <div className="ev-settings-card">
+            <FontSizeStepper
+              label={t("general.uiSize")}
+              value={typography.uiSize}
+              min={UI_SIZE_BOUNDS.min}
+              max={UI_SIZE_BOUNDS.max}
+              onChange={typography.setUiSize}
+            />
+            <Separator />
+            <FontSizeStepper
+              label={t("general.codeSize")}
+              value={typography.codeSize}
+              min={CODE_SIZE_BOUNDS.min}
+              max={CODE_SIZE_BOUNDS.max}
+              onChange={typography.setCodeSize}
+            />
+            <Separator />
+            <div className="ev-typography-preview">
+              <div className="ev-typography-preview-prose">{t("general.previewProse")}</div>
+              <pre className="ev-pre">{t("general.previewCode")}</pre>
+            </div>
           </div>
-        </div>
-      </div>
+        </Section.Content>
+      </Section.Root>
     </div>
   );
 }

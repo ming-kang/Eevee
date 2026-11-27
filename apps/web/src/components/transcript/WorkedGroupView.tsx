@@ -8,6 +8,7 @@ import {
   type DisplayItem,
   editSummary,
 } from "../../lib/transcript.ts";
+import { EvTooltip } from "../EvTooltip.tsx";
 
 export function WorkedGroupView({
   item,
@@ -78,41 +79,46 @@ export function WorkedGroupView({
           {summaryText && <span className="ev-truncate ev-worked-sub">· {summaryText}</span>}
         </button>
         {!open && edits && (
-          <button
-            type="button"
-            className="ev-diffstat ev-num"
-            aria-expanded={pathsOpen}
-            title={t("transcript.worked.filesEditedTitle", { count: edits.files })}
-            onClick={() => setPathsOpen((prev) => !prev)}
+          <EvTooltip
+            content={t("transcript.worked.filesEditedTitle", { count: edits.files })}
+            side="top"
           >
-            {edits.added > 0 && <span className="ev-plus">+{edits.added}</span>}
-            {edits.removed > 0 && <span className="ev-minus">−{edits.removed}</span>}
-            <ChevronRightIcon
-              width={13}
-              height={13}
-              className={`ev-worked-paths-chev${pathsOpen ? " open" : ""}`}
-            />
-          </button>
+            <button
+              type="button"
+              className="ev-diffstat ev-num"
+              aria-expanded={pathsOpen}
+              onClick={() => setPathsOpen((prev) => !prev)}
+            >
+              {edits.added > 0 && <span className="ev-plus">+{edits.added}</span>}
+              {edits.removed > 0 && <span className="ev-minus">−{edits.removed}</span>}
+              <ChevronRightIcon
+                width={13}
+                height={13}
+                className={`ev-worked-paths-chev${pathsOpen ? " open" : ""}`}
+              />
+            </button>
+          </EvTooltip>
         )}
       </div>
 
       {!open && pathsOpen && edits && (
         <div className="ev-worked-paths">
           {edits.paths.map((p) => (
-            <button
-              key={p.key}
-              type="button"
-              className="ev-tab-link ev-worked-path-btn"
-              onClick={() => revealEdit(p.key)}
-            >
-              <span className="ev-mono ev-truncate ev-proc-summary-mono" title={p.path}>
-                {shortPath(p.path)}
-              </span>
-              <span className="ev-mono ev-num ev-worked-path-counts">
-                {p.added > 0 && <span className="ev-plus">+{p.added}</span>}
-                {p.removed > 0 && <span className="ev-minus">−{p.removed}</span>}
-              </span>
-            </button>
+            <EvTooltip key={p.key} content={p.path} side="top">
+              <button
+                type="button"
+                className="ev-tab-link ev-worked-path-btn"
+                onClick={() => revealEdit(p.key)}
+              >
+                <span className="ev-mono ev-truncate ev-proc-summary-mono">
+                  {shortPath(p.path)}
+                </span>
+                <span className="ev-mono ev-num ev-worked-path-counts">
+                  {p.added > 0 && <span className="ev-plus">+{p.added}</span>}
+                  {p.removed > 0 && <span className="ev-minus">−{p.removed}</span>}
+                </span>
+              </button>
+            </EvTooltip>
           ))}
         </div>
       )}

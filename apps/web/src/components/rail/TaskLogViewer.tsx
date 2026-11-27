@@ -8,6 +8,7 @@ import type { BackgroundTaskRecordPayload, ProjectId, WorkerId } from "@eevee/pr
 import { useRef } from "react";
 import { formatBytes, isTaskActive } from "../../lib/format.ts";
 import { useI18n } from "../../lib/i18n.ts";
+import { EvTooltip } from "../EvTooltip.tsx";
 import { SearchField } from "../SearchField.tsx";
 import { useTaskOutput } from "./useTaskOutput.ts";
 
@@ -46,32 +47,37 @@ export function TaskLogViewer({
         </SegmentedControl.Root>
 
         <Stack direction="row" gap="xxSmall" align="center" className="ev-wrap-row">
-          <button
-            type="button"
-            className="ev-follow-btn"
-            aria-pressed={log.readMode === "tail" && log.follow}
-            disabled={log.readMode !== "tail"}
-            title={
+          <EvTooltip
+            content={
               log.readMode !== "tail"
                 ? t("rail.tasks.followOnlyTail")
                 : log.follow
                   ? t("rail.tasks.pauseFollow")
                   : t("rail.tasks.resumeFollow")
             }
-            onClick={() => log.setFollow((prev) => !prev)}
+            side="top"
           >
-            <KeyboardDoubleArrowDownIcon width={14} height={14} />
-            <span>{t("rail.tasks.follow")}</span>
-          </button>
+            <button
+              type="button"
+              className="ev-follow-btn"
+              aria-pressed={log.readMode === "tail" && log.follow}
+              disabled={log.readMode !== "tail"}
+              onClick={() => log.setFollow((prev) => !prev)}
+            >
+              <KeyboardDoubleArrowDownIcon width={14} height={14} />
+              <span>{t("rail.tasks.follow")}</span>
+            </button>
+          </EvTooltip>
 
-          <IconButton
-            aria-label={t("rail.tasks.refresh")}
-            title={t("rail.tasks.refresh")}
-            disabled={log.loading}
-            onClick={log.refresh}
-          >
-            <RefreshIcon width={15} height={15} />
-          </IconButton>
+          <EvTooltip content={t("rail.tasks.refresh")} side="top">
+            <IconButton
+              aria-label={t("rail.tasks.refresh")}
+              disabled={log.loading}
+              onClick={log.refresh}
+            >
+              <RefreshIcon width={15} height={15} />
+            </IconButton>
+          </EvTooltip>
 
           {onOpenWorker && (
             <Button hierarchy="secondary" density="compact" onClick={() => onOpenWorker(workerId)}>

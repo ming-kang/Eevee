@@ -2,6 +2,7 @@ import { CloseIcon, DescriptionIcon } from "@earendil-works/elanor-icons-react";
 import type { DraftAttachment } from "../lib/attachments.ts";
 import { formatBytes } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
+import { EvTooltip } from "./EvTooltip.tsx";
 
 export function AttachmentPills({
   attachments,
@@ -33,9 +34,9 @@ export function AttachmentPills({
           ) : (
             <div className="ev-attachment-file-meta">
               <DescriptionIcon width={14} height={14} className="ev-attachment-icon" />
-              <span className="ev-truncate ev-attachment-name" title={item.name}>
-                {item.name}
-              </span>
+              <EvTooltip content={item.name} side="top">
+                <span className="ev-truncate ev-attachment-name">{item.name}</span>
+              </EvTooltip>
               <span className="ev-attachment-size ev-num">{formatBytes(item.size)}</span>
             </div>
           )}

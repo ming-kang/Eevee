@@ -1,8 +1,15 @@
 import { ChevronRightIcon } from "@earendil-works/elanor-icons-react";
-import { Field, Input, Switch, TextArea } from "@earendil-works/elanor-react";
+import {
+  Field,
+  Input,
+  ProgressiveDisclosure,
+  Switch,
+  TextArea,
+} from "@earendil-works/elanor-react";
 import type { CompatFieldInfo } from "@eevee/protocol";
 import { type Dispatch, useState } from "react";
 import { useI18n } from "../../../lib/i18n.ts";
+import { EvDropdown } from "../../EvDropdown.tsx";
 import {
   ADVANCED_KEYS,
   type ModelEditorAction,
@@ -50,24 +57,21 @@ export function ModelCompatSection({ compatFields, draft, dispatch }: ModelCompa
                   </div>
                 )}
                 {field.kind === "enum" && (
-                  <select
-                    className="ev-select"
+                  <EvDropdown
+                    ariaLabel={field.key}
                     value={typeof value === "string" ? value : ""}
-                    onChange={(event) =>
+                    options={[
+                      { value: "", label: t("modelEditor.compat.protocolDefault") },
+                      ...(field.options ?? []).map((option) => ({ value: option, label: option })),
+                    ]}
+                    onChange={(nextValue) =>
                       dispatch({
                         type: "setCompatEnum",
                         key: field.key,
-                        value: event.target.value,
+                        value: nextValue,
                       })
                     }
-                  >
-                    <option value="">{t("modelEditor.compat.protocolDefault")}</option>
-                    {(field.options ?? []).map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 )}
                 {field.kind === "number" && (
                   <Input
@@ -100,32 +104,34 @@ export function ModelCompatSection({ compatFields, draft, dispatch }: ModelCompa
           })}
         </div>
       )}
-      <details
+      <ProgressiveDisclosure.Root
         className="ev-tool-disclosure"
         open={advancedOpen}
-        onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+        onOpenChange={setAdvancedOpen}
       >
-        <summary>
+        <ProgressiveDisclosure.Trigger className="ev-tool-disclosure-trigger">
           <ChevronRightIcon className="ev-tool-disclosure-chevron" width={14} height={14} />
           <span>{t("modelEditor.compat.advancedJson")}</span>
-        </summary>
-        <div className="ev-tool-disclosure-body">
-          {ADVANCED_KEYS.map((key) => (
-            <Field.Root key={key}>
-              <Field.Label>
-                <span className="ev-mono">{key}</span>
-              </Field.Label>
-              <TextArea
-                monospace
-                rows={key === "headers" ? 3 : 5}
-                value={draft.advancedText[key]}
-                placeholder={t("modelEditor.compat.leaveBlank")}
-                onValueChange={(value) => dispatch({ type: "setAdvancedText", key, value })}
-              />
-            </Field.Root>
-          ))}
-        </div>
-      </details>
+        </ProgressiveDisclosure.Trigger>
+        <ProgressiveDisclosure.Panel className="ev-tool-disclosure-panel">
+          <div className="ev-tool-disclosure-body">
+            {ADVANCED_KEYS.map((key) => (
+              <Field.Root key={key}>
+                <Field.Label>
+                  <span className="ev-mono">{key}</span>
+                </Field.Label>
+                <TextArea
+                  monospace
+                  rows={key === "headers" ? 3 : 5}
+                  value={draft.advancedText[key]}
+                  placeholder={t("modelEditor.compat.leaveBlank")}
+                  onValueChange={(value) => dispatch({ type: "setAdvancedText", key, value })}
+                />
+              </Field.Root>
+            ))}
+          </div>
+        </ProgressiveDisclosure.Panel>
+      </ProgressiveDisclosure.Root>
     </section>
   );
 }

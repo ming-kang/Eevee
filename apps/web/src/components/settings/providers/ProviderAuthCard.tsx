@@ -1,11 +1,12 @@
 import { DeleteIcon, KeyIcon, LogoutIcon, UndoIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Field, Heading, Input, Link, Text } from "@earendil-works/elanor-react";
+import { Button, Field, Heading, Input, KeyValue, Link, Text } from "@earendil-works/elanor-react";
 import type { ProviderDetail } from "@eevee/protocol";
 import { useState } from "react";
 import { api } from "../../../lib/api.ts";
 import { formatTime } from "../../../lib/format.ts";
 import { useI18n } from "../../../lib/i18n.ts";
 import { ConfirmModal } from "../../ConfirmModal.tsx";
+import { EvDropdown } from "../../EvDropdown.tsx";
 import { formatAuthMeta } from "../provider-utils.ts";
 import type { UseProviderOAuthResult } from "./useProviderOAuth.ts";
 
@@ -54,17 +55,11 @@ export function ProviderOAuthPanel({ oauth }: { readonly oauth: UseProviderOAuth
         <div className="ev-form-stack" style={{ gap: 8 }}>
           <Text style={{ margin: 0, fontWeight: 500 }}>{login.prompt.message}</Text>
           {login.prompt.type === "select" ? (
-            <select
-              className="ev-select"
+            <EvDropdown
               value={promptInput}
-              onChange={(event) => setPromptInput(event.target.value)}
-            >
-              {login.prompt.options.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              options={login.prompt.options.map((opt) => ({ value: opt.id, label: opt.label }))}
+              onChange={setPromptInput}
+            />
           ) : (
             <Input
               type={login.prompt.type === "secret" ? "password" : "text"}
@@ -219,15 +214,18 @@ export function ProviderAuthCard({
         </div>
       </div>
 
-      <div className="ev-auth-summary">
-        <span>{formatAuthMeta(detail, t)}</span>
+      <KeyValue.Inline className="ev-auth-summary ev-kv-muted">
+        <KeyValue.Key>{t("providers.builtin.authSection")}</KeyValue.Key>
+        <KeyValue.Value>{formatAuthMeta(detail, t)}</KeyValue.Value>
         {detail.authExpiresAt !== undefined && (
-          <span className="ev-inline-muted ev-num">
-            {t("providers.auth.expiresAtLabel")}
-            {formatTime(detail.authExpiresAt)}
-          </span>
+          <>
+            <KeyValue.Key>
+              {t("providers.auth.expiresAtLabel").replace(/[:：]\s*$/, "")}
+            </KeyValue.Key>
+            <KeyValue.Value className="ev-num">{formatTime(detail.authExpiresAt)}</KeyValue.Value>
+          </>
         )}
-      </div>
+      </KeyValue.Inline>
 
       <div className="ev-inline-actions">
         {detail.authMethods.apiKey && (

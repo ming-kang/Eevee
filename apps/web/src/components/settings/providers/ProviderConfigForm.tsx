@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { api } from "../../../lib/api.ts";
 import { useI18n } from "../../../lib/i18n.ts";
 import { showToast } from "../../../lib/toasts.ts";
+import { EvDropdown } from "../../EvDropdown.tsx";
 import { BaseUrlField } from "../BaseUrlField.tsx";
 import { HeadersEditor } from "../HeadersEditor.tsx";
 import { SecretRevealInput } from "../SecretRevealInput.tsx";
@@ -98,22 +99,21 @@ export function ProviderConfigForm({
           </Field.Root>
           <Field.Root>
             <Field.Label>{t("providers.field.api")}</Field.Label>
-            <select
-              className="ev-select"
+            <EvDropdown
+              ariaLabel={t("providers.field.api")}
               value={draft.api}
-              onChange={(event) => patchDraft({ api: event.target.value })}
-            >
-              <option value="">
-                {detail.kind === "custom"
-                  ? t("providers.config.apiPerModel")
-                  : t("providers.config.apiInheritBuiltin")}
-              </option>
-              {apiOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
+              options={[
+                {
+                  value: "",
+                  label:
+                    detail.kind === "custom"
+                      ? t("providers.config.apiPerModel")
+                      : t("providers.config.apiInheritBuiltin"),
+                },
+                ...apiOptions.map((item) => ({ value: item, label: item })),
+              ]}
+              onChange={(api) => patchDraft({ api })}
+            />
           </Field.Root>
         </div>
 

@@ -1,5 +1,12 @@
 import { AddIcon, RefreshIcon, SyncIcon, WarningIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Heading, Text } from "@earendil-works/elanor-react";
+import {
+  Button,
+  PageHeader,
+  Section,
+  Skeleton,
+  SkeletonText,
+  Text,
+} from "@earendil-works/elanor-react";
 import type {
   ModelsConfigDiagnostic,
   ProviderCatalogResponse,
@@ -171,40 +178,42 @@ export function ProvidersTab() {
   };
 
   return (
-    <div className="ev-settings-section">
-      <div className="ev-settings-head">
-        <Heading level={2} size={5}>
-          {t("providers.title")}
-        </Heading>
-        <div className="ev-inline-actions">
-          <Button
-            hierarchy="primary"
-            density="compact"
-            iconStart={<AddIcon width={15} height={15} />}
-            onClick={() => setAddOpen(true)}
-          >
-            {t("providers.add")}
-          </Button>
-          <Button
-            hierarchy="secondary"
-            density="compact"
-            iconStart={<SyncIcon width={15} height={15} />}
-            pending={reloading}
-            onClick={() => void handleReloadModels()}
-          >
-            {t("providers.reloadModels")}
-          </Button>
-          <Button
-            hierarchy="secondary"
-            density="compact"
-            iconStart={<RefreshIcon width={15} height={15} />}
-            pending={loading}
-            onClick={() => void refreshMutated(selectedId)}
-          >
-            {t("common.refresh")}
-          </Button>
-        </div>
-      </div>
+    <Section.Root className="ev-settings-section">
+      <PageHeader.Root className="ev-section-header">
+        <PageHeader.Row>
+          <PageHeader.Title level={2} className="ev-section-title">
+            {t("providers.title")}
+          </PageHeader.Title>
+          <PageHeader.Actions>
+            <Button
+              hierarchy="primary"
+              density="compact"
+              iconStart={<AddIcon width={15} height={15} />}
+              onClick={() => setAddOpen(true)}
+            >
+              {t("providers.add")}
+            </Button>
+            <Button
+              hierarchy="secondary"
+              density="compact"
+              iconStart={<SyncIcon width={15} height={15} />}
+              pending={reloading}
+              onClick={() => void handleReloadModels()}
+            >
+              {t("providers.reloadModels")}
+            </Button>
+            <Button
+              hierarchy="secondary"
+              density="compact"
+              iconStart={<RefreshIcon width={15} height={15} />}
+              pending={loading}
+              onClick={() => void refreshMutated(selectedId)}
+            >
+              {t("common.refresh")}
+            </Button>
+          </PageHeader.Actions>
+        </PageHeader.Row>
+      </PageHeader.Root>
 
       {reloadNotice && (
         <div>
@@ -246,6 +255,7 @@ export function ProvidersTab() {
       <div className="ev-provider-workspace">
         <ProviderSidebarList
           providers={providers}
+          loading={loading && providers.length === 0}
           filter={providerFilter}
           onFilterChange={setProviderFilter}
           category={category}
@@ -255,13 +265,19 @@ export function ProvidersTab() {
         />
 
         <div className="ev-provider-detail-pane">
-          {!selectedId ? (
+          {!selectedId && loading ? (
+            <div className="ev-settings-card ev-skeleton-stack" aria-busy="true">
+              <Skeleton className="ev-skeleton-title">Provider Details</Skeleton>
+              <SkeletonText lines={4} />
+            </div>
+          ) : !selectedId ? (
             <div className="ev-settings-card">
               <Text className="ev-inline-hint">{t("providers.selectPrompt")}</Text>
             </div>
           ) : loadingDetail && (!detail || detail.id !== selectedId) ? (
-            <div className="ev-settings-card">
-              <Text className="ev-inline-hint">{t("providers.loadingDetail")}</Text>
+            <div className="ev-settings-card ev-skeleton-stack" aria-busy="true">
+              <Skeleton className="ev-skeleton-title">Provider Details</Skeleton>
+              <SkeletonText lines={4} />
             </div>
           ) : detail && detail.id === selectedId ? (
             <div className="ev-form-stack">
@@ -341,6 +357,6 @@ export function ProvidersTab() {
           }}
         />
       )}
-    </div>
+    </Section.Root>
   );
 }

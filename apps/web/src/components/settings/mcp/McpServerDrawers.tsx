@@ -2,6 +2,7 @@ import { OpenInNewIcon, RefreshIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Input, Link, Text } from "@earendil-works/elanor-react";
 import type { McpServerSnapshotPayload } from "@eevee/protocol";
 import { useI18n } from "../../../lib/i18n.ts";
+import { EvDropdown } from "../../EvDropdown.tsx";
 import type { OAuthUiSession } from "../useMcpOAuth.ts";
 import {
   DEFAULT_EXPOSURE,
@@ -158,22 +159,19 @@ export function ToolsDrawer({
                       <span className="eevee-badge">{tool.exposure}</span>
                     </td>
                     <td>
-                      <select
-                        className="ev-select"
-                        aria-label={t("mcp.tools.exposureAriaLabel", { name: tool.name })}
+                      <EvDropdown
+                        ariaLabel={t("mcp.tools.exposureAriaLabel", { name: tool.name })}
                         disabled={isBusy}
                         value={explicit ?? ""}
-                        onChange={(event) =>
-                          onToolExposureChange(server, tool.name, event.target.value)
-                        }
-                      >
-                        <option value="">{defaultLabel}</option>
-                        {EXPOSURE_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.value}
-                          </option>
-                        ))}
-                      </select>
+                        options={[
+                          { value: "", label: defaultLabel },
+                          ...EXPOSURE_OPTIONS.map((opt) => ({
+                            value: opt.value,
+                            label: opt.value,
+                          })),
+                        ]}
+                        onChange={(next) => onToolExposureChange(server, tool.name, next)}
+                      />
                     </td>
                   </tr>
                 );

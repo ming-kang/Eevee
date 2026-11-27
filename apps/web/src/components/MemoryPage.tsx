@@ -1,4 +1,4 @@
-import { Button } from "@earendil-works/elanor-react";
+import { Button, Section } from "@earendil-works/elanor-react";
 import type { ProjectSummary } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
@@ -119,15 +119,17 @@ export function MemoryPage({
         </div>
       )}
 
-      <div className="ev-note-surface">
-        <textarea
-          className="ev-note-editor"
-          aria-label={t("project.tab.memory")}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          placeholder={t("memory.placeholder")}
-        />
-      </div>
+      <Section.Root className="ev-note-surface">
+        <Section.Content className="ev-note-content">
+          <textarea
+            className="ev-note-editor"
+            aria-label={t("project.tab.memory")}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder={t("memory.placeholder")}
+          />
+        </Section.Content>
+      </Section.Root>
     </section>
   );
 }

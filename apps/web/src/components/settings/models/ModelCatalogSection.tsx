@@ -1,5 +1,12 @@
 import { RefreshIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Heading, SegmentedControl, Table } from "@earendil-works/elanor-react";
+import {
+  Button,
+  PageHeader,
+  SearchAndFilterBar,
+  Section,
+  SegmentedControl,
+  Table,
+} from "@earendil-works/elanor-react";
 import type { ModelInfo } from "@eevee/protocol";
 import { useState } from "react";
 import { formatTokens } from "../../../lib/format.ts";
@@ -33,45 +40,56 @@ export function ModelCatalogSection({
   const displayedModels = showAllModels ? visibleModels : visibleModels.slice(0, DISPLAY_LIMIT);
 
   return (
-    <div className="ev-settings-section">
-      <div className="ev-settings-head">
-        <Heading level={2} size={5}>
-          {t("models.catalogTitle")}
-          <span className="ev-num ev-heading-count">{visibleModels.length}</span>
-        </Heading>
-        <div className="ev-catalog-toolbar">
-          <SearchField
-            size="compact"
-            className="ev-catalog-search"
-            value={filter}
-            onChange={setFilter}
-            placeholder={t("models.filterPlaceholder")}
-            clearOnEscape
-          />
-          <SegmentedControl.Root
-            density="compact"
-            value={[scope]}
-            onValueChange={(vals) => {
-              const next = vals[0];
-              if (next === "available" || next === "all") setScope(next);
-            }}
-          >
-            <SegmentedControl.Item value="available">
-              {t("models.onlyAvailable")}
-            </SegmentedControl.Item>
-            <SegmentedControl.Item value="all">{t("models.all")}</SegmentedControl.Item>
-          </SegmentedControl.Root>
-          <Button
-            hierarchy="secondary"
-            density="compact"
-            iconStart={<RefreshIcon width={15} height={15} />}
-            pending={refreshing}
-            onClick={onRefresh}
-          >
-            {t("common.refresh")}
-          </Button>
-        </div>
-      </div>
+    <Section.Root className="ev-settings-section">
+      <PageHeader.Root className="ev-section-header">
+        <PageHeader.Row>
+          <PageHeader.Title level={2} className="ev-section-title">
+            {t("models.catalogTitle")}
+            <span className="ev-num ev-heading-count">{visibleModels.length}</span>
+          </PageHeader.Title>
+          <PageHeader.Actions>
+            <SearchAndFilterBar.Root
+              role="search"
+              aria-label={t("models.filterPlaceholder")}
+              className="ev-inline-filter-bar"
+            >
+              <SearchAndFilterBar.Search className="ev-catalog-search">
+                <SearchField
+                  size="compact"
+                  value={filter}
+                  onChange={setFilter}
+                  placeholder={t("models.filterPlaceholder")}
+                  clearOnEscape
+                />
+              </SearchAndFilterBar.Search>
+              <SearchAndFilterBar.Filters className="ev-catalog-toolbar">
+                <SegmentedControl.Root
+                  density="compact"
+                  value={[scope]}
+                  onValueChange={(vals) => {
+                    const next = vals[0];
+                    if (next === "available" || next === "all") setScope(next);
+                  }}
+                >
+                  <SegmentedControl.Item value="available">
+                    {t("models.onlyAvailable")}
+                  </SegmentedControl.Item>
+                  <SegmentedControl.Item value="all">{t("models.all")}</SegmentedControl.Item>
+                </SegmentedControl.Root>
+                <Button
+                  hierarchy="secondary"
+                  density="compact"
+                  iconStart={<RefreshIcon width={15} height={15} />}
+                  pending={refreshing}
+                  onClick={onRefresh}
+                >
+                  {t("common.refresh")}
+                </Button>
+              </SearchAndFilterBar.Filters>
+            </SearchAndFilterBar.Root>
+          </PageHeader.Actions>
+        </PageHeader.Row>
+      </PageHeader.Root>
 
       <Table.Container className="ev-table-frame">
         <Table.Root>
@@ -176,6 +194,6 @@ export function ModelCatalogSection({
           </Button>
         </div>
       )}
-    </div>
+    </Section.Root>
   );
 }

@@ -1,5 +1,5 @@
 import { FolderIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Heading } from "@earendil-works/elanor-react";
+import { Button, Heading, KeyValue } from "@earendil-works/elanor-react";
 import type { BoardViewPayload, ProjectSummary, WorkerId } from "@eevee/protocol";
 import { useEffect, useMemo, useState } from "react";
 import { shortPath } from "../lib/format.ts";
@@ -8,6 +8,7 @@ import { useConversationPanel } from "../lib/useConversationPanel.ts";
 import { openBoardQuestions } from "../lib/workspace-nav.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
 import { ConversationDock } from "./ConversationDock.tsx";
+import { EvTooltip } from "./EvTooltip.tsx";
 import { ProjectHeader } from "./ProjectHeader.tsx";
 import { QuestionCard, QuestionStrip } from "./QuestionDock.tsx";
 import { TranscriptView } from "./TranscriptView.tsx";
@@ -100,11 +101,18 @@ export function ChatPage({
 
       {activeWorker && (
         <div className="ev-worker-meta-bar">
-          <span className="ev-mono ev-truncate">{workerModelLabel ?? t("rail.defaultModel")}</span>
-          <span aria-hidden="true">·</span>
-          <span className="ev-mono ev-truncate" title={activeWorker.cwd}>
-            {shortPath(activeWorker.cwd)}
-          </span>
+          <KeyValue.Inline className="ev-worker-kv">
+            <KeyValue.Key>{t("modelMenu.model")}</KeyValue.Key>
+            <KeyValue.Value className="ev-mono ev-truncate">
+              {workerModelLabel ?? t("rail.defaultModel")}
+            </KeyValue.Value>
+            <KeyValue.Key>cwd</KeyValue.Key>
+            <EvTooltip content={activeWorker.cwd} side="bottom">
+              <KeyValue.Value className="ev-mono ev-truncate">
+                {shortPath(activeWorker.cwd)}
+              </KeyValue.Value>
+            </EvTooltip>
+          </KeyValue.Inline>
         </div>
       )}
 
@@ -146,10 +154,12 @@ export function ChatPage({
           {project.workspaces.length > 0 && (
             <div className="ev-landing-workspaces">
               {project.workspaces.map((ws) => (
-                <span key={ws} className="ev-ws-chip" title={ws}>
-                  <FolderIcon width={13} height={13} className="ev-ws-chip-icon" />
-                  <span className="ev-truncate">{shortPath(ws)}</span>
-                </span>
+                <EvTooltip key={ws} content={ws} side="bottom">
+                  <span className="ev-ws-chip">
+                    <FolderIcon width={13} height={13} className="ev-ws-chip-icon" />
+                    <span className="ev-truncate">{shortPath(ws)}</span>
+                  </span>
+                </EvTooltip>
               ))}
             </div>
           )}

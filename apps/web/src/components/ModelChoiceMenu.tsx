@@ -36,6 +36,7 @@ import {
   writePinnedModelKeys,
 } from "../lib/model-choice.ts";
 import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
+import { EvTooltip } from "./EvTooltip.tsx";
 
 export type ModelChoiceMenuProps = {
   readonly value: ModelChoice | undefined;
@@ -314,7 +315,6 @@ export function ModelChoiceMenu({
         tabIndex={-1}
         aria-selected={selected}
         className={`ev-model-menu-row${idx === safeActiveIndex ? " active" : ""}${selected ? " selected" : ""}`}
-        title={`${model.provider}/${model.id}`}
         onMouseEnter={() => setActiveIndex(idx)}
         onClick={() => handlePickModel(model)}
         onKeyDown={(event) => {
@@ -334,20 +334,21 @@ export function ModelChoiceMenu({
           />
         )}
         <span className="ev-model-menu-meta ev-num">{formatTokens(model.contextWindow)}</span>
-        <button
-          type="button"
-          className={`ev-model-pin-btn${pinned ? " pinned" : ""}`}
-          aria-label={pinned ? t("modelMenu.unpin") : t("modelMenu.pin")}
-          title={pinned ? t("modelMenu.unpin") : t("modelMenu.pin")}
-          tabIndex={-1}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={(event) => {
-            event.stopPropagation();
-            handleTogglePin(model);
-          }}
-        >
-          <StarIcon width={14} height={14} />
-        </button>
+        <EvTooltip content={pinned ? t("modelMenu.unpin") : t("modelMenu.pin")} side="top">
+          <button
+            type="button"
+            className={`ev-model-pin-btn${pinned ? " pinned" : ""}`}
+            aria-label={pinned ? t("modelMenu.unpin") : t("modelMenu.pin")}
+            tabIndex={-1}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleTogglePin(model);
+            }}
+          >
+            <StarIcon width={14} height={14} />
+          </button>
+        </EvTooltip>
         <span className="ev-model-menu-check" aria-hidden="true">
           {selected && <CheckIcon width={15} height={15} />}
         </span>
@@ -475,34 +476,35 @@ export function ModelChoiceMenu({
 
   return (
     <div ref={rootRef} className={`ev-model-menu-root ${variant}`}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className={`ev-model-menu-trigger ${variant}${value === undefined ? " placeholder" : ""}`}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        aria-label={ariaLabel ?? t("modelMenu.ariaLabel")}
-        disabled={disabled || busy}
-        title={value ? `${value.provider}/${value.modelId}` : placeholder}
-        onClick={handleToggleOpen}
-      >
-        <span className="ev-truncate">{displayName}</span>
-        {displayThinking && (
-          <>
-            <span className="ev-model-menu-sep" aria-hidden="true">
-              ·
+      <EvTooltip content={value ? `${value.provider}/${value.modelId}` : placeholder} side="top">
+        <button
+          ref={triggerRef}
+          type="button"
+          className={`ev-model-menu-trigger ${variant}${value === undefined ? " placeholder" : ""}`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
+          aria-label={ariaLabel ?? t("modelMenu.ariaLabel")}
+          disabled={disabled || busy}
+          onClick={handleToggleOpen}
+        >
+          <span className="ev-truncate">{displayName}</span>
+          {displayThinking && (
+            <>
+              <span className="ev-model-menu-sep" aria-hidden="true">
+                ·
+              </span>
+              <span className="ev-model-menu-thinking-tag">{displayThinking}</span>
+            </>
+          )}
+          {isUnavailable && (
+            <span className="eevee-badge" data-tone="warning">
+              {t("modelMenu.unavailable")}
             </span>
-            <span className="ev-model-menu-thinking-tag">{displayThinking}</span>
-          </>
-        )}
-        {isUnavailable && (
-          <span className="eevee-badge" data-tone="warning">
-            {t("modelMenu.unavailable")}
-          </span>
-        )}
-        <ExpandMoreIcon width={16} height={16} className="ev-model-menu-caret" />
-      </button>
+          )}
+          <ExpandMoreIcon width={16} height={16} className="ev-model-menu-caret" />
+        </button>
+      </EvTooltip>
 
       {popoverNode &&
         (typeof document === "undefined" ? popoverNode : createPortal(popoverNode, document.body))}

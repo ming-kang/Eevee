@@ -1,10 +1,11 @@
 import { ExpandMoreIcon } from "@earendil-works/elanor-icons-react";
-import { SegmentedControl } from "@earendil-works/elanor-react";
+import { SegmentedControl, Tabs } from "@earendil-works/elanor-react";
 import type { BoardViewPayload, ProjectId, TicketRecordPayload, WorkerId } from "@eevee/protocol";
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../lib/i18n.ts";
 import type { VisualStage } from "../lib/transcript.ts";
 import { partitionBoardTickets, workerStage } from "../lib/workspace-nav.ts";
+import { EvTooltip } from "./EvTooltip.tsx";
 import { TasksList } from "./rail/TasksList.tsx";
 
 export function RightRail({
@@ -59,26 +60,25 @@ export function RightRail({
   return (
     <section className="ev-rail-section">
       <div className="ev-rail-head">
-        <div className="ev-header-nav">
-          <button
-            type="button"
-            className="ev-tab-link"
-            data-active={tab === "tickets"}
-            onClick={() => setTab("tickets")}
-          >
-            <span>{t("rail.tab.tickets")}</span>
-            {openTicketsStage && <span className="ev-dot" data-stage={openTicketsStage} />}
-          </button>
-          <button
-            type="button"
-            className="ev-tab-link"
-            data-active={tab === "tasks"}
-            onClick={() => setTab("tasks")}
-          >
-            <span>{t("rail.tab.tasks")}</span>
-            {runningTasksCount > 0 && <span className="ev-dot" data-stage="working" />}
-          </button>
-        </div>
+        <Tabs.Root
+          className="ev-header-tabs-root"
+          value={tab}
+          onValueChange={(next) => {
+            if (next === "tickets" || next === "tasks") setTab(next);
+          }}
+        >
+          <Tabs.List className="ev-header-tabs">
+            <Tabs.Tab value="tickets" className="ev-header-tab">
+              <span>{t("rail.tab.tickets")}</span>
+              {openTicketsStage && <span className="ev-dot" data-stage={openTicketsStage} />}
+            </Tabs.Tab>
+            <Tabs.Tab value="tasks" className="ev-header-tab">
+              <span>{t("rail.tab.tasks")}</span>
+              {runningTasksCount > 0 && <span className="ev-dot" data-stage="working" />}
+            </Tabs.Tab>
+            <Tabs.Indicator className="ev-header-tabs-indicator" />
+          </Tabs.List>
+        </Tabs.Root>
       </div>
 
       {activeWorkerId && (
@@ -144,9 +144,9 @@ export function RightRail({
                             )}
                           </div>
                           {ticket.note && (
-                            <div className="ev-truncate ev-rail-ticket-note" title={ticket.note}>
-                              {ticket.note}
-                            </div>
+                            <EvTooltip content={ticket.note} side="left">
+                              <div className="ev-truncate ev-rail-ticket-note">{ticket.note}</div>
+                            </EvTooltip>
                           )}
                         </div>
                         <span className="ev-dot" data-stage={ticketDotStage(ticket)} />
@@ -199,9 +199,9 @@ export function RightRail({
                               </span>
                             </div>
                             {ticket.note && (
-                              <div className="ev-truncate ev-rail-ticket-note" title={ticket.note}>
-                                {ticket.note}
-                              </div>
+                              <EvTooltip content={ticket.note} side="left">
+                                <div className="ev-truncate ev-rail-ticket-note">{ticket.note}</div>
+                              </EvTooltip>
                             )}
                           </div>
                           <span className="ev-dot" data-stage={ticketDotStage(ticket)} />

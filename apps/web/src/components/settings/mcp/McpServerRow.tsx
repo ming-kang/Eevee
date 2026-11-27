@@ -15,6 +15,7 @@ import {
 } from "@eevee/protocol";
 import { useEffect, useId, useRef, useState } from "react";
 import { useI18n } from "../../../lib/i18n.ts";
+import { EvTooltip } from "../../EvTooltip.tsx";
 import type { OAuthUiSession } from "../useMcpOAuth.ts";
 import {
   DEFAULT_EXPOSURE,
@@ -156,9 +157,9 @@ export function McpServerRow({
             {previewTarget && (
               <>
                 <span>·</span>
-                <span className="ev-mono ev-truncate" title={previewTarget}>
-                  {previewTarget}
-                </span>
+                <EvTooltip content={previewTarget} side="top">
+                  <span className="ev-mono ev-truncate">{previewTarget}</span>
+                </EvTooltip>
               </>
             )}
             {server.description && (
@@ -171,46 +172,47 @@ export function McpServerRow({
         </div>
 
         <div className="ev-mcp-row-controls">
-          <div className="ev-mcp-roles-inline" title={t("mcp.row.rolesTitle")}>
-            <div className="ev-mcp-role-check">
-              <Checkbox.Root
-                id={`${idPrefix}-router`}
-                checked={roleRouter}
-                disabled={isBusy}
-                onCheckedChange={(checked) => onToggleRole(server, "router", checked === true)}
-              >
-                <Checkbox.Indicator />
-              </Checkbox.Root>
-              <label htmlFor={`${idPrefix}-router`}>Router</label>
+          <EvTooltip content={t("mcp.row.rolesTitle")} side="top">
+            <div className="ev-mcp-roles-inline">
+              <div className="ev-mcp-role-check">
+                <Checkbox.Root
+                  id={`${idPrefix}-router`}
+                  checked={roleRouter}
+                  disabled={isBusy}
+                  onCheckedChange={(checked) => onToggleRole(server, "router", checked === true)}
+                >
+                  <Checkbox.Indicator />
+                </Checkbox.Root>
+                <label htmlFor={`${idPrefix}-router`}>Router</label>
+              </div>
+              <div className="ev-mcp-role-check">
+                <Checkbox.Root
+                  id={`${idPrefix}-worker`}
+                  checked={roleWorker}
+                  disabled={isBusy}
+                  onCheckedChange={(checked) => onToggleRole(server, "worker", checked === true)}
+                >
+                  <Checkbox.Indicator />
+                </Checkbox.Root>
+                <label htmlFor={`${idPrefix}-worker`}>Worker</label>
+              </div>
             </div>
-            <div className="ev-mcp-role-check">
-              <Checkbox.Root
-                id={`${idPrefix}-worker`}
-                checked={roleWorker}
-                disabled={isBusy}
-                onCheckedChange={(checked) => onToggleRole(server, "worker", checked === true)}
-              >
-                <Checkbox.Indicator />
-              </Checkbox.Root>
-              <label htmlFor={`${idPrefix}-worker`}>Worker</label>
-            </div>
-          </div>
+          </EvTooltip>
 
-          <div
-            className="ev-mcp-enable-switch"
-            title={t(server.enabled ? "common.enabled" : "common.disabled")}
-          >
-            <Switch.Root
-              checked={server.enabled}
-              disabled={isBusy}
-              aria-label={t(server.enabled ? "mcp.row.disableAria" : "mcp.row.enableAria", {
-                name: server.name,
-              })}
-              onCheckedChange={(checked) => onToggleEnabled(server, checked)}
-            >
-              <Switch.Thumb />
-            </Switch.Root>
-          </div>
+          <EvTooltip content={t(server.enabled ? "common.enabled" : "common.disabled")} side="top">
+            <div className="ev-mcp-enable-switch">
+              <Switch.Root
+                checked={server.enabled}
+                disabled={isBusy}
+                aria-label={t(server.enabled ? "mcp.row.disableAria" : "mcp.row.enableAria", {
+                  name: server.name,
+                })}
+                onCheckedChange={(checked) => onToggleEnabled(server, checked)}
+              >
+                <Switch.Thumb />
+              </Switch.Root>
+            </div>
+          </EvTooltip>
         </div>
       </div>
 

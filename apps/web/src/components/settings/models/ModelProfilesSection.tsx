@@ -2,9 +2,10 @@ import { AddIcon, DeleteIcon, ExperimentIcon } from "@earendil-works/elanor-icon
 import {
   Button,
   Field,
-  Heading,
   IconButton,
   Input,
+  PageHeader,
+  Section,
   Text,
   TextArea,
 } from "@earendil-works/elanor-react";
@@ -16,6 +17,7 @@ import {
 } from "@eevee/protocol";
 import { useId, useMemo } from "react";
 import { useI18n } from "../../../lib/i18n.ts";
+import { EvDropdown } from "../../EvDropdown.tsx";
 import { SmokeTestResult } from "../SmokeTestResult.tsx";
 import { useModelSmokeTests } from "../useModelSmokeTests.ts";
 
@@ -124,31 +126,33 @@ export function ModelProfilesSection({
   };
 
   return (
-    <div className="ev-settings-section">
+    <Section.Root className="ev-settings-section">
       <datalist id={providerListId}>
         {providerIds.map((id) => (
           <option key={id} value={id} />
         ))}
       </datalist>
 
-      <div className="ev-settings-head">
-        <Heading level={2} size={5}>
-          {translate("models.profilesTitle")}
-        </Heading>
-        <div className="ev-inline-actions">
-          <Button
-            hierarchy="secondary"
-            density="compact"
-            iconStart={<AddIcon width={15} height={15} />}
-            onClick={onAddProfile}
-          >
-            {translate("common.add")}
-          </Button>
-          <Button hierarchy="primary" density="compact" pending={saving} onClick={onSave}>
-            {translate("common.save")}
-          </Button>
-        </div>
-      </div>
+      <PageHeader.Root className="ev-section-header">
+        <PageHeader.Row>
+          <PageHeader.Title level={2} className="ev-section-title">
+            {translate("models.profilesTitle")}
+          </PageHeader.Title>
+          <PageHeader.Actions>
+            <Button
+              hierarchy="secondary"
+              density="compact"
+              iconStart={<AddIcon width={15} height={15} />}
+              onClick={onAddProfile}
+            >
+              {translate("common.add")}
+            </Button>
+            <Button hierarchy="primary" density="compact" pending={saving} onClick={onSave}>
+              {translate("common.save")}
+            </Button>
+          </PageHeader.Actions>
+        </PageHeader.Row>
+      </PageHeader.Root>
 
       {profiles.map(({ uid, profile }) => {
         const providerValue = profile.model.provider.trim();
@@ -227,30 +231,32 @@ export function ModelProfilesSection({
               </Field.Root>
               <Field.Root className="ev-profile-field-thinking">
                 <Field.Label>Thinking</Field.Label>
-                <select
-                  className="ev-select"
+                <EvDropdown
+                  ariaLabel="Thinking"
                   value={currentThinking ?? ""}
-                  onChange={(event) => {
-                    const val = event.target.value as "" | ThinkingLevel;
+                  options={[
+                    { value: "", label: translate("common.default") },
+                    ...(unsupportedCurrent
+                      ? [
+                          {
+                            value: currentThinking,
+                            label: translate("models.thinkingUnsupportedOption", {
+                              level: currentThinking,
+                            }),
+                          },
+                        ]
+                      : []),
+                    ...thinkingChoices.map((level) => ({ value: level, label: level })),
+                  ]}
+                  onChange={(nextVal) => {
+                    const val = nextVal as "" | ThinkingLevel;
                     const { thinkingLevel: _old, ...rest } = profile.model;
                     onUpdateProfile(uid, {
                       ...profile,
                       model: val ? { ...rest, thinkingLevel: val } : rest,
                     });
                   }}
-                >
-                  <option value="">{translate("common.default")}</option>
-                  {unsupportedCurrent && (
-                    <option value={currentThinking}>
-                      {translate("models.thinkingUnsupportedOption", { level: currentThinking })}
-                    </option>
-                  )}
-                  {thinkingChoices.map((level) => (
-                    <option key={level} value={level}>
-                      {level}
-                    </option>
-                  ))}
-                </select>
+                />
               </Field.Root>
               <div className="ev-profile-actions">
                 <Button
@@ -321,6 +327,6 @@ export function ModelProfilesSection({
           placeholder={translate("models.notesPlaceholder")}
         />
       </Field.Root>
-    </div>
+    </Section.Root>
   );
 }

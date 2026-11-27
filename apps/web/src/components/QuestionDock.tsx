@@ -3,12 +3,13 @@ import {
   ChevronRightIcon,
   ExpandLessIcon,
 } from "@earendil-works/elanor-icons-react";
-import { Button, IconButton, Input } from "@earendil-works/elanor-react";
+import { Button, IconButton, Input, Tabs } from "@earendil-works/elanor-react";
 import type { QuestionRecordPayload } from "@eevee/protocol";
 import { type FormEvent, type KeyboardEvent, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
 import { useI18n } from "../lib/i18n.ts";
 import { showToast } from "../lib/toasts.ts";
+import { EvTooltip } from "./EvTooltip.tsx";
 
 export function QuestionCard({
   projectId,
@@ -128,19 +129,23 @@ export function QuestionCard({
         <div className="ev-qcard-head">
           <span className="ev-dot" data-stage="answer" />
           {questions.length > 1 ? (
-            <span className="ev-qcard-tabs">
-              {questions.map((q, idx) => (
-                <button
-                  key={q.id}
-                  type="button"
-                  className="ev-tab-link ev-qcard-tab"
-                  data-active={idx === qIndex}
-                  onClick={() => setQIndex(idx)}
-                >
-                  {q.id}
-                </button>
-              ))}
-            </span>
+            <Tabs.Root
+              className="ev-header-tabs-root"
+              value={String(qIndex)}
+              onValueChange={(next) => {
+                const idx = Number(next);
+                if (Number.isInteger(idx) && idx >= 0 && idx < questions.length) setQIndex(idx);
+              }}
+            >
+              <Tabs.List className="ev-header-tabs ev-qcard-tabs">
+                {questions.map((q, idx) => (
+                  <Tabs.Tab key={q.id} value={String(idx)} className="ev-header-tab ev-qcard-tab">
+                    {q.id}
+                  </Tabs.Tab>
+                ))}
+                <Tabs.Indicator className="ev-header-tabs-indicator" />
+              </Tabs.List>
+            </Tabs.Root>
           ) : (
             <span className="ev-chip-id">{current.id}</span>
           )}
@@ -287,9 +292,11 @@ export function QuestionStrip({
         <span className="ev-truncate">{first?.question ?? t("question.pendingFallback")}</span>
         {count > 1 && <span className="ev-count-badge">+{count - 1}</span>}
       </button>
-      <IconButton aria-label={t("question.expand")} title={t("question.expand")} onClick={onExpand}>
-        <ExpandLessIcon width={16} height={16} />
-      </IconButton>
+      <EvTooltip content={t("question.expand")} side="top">
+        <IconButton aria-label={t("question.expand")} onClick={onExpand}>
+          <ExpandLessIcon width={16} height={16} />
+        </IconButton>
+      </EvTooltip>
       {quickOptions && (
         <div className="ev-qstrip-options">
           {quickOptions.map((opt) => (

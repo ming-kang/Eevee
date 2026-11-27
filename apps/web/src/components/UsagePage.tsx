@@ -1,11 +1,20 @@
 import { RefreshIcon } from "@earendil-works/elanor-icons-react";
-import { Heading, IconButton, Table } from "@earendil-works/elanor-react";
+import {
+  Heading,
+  IconButton,
+  Meter,
+  Section,
+  Skeleton,
+  SkeletonText,
+  Table,
+} from "@earendil-works/elanor-react";
 import type { ProjectSummary, ProjectUsageResponse } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
 import { formatCost, formatTokens } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
 import { useAbortableAsync } from "../lib/useAbortableAsync.ts";
+import { EvTooltip } from "./EvTooltip.tsx";
 import { ProjectHeader } from "./ProjectHeader.tsx";
 
 export function UsagePage({
@@ -59,10 +68,12 @@ export function UsagePage({
     { cost: 0, input: 0, output: 0, cacheRead: 0 },
   );
 
-  const cacheHitPct =
+  const cacheHitNum =
     totals.input + totals.cacheRead > 0
-      ? `${Math.round((totals.cacheRead / (totals.input + totals.cacheRead)) * 100)}%`
-      : "0%";
+      ? Math.round((totals.cacheRead / (totals.input + totals.cacheRead)) * 100)
+      : 0;
+  const cacheHitPct = `${cacheHitNum}%`;
+  const initialLoading = loading && usage === undefined;
 
   return (
     <section className="ev-page">
@@ -72,14 +83,15 @@ export function UsagePage({
         onSelectView={onSelectView}
         onEditProject={onEditProject}
         actions={
-          <IconButton
-            aria-label={t("usage.refresh")}
-            title={t("usage.refresh")}
-            disabled={loading}
-            onClick={() => void load()}
-          >
-            <RefreshIcon width={16} height={16} />
-          </IconButton>
+          <EvTooltip content={t("usage.refresh")} side="bottom">
+            <IconButton
+              aria-label={t("usage.refresh")}
+              disabled={loading}
+              onClick={() => void load()}
+            >
+              <RefreshIcon width={16} height={16} />
+            </IconButton>
+          </EvTooltip>
         }
       />
 
@@ -90,64 +102,93 @@ export function UsagePage({
           <div className="ev-stat-grid">
             <div className="ev-stat-cell">
               <span className="ev-stat-k">{t("usage.cost")}</span>
-              <span className="ev-stat-v">{formatCost(totals.cost)}</span>
+              <span className="ev-stat-v">
+                {initialLoading ? <Skeleton>$0.00</Skeleton> : formatCost(totals.cost)}
+              </span>
             </div>
             <div className="ev-stat-cell">
               <span className="ev-stat-k">{t("usage.input")}</span>
-              <span className="ev-stat-v">{formatTokens(totals.input)}</span>
+              <span className="ev-stat-v">
+                {initialLoading ? <Skeleton>0.0k</Skeleton> : formatTokens(totals.input)}
+              </span>
             </div>
             <div className="ev-stat-cell">
               <span className="ev-stat-k">{t("usage.output")}</span>
-              <span className="ev-stat-v">{formatTokens(totals.output)}</span>
+              <span className="ev-stat-v">
+                {initialLoading ? <Skeleton>0.0k</Skeleton> : formatTokens(totals.output)}
+              </span>
             </div>
             <div className="ev-stat-cell">
               <span className="ev-stat-k">{t("usage.cacheHit")}</span>
-              <span className="ev-stat-v">{cacheHitPct}</span>
+              <span className="ev-stat-v">
+                {initialLoading ? <Skeleton>0%</Skeleton> : cacheHitPct}
+              </span>
+              {!initialLoading && (
+                <Meter.Root
+                  className="ev-stat-meter"
+                  value={cacheHitNum}
+                  min={0}
+                  max={100}
+                  aria-label={t("usage.cacheHit")}
+                >
+                  <Meter.Track>
+                    <Meter.Indicator />
+                  </Meter.Track>
+                </Meter.Root>
+              )}
             </div>
           </div>
 
-          <Heading level={2} size={6} className="ev-section-subtitle">
-            {t("usage.byModel")}
-          </Heading>
+          <Section.Root className="ev-usage-section">
+            <Heading level={2} size={6} className="ev-section-subtitle">
+              {t("usage.byModel")}
+            </Heading>
 
-          {rows.length === 0 ? (
-            <div className="ev-empty-box">{loading ? t("common.loading") : t("usage.empty")}</div>
-          ) : (
-            <Table.Container className="ev-table-frame">
-              <Table.Root>
-                <Table.Head>
-                  <Table.Row>
-                    <Table.HeaderCell>{t("usage.col.model")}</Table.HeaderCell>
-                    <Table.HeaderCell align="end">{t("usage.input")}</Table.HeaderCell>
-                    <Table.HeaderCell align="end">{t("usage.output")}</Table.HeaderCell>
-                    <Table.HeaderCell align="end">{t("usage.col.cache")}</Table.HeaderCell>
-                    <Table.HeaderCell align="end">{t("usage.col.cost")}</Table.HeaderCell>
-                  </Table.Row>
-                </Table.Head>
-                <Table.Body>
-                  {rows.map(({ model, stats }) => (
-                    <Table.Row key={model}>
-                      <Table.Cell>
-                        <span className="ev-mono">{model}</span>
-                      </Table.Cell>
-                      <Table.Cell align="end" className="ev-num">
-                        {formatTokens(stats.input)}
-                      </Table.Cell>
-                      <Table.Cell align="end" className="ev-num">
-                        {formatTokens(stats.output)}
-                      </Table.Cell>
-                      <Table.Cell align="end" className="ev-num">
-                        {formatTokens(stats.cacheRead)}
-                      </Table.Cell>
-                      <Table.Cell align="end" className="ev-num">
-                        {formatCost(stats.cost.total)}
-                      </Table.Cell>
-                    </Table.Row>
-                  ))}
-                </Table.Body>
-              </Table.Root>
-            </Table.Container>
-          )}
+            <Section.Content>
+              {initialLoading ? (
+                <div className="ev-table-frame ev-skeleton-table" aria-busy="true">
+                  <SkeletonText lines={4} />
+                </div>
+              ) : rows.length === 0 ? (
+                <div className="ev-empty-box">{t("usage.empty")}</div>
+              ) : (
+                <Table.Container className="ev-table-frame">
+                  <Table.Root>
+                    <Table.Head>
+                      <Table.Row>
+                        <Table.HeaderCell>{t("usage.col.model")}</Table.HeaderCell>
+                        <Table.HeaderCell align="end">{t("usage.input")}</Table.HeaderCell>
+                        <Table.HeaderCell align="end">{t("usage.output")}</Table.HeaderCell>
+                        <Table.HeaderCell align="end">{t("usage.col.cache")}</Table.HeaderCell>
+                        <Table.HeaderCell align="end">{t("usage.col.cost")}</Table.HeaderCell>
+                      </Table.Row>
+                    </Table.Head>
+                    <Table.Body>
+                      {rows.map(({ model, stats }) => (
+                        <Table.Row key={model}>
+                          <Table.Cell>
+                            <span className="ev-mono">{model}</span>
+                          </Table.Cell>
+                          <Table.Cell align="end" className="ev-num">
+                            {formatTokens(stats.input)}
+                          </Table.Cell>
+                          <Table.Cell align="end" className="ev-num">
+                            {formatTokens(stats.output)}
+                          </Table.Cell>
+                          <Table.Cell align="end" className="ev-num">
+                            {formatTokens(stats.cacheRead)}
+                          </Table.Cell>
+                          <Table.Cell align="end" className="ev-num">
+                            {formatCost(stats.cost.total)}
+                          </Table.Cell>
+                        </Table.Row>
+                      ))}
+                    </Table.Body>
+                  </Table.Root>
+                </Table.Container>
+              )}
+            </Section.Content>
+          </Section.Root>
         </div>
       </div>
     </section>

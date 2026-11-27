@@ -1,11 +1,12 @@
 import { DescriptionIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Collapsible } from "@earendil-works/elanor-react";
+import { Button } from "@earendil-works/elanor-react";
 import type { WorkerId } from "@eevee/protocol";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { formatBytes, shortPath } from "../lib/format.ts";
 import { type LocaleKey, useI18n } from "../lib/i18n.ts";
 import type { DisplayItem } from "../lib/transcript.ts";
 import { AttachmentLightbox, type LightboxImage } from "./AttachmentLightbox.tsx";
+import { EvTooltip } from "./EvTooltip.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { DisclosureLine } from "./transcript/DisclosureLine.tsx";
 import { noticeMetaLabel } from "./transcript/noticeMeta.ts";
@@ -43,17 +44,17 @@ function EditDisclosure({
   readonly setRootRef: (el: HTMLElement | null) => void;
 }) {
   const { t } = useI18n();
-  const detailsRef = useRef<HTMLDetailsElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (revealed) {
-      detailsRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+      rootRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
     }
   }, [revealed]);
 
   const setRefs = useCallback(
-    (el: HTMLDetailsElement | null) => {
-      detailsRef.current = el;
+    (el: HTMLDivElement | null) => {
+      rootRef.current = el;
       setRootRef(el);
     },
     [setRootRef],
@@ -77,9 +78,9 @@ function EditDisclosure({
       summary={
         <>
           <span className={item.status === "run" ? "ev-shimmer" : undefined}>{verb}</span>
-          <span className="ev-mono ev-truncate ev-proc-summary-mono" title={item.path}>
-            {shortPath(item.path)}
-          </span>
+          <EvTooltip content={item.path} side="top">
+            <span className="ev-mono ev-truncate ev-proc-summary-mono">{shortPath(item.path)}</span>
+          </EvTooltip>
           {item.status === "err" ? (
             <span className="ev-minus">{t("transcript.failed")}</span>
           ) : (
@@ -163,18 +164,19 @@ function UserMessageItem({
             const hasContent = file.content !== undefined && file.content.length > 0;
             return (
               <div key={fileKey} className="ev-user-file-item">
-                <button
-                  type="button"
-                  className="ev-user-file-chip"
-                  disabled={!hasContent}
-                  aria-expanded={hasContent ? isOpen : undefined}
-                  title={label}
-                  onClick={() => setExpandedFileKey(isOpen ? undefined : fileKey)}
-                >
-                  <DescriptionIcon width={13} height={13} />
-                  <span className="ev-mono ev-truncate">{label}</span>
-                  <span className="ev-attachment-size ev-num">{formatBytes(file.size)}</span>
-                </button>
+                <EvTooltip content={label} side="top">
+                  <button
+                    type="button"
+                    className="ev-user-file-chip"
+                    disabled={!hasContent}
+                    aria-expanded={hasContent ? isOpen : undefined}
+                    onClick={() => setExpandedFileKey(isOpen ? undefined : fileKey)}
+                  >
+                    <DescriptionIcon width={13} height={13} />
+                    <span className="ev-mono ev-truncate">{label}</span>
+                    <span className="ev-attachment-size ev-num">{formatBytes(file.size)}</span>
+                  </button>
+                </EvTooltip>
                 {hasContent && isOpen && (
                   <pre className="ev-pre ev-user-file-pre">{file.content}</pre>
                 )}
@@ -407,14 +409,11 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
         <div ref={setRootRef} data-item-key={item.key}>
           <div className="ev-marker">{t("transcript.compaction.marker")}</div>
           {item.summary && (
-            <Collapsible.Root>
-              <Collapsible.Trigger className="ev-tab-link">
-                {t("transcript.compaction.summary")}
-              </Collapsible.Trigger>
-              <Collapsible.Panel>
+            <DisclosureLine summary={<span>{t("transcript.compaction.summary")}</span>}>
+              <div className="ev-proc-body">
                 <pre className="ev-pre ev-compaction-pre">{item.summary}</pre>
-              </Collapsible.Panel>
-            </Collapsible.Root>
+              </div>
+            </DisclosureLine>
           )}
         </div>
       );

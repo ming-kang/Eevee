@@ -4,6 +4,7 @@ import { formatClock } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
 import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
 import type { OutlineEntry } from "../lib/transcript.ts";
+import { EvTooltip } from "./EvTooltip.tsx";
 
 const HOVER_CLOSE_DELAY_MS = 220;
 
@@ -100,25 +101,26 @@ export function ConversationOutline({
       }}
     >
       <div className="ev-outline-rail">
-        <button
-          type="button"
-          className="ev-outline-toggle"
-          aria-label={t("transcript.outlineLabel")}
-          aria-expanded={open}
-          aria-controls={open ? listId : undefined}
-          data-pinned={pinned}
-          title={t("transcript.outlineLabel")}
-          onClick={() => {
-            clearCloseTimer();
-            setPinned((prev) => {
-              const next = !prev;
-              if (!next) setHoverOpen(false);
-              return next;
-            });
-          }}
-        >
-          <TocIcon width={16} height={16} />
-        </button>
+        <EvTooltip content={t("transcript.outlineLabel")} side="left">
+          <button
+            type="button"
+            className="ev-outline-toggle"
+            aria-label={t("transcript.outlineLabel")}
+            aria-expanded={open}
+            aria-controls={open ? listId : undefined}
+            data-pinned={pinned}
+            onClick={() => {
+              clearCloseTimer();
+              setPinned((prev) => {
+                const next = !prev;
+                if (!next) setHoverOpen(false);
+                return next;
+              });
+            }}
+          >
+            <TocIcon width={16} height={16} />
+          </button>
+        </EvTooltip>
 
         <div className="ev-outline-nav" style={{ height }}>
           {entries.map((entry, idx) => {

@@ -1,5 +1,5 @@
 import { KeyIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Field, Text } from "@earendil-works/elanor-react";
+import { Button, Field, KeyValue, SkeletonText, Text } from "@earendil-works/elanor-react";
 import { type BuiltinProviderCatalogItem, providerBaseUrlPlaceholder } from "@eevee/protocol";
 import type { Dispatch, FormEvent } from "react";
 import { useI18n } from "../../../lib/i18n.ts";
@@ -52,7 +52,9 @@ export function AddBuiltinProviderForm({
         />
         <div className="ev-catalog-list">
           {loadingCatalog && builtinProviders.length === 0 ? (
-            <Text className="ev-inline-hint">{t("providers.builtin.loadingCatalog")}</Text>
+            <div className="ev-skeleton-list" aria-busy="true">
+              <SkeletonText lines={4} />
+            </div>
           ) : visibleBuiltins.length === 0 ? (
             <Text className="ev-inline-hint">{t("providers.builtin.emptyCatalog")}</Text>
           ) : (
@@ -98,17 +100,27 @@ export function AddBuiltinProviderForm({
                 <strong className="ev-catalog-selected-name">{selectedBuiltin.name}</strong>
                 <span className="ev-mono ev-inline-muted">{selectedBuiltin.id}</span>
               </div>
-              {selectedBuiltin.baseUrl && (
-                <Text className="ev-inline-hint">
-                  {t("providers.builtin.defaultEndpoint")}
-                  <span className="ev-mono">{selectedBuiltin.baseUrl}</span>
-                </Text>
-              )}
-              {selectedBuiltin.apis.length > 0 && (
-                <Text className="ev-inline-hint">
-                  {t("providers.builtin.apis")}
-                  <span className="ev-mono">{selectedBuiltin.apis.join(", ")}</span>
-                </Text>
+              {(selectedBuiltin.baseUrl || selectedBuiltin.apis.length > 0) && (
+                <KeyValue.Grid className="ev-kv-muted">
+                  {selectedBuiltin.baseUrl && (
+                    <>
+                      <KeyValue.Key>
+                        {t("providers.builtin.defaultEndpoint").replace(/[:：]\s*$/, "")}
+                      </KeyValue.Key>
+                      <KeyValue.Value className="ev-mono">{selectedBuiltin.baseUrl}</KeyValue.Value>
+                    </>
+                  )}
+                  {selectedBuiltin.apis.length > 0 && (
+                    <>
+                      <KeyValue.Key>
+                        {t("providers.builtin.apis").replace(/[:：]\s*$/, "")}
+                      </KeyValue.Key>
+                      <KeyValue.Value className="ev-mono">
+                        {selectedBuiltin.apis.join(", ")}
+                      </KeyValue.Value>
+                    </>
+                  )}
+                </KeyValue.Grid>
               )}
             </div>
 

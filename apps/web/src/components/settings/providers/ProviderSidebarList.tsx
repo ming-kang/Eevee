@@ -1,7 +1,8 @@
-import { SegmentedControl, Text } from "@earendil-works/elanor-react";
+import { SegmentedControl, SkeletonText, Text } from "@earendil-works/elanor-react";
 import type { ProviderSummary } from "@eevee/protocol";
 import { useEffect, useMemo, useRef } from "react";
 import { useI18n } from "../../../lib/i18n.ts";
+import { EvTooltip } from "../../EvTooltip.tsx";
 import { SearchField } from "../../SearchField.tsx";
 import { formatAuthMeta, sortProvidersForSidebar } from "../provider-utils.ts";
 
@@ -9,6 +10,7 @@ export type ProviderCategoryFilter = "all" | "configured" | "custom" | "builtin"
 
 export type ProviderSidebarListProps = {
   readonly providers: readonly ProviderSummary[];
+  readonly loading?: boolean;
   readonly filter: string;
   readonly onFilterChange: (value: string) => void;
   readonly category: ProviderCategoryFilter;
@@ -19,6 +21,7 @@ export type ProviderSidebarListProps = {
 
 export function ProviderSidebarList({
   providers,
+  loading = false,
   filter,
   onFilterChange,
   category,
@@ -92,7 +95,15 @@ export function ProviderSidebarList({
       </div>
 
       <div className="ev-provider-list">
-        {visibleProviders.length === 0 ? (
+        {loading ? (
+          <div className="ev-skeleton-list" aria-busy="true">
+            {[0, 1, 2, 3, 4].map((row) => (
+              <div key={row} className="ev-provider-skeleton-item">
+                <SkeletonText lines={2} />
+              </div>
+            ))}
+          </div>
+        ) : visibleProviders.length === 0 ? (
           <Text className="ev-inline-hint" style={{ padding: 12 }}>
             {t("providers.sidebar.empty")}
           </Text>
@@ -100,36 +111,36 @@ export function ProviderSidebarList({
           visibleProviders.map((provider) => {
             const isCustom = provider.kind === "custom";
             return (
-              <button
-                type="button"
-                key={provider.id}
-                ref={provider.id === selectedId ? activeItemRef : undefined}
-                className="ev-provider-item"
-                data-active={provider.id === selectedId}
-                title={provider.id}
-                onClick={() => onSelect(provider.id)}
-              >
-                <div className="ev-provider-sidebar-head">
-                  <span className="ev-dot" data-stage={provider.configured ? "done" : "idle"} />
-                  <strong className="ev-truncate ev-flex-1">{provider.name}</strong>
-                  <span className="ev-inline-muted ev-num">{provider.modelCount}</span>
-                </div>
-                <div className="ev-provider-item-badges">
-                  <span className="ev-provider-item-meta ev-truncate">
-                    {formatAuthMeta(provider, t)}
-                  </span>
-                  {isCustom && (
-                    <span className="eevee-badge" data-tone="info">
-                      {t("providers.badge.custom")}
+              <EvTooltip key={provider.id} content={provider.id} side="right">
+                <button
+                  type="button"
+                  ref={provider.id === selectedId ? activeItemRef : undefined}
+                  className="ev-provider-item"
+                  data-active={provider.id === selectedId}
+                  onClick={() => onSelect(provider.id)}
+                >
+                  <div className="ev-provider-sidebar-head">
+                    <span className="ev-dot" data-stage={provider.configured ? "done" : "idle"} />
+                    <strong className="ev-truncate ev-flex-1">{provider.name}</strong>
+                    <span className="ev-inline-muted ev-num">{provider.modelCount}</span>
+                  </div>
+                  <div className="ev-provider-item-badges">
+                    <span className="ev-provider-item-meta ev-truncate">
+                      {formatAuthMeta(provider, t)}
                     </span>
-                  )}
-                  {!isCustom && provider.hasConfigOverride && (
-                    <span className="eevee-badge" data-tone="warning">
-                      {t("providers.badge.overridden")}
-                    </span>
-                  )}
-                </div>
-              </button>
+                    {isCustom && (
+                      <span className="eevee-badge" data-tone="info">
+                        {t("providers.badge.custom")}
+                      </span>
+                    )}
+                    {!isCustom && provider.hasConfigOverride && (
+                      <span className="eevee-badge" data-tone="warning">
+                        {t("providers.badge.overridden")}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              </EvTooltip>
             );
           })
         )}

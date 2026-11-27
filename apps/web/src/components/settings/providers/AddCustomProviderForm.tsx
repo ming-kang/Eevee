@@ -3,6 +3,7 @@ import { Button, Field, Input, Switch, Text } from "@earendil-works/elanor-react
 import { providerBaseUrlPlaceholder } from "@eevee/protocol";
 import type { Dispatch, FormEvent } from "react";
 import { useI18n } from "../../../lib/i18n.ts";
+import { EvDropdown } from "../../EvDropdown.tsx";
 import { BaseUrlField, BaseUrlPreview } from "../BaseUrlField.tsx";
 import { HeadersEditor } from "../HeadersEditor.tsx";
 import { ModelProbeSelector } from "../ModelProbeSelector.tsx";
@@ -58,19 +59,12 @@ export function AddCustomProviderForm({
           </Field.Root>
           <Field.Root>
             <Field.Label>{t("providers.field.api")}</Field.Label>
-            <select
-              className="ev-select"
+            <EvDropdown
+              ariaLabel={t("providers.field.api")}
               value={draft.api}
-              onChange={(event) =>
-                dispatch({ type: "patchCustom", patch: { api: event.target.value } })
-              }
-            >
-              {apiOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
+              options={apiOptions.map((item) => ({ value: item, label: item }))}
+              onChange={(api) => dispatch({ type: "patchCustom", patch: { api } })}
+            />
           </Field.Root>
           <BaseUrlField
             label="Base URL"

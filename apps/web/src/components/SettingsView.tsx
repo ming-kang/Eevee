@@ -1,8 +1,9 @@
 import { CloseIcon } from "@earendil-works/elanor-icons-react";
-import { Heading, IconButton } from "@earendil-works/elanor-react";
+import { Heading, IconButton, Tabs } from "@earendil-works/elanor-react";
 import { type LocaleKey, useI18n } from "../lib/i18n.ts";
 import type { SettingsSection } from "../lib/router.ts";
 import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
+import { EvTooltip } from "./EvTooltip.tsx";
 import { ConfigTab } from "./settings/ConfigTab.tsx";
 import { GeneralTab } from "./settings/GeneralTab.tsx";
 import { McpTab } from "./settings/McpTab.tsx";
@@ -18,6 +19,10 @@ const SECTIONS: readonly { readonly id: SettingsSection; readonly labelKey: Loca
   { id: "skills", labelKey: "settings.tab.skills" },
   { id: "config", labelKey: "settings.tab.config" },
 ];
+
+function isSettingsSection(value: unknown): value is SettingsSection {
+  return SECTIONS.some((item) => item.id === value);
+}
 
 export function SettingsView({
   section,
@@ -63,28 +68,28 @@ export function SettingsView({
           {t("settings.title")}
         </Heading>
         <span className="ev-header-divider" aria-hidden="true" />
-        <nav className="ev-header-nav" aria-label={t("settings.groups")}>
-          {SECTIONS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className="ev-tab-link"
-              data-active={section === item.id}
-              aria-current={section === item.id ? "page" : undefined}
-              onClick={() => onSelectSection(item.id)}
-            >
-              {t(item.labelKey)}
-            </button>
-          ))}
-        </nav>
+        <Tabs.Root
+          className="ev-header-tabs-root"
+          value={section}
+          onValueChange={(next) => {
+            if (isSettingsSection(next)) onSelectSection(next);
+          }}
+        >
+          <Tabs.List className="ev-header-tabs" aria-label={t("settings.groups")}>
+            {SECTIONS.map((item) => (
+              <Tabs.Tab key={item.id} value={item.id} className="ev-header-tab">
+                {t(item.labelKey)}
+              </Tabs.Tab>
+            ))}
+            <Tabs.Indicator className="ev-header-tabs-indicator" />
+          </Tabs.List>
+        </Tabs.Root>
         <div className="ev-page-header-actions">
-          <IconButton
-            aria-label={t("common.close")}
-            title={t("settings.closeTitle")}
-            onClick={onClose}
-          >
-            <CloseIcon width={18} height={18} />
-          </IconButton>
+          <EvTooltip content={t("settings.closeTitle")} side="bottom">
+            <IconButton aria-label={t("common.close")} onClick={onClose}>
+              <CloseIcon width={18} height={18} />
+            </IconButton>
+          </EvTooltip>
         </div>
       </header>
 

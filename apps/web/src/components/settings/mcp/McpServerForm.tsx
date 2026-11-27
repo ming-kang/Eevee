@@ -12,6 +12,7 @@ import {
 } from "@earendil-works/elanor-react";
 import { type FormEvent, useEffect, useId, useReducer, useState } from "react";
 import { useI18n } from "../../../lib/i18n.ts";
+import { EvDropdown } from "../../EvDropdown.tsx";
 import { HeadersEditor } from "../HeadersEditor.tsx";
 import {
   EXPOSURE_OPTIONS,
@@ -118,18 +119,16 @@ export function McpServerForm({ initialForm, isProject, onSubmit, onCancel }: Mc
 
           <Field.Root style={{ minWidth: 210 }}>
             <Field.Label>{t("mcp.form.exposure")}</Field.Label>
-            <select
-              className="ev-select"
+            <EvDropdown
+              ariaLabel={t("mcp.form.exposure")}
               disabled={saving}
               value={form.exposure}
-              onChange={(event) => patchForm({ exposure: normalizeExposure(event.target.value) })}
-            >
-              {EXPOSURE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {t(exposureLabelKey(opt.value))}
-                </option>
-              ))}
-            </select>
+              options={EXPOSURE_OPTIONS.map((opt) => ({
+                value: opt.value,
+                label: t(exposureLabelKey(opt.value)),
+              }))}
+              onChange={(next) => patchForm({ exposure: normalizeExposure(next) })}
+            />
           </Field.Root>
         </div>
 
