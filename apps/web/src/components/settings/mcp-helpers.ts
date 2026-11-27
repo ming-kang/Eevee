@@ -1,8 +1,5 @@
 import type { McpServerSnapshotPayload } from "@eevee/protocol";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+import { isRecord } from "../../lib/object.ts";
 
 export function buildRoleTogglePatch(
   srv: McpServerSnapshotPayload,

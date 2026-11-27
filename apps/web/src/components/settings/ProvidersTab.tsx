@@ -35,16 +35,12 @@ import type {
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
 import { formatTime, formatTokens } from "../../lib/format.ts";
+import { deepEqualJson } from "../../lib/object.ts";
 import { AddProviderModal } from "./AddProviderModal.tsx";
 import { type HeaderRow, HeadersEditor, headersToRows, rowsToHeaders } from "./HeadersEditor.tsx";
 import { ModelEditorModal, type ModelEditorTarget } from "./ModelEditorModal.tsx";
 import { ProbeModelsModal } from "./ProbeModelsModal.tsx";
-import {
-  baseUrlPlaceholder,
-  deepEqual,
-  describeConnectionUrl,
-  validateBaseUrl,
-} from "./provider-utils.ts";
+import { baseUrlPlaceholder, describeConnectionUrl, validateBaseUrl } from "./provider-utils.ts";
 import { SmokeTestResult } from "./SmokeTestResult.tsx";
 
 type CategoryFilter = "all" | "configured" | "custom" | "builtin";
@@ -382,7 +378,7 @@ export function ProvidersTab() {
         patch.authHeader = configAuthHeader ? true : null;
       }
       const nextHeaders = rowsToHeaders(configHeaders, "Provider 请求头");
-      if (!deepEqual(nextHeaders, detail.config?.headers)) {
+      if (!deepEqualJson(nextHeaders, detail.config?.headers)) {
         patch.headers = nextHeaders ?? null;
       }
       if (clearConfigApiKey) {

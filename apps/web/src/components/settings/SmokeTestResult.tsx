@@ -1,9 +1,5 @@
 import type { SmokeTestModelResponse } from "@eevee/protocol";
-
-function formatMs(value: number | undefined): string {
-  if (value === undefined) return "—";
-  return value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${Math.round(value)} ms`;
-}
+import { formatMs } from "../../lib/format.ts";
 
 export function SmokeTestResult({ result }: { readonly result: SmokeTestModelResponse }) {
   const usage = result.usage;

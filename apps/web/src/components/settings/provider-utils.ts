@@ -1,4 +1,5 @@
 import type { ThinkingLevel, ThinkingLevelConfig, ThinkingLevelRule } from "@eevee/protocol";
+import { isRecord } from "../../lib/object.ts";
 
 export const THINKING_LEVELS: readonly ThinkingLevel[] = [
   "off",
@@ -57,30 +58,6 @@ export function thinkingLevelsFromMap(value: unknown): ThinkingLevelConfig {
     };
   }
   return config;
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function deepEqual(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) return true;
-  if (!isRecord(left) && !Array.isArray(left)) return false;
-  if (!isRecord(right) && !Array.isArray(right)) return false;
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return (
-      Array.isArray(left) &&
-      Array.isArray(right) &&
-      left.length === right.length &&
-      left.every((entry, index) => deepEqual(entry, right[index]))
-    );
-  }
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  return (
-    leftKeys.length === rightKeys.length &&
-    leftKeys.every((key) => Object.hasOwn(right, key) && deepEqual(left[key], right[key]))
-  );
 }
 
 export function formatJson(value: unknown): string {

@@ -1,4 +1,4 @@
-import type { BackgroundTaskStatus } from "@eevee/protocol";
+import { type BackgroundTaskStatus, isActiveTaskStatus } from "@eevee/protocol";
 
 export function formatTime(ms: number | undefined): string {
   if (ms === undefined || !Number.isFinite(ms)) return "";
@@ -16,6 +16,11 @@ export function formatDurationMs(ms: number | undefined): string {
   const min = Math.floor(totalSec / 60);
   const sec = totalSec % 60;
   return sec === 0 ? `${min}m` : `${min}m ${sec}s`;
+}
+
+export function formatMs(ms: number | undefined): string {
+  if (ms === undefined || !Number.isFinite(ms) || ms < 0) return "—";
+  return ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`;
 }
 
 export function formatClock(ms: number | undefined): string {
@@ -81,7 +86,7 @@ export function workerStatusTone(status: string): "info" | "positive" | "warning
 }
 
 export function isTaskActive(status: BackgroundTaskStatus): boolean {
-  return status === "queued" || status === "running" || status === "stopping";
+  return isActiveTaskStatus(status);
 }
 
 export function taskStatusPhase(status: BackgroundTaskStatus): number {

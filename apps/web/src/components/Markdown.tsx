@@ -14,7 +14,7 @@ import {
   Text,
 } from "@earendil-works/elanor-react";
 import { common, createLowlight } from "lowlight";
-import { marked, type Token, type Tokens } from "marked";
+import { type MarkedToken, marked, type Token } from "marked";
 import { Fragment, type ReactNode, useMemo } from "react";
 
 const lowlight = createLowlight(common);
@@ -35,12 +35,35 @@ const LANG_ALIASES: Record<string, string> = {
   py: "python",
 };
 
-type HastNode = {
-  readonly type: string;
-  readonly value?: string;
-  readonly properties?: { readonly className?: readonly string[] };
-  readonly children?: readonly HastNode[];
-};
+const MARKED_TOKEN_TYPES: ReadonlySet<string> = new Set<MarkedToken["type"]>([
+  "blockquote",
+  "br",
+  "checkbox",
+  "code",
+  "codespan",
+  "def",
+  "del",
+  "em",
+  "escape",
+  "heading",
+  "hr",
+  "html",
+  "image",
+  "link",
+  "list",
+  "list_item",
+  "paragraph",
+  "space",
+  "strong",
+  "table",
+  "text",
+]);
+
+function isMarkedToken(token: Token): token is MarkedToken {
+  return MARKED_TOKEN_TYPES.has(token.type);
+}
+
+type HastChildren = ReturnType<typeof lowlight.highlight>["children"];
 
 function resolveLanguage(hint: string | undefined): string | undefined {
   if (!hint) return undefined;
@@ -49,16 +72,18 @@ function resolveLanguage(hint: string | undefined): string | undefined {
   return key && lowlight.registered(key) ? key : undefined;
 }
 
-function renderHast(nodes: readonly HastNode[], prefix: string): ReactNode[] {
+function renderHast(nodes: HastChildren, prefix: string): ReactNode[] {
   return nodes.map((node, index) => {
     const key = `${prefix}.${index}`;
-    if (node.type === "text") return node.value ?? "";
-    const className = Array.isArray(node.properties?.className)
-      ? node.properties.className.join(" ")
+    if (node.type === "text") return node.value;
+    if (node.type !== "element") return null;
+    const rawCls = node.properties?.className;
+    const className = Array.isArray(rawCls)
+      ? rawCls.filter((c): c is string => typeof c === "string").join(" ")
       : undefined;
     return (
       <span key={key} className={className}>
-        {renderHast(node.children ?? [], key)}
+        {renderHast(node.children, key)}
       </span>
     );
   });
@@ -69,7 +94,7 @@ function highlightCode(code: string, lang: string | undefined): ReactNode {
   if (!language || code.length > 80_000) return code;
   try {
     const tree = lowlight.highlight(language, code);
-    return renderHast(tree.children as unknown as readonly HastNode[], "hl");
+    return renderHast(tree.children, "hl");
   } catch {
     return code;
   }
@@ -86,41 +111,38 @@ function renderInline(tokens: readonly Token[] | undefined, prefix: string): Rea
   if (!tokens || tokens.length === 0) return null;
   return tokens.map((token, index) => {
     const key = `${prefix}.${index}`;
+    if (!isMarkedToken(token)) return token.raw;
     switch (token.type) {
-      case "text": {
-        const textToken = token as Tokens.Text;
-        return textToken.tokens ? (
-          <Fragment key={key}>{renderInline(textToken.tokens, key)}</Fragment>
+      case "text":
+        return token.tokens ? (
+          <Fragment key={key}>{renderInline(token.tokens, key)}</Fragment>
         ) : (
-          textToken.text
+          token.text
         );
-      }
       case "escape":
-        return (token as Tokens.Escape).text;
+        return token.text;
       case "strong":
-        return <Strong key={key}>{renderInline((token as Tokens.Strong).tokens, key)}</Strong>;
+        return <Strong key={key}>{renderInline(token.tokens, key)}</Strong>;
       case "em":
-        return <Emphasis key={key}>{renderInline((token as Tokens.Em).tokens, key)}</Emphasis>;
+        return <Emphasis key={key}>{renderInline(token.tokens, key)}</Emphasis>;
       case "del":
-        return <del key={key}>{renderInline((token as Tokens.Del).tokens, key)}</del>;
+        return <del key={key}>{renderInline(token.tokens, key)}</del>;
       case "codespan":
-        return <InlineCode key={key}>{(token as Tokens.Codespan).text}</InlineCode>;
+        return <InlineCode key={key}>{token.text}</InlineCode>;
       case "br":
         return <br key={key} />;
       case "link": {
-        const link = token as Tokens.Link;
-        const href = safeHref(link.href);
-        if (!href) return <Fragment key={key}>{renderInline(link.tokens, key)}</Fragment>;
+        const href = safeHref(token.href);
+        if (!href) return <Fragment key={key}>{renderInline(token.tokens, key)}</Fragment>;
         return (
           <Link key={key} href={href} target="_blank" rel="noreferrer noopener">
-            {renderInline(link.tokens, key)}
+            {renderInline(token.tokens, key)}
           </Link>
         );
       }
       case "image": {
-        const image = token as Tokens.Image;
-        const href = safeHref(image.href);
-        const label = image.text || image.href;
+        const href = safeHref(token.href);
+        const label = token.text || token.href;
         return href ? (
           <Link key={key} href={href} target="_blank" rel="noreferrer noopener">
             [{label}]
@@ -130,9 +152,9 @@ function renderInline(tokens: readonly Token[] | undefined, prefix: string): Rea
         );
       }
       case "html":
-        return (token as Tokens.HTML).text;
+        return token.text;
       default:
-        return "raw" in token && typeof token.raw === "string" ? token.raw : null;
+        return token.raw;
     }
   });
 }
@@ -160,43 +182,30 @@ function alignment(
 function renderBlocks(tokens: readonly Token[], prefix: string): ReactNode {
   return tokens.map((token, index) => {
     const key = `${prefix}.${index}`;
+    if (!isMarkedToken(token)) return <Text key={key}>{token.raw}</Text>;
     switch (token.type) {
       case "space":
         return null;
       case "heading": {
-        const heading = token as Tokens.Heading;
-        const level = Math.min(6, Math.max(3, heading.depth + 2)) as 3 | 4 | 5 | 6;
+        const level = Math.min(6, Math.max(3, token.depth + 2)) as 3 | 4 | 5 | 6;
         return (
           <Heading key={key} level={level} variant="app" size={level <= 4 ? 5 : 6}>
-            {renderInline(heading.tokens, key)}
+            {renderInline(token.tokens, key)}
           </Heading>
         );
       }
-      case "paragraph": {
-        const para = token as Tokens.Paragraph;
-        return <Text key={key}>{renderInline(para.tokens, key)}</Text>;
-      }
-      case "text": {
-        const textToken = token as Tokens.Text;
-        return (
-          <Text key={key}>
-            {textToken.tokens ? renderInline(textToken.tokens, key) : textToken.text}
-          </Text>
-        );
-      }
-      case "code": {
-        const code = token as Tokens.Code;
-        return <CodeBlock key={key} code={code.text} lang={code.lang} />;
-      }
-      case "blockquote": {
-        const quote = token as Tokens.Blockquote;
-        return <Blockquote key={key}>{renderBlocks(quote.tokens, key)}</Blockquote>;
-      }
+      case "paragraph":
+        return <Text key={key}>{renderInline(token.tokens, key)}</Text>;
+      case "text":
+        return <Text key={key}>{token.tokens ? renderInline(token.tokens, key) : token.text}</Text>;
+      case "code":
+        return <CodeBlock key={key} code={token.text} lang={token.lang} />;
+      case "blockquote":
+        return <Blockquote key={key}>{renderBlocks(token.tokens, key)}</Blockquote>;
       case "hr":
         return <Separator key={key} />;
       case "list": {
-        const list = token as Tokens.List;
-        const items = list.items.map((item, itemIdx) => {
+        const items = token.items.map((item, itemIdx) => {
           const itemKey = `${key}.li.${itemIdx}`;
           const prefixMark = item.task ? (item.checked ? "[x] " : "[ ] ") : "";
           return (
@@ -206,8 +215,8 @@ function renderBlocks(tokens: readonly Token[], prefix: string): ReactNode {
             </List.Item>
           );
         });
-        return list.ordered ? (
-          <List.Root key={key} render={<ol start={list.start || 1} />}>
+        return token.ordered ? (
+          <List.Root key={key} render={<ol start={token.start || 1} />}>
             {items}
           </List.Root>
         ) : (
@@ -215,20 +224,19 @@ function renderBlocks(tokens: readonly Token[], prefix: string): ReactNode {
         );
       }
       case "table": {
-        const table = token as Tokens.Table;
-        const headerKeys = table.header.map((cell) => `${key}.th.${cell.text}`);
+        const headerKeys = token.header.map((cell) => `${key}.th.${cell.text}`);
         return (
           <Table.Container key={key}>
             <Table.Root>
               <Table.Head>
                 <Table.Row>
-                  {table.header.map((cell, cellIdx) => {
+                  {token.header.map((cell, cellIdx) => {
                     const cellKey = `${headerKeys[cellIdx] ?? cell.text}#${cell.tokens.length}`;
                     return (
                       <Table.HeaderCell
                         key={cellKey}
                         scope="col"
-                        align={alignment(table.align[cellIdx])}
+                        align={alignment(token.align[cellIdx])}
                       >
                         {renderInline(cell.tokens, cellKey)}
                       </Table.HeaderCell>
@@ -237,14 +245,14 @@ function renderBlocks(tokens: readonly Token[], prefix: string): ReactNode {
                 </Table.Row>
               </Table.Head>
               <Table.Body>
-                {table.rows.map((row) => {
+                {token.rows.map((row) => {
                   const rowKey = `${key}.tr.${row.map((c) => c.text).join("|")}`;
                   return (
                     <Table.Row key={rowKey}>
                       {row.map((cell, cellIdx) => {
                         const cellKey = `${rowKey}.${headerKeys[cellIdx] ?? cell.text}`;
                         return (
-                          <Table.Cell key={cellKey} align={alignment(table.align[cellIdx])}>
+                          <Table.Cell key={cellKey} align={alignment(token.align[cellIdx])}>
                             {renderInline(cell.tokens, cellKey)}
                           </Table.Cell>
                         );
@@ -259,14 +267,12 @@ function renderBlocks(tokens: readonly Token[], prefix: string): ReactNode {
       }
       case "html":
         return (
-          <pre key={key} className="eevee-pre">
-            {(token as Tokens.HTML).text}
+          <pre key={key} className="ev-pre">
+            {token.text}
           </pre>
         );
       default:
-        return "raw" in token && typeof token.raw === "string" ? (
-          <Text key={key}>{token.raw}</Text>
-        ) : null;
+        return <Text key={key}>{token.raw}</Text>;
     }
   });
 }

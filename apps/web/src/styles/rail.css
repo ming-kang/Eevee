@@ -1,0 +1,353 @@
+/* ---------------- Right Rail (Workers / Tasks / WorkerView) ---------------- */
+
+.ev-rail-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.ev-rail-head {
+  height: var(--ev-header-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--ev-titlebar-clear) 0 12px;
+  border-bottom: var(--ev-hairline) solid var(--ev-separator);
+}
+
+.ev-rail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ev-rail-empty {
+  padding: 28px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ev-fg-subtle);
+}
+
+.ev-rail-empty-inline {
+  font-size: 12.5px;
+  color: var(--ev-fg-subtle);
+}
+
+.ev-rail-worker-title {
+  font-size: 13.5px;
+  font-weight: 500;
+  flex: 1;
+}
+
+.ev-group-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ev-fg-subtle);
+}
+
+.ev-rail-group-btn {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  width: 100%;
+}
+
+.ev-rail-chev {
+  transition: transform var(--ev-dur-fast);
+}
+
+.ev-rail-chev.collapsed {
+  transform: rotate(-90deg);
+}
+
+.ev-rail-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 3px 9px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ev-fg);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--ev-dur-fast) var(--ev-ease-out);
+}
+
+.ev-rail-item:hover {
+  background: var(--ev-hover);
+}
+
+.ev-rail-item[data-active="true"] {
+  background: var(--ev-selected);
+}
+
+.ev-rail-item.muted {
+  color: var(--ev-fg-muted);
+}
+
+.ev-rail-dot {
+  margin-top: 5px;
+}
+
+.ev-rail-item-main {
+  min-width: 0;
+}
+
+.ev-rail-item-title {
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.ev-rail-item-title-sm {
+  font-size: 13px;
+}
+
+.ev-rail-item-sub {
+  font-size: 12px;
+  color: var(--ev-fg-subtle);
+}
+
+.ev-rail-item-sub-sm {
+  font-size: 11.5px;
+  color: var(--ev-fg-subtle);
+}
+
+/* Worker panel */
+
+.ev-worker-subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: var(--ev-hairline) solid var(--ev-separator);
+  font-size: 12px;
+  color: var(--ev-fg-subtle);
+}
+
+.ev-worker-details {
+  gap: 10px;
+}
+
+.ev-worker-meta {
+  font-size: 12.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ev-worker-group-label {
+  padding-left: 0;
+}
+
+.ev-worker-ticket {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--ev-surface);
+  box-shadow: var(--ev-shadow-stroke);
+  font-size: 13px;
+}
+
+.ev-worker-ticket-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ev-worker-ticket-title {
+  font-weight: 500;
+  flex: 1;
+}
+
+.ev-worker-ticket-note {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ev-fg-muted);
+}
+
+.ev-worker-composer-wrap {
+  padding: 0 12px 12px;
+}
+
+.ev-worker-closed-note {
+  text-align: center;
+  font-size: 12px;
+  color: var(--ev-fg-subtle);
+  padding: 6px 0;
+}
+
+.ev-worker-inbox-title {
+  font-size: 11.5px;
+  color: var(--ev-fg-subtle);
+}
+
+.ev-worker-inbox-chip {
+  margin-right: 6px;
+}
+
+/* Tasks & log viewer */
+
+.ev-tasks-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ev-task-card {
+  border-radius: 9px;
+}
+
+.ev-task-card[data-expanded="true"] {
+  background: var(--ev-surface);
+  box-shadow: var(--ev-shadow-stroke);
+}
+
+.ev-task-cmd {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.ev-task-sub {
+  font-size: 11.5px;
+  color: var(--ev-fg-subtle);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+}
+
+.ev-task-viewer {
+  padding: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ev-task-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ev-task-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  border-radius: 7px;
+  border: var(--ev-hairline) solid var(--ev-border);
+  background: var(--ev-surface-2);
+  padding: 0 6px 0 8px;
+  color: var(--ev-fg-subtle);
+  transition:
+    border-color var(--ev-dur-fast) var(--ev-ease-out),
+    background-color var(--ev-dur-fast) var(--ev-ease-out),
+    box-shadow var(--ev-dur-fast) var(--ev-ease-out);
+}
+
+.ev-task-filter:focus-within {
+  border-color: var(--ev-accent);
+  background: var(--ev-surface);
+  box-shadow: var(--ev-focus-ring);
+}
+
+.ev-task-filter input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ev-fg);
+  font-size: 12.5px;
+  outline: none;
+}
+
+.ev-task-filter input::placeholder {
+  color: var(--ev-fg-subtle);
+}
+
+.ev-task-clear-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ev-fg-subtle);
+  cursor: pointer;
+  flex: none;
+}
+
+.ev-task-clear-btn:hover {
+  background: var(--ev-hover);
+  color: var(--ev-fg);
+}
+
+.ev-follow-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 9px;
+  border: var(--ev-hairline) solid var(--ev-border);
+  border-radius: 7px;
+  background: var(--ev-surface);
+  color: var(--ev-fg-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--ev-dur-fast) var(--ev-ease-out),
+    border-color var(--ev-dur-fast) var(--ev-ease-out),
+    color var(--ev-dur-fast) var(--ev-ease-out);
+}
+
+.ev-follow-btn:hover:not(:disabled) {
+  background: var(--ev-hover);
+  color: var(--ev-fg);
+}
+
+.ev-follow-btn[aria-pressed="true"] {
+  border-color: color-mix(in oklab, var(--ev-accent) 40%, var(--ev-border));
+  background: var(--ev-accent-soft);
+  color: var(--ev-accent);
+}
+
+.ev-follow-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ev-task-pre {
+  max-height: 240px;
+}
+
+.ev-task-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 11.5px;
+  color: var(--ev-fg-subtle);
+}
+
+.ev-task-stream-state {
+  color: var(--ev-accent);
+}

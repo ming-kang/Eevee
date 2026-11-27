@@ -36,6 +36,7 @@ import type {
 } from "@eevee/protocol";
 import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { deepEqualJson, isRecord } from "../../lib/object.ts";
 import { showToast } from "../../lib/toasts.ts";
 import { type HeaderRow, HeadersEditor, headersToRows, rowsToHeaders } from "./HeadersEditor.tsx";
 import { buildRoleTogglePatch, mergeProjectOverridePatch } from "./mcp-helpers.ts";
@@ -87,10 +88,6 @@ type ServerLogsState = {
   readonly error?: string;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
@@ -135,22 +132,6 @@ function getExplicitToolExposure(
 function isOverrideEntry(config: Record<string, unknown> | undefined): boolean {
   if (!config) return false;
   return config.command === undefined && config.url === undefined && config.type === undefined;
-}
-
-function deepEqualJson(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (typeof a !== typeof b || a === null || b === null) return false;
-  if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
-    return a.every((item, idx) => deepEqualJson(item, b[idx]));
-  }
-  if (isRecord(a) && isRecord(b)) {
-    const keysA = Object.keys(a).filter((k) => a[k] !== undefined);
-    const keysB = Object.keys(b).filter((k) => b[k] !== undefined);
-    if (keysA.length !== keysB.length) return false;
-    return keysA.every((k) => Object.hasOwn(b, k) && deepEqualJson(a[k], b[k]));
-  }
-  return false;
 }
 
 function statusMeta(status: McpServerStatusPayload): {

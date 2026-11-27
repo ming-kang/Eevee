@@ -17,13 +17,12 @@ import type {
 } from "@eevee/protocol";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { deepEqualJson, isRecord } from "../../lib/object.ts";
 import {
   cloneThinkingLevels,
-  deepEqual,
   defaultThinkingLevels,
   formatJson,
   formatKeyValueLines,
-  isRecord,
   modelInputWithImage,
   normalizeHeaderObject,
   parseFiniteNumber,
@@ -325,7 +324,7 @@ export function ModelEditorModal({
           if (key === "headers") input.headers = normalizeHeaderObject(parsed, "headers");
           else input[key] = parsed;
         }
-      } else if (!deepEqual(parsed, initialValue)) {
+      } else if (!deepEqualJson(parsed, initialValue)) {
         if (parsed === undefined) input[key] = null;
         else if (key === "headers") input.headers = normalizeHeaderObject(parsed, "headers");
         else input[key] = parsed;
@@ -361,7 +360,7 @@ export function ModelEditorModal({
 
     if (isCreate || reasoning !== model?.reasoning) input.reasoning = reasoning;
     const nextInput = modelInputWithImage(imageInput);
-    if (isCreate || !deepEqual(nextInput, initialInput)) input.input = nextInput;
+    if (isCreate || !deepEqualJson(nextInput, initialInput)) input.input = nextInput;
     if (isCreate || nextContextWindow !== model?.contextWindow) {
       input.contextWindow = nextContextWindow;
     }
@@ -373,7 +372,7 @@ export function ModelEditorModal({
       cacheRead: model?.cost.cacheRead ?? 0,
       cacheWrite: model?.cost.cacheWrite ?? 0,
     };
-    const costChanged = !deepEqual(fullCost, initialCost);
+    const costChanged = !deepEqualJson(fullCost, initialCost);
     if (isCreate || (costChanged && isCustom)) input.cost = fullCost;
     else if (costChanged) {
       const patch: Record<string, unknown> = {};
@@ -383,14 +382,14 @@ export function ModelEditorModal({
       input.cost = patch;
     }
 
-    if (isCreate || !deepEqual(thinkingLevels, model?.thinkingLevels)) {
+    if (isCreate || !deepEqualJson(thinkingLevels, model?.thinkingLevels)) {
       input.thinkingLevels = thinkingLevels;
     }
 
     const nextCompat = buildCompat();
     if (isCreate) {
       if (Object.keys(nextCompat).length > 0) input.compat = nextCompat;
-    } else if (!deepEqual(nextCompat, initialCompat)) {
+    } else if (!deepEqualJson(nextCompat, initialCompat)) {
       input.compat = Object.keys(nextCompat).length > 0 ? nextCompat : null;
     }
 
