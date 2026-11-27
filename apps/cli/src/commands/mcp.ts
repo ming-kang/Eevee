@@ -1,4 +1,3 @@
-import { connectLocalEngine } from "@eevee/engine";
 import {
   type EeveeClient,
   type McpLogsResponse,
@@ -12,7 +11,7 @@ import {
 } from "@eevee/protocol";
 import type { Command } from "commander";
 import { isRecord, parseNonEmpty, parseProjectIdFlag, readJsonInput } from "../args.ts";
-import { printResult, runEngineCommand } from "../command-helpers.ts";
+import { runAbortableEngineCommand, runEngineCommand } from "../command-helpers.ts";
 import { formatMcpLogs, formatMcpStatus, formatScopedMcpState } from "../format.ts";
 import { runMcpOAuthLogin } from "../login-ui.ts";
 import {
@@ -209,15 +208,19 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
   ).action(async (rawName: string, options: ScopedOpts) => {
     const name = parseNonEmpty(rawName, "server name");
     const projectId = parseProjectIdFlag(options.project);
-    const { client } = await connectLocalEngine(env);
-    const result = await runMcpOAuthLogin({
-      client,
-      serverName: name,
-      projectId,
-      json: options.json,
-    });
-    if (result !== undefined)
-      printResult(result, options, () => `Authenticated MCP server ${name}`);
+    await runAbortableEngineCommand(
+      env,
+      options,
+      (client, signal) =>
+        runMcpOAuthLogin({
+          client,
+          serverName: name,
+          projectId,
+          json: options.json,
+          signal,
+        }),
+      () => `Authenticated MCP server ${name}`,
+    );
   });
 
   namedCmd(

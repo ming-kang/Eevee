@@ -8,48 +8,69 @@ import {
   type ModelSlotsOverride,
   ProjectIdSchema,
   parseWithSchema,
+  TASK_FILTER_MAX_CONTEXT_LINES,
   type ToolsSettings,
+  validateTaskReadOptions,
 } from "@eevee/protocol";
 import type { Command } from "commander";
 
-export function parsePort(raw: string): number {
-  if (!/^[0-9]+$/.test(raw)) {
-    throw new Error(`Invalid port "${raw}": expected integer 0..65535`);
+function parseBoundedInt(
+  raw: string,
+  flagName: string,
+  options: {
+    readonly pattern: RegExp;
+    readonly min: number;
+    readonly max?: number;
+    readonly expected: string;
+  },
+): number {
+  const errorMessage = `Invalid ${flagName} "${raw}": expected ${options.expected}`;
+  if (!options.pattern.test(raw)) {
+    throw new Error(errorMessage);
   }
-  return parseIntRangeFlag(raw, "port", 0, 65535);
+  const value = Number(raw);
+  if (
+    !Number.isSafeInteger(value) ||
+    value < options.min ||
+    (options.max !== undefined && value > options.max)
+  ) {
+    throw new Error(errorMessage);
+  }
+  return value;
+}
+
+export function parsePort(raw: string): number {
+  return parseBoundedInt(raw, "port", {
+    pattern: /^[0-9]+$/,
+    min: 0,
+    max: 65535,
+    expected: "integer 0..65535",
+  });
 }
 
 export function parsePositiveIntFlag(raw: string, flagName: string): number {
-  if (!/^[1-9][0-9]*$/.test(raw)) {
-    throw new Error(`Invalid ${flagName} "${raw}": expected positive integer`);
-  }
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value < 1) {
-    throw new Error(`Invalid ${flagName} "${raw}": expected positive integer`);
-  }
-  return value;
+  return parseBoundedInt(raw, flagName, {
+    pattern: /^[1-9][0-9]*$/,
+    min: 1,
+    expected: "positive integer",
+  });
 }
 
 export function parseNonNegativeIntFlag(raw: string, flagName: string): number {
-  if (!/^(?:0|[1-9][0-9]*)$/.test(raw)) {
-    throw new Error(`Invalid ${flagName} "${raw}": expected non-negative integer`);
-  }
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new Error(`Invalid ${flagName} "${raw}": expected non-negative integer`);
-  }
-  return value;
+  return parseBoundedInt(raw, flagName, {
+    pattern: /^(?:0|[1-9][0-9]*)$/,
+    min: 0,
+    expected: "non-negative integer",
+  });
 }
 
 export function parseIntRangeFlag(raw: string, flagName: string, min: number, max: number): number {
-  if (!/^-?[0-9]+$/.test(raw)) {
-    throw new Error(`Invalid ${flagName} "${raw}": expected integer ${min}..${max}`);
-  }
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value < min || value > max) {
-    throw new Error(`Invalid ${flagName} "${raw}": expected integer ${min}..${max}`);
-  }
-  return value;
+  return parseBoundedInt(raw, flagName, {
+    pattern: /^-?[0-9]+$/,
+    min,
+    max,
+    expected: `integer ${min}..${max}`,
+  });
 }
 
 export function parseConversationRefArg(raw: string | undefined): ConversationRef {
@@ -86,11 +107,22 @@ export function parseModelFlag(spec: string, flagName: string): ModelChoice {
   };
 }
 
-export function parseModelSlotFlags(options: {
+export type ModelSlotFlagOptions = {
   readonly routerModel?: string;
   readonly workerModel?: string;
   readonly dreamerModel?: string;
-}): ModelSlotsOverride {
+};
+
+export type ToolSettingsFlagOptions = {
+  readonly routerTools?: string | readonly string[];
+  readonly workerTools?: string | readonly string[];
+  readonly codemodeMode?: string;
+  readonly codemodeInlineBudget?: string;
+};
+
+export type ModelAndToolFlagOptions = ModelSlotFlagOptions & ToolSettingsFlagOptions;
+
+export function parseModelSlotFlags(options: ModelSlotFlagOptions): ModelSlotsOverride {
   return {
     ...(options.routerModel === undefined
       ? {}
@@ -164,12 +196,9 @@ export function parseToolOverridesFlag(
   return record;
 }
 
-export function parseToolsSettingsFlags(options: {
-  readonly routerTools?: string | readonly string[];
-  readonly workerTools?: string | readonly string[];
-  readonly codemodeMode?: string;
-  readonly codemodeInlineBudget?: string;
-}): ToolsSettings | undefined {
+export function parseToolsSettingsFlags(
+  options: ToolSettingsFlagOptions,
+): ToolsSettings | undefined {
   const router = parseToolOverridesFlag(options.routerTools, "--router-tools");
   const worker = parseToolOverridesFlag(options.workerTools, "--worker-tools");
   const mode =
@@ -194,6 +223,42 @@ export function parseToolsSettingsFlags(options: {
     ...(worker === undefined ? {} : { worker }),
     ...(codemode === undefined ? {} : { codemode }),
   };
+}
+
+export function parseModelAndToolFlags(options: ModelAndToolFlagOptions): {
+  readonly models?: ModelSlotsOverride;
+  readonly tools?: ToolsSettings;
+} {
+  const models = parseModelSlotFlags(options);
+  const tools = parseToolsSettingsFlags(options);
+  return {
+    ...(hasModelSlots(models) ? { models } : {}),
+    ...(tools === undefined ? {} : { tools }),
+  };
+}
+
+export function validateTaskFilterOptions(options: {
+  readonly filter?: string;
+  readonly contextLines?: number;
+}): ((line: string) => boolean) | undefined {
+  if (options.filter === "") {
+    throw new Error("Invalid --filter: must not be empty");
+  }
+  try {
+    return validateTaskReadOptions(options);
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "contextLines requires filter") {
+        throw new Error("--context requires --filter");
+      }
+      if (error.message.startsWith("Invalid contextLines:")) {
+        throw new Error(
+          `Invalid --context "${options.contextLines}": expected integer 0..${TASK_FILTER_MAX_CONTEXT_LINES}`,
+        );
+      }
+    }
+    throw error;
+  }
 }
 
 export function installSignalAbort(controller: AbortController): () => void {

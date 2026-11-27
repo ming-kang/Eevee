@@ -1,4 +1,3 @@
-import { connectLocalEngine } from "@eevee/engine";
 import {
   type ImportProviderModelsRequest,
   type ImportProviderModelsResponse,
@@ -16,7 +15,7 @@ import {
   parseKeyValueFlags,
   parseNonEmpty,
 } from "../args.ts";
-import { printResult, runEngineCommand, withSignalAbort } from "../command-helpers.ts";
+import { runAbortableEngineCommand, runEngineCommand } from "../command-helpers.ts";
 import {
   formatProbeResult,
   formatProviderCatalog,
@@ -128,26 +127,26 @@ export function registerProviderCommands(program: Command, env: NodeJS.ProcessEn
           );
           return;
         }
-        const { client } = await connectLocalEngine(env);
-        const created = await client.createProvider(input);
-        await withSignalAbort(async (signal) => {
-          const probe = await client.probeProvider(providerId, {}, signal);
-          const importedResult =
-            probe.ok && probe.models.length > 0
-              ? await client.importProviderModels(
-                  providerId,
-                  { models: probe.models.map(toImportModelItem) },
-                  signal,
-                )
-              : undefined;
-          const provider = importedResult?.provider ?? created.provider;
-          printResult(
-            { provider, probe, imported: importedResult?.imported ?? 0 },
-            options,
-            (res) => `${formatProviderDetail(res.provider)}\n\n${formatProbeResult(res.probe)}`,
-          );
-          if (!probe.ok) process.exitCode = 1;
-        });
+        await runAbortableEngineCommand(
+          env,
+          options,
+          async (client, signal) => {
+            const created = await client.createProvider(input, signal);
+            const probe = await client.probeProvider(providerId, {}, signal);
+            const importedResult =
+              probe.ok && probe.models.length > 0
+                ? await client.importProviderModels(
+                    providerId,
+                    { models: probe.models.map(toImportModelItem) },
+                    signal,
+                  )
+                : undefined;
+            if (!probe.ok) process.exitCode = 1;
+            const provider = importedResult?.provider ?? created.provider;
+            return { provider, probe, imported: importedResult?.imported ?? 0 };
+          },
+          (res) => `${formatProviderDetail(res.provider)}\n\n${formatProbeResult(res.probe)}`,
+        );
       },
     );
 
@@ -214,28 +213,33 @@ export function registerProviderCommands(program: Command, env: NodeJS.ProcessEn
           ...(options.api === undefined ? {} : { api: options.api }),
           ...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
         };
-        const { client } = await connectLocalEngine(env);
-        await withSignalAbort(async (signal) => {
-          const probe = await client.probeProvider(providerId, input, signal);
-          let importedResult: ImportProviderModelsResponse | undefined;
-          if (options.import && probe.ok) {
-            const newModels = probe.models.filter((model) => !model.exists).map(toImportModelItem);
-            if (newModels.length > 0) {
-              importedResult = await client.importProviderModels(
-                providerId,
-                { models: newModels },
-                signal,
-              );
-            }
-          }
-          const payload = options.import
-            ? {
-                ...probe,
-                imported: importedResult?.imported ?? 0,
-                ...(importedResult === undefined ? {} : { provider: importedResult.provider }),
+        let importedResult: ImportProviderModelsResponse | undefined;
+        await runAbortableEngineCommand(
+          env,
+          options,
+          async (client, signal) => {
+            const probe = await client.probeProvider(providerId, input, signal);
+            if (options.import && probe.ok) {
+              const newModels = probe.models
+                .filter((model) => !model.exists)
+                .map(toImportModelItem);
+              if (newModels.length > 0) {
+                importedResult = await client.importProviderModels(
+                  providerId,
+                  { models: newModels },
+                  signal,
+                );
               }
-            : probe;
-          printResult(payload, options, () => {
+            }
+            return options.import
+              ? {
+                  ...probe,
+                  imported: importedResult?.imported ?? 0,
+                  ...(importedResult === undefined ? {} : { provider: importedResult.provider }),
+                }
+              : probe;
+          },
+          (probe) => {
             const summary = formatProbeResult(probe);
             if (!(options.import && probe.ok)) return summary;
             const importLine =
@@ -243,8 +247,8 @@ export function registerProviderCommands(program: Command, env: NodeJS.ProcessEn
                 ? "No new models to import."
                 : `Imported ${importedResult.imported} new model(s).`;
             return `${summary}\n${importLine}`;
-          });
-        });
+          },
+        );
       },
     );
 
@@ -278,12 +282,16 @@ export function registerProviderCommands(program: Command, env: NodeJS.ProcessEn
           ...(options.tools ? { testTools: true } : {}),
           ...(timeoutMs === undefined ? {} : { timeoutMs }),
         };
-        const { client } = await connectLocalEngine(env);
-        await withSignalAbort(async (signal) => {
-          const result = await client.testProviderModel(providerId, modelId, input, signal);
-          printResult(result, options, formatSmokeTestResult);
-          if (!result.ok) process.exitCode = 1;
-        });
+        await runAbortableEngineCommand(
+          env,
+          options,
+          async (client, signal) => {
+            const result = await client.testProviderModel(providerId, modelId, input, signal);
+            if (!result.ok) process.exitCode = 1;
+            return result;
+          },
+          formatSmokeTestResult,
+        );
       },
     );
 }

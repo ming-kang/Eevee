@@ -32,6 +32,50 @@ export async function runEngineCommand<T>(
   printResult(result, options, format);
 }
 
+export async function runAbortableEngineCommand<T>(
+  env: NodeJS.ProcessEnv,
+  options: JsonOptions,
+  run: (
+    client: EeveeClient,
+    signal: AbortSignal,
+    connection: LocalEngineConnection,
+  ) => Promise<T | undefined>,
+  format: (result: T) => string | undefined,
+  onAbort?: () => void,
+): Promise<void> {
+  const connection = await connectLocalEngine(env);
+  const result = await withSignalAbort(
+    (signal) => run(connection.client, signal, connection),
+    onAbort,
+  );
+  if (result !== undefined) {
+    printResult(result, options, format);
+  }
+}
+
+export async function runStreamCommand<E extends { readonly type: string }>(
+  env: NodeJS.ProcessEnv,
+  options: JsonOptions,
+  openStream: (client: EeveeClient, signal: AbortSignal) => AsyncIterable<E>,
+  onEvent: (event: E) => void,
+  formatJson: (event: E) => unknown = (event) => event,
+): Promise<void> {
+  const connection = await connectLocalEngine(env);
+  await withSignalAbort(async (signal) => {
+    for await (const event of openStream(connection.client, signal)) {
+      if (options.json) {
+        const payload = formatJson(event);
+        if (payload !== undefined) {
+          process.stdout.write(`${JSON.stringify(payload)}\n`);
+        }
+      } else {
+        onEvent(event);
+      }
+      if (event.type === "end") break;
+    }
+  });
+}
+
 export async function withSignalAbort<T>(
   run: (signal: AbortSignal, controller: AbortController) => Promise<T>,
   onAbort?: () => void,

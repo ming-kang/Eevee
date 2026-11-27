@@ -1,50 +1,16 @@
 import { resolve } from "node:path";
-import type { ModelSlotsOverride, ToolsSettings, UpdateProjectRequest } from "@eevee/protocol";
+import type { UpdateProjectRequest } from "@eevee/protocol";
 import type { Command } from "commander";
 import {
   addModelSlotOptions,
   addToolSettingsOptions,
-  hasModelSlots,
-  parseModelSlotFlags,
-  parseToolsSettingsFlags,
+  type ModelAndToolFlagOptions,
+  type ModelSlotFlagOptions,
+  parseModelAndToolFlags,
   readTextInput,
 } from "../args.ts";
 import { runEngineCommand } from "../command-helpers.ts";
 import { formatProjectUsage, tabular } from "../format.ts";
-
-export function mergeProjectModels(
-  existing: ModelSlotsOverride | undefined,
-  incoming: ModelSlotsOverride,
-): ModelSlotsOverride {
-  return {
-    ...(existing ?? {}),
-    ...incoming,
-  };
-}
-
-export function mergeToolsSettings(
-  existing: ToolsSettings | undefined,
-  incoming: ToolsSettings,
-): ToolsSettings {
-  const router =
-    existing?.router !== undefined || incoming.router !== undefined
-      ? { ...(existing?.router ?? {}), ...(incoming.router ?? {}) }
-      : undefined;
-  const worker =
-    existing?.worker !== undefined || incoming.worker !== undefined
-      ? { ...(existing?.worker ?? {}), ...(incoming.worker ?? {}) }
-      : undefined;
-  const codemode =
-    existing?.codemode !== undefined || incoming.codemode !== undefined
-      ? { ...(existing?.codemode ?? {}), ...(incoming.codemode ?? {}) }
-      : undefined;
-
-  return {
-    ...(router === undefined ? {} : { router }),
-    ...(worker === undefined ? {} : { worker }),
-    ...(codemode === undefined ? {} : { codemode }),
-  };
-}
 
 export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv): void {
   const projectCommand = program.command("project").description("Manage Eevee projects");
@@ -60,19 +26,16 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
     .action(
       async (
         workspaces: string[],
-        options: {
+        options: ModelSlotFlagOptions & {
           title?: string;
           memory?: string;
-          routerModel?: string;
-          workerModel?: string;
-          dreamerModel?: string;
           json?: boolean;
         },
       ) => {
         const resolvedWorkspaces = (workspaces.length > 0 ? workspaces : [process.cwd()]).map(
           (dir) => resolve(dir),
         );
-        const models = parseModelSlotFlags(options);
+        const { models } = parseModelAndToolFlags(options);
 
         await runEngineCommand(
           env,
@@ -82,7 +45,7 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
               workspaces: resolvedWorkspaces,
               ...(options.title === undefined ? {} : { title: options.title }),
               ...(options.memory === undefined ? {} : { memory: options.memory }),
-              ...(hasModelSlots(models) ? { models } : {}),
+              ...(models === undefined ? {} : { models }),
             }),
           ({ project }) =>
             `Created project ${project.id} (${project.title})\nWorkspaces: ${project.workspaces.join(", ")}`,
@@ -124,19 +87,12 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
     .action(
       async (
         projectId: string,
-        options: {
+        options: ModelAndToolFlagOptions & {
           title?: string;
           workspace?: string[];
           memory?: string;
           clearMemory?: boolean;
-          routerModel?: string;
-          workerModel?: string;
-          dreamerModel?: string;
           clearModels?: boolean;
-          routerTools?: string | readonly string[];
-          workerTools?: string | readonly string[];
-          codemodeMode?: string;
-          codemodeInlineBudget?: string;
           clearTools?: boolean;
           json?: boolean;
         },
@@ -159,8 +115,7 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
         if (hasToolsFlag && options.clearTools) {
           throw new Error("Cannot combine tool override flags with --clear-tools");
         }
-        const tools = parseToolsSettingsFlags(options);
-        const incomingModels = hasModelFlag ? parseModelSlotFlags(options) : undefined;
+        const { models, tools } = parseModelAndToolFlags(options);
         const patch: UpdateProjectRequest = {};
         if (options.title !== undefined) patch.title = options.title;
         if (options.workspace !== undefined) {
@@ -169,9 +124,10 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
         if (options.clearMemory) patch.memory = null;
         else if (options.memory !== undefined) patch.memory = options.memory;
         if (options.clearModels) patch.models = null;
-        else if (incomingModels !== undefined) patch.models = incomingModels;
+        else if (models !== undefined) patch.models = models;
         if (options.clearTools) patch.tools = null;
         else if (tools !== undefined) patch.tools = tools;
+        if (models !== undefined || tools !== undefined) patch.merge = true;
 
         if (Object.keys(patch).length === 0) {
           throw new Error("Specify at least one field to update.");
@@ -180,18 +136,7 @@ export function registerProjectCommands(program: Command, env: NodeJS.ProcessEnv
         await runEngineCommand(
           env,
           options,
-          async (client) => {
-            if (incomingModels !== undefined || (tools !== undefined && !options.clearTools)) {
-              const { project: existing } = await client.getProject(projectId);
-              if (incomingModels !== undefined) {
-                patch.models = mergeProjectModels(existing.models, incomingModels);
-              }
-              if (tools !== undefined && !options.clearTools) {
-                patch.tools = mergeToolsSettings(existing.tools, tools);
-              }
-            }
-            return client.updateProject(projectId, patch);
-          },
+          (client) => client.updateProject(projectId, patch),
           ({ project }) => `Updated project ${project.id} (${project.title})`,
         );
       },

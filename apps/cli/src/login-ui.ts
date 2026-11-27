@@ -23,6 +23,7 @@ export type RunProviderLoginOptions = {
   readonly providerId: string;
   readonly oauth?: boolean;
   readonly json?: boolean;
+  readonly signal?: AbortSignal;
   readonly streams?: LoginUiStreams;
 };
 
@@ -31,12 +32,123 @@ export type RunMcpOAuthLoginOptions = {
   readonly serverName: string;
   readonly projectId?: string;
   readonly json?: boolean;
+  readonly signal?: AbortSignal;
   readonly streams?: LoginUiStreams;
 };
 
 export type McpOAuthLoginResult =
   | { readonly ok: true; readonly server: string; readonly projectId?: string }
   | Extract<McpOAuthEvent, { readonly type: "error" }>;
+
+type PromptReader = {
+  readonly rl: ReadlineInterface;
+  question(query: string, signal: AbortSignal): Promise<string>;
+  readSecretLine(query: string, signal: AbortSignal): Promise<string>;
+};
+
+type CancelableSessionContext = {
+  readonly signal: AbortSignal;
+  setSessionId(id: string): boolean;
+  registerReadline(rl: ReadlineInterface): void;
+  setAbortCleanup(cleanup: () => void): void;
+};
+
+function createPromptReader(
+  stdin: NodeJS.ReadableStream,
+  promptOut: NodeJS.WritableStream,
+  isTTY: boolean,
+): PromptReader {
+  let muted = false;
+  const output = new Writable({
+    write(chunk, encoding, callback) {
+      if (muted) callback();
+      else promptOut.write(chunk, encoding, () => callback());
+    },
+  });
+  const rl = createInterface({ input: stdin, output, terminal: isTTY });
+  return {
+    rl,
+    question: (query, signal) => rl.question(query, { signal }),
+    async readSecretLine(query, signal) {
+      promptOut.write(query);
+      muted = true;
+      try {
+        return await rl.question("", { signal });
+      } finally {
+        muted = false;
+        promptOut.write("\n");
+      }
+    },
+  };
+}
+
+async function withCancelableSession<T>(
+  options: {
+    readonly signal?: AbortSignal;
+    readonly cancelSession: (sessionId: string) => Promise<unknown>;
+    readonly cleanup?: () => Promise<void> | void;
+  },
+  run: (ctx: CancelableSessionContext) => Promise<T | undefined>,
+): Promise<T | undefined> {
+  if (options.signal?.aborted) return undefined;
+
+  let sessionId: string | undefined;
+  let cancelPromise: Promise<unknown> | undefined;
+  let activeRl: ReadlineInterface | undefined;
+  let extraAbortCleanup: (() => void) | undefined;
+
+  const triggerCancel = () => {
+    extraAbortCleanup?.();
+    activeRl?.close();
+    if (sessionId !== undefined && cancelPromise === undefined) {
+      cancelPromise = options.cancelSession(sessionId).catch(() => undefined);
+    }
+  };
+
+  const execute = async (signal: AbortSignal): Promise<T | undefined> => {
+    const ctx: CancelableSessionContext = {
+      signal,
+      setSessionId(id: string): boolean {
+        sessionId = id;
+        if (signal.aborted) {
+          triggerCancel();
+          return false;
+        }
+        return true;
+      },
+      registerReadline(rl: ReadlineInterface): void {
+        activeRl = rl;
+        if (signal.aborted) rl.close();
+      },
+      setAbortCleanup(cleanup: () => void): void {
+        extraAbortCleanup = cleanup;
+      },
+    };
+
+    try {
+      return await run(ctx);
+    } finally {
+      activeRl?.close();
+      await options.cleanup?.();
+      await cancelPromise;
+    }
+  };
+
+  if (options.signal === undefined) {
+    return withSignalAbort(execute, triggerCancel);
+  }
+
+  const signal = options.signal;
+  signal.addEventListener("abort", triggerCancel, { once: true });
+  try {
+    return await execute(signal);
+  } catch (error) {
+    if (!signal.aborted) throw error;
+    return undefined;
+  } finally {
+    signal.removeEventListener("abort", triggerCancel);
+  }
+}
 
 function resolveStreams(streams: LoginUiStreams | undefined, json: boolean | undefined) {
   const stdin = streams?.stdin ?? process.stdin;
@@ -68,7 +180,7 @@ async function selectProviderLoginType(
   provider: ProviderSummary,
   oauthFlag: boolean | undefined,
   promptOut: NodeJS.WritableStream,
-  rl: ReadlineInterface,
+  prompt: PromptReader,
   signal: AbortSignal,
 ): Promise<AuthType> {
   if (oauthFlag) {
@@ -84,7 +196,7 @@ async function selectProviderLoginType(
     promptOut.write(
       `Choose login method for ${provider.name}:\n  1) ${oauthLabel}\n  2) API key\n`,
     );
-    const choice = (await rl.question("Select [1/2]: ", { signal })).trim();
+    const choice = (await prompt.question("Select [1/2]: ", signal)).trim();
     if (choice === "1" || choice.toLowerCase() === "oauth") return "oauth";
     if (choice === "2" || choice.toLowerCase() === "api_key") return "api_key";
     throw new Error(`Invalid login method selection "${choice}"`);
@@ -95,116 +207,81 @@ async function selectProviderLoginType(
 }
 
 async function readProviderPromptValue(
-  prompt: LoginPromptEvent,
+  promptEvent: LoginPromptEvent,
   promptOut: NodeJS.WritableStream,
-  rl: ReadlineInterface,
-  questionHidden: (query: string, signal: AbortSignal) => Promise<string>,
+  prompt: PromptReader,
   signal: AbortSignal,
 ): Promise<string> {
-  if (prompt.type === "select") {
-    promptOut.write(`${prompt.message}\n`);
-    prompt.options.forEach((opt, idx) => {
+  if (promptEvent.type === "select") {
+    promptOut.write(`${promptEvent.message}\n`);
+    promptEvent.options.forEach((opt, idx) => {
       const desc = opt.description ? ` — ${opt.description}` : "";
       promptOut.write(`  ${idx + 1}) ${opt.label} (${opt.id})${desc}\n`);
     });
-    const answer = (await rl.question("Select option: ", { signal })).trim();
+    const answer = (await prompt.question("Select option: ", signal)).trim();
     const asIndex = Number(answer);
-    return Number.isInteger(asIndex) && asIndex >= 1 && asIndex <= prompt.options.length
-      ? (prompt.options[asIndex - 1]?.id ?? answer)
+    return Number.isInteger(asIndex) && asIndex >= 1 && asIndex <= promptEvent.options.length
+      ? (promptEvent.options[asIndex - 1]?.id ?? answer)
       : answer;
   }
-  const suffix = prompt.placeholder ? ` (${prompt.placeholder})` : "";
-  const query = `${prompt.message}${suffix}: `;
-  return prompt.type === "secret" ? questionHidden(query, signal) : rl.question(query, { signal });
+  const suffix = promptEvent.placeholder ? ` (${promptEvent.placeholder})` : "";
+  const query = `${promptEvent.message}${suffix}: `;
+  return promptEvent.type === "secret"
+    ? prompt.readSecretLine(query, signal)
+    : prompt.question(query, signal);
 }
 
 export async function runProviderLogin(
   options: RunProviderLoginOptions,
 ): Promise<LoginCompleteEvent | undefined> {
-  const { providers } = await options.client.listProviders();
-  const provider = providers.find((entry) => entry.id === options.providerId);
-  if (provider === undefined) throw new Error(`Unknown provider "${options.providerId}"`);
-
-  const { stdin, promptOut, isTTY } = resolveStreams(options.streams, options.json);
-  let echoMuted = false;
-  const echoOut = new Writable({
-    write(chunk, encoding, callback) {
-      if (echoMuted) callback();
-      else promptOut.write(chunk, encoding, () => callback());
+  return withCancelableSession(
+    {
+      signal: options.signal,
+      cancelSession: (id) => options.client.cancelLoginSession(options.providerId, id),
     },
-  });
-  const rl = createInterface({ input: stdin, output: echoOut, terminal: isTTY });
-  const questionHidden = async (query: string, signal: AbortSignal): Promise<string> => {
-    promptOut.write(query);
-    echoMuted = true;
-    try {
-      return await rl.question("", { signal });
-    } finally {
-      echoMuted = false;
-      promptOut.write("\n");
-    }
-  };
+    async (ctx) => {
+      const { providers } = await options.client.listProviders(ctx.signal);
+      const provider = providers.find((entry) => entry.id === options.providerId);
+      if (provider === undefined) throw new Error(`Unknown provider "${options.providerId}"`);
 
-  let sessionId: string | undefined;
-  let cancelPromise: Promise<unknown> | undefined;
-  const cancelProvider = (id: string) =>
-    options.client.cancelLoginSession(options.providerId, id).catch(() => undefined);
+      const { stdin, promptOut, isTTY } = resolveStreams(options.streams, options.json);
+      const prompt = createPromptReader(stdin, promptOut, isTTY);
+      ctx.registerReadline(prompt.rl);
 
-  try {
-    return await withSignalAbort(
-      async (signal) => {
-        const loginType = await selectProviderLoginType(
-          provider,
-          options.oauth,
-          promptOut,
-          rl,
-          signal,
-        );
-        const session = await options.client.startProviderLogin(
-          options.providerId,
-          { type: loginType },
-          signal,
-        );
-        sessionId = session.sessionId;
-        if (signal.aborted) {
-          cancelPromise = cancelProvider(sessionId);
-          return undefined;
-        }
-        try {
-          for await (const item of options.client.streamLoginSession(
+      const loginType = await selectProviderLoginType(
+        provider,
+        options.oauth,
+        promptOut,
+        prompt,
+        ctx.signal,
+      );
+      const session = await options.client.startProviderLogin(
+        options.providerId,
+        { type: loginType },
+        ctx.signal,
+      );
+      if (!ctx.setSessionId(session.sessionId)) return undefined;
+
+      for await (const item of options.client.streamLoginSession(
+        options.providerId,
+        session.sessionId,
+        { signal: ctx.signal },
+      )) {
+        if (item.type === "auth") writeAuthEvent(promptOut, item.event);
+        else if (item.type === "prompt") {
+          const value = await readProviderPromptValue(item.prompt, promptOut, prompt, ctx.signal);
+          await options.client.submitLoginInput(
             options.providerId,
-            sessionId,
-            { signal },
-          )) {
-            if (item.type === "auth") writeAuthEvent(promptOut, item.event);
-            else if (item.type === "prompt") {
-              const value = await readProviderPromptValue(
-                item.prompt,
-                promptOut,
-                rl,
-                questionHidden,
-                signal,
-              );
-              await options.client.submitLoginInput(options.providerId, sessionId, {
-                promptId: item.prompt.promptId,
-                value,
-              });
-            } else if (item.type === "complete") return item.complete;
-            else if (item.type === "error") throw new Error(item.error.message);
-          }
-          return undefined;
-        } finally {
-          await cancelPromise;
-        }
-      },
-      () => {
-        rl.close();
-        if (sessionId !== undefined) cancelPromise = cancelProvider(sessionId);
-      },
-    );
-  } finally {
-    rl.close();
-  }
+            session.sessionId,
+            { promptId: item.prompt.promptId, value },
+            ctx.signal,
+          );
+        } else if (item.type === "complete") return item.complete;
+        else if (item.type === "error") throw new Error(item.error.message);
+      }
+      return undefined;
+    },
+  );
 }
 
 export async function runMcpOAuthLogin(
@@ -213,75 +290,69 @@ export async function runMcpOAuthLogin(
   const { stdin, promptOut, isTTY } = resolveStreams(options.streams, options.json);
   const mcp = options.client.mcp(options.projectId);
   const promptController = new AbortController();
-  let rl: ReadlineInterface | undefined;
-  let promptStarted = false;
   let promptTask: Promise<void> | undefined;
-  let cancelPromise: Promise<unknown> | undefined;
-  let sessionId: string | undefined;
 
-  const startManualRedirectPrompt = (activeSessionId: string, signal: AbortSignal) => {
-    if (promptStarted || !isTTY) return;
-    promptStarted = true;
-    const iface = createInterface({ input: stdin, output: promptOut, terminal: true });
-    rl = iface;
+  const startManualRedirectPrompt = (ctx: CancelableSessionContext, activeSessionId: string) => {
+    if (promptTask !== undefined || !isTTY) return;
+    const rl = createInterface({ input: stdin, output: promptOut, terminal: true });
+    ctx.registerReadline(rl);
     promptTask = (async () => {
       try {
-        while (!promptController.signal.aborted && !signal.aborted) {
-          const answer = await iface.question("Paste redirect URL (or press Ctrl+C to cancel): ", {
+        while (!promptController.signal.aborted && !ctx.signal.aborted) {
+          const answer = await rl.question("Paste redirect URL (or press Ctrl+C to cancel): ", {
             signal: promptController.signal,
           });
           const redirectUrl = answer.trim();
           if (redirectUrl.length === 0) continue;
           try {
-            await mcp.submitOAuthInput(options.serverName, activeSessionId, { redirectUrl });
+            await mcp.submitOAuthInput(
+              options.serverName,
+              activeSessionId,
+              { redirectUrl },
+              ctx.signal,
+            );
             return;
           } catch (error) {
-            if (promptController.signal.aborted || signal.aborted) return;
+            if (promptController.signal.aborted || ctx.signal.aborted) return;
             promptOut.write(`${error instanceof Error ? error.message : String(error)}\n`);
           }
         }
       } catch {
         // Abort or closed readline stops manual prompt when loopback completes or cancels.
       } finally {
-        iface.close();
+        rl.close();
       }
     })();
   };
 
-  const cancelMcp = (id: string) => mcp.cancelOAuth(options.serverName, id).catch(() => undefined);
-
-  const terminalEvent = await withSignalAbort(
-    async (signal) => {
-      try {
-        const session = await mcp.startOAuth(options.serverName, signal);
-        sessionId = session.sessionId;
-        if (signal.aborted) {
-          cancelPromise = cancelMcp(sessionId);
-          return undefined;
-        }
-        for await (const event of mcp.streamOAuth(options.serverName, sessionId, { signal })) {
-          if (event.type === "auth_url") {
-            writeAuthEvent(promptOut, event);
-            startManualRedirectPrompt(sessionId, signal);
-          } else if (event.type === "progress") {
-            writeAuthEvent(promptOut, event);
-          } else if (event.type === "complete" || event.type === "error") {
-            return event;
-          }
-        }
-        if (!signal.aborted) throw new Error("MCP OAuth sign-in stream ended unexpectedly");
-        return undefined;
-      } finally {
+  const terminalEvent = await withCancelableSession(
+    {
+      signal: options.signal,
+      cancelSession: (id) => mcp.cancelOAuth(options.serverName, id),
+      cleanup: async () => {
         promptController.abort();
-        rl?.close();
         await promptTask;
-        await cancelPromise;
-      }
+      },
     },
-    () => {
-      promptController.abort();
-      rl?.close();
-      if (sessionId !== undefined) cancelPromise = cancelMcp(sessionId);
+    async (ctx) => {
+      ctx.setAbortCleanup(() => promptController.abort());
+      const session = await mcp.startOAuth(options.serverName, ctx.signal);
+      if (!ctx.setSessionId(session.sessionId)) return undefined;
+
+      for await (const event of mcp.streamOAuth(options.serverName, session.sessionId, {
+        signal: ctx.signal,
+      })) {
+        if (event.type === "auth_url") {
+          writeAuthEvent(promptOut, event);
+          startManualRedirectPrompt(ctx, session.sessionId);
+        } else if (event.type === "progress") {
+          writeAuthEvent(promptOut, event);
+        } else if (event.type === "complete" || event.type === "error") {
+          return event;
+        }
+      }
+      if (!ctx.signal.aborted) throw new Error("MCP OAuth sign-in stream ended unexpectedly");
+      return undefined;
     },
   );
 

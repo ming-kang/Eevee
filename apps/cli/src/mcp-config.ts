@@ -1,4 +1,10 @@
-import { McpExposureSchema, parseWithSchema } from "@eevee/protocol";
+import {
+  isMcpHttpConfig,
+  isMcpStdioConfig,
+  McpExposureInputSchema,
+  normalizeMcpExposure,
+  parseWithSchema,
+} from "@eevee/protocol";
 import { isRecord, parseKeyValueFlags, parsePositiveIntFlag } from "./args.ts";
 
 export type McpAddOptions = {
@@ -73,7 +79,9 @@ export function parseMcpAddIncoming(options: McpAddOptions, projectId: string | 
   if (envVars) incoming.env = envVars;
   if (headers) incoming.headers = headers;
   if (options.exposure !== undefined) {
-    incoming.exposure = parseWithSchema(McpExposureSchema, options.exposure, "--exposure");
+    incoming.exposure = normalizeMcpExposure(
+      parseWithSchema(McpExposureInputSchema, options.exposure, "--exposure"),
+    );
   }
   if (options.timeout !== undefined) {
     incoming.timeout = parsePositiveIntFlag(options.timeout, "--timeout");
@@ -97,11 +105,8 @@ export function shouldSwitchMcpTransport(
   existing: Record<string, unknown> | undefined,
   options: McpAddOptions,
 ): boolean {
-  if (existing === undefined) return false;
-  const isHttp =
-    typeof existing.url === "string" ||
-    existing.type === "http" ||
-    existing.type === "streamable-http";
-  const isStdio = typeof existing.command === "string" || existing.type === "stdio";
-  return (options.command !== undefined && isHttp) || (options.url !== undefined && isStdio);
+  return (
+    (options.command !== undefined && isMcpHttpConfig(existing)) ||
+    (options.url !== undefined && isMcpStdioConfig(existing))
+  );
 }

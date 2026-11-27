@@ -32,7 +32,8 @@ export const MCP_EXPOSURES = ["deferred", "direct", "codemode", "hidden"] as con
 export const McpExposureSchema = oneOf(MCP_EXPOSURES);
 export type McpExposure = Static<typeof McpExposureSchema>;
 
-const McpExposureInputSchema = oneOf([...MCP_EXPOSURES, "codemode-deferred"]);
+export const McpExposureInputSchema = oneOf([...MCP_EXPOSURES, "codemode-deferred"]);
+export type McpExposureInput = Static<typeof McpExposureInputSchema>;
 
 export const McpServerRolesSchema = obj({
   router: bool(),

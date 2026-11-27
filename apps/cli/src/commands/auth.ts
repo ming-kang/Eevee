@@ -1,6 +1,5 @@
-import { connectLocalEngine } from "@eevee/engine";
 import type { Command } from "commander";
-import { printResult, runEngineCommand } from "../command-helpers.ts";
+import { runAbortableEngineCommand, runEngineCommand } from "../command-helpers.ts";
 import { formatProviders } from "../format.ts";
 import { runProviderLogin } from "../login-ui.ts";
 
@@ -37,20 +36,19 @@ export function registerAuthCommands(program: Command, env: NodeJS.ProcessEnv): 
           );
           return;
         }
-        const { client } = await connectLocalEngine(env);
-        const complete = await runProviderLogin({
-          client,
-          providerId,
-          oauth: options.oauth,
-          json: options.json,
-        });
-        if (complete !== undefined) {
-          printResult(
-            complete,
-            options,
-            (item) => `Authenticated ${item.providerId} (${item.type})`,
-          );
-        }
+        await runAbortableEngineCommand(
+          env,
+          options,
+          (client, signal) =>
+            runProviderLogin({
+              client,
+              providerId,
+              oauth: options.oauth,
+              json: options.json,
+              signal,
+            }),
+          (item) => `Authenticated ${item.providerId} (${item.type})`,
+        );
       },
     );
 

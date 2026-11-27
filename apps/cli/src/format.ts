@@ -28,7 +28,6 @@ export {
 export { formatProjectUsage, formatSettings, tabular } from "./format/settings.ts";
 export { formatSkillsList } from "./format/skills.ts";
 export {
-  aggregateBoardTasks,
   formatTaskList,
   formatTaskOutput,
   type TaskListItem,

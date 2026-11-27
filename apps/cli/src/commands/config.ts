@@ -5,11 +5,10 @@ import type { Command } from "commander";
 import {
   addModelSlotOptions,
   addToolSettingsOptions,
-  hasModelSlots,
-  parseModelSlotFlags,
+  type ModelAndToolFlagOptions,
+  parseModelAndToolFlags,
   parseNonNegativeIntFlag,
   parsePositiveIntFlag,
-  parseToolsSettingsFlags,
   readJsonInput,
 } from "../args.ts";
 import { runEngineCommand } from "../command-helpers.ts";
@@ -39,22 +38,16 @@ export function registerConfigCommands(program: Command, env: NodeJS.ProcessEnv)
   addToolSettingsOptions(configSetCommand)
     .option("--json", "Output JSON")
     .action(
-      async (options: {
-        maxActiveWorkers?: string;
-        backgroundAfterMs?: string;
-        routerContextTokens?: string;
-        idleHibernateMs?: string;
-        routerModel?: string;
-        workerModel?: string;
-        dreamerModel?: string;
-        routerTools?: string | readonly string[];
-        workerTools?: string | readonly string[];
-        codemodeMode?: string;
-        codemodeInlineBudget?: string;
-        json?: boolean;
-      }) => {
-        const models = parseModelSlotFlags(options);
-        const tools = parseToolsSettingsFlags(options);
+      async (
+        options: ModelAndToolFlagOptions & {
+          maxActiveWorkers?: string;
+          backgroundAfterMs?: string;
+          routerContextTokens?: string;
+          idleHibernateMs?: string;
+          json?: boolean;
+        },
+      ) => {
+        const { models, tools } = parseModelAndToolFlags(options);
 
         const patch: EngineSettings = {
           ...(options.maxActiveWorkers === undefined
@@ -89,7 +82,7 @@ export function registerConfigCommands(program: Command, env: NodeJS.ProcessEnv)
                   "--idle-hibernate-ms",
                 ),
               }),
-          ...(hasModelSlots(models) ? { models } : {}),
+          ...(models === undefined ? {} : { models }),
           ...(tools === undefined ? {} : { tools }),
         };
 

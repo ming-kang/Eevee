@@ -1,15 +1,12 @@
 import {
   type BackgroundTaskRecordPayload,
   type BackgroundTaskStatus,
-  type BoardViewPayload,
-  buildTaskLineMatcher,
   isActiveTaskStatus,
   type OutputSlice,
   type ReadWorkerTaskResponse,
-  TASK_FILTER_MAX_CONTEXT_LINES,
-  type TaskListStatusFilter,
   type TaskStreamEvent,
 } from "@eevee/protocol";
+import { validateTaskFilterOptions } from "../args.ts";
 import { tabular } from "./settings.ts";
 
 export type TaskListItem = BackgroundTaskRecordPayload & {
@@ -22,42 +19,6 @@ function formatTaskStatusDetails(task: BackgroundTaskRecordPayload): string {
   if (task.cancelReason !== undefined) details.push(`reason ${task.cancelReason}`);
   if (task.error !== undefined) details.push(task.error);
   return details.length === 0 ? "" : ` (${details.join(", ")})`;
-}
-
-export function aggregateBoardTasks(
-  board: BoardViewPayload,
-  options?: { readonly status?: TaskListStatusFilter; readonly limit?: number },
-): TaskListItem[] {
-  const status = options?.status ?? "all";
-  const limit = options?.limit;
-  const all: TaskListItem[] = [];
-  for (const worker of board.workers) {
-    for (const task of worker.tasks) {
-      all.push({ ...task, workerId: worker.id });
-    }
-  }
-  const byStartedAt = (a: TaskListItem, b: TaskListItem): number => {
-    if (a.startedAt !== b.startedAt) return a.startedAt - b.startedAt;
-    const workerCmp = (a.workerId ?? "").localeCompare(b.workerId ?? "");
-    return workerCmp !== 0 ? workerCmp : a.id.localeCompare(b.id);
-  };
-  const active = all.filter((item) => isActiveTaskStatus(item.status)).sort(byStartedAt);
-  const finished = all.filter((item) => !isActiveTaskStatus(item.status)).sort(byStartedAt);
-
-  if (status === "active") {
-    return limit === undefined ? active : limit <= 0 ? [] : active.slice(-limit);
-  }
-  if (status === "finished") {
-    return limit === undefined ? finished : limit <= 0 ? [] : finished.slice(-limit);
-  }
-  if (limit === undefined) {
-    return [...active, ...finished];
-  }
-  if (limit <= 0) return [];
-  if (active.length >= limit) {
-    return active.slice(-limit);
-  }
-  return [...active, ...finished.slice(-(limit - active.length))];
 }
 
 export function formatTaskList(
@@ -139,22 +100,7 @@ export class TaskWatchRenderer {
   constructor(write: (text: string) => void, options: TaskWatchRendererOptions) {
     this.#write = write;
     this.#workerId = options.workerId;
-    if (options.contextLines !== undefined) {
-      if (options.filter === undefined || options.filter.length === 0) {
-        throw new Error("--context requires --filter");
-      }
-      if (
-        !Number.isInteger(options.contextLines) ||
-        options.contextLines < 0 ||
-        options.contextLines > TASK_FILTER_MAX_CONTEXT_LINES
-      ) {
-        throw new Error(
-          `Invalid --context "${options.contextLines}": expected integer 0..${TASK_FILTER_MAX_CONTEXT_LINES}`,
-        );
-      }
-    }
-    this.#matcher =
-      options.filter === undefined ? undefined : buildTaskLineMatcher(options.filter, "--filter");
+    this.#matcher = validateTaskFilterOptions(options);
     this.#contextLines = options.contextLines ?? 0;
   }
 

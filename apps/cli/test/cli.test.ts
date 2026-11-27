@@ -7,12 +7,23 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { EeveeClient } from "@eevee/protocol";
 import type { Command } from "commander";
-import { parseNonEmpty, parseToolOverridesFlag, parseToolsSettingsFlags } from "../src/args.ts";
-import { runEngineCommand, withSignalAbort } from "../src/command-helpers.ts";
-import { mergeMcpAddConfig } from "../src/commands/mcp.ts";
-import { mergeProjectModels, mergeToolsSettings } from "../src/commands/project.ts";
 import {
-  aggregateBoardTasks,
+  parseIntRangeFlag,
+  parseModelAndToolFlags,
+  parseNonEmpty,
+  parseNonNegativeIntFlag,
+  parsePositiveIntFlag,
+  parseToolOverridesFlag,
+  parseToolsSettingsFlags,
+} from "../src/args.ts";
+import {
+  runAbortableEngineCommand,
+  runEngineCommand,
+  runStreamCommand,
+  withSignalAbort,
+} from "../src/command-helpers.ts";
+import { mergeMcpAddConfig } from "../src/commands/mcp.ts";
+import {
   ConversationWatchRenderer,
   formatBoard,
   formatMcpLogs,
@@ -39,6 +50,7 @@ import {
 } from "../src/format.ts";
 import { createProgram } from "../src/index.ts";
 import { runMcpOAuthLogin, runProviderLogin } from "../src/login-ui.ts";
+import { shouldSwitchMcpTransport } from "../src/mcp-config.ts";
 
 test("CLI program registers core metadata and all 4A + 4B subcommands and options", () => {
   const program = createProgram({ EEVEE_HOME: "/tmp/eevee-cli-test" });
@@ -864,7 +876,7 @@ test("CLI validates task list, read, and watch flags cleanly", async () => {
   );
 });
 
-test("formatTaskOutput, formatTaskList, and aggregateBoardTasks format task metadata and filters", () => {
+test("formatTaskOutput and formatTaskList format task metadata and filters", () => {
   const richOutput = formatTaskOutput("w2", {
     task: {
       id: "task-3",
@@ -902,84 +914,61 @@ test("formatTaskOutput, formatTaskList, and aggregateBoardTasks format task meta
 
   assert.equal(formatTaskList([]), "No tasks.");
 
-  const board = {
-    workers: [
-      {
-        id: "w1",
-        name: "alpha",
-        cwd: "/ws",
-        conversationId: 2,
-        createdAt: 1,
-        status: "running" as const,
-        activeTaskCount: 1,
-        tasks: [
-          {
-            id: "task-1",
-            command: "echo done",
-            status: "completed" as const,
-            exitCode: 0,
-            startedAt: 100,
-            endedAt: 150,
-          },
-          { id: "task-2", command: "npm run dev", status: "running" as const, startedAt: 300 },
-        ],
-      },
-      {
-        id: "w2",
-        name: "beta",
-        cwd: "/ws",
-        conversationId: 3,
-        createdAt: 2,
-        status: "idle" as const,
-        activeTaskCount: 1,
-        tasks: [
-          { id: "task-1", command: "watch logs", status: "queued" as const, startedAt: 200 },
-          {
-            id: "task-2",
-            command: "sleep 60",
-            status: "cancelled" as const,
-            cancelReason: "user" as const,
-            startedAt: 400,
-            endedAt: 420,
-          },
-        ],
-      },
-    ],
-    tickets: [],
-    questions: [],
-  };
+  const projectTasks = [
+    {
+      workerId: "w2",
+      id: "task-1",
+      command: "watch logs",
+      status: "queued" as const,
+      startedAt: 200,
+    },
+    {
+      workerId: "w1",
+      id: "task-2",
+      command: "npm run dev",
+      status: "running" as const,
+      startedAt: 300,
+    },
+    {
+      workerId: "w1",
+      id: "task-1",
+      command: "echo done",
+      status: "completed" as const,
+      exitCode: 0,
+      startedAt: 100,
+      endedAt: 150,
+    },
+    {
+      workerId: "w2",
+      id: "task-2",
+      command: "sleep 60",
+      status: "cancelled" as const,
+      cancelReason: "user" as const,
+      startedAt: 400,
+      endedAt: 420,
+    },
+  ];
 
-  const allAggregated = aggregateBoardTasks(board);
-  assert.deepEqual(
-    allAggregated.map((t) => `${t.workerId}/${t.id}`),
-    ["w2/task-1", "w1/task-2", "w1/task-1", "w2/task-2"],
-  );
-  assert.deepEqual(
-    aggregateBoardTasks(board, { status: "active" }).map((t) => `${t.workerId}/${t.id}`),
-    ["w2/task-1", "w1/task-2"],
-  );
-  assert.deepEqual(
-    aggregateBoardTasks(board, { status: "finished", limit: 1 }).map(
-      (t) => `${t.workerId}/${t.id}`,
-    ),
-    ["w2/task-2"],
-  );
-  assert.deepEqual(
-    aggregateBoardTasks(board, { status: "all", limit: 3 }).map((t) => `${t.workerId}/${t.id}`),
-    ["w2/task-1", "w1/task-2", "w2/task-2"],
-  );
-  assert.deepEqual(
-    aggregateBoardTasks(board, { status: "all", limit: 1 }).map((t) => `${t.workerId}/${t.id}`),
-    ["w1/task-2"],
-  );
-
-  const projectTable = formatTaskList(allAggregated, { showWorker: true });
+  const projectTable = formatTaskList(projectTasks, { showWorker: true });
   assert.ok(projectTable.includes("w2\ttask-1\tqueued\twatch logs"));
   assert.ok(projectTable.includes("w1\ttask-2\trunning\tnpm run dev"));
   assert.ok(projectTable.includes("w1\ttask-1\tcompleted (exit 0)\techo done"));
   assert.ok(projectTable.includes("w2\ttask-2\tcancelled (reason user)\tsleep 60"));
 
-  const singleWorkerTable = formatTaskList(board.workers[0]?.tasks ?? [], { showWorker: false });
+  const singleWorkerTable = formatTaskList(
+    [
+      {
+        id: "task-1",
+        command: "echo done",
+        status: "completed",
+        exitCode: 0,
+        startedAt: 100,
+        endedAt: 150,
+      },
+      { id: "task-2", command: "npm run dev", status: "running", startedAt: 300 },
+    ],
+    { showWorker: false },
+  );
   assert.equal(
     singleWorkerTable,
     "task-1\tcompleted (exit 0)\techo done\ntask-2\trunning\tnpm run dev",
@@ -2317,44 +2306,24 @@ test("skills and MCP CLI commands dispatch expected API requests and handle OAut
   }
 });
 
-test("merge helpers combine project models, tool settings, and MCP add configs cleanly", () => {
-  assert.deepEqual(
-    mergeProjectModels(
-      {
-        worker: { provider: "anthropic", modelId: "claude-sonnet" },
-        dreamer: { provider: "openai", modelId: "gpt-4o-mini" },
-      },
-      { router: { provider: "openai", modelId: "gpt-4o" } },
-    ),
-    {
-      router: { provider: "openai", modelId: "gpt-4o" },
-      worker: { provider: "anthropic", modelId: "claude-sonnet" },
-      dreamer: { provider: "openai", modelId: "gpt-4o-mini" },
-    },
+test("mergeMcpAddConfig and shouldSwitchMcpTransport combine MCP add configs cleanly", () => {
+  assert.equal(shouldSwitchMcpTransport(undefined, { command: "npx" }), false);
+  assert.equal(
+    shouldSwitchMcpTransport({ url: "https://old.example/mcp" }, { command: "npx" }),
+    true,
   );
-
-  assert.deepEqual(
-    mergeToolsSettings(
-      {
-        router: { ls: false },
-        worker: { bash: false },
-        codemode: { mode: "on", inlineBudget: 800 },
-      },
-      {
-        worker: { powershell: true },
-        codemode: { mode: "only" },
-      },
+  assert.equal(
+    shouldSwitchMcpTransport(
+      { type: "streamable-http", url: "https://old.example/mcp" },
+      { command: "npx" },
     ),
-    {
-      router: { ls: false },
-      worker: { bash: false, powershell: true },
-      codemode: { mode: "only", inlineBudget: 800 },
-    },
+    true,
   );
-
-  assert.deepEqual(mergeToolsSettings(undefined, { worker: { powershell: true } }), {
-    worker: { powershell: true },
-  });
+  assert.equal(
+    shouldSwitchMcpTransport({ command: "npx" }, { url: "https://new.example/mcp" }),
+    true,
+  );
+  assert.equal(shouldSwitchMcpTransport({ enabled: false }, { command: "npx" }), false);
 
   // Brand-new full server defaults missing role to true; partial override does not.
   assert.deepEqual(
@@ -2428,7 +2397,7 @@ test("merge helpers combine project models, tool settings, and MCP add configs c
   );
 });
 
-test("project update and mcp add merge existing configuration by default and support --replace", async () => {
+test("project update sends atomic merge:true PATCH and mcp add normalizes codemode-deferred and merges/replaces cleanly", async () => {
   const calls: Array<{ method: string; url: string; body?: Record<string, unknown> }> = [];
 
   let project = {
@@ -2493,10 +2462,15 @@ test("project update and mcp add merge existing configuration by default and sup
       calls.push({ method, url, body });
       project = {
         ...project,
+        ...(typeof body.title === "string" ? { title: body.title } : {}),
         ...(body.models === null
           ? {}
           : body.models !== undefined
-            ? { models: body.models as typeof project.models }
+            ? {
+                models: body.merge
+                  ? { ...project.models, ...(body.models as typeof project.models) }
+                  : (body.models as typeof project.models),
+              }
             : {}),
         ...(body.tools === null
           ? {}
@@ -2586,7 +2560,7 @@ test("project update and mcp add merge existing configuration by default and sup
   try {
     const run = (argv: string[]) => createProgram(env).parseAsync(["node", "eevee", ...argv]);
 
-    // 1. project update --router-model preserves existing worker & dreamer slots
+    // 1. project update --router-model sends a single atomic PATCH with merge: true (no preceding GET)
     await run(["project", "update", "demo", "--router-model", "openai/gpt-5"]);
     assert.deepEqual(calls.at(-1), {
       method: "PATCH",
@@ -2594,39 +2568,56 @@ test("project update and mcp add merge existing configuration by default and sup
       body: {
         models: {
           router: { provider: "openai", modelId: "gpt-5" },
-          worker: { provider: "anthropic", modelId: "claude-sonnet" },
-          dreamer: { provider: "openai", modelId: "gpt-4o-mini" },
         },
+        merge: true,
       },
     });
 
-    // 2. project update --worker-tools +powershell preserves router tools & codemode settings
+    // 2. project update --worker-tools +powershell sends merge: true atomically
     await run(["project", "update", "demo", "--worker-tools", "+powershell"]);
     assert.deepEqual(calls.at(-1), {
       method: "PATCH",
       url: "/projects/demo",
       body: {
         tools: {
-          router: { ls: false, grep: true },
-          worker: { bash: false, powershell: true },
-          codemode: { mode: "on", inlineBudget: 1200 },
+          worker: { powershell: true },
         },
+        merge: true,
       },
     });
 
-    // 3. project update --codemode-mode preserves inlineBudget & tool maps
+    // 3. project update --codemode-mode sends merge: true atomically
     await run(["project", "update", "demo", "--codemode-mode", "only"]);
     assert.deepEqual(calls.at(-1), {
       method: "PATCH",
       url: "/projects/demo",
       body: {
         tools: {
-          router: { ls: false, grep: true },
-          worker: { bash: false, powershell: true },
-          codemode: { mode: "only", inlineBudget: 1200 },
+          codemode: { mode: "only" },
         },
+        merge: true,
       },
     });
+
+    // 3b. project update --clear-models --clear-tools and --title omit merge: true
+    await run(["project", "update", "demo", "--clear-models", "--clear-tools"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PATCH",
+      url: "/projects/demo",
+      body: { models: null, tools: null },
+    });
+
+    await run(["project", "update", "demo", "--title", "Renamed"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PATCH",
+      url: "/projects/demo",
+      body: { title: "Renamed" },
+    });
+
+    assert.equal(
+      calls.some((c) => c.method === "GET" && c.url === "/projects/demo"),
+      false,
+    );
 
     // 4. mcp add on existing global HTTP server preserves headers, oauth, roles, exposure, toolExposure
     await run([
@@ -2706,6 +2697,40 @@ test("project update and mcp add merge existing configuration by default and sup
       body: {
         config: {
           exposure: "direct",
+          roles: { router: false, worker: false },
+        },
+      },
+    });
+
+    // 8. mcp add --exposure codemode-deferred normalizes cleanly to "codemode"
+    await run([
+      "mcp",
+      "add",
+      "docs",
+      "--command",
+      "npx",
+      "--exposure",
+      "codemode-deferred",
+      "--replace",
+    ]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PUT",
+      url: "/mcp/servers/docs",
+      body: {
+        config: {
+          command: "npx",
+          exposure: "codemode",
+        },
+      },
+    });
+
+    await run(["mcp", "add", "docs", "--project", "demo", "--exposure", "codemode-deferred"]);
+    assert.deepEqual(calls.at(-1), {
+      method: "PUT",
+      url: "/projects/demo/mcp/servers/docs",
+      body: {
+        config: {
+          exposure: "codemode",
           roles: { router: false, worker: false },
         },
       },
@@ -3105,6 +3130,393 @@ test("login-ui drives provider login (menu, auth events, select, secret echo mut
       /MCP OAuth sign-in stream ended unexpectedly/,
     );
     assert.equal(cancelledUrls.length, 0);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("eevee task list <project> calls GET /projects/:id/tasks directly without fetching board", async () => {
+  const calls: string[] = [];
+  const server = createServer((req, res) => {
+    const url = req.url ?? "/";
+    calls.push(`${req.method ?? "GET"} ${url}`);
+    if (req.method === "GET" && url.startsWith("/projects/demo/tasks")) {
+      writeHttpJson(res, 200, {
+        tasks: [
+          {
+            id: "task-1",
+            workerId: "w2",
+            command: "npm test",
+            status: "running",
+            startedAt: 200,
+          },
+        ],
+      });
+      return;
+    }
+    if (req.method === "GET" && url.startsWith("/projects/demo/workers/w1/tasks")) {
+      writeHttpJson(res, 200, {
+        tasks: [
+          {
+            id: "task-9",
+            command: "echo hi",
+            status: "completed",
+            exitCode: 0,
+            startedAt: 100,
+            endedAt: 120,
+          },
+        ],
+      });
+      return;
+    }
+    writeHttpJson(res, 404, { code: "not_found", message: `Unhandled ${url}` });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const env: NodeJS.ProcessEnv = {
+    EEVEE_HOME: "/tmp/eevee-cli-task-list-test",
+    EEVEE_URL: `http://127.0.0.1:${address.port}`,
+    EEVEE_TOKEN: "test-token",
+  };
+  const logs: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+
+  try {
+    const run = (argv: string[]) => createProgram(env).parseAsync(["node", "eevee", ...argv]);
+
+    await run(["task", "list", "demo", "--status", "active", "--limit", "5"]);
+    assert.deepEqual(calls, ["GET /projects/demo/tasks?status=active&limit=5"]);
+    assert.equal(
+      calls.some((call) => call.includes("/board")),
+      false,
+    );
+    assert.equal(logs[0], "w2\ttask-1\trunning\tnpm test");
+
+    logs.length = 0;
+    await run(["task", "list", "demo", "--json"]);
+    assert.equal(calls.at(-1), "GET /projects/demo/tasks");
+    assert.deepEqual(JSON.parse(logs[0] ?? "{}"), {
+      tasks: [
+        {
+          id: "task-1",
+          workerId: "w2",
+          command: "npm test",
+          status: "running",
+          startedAt: 200,
+        },
+      ],
+    });
+
+    logs.length = 0;
+    await run(["task", "list", "demo", "w1", "--status", "finished"]);
+    assert.equal(calls.at(-1), "GET /projects/demo/workers/w1/tasks?status=finished");
+    assert.equal(logs[0], "task-9\tcompleted (exit 0)\techo hi");
+  } finally {
+    console.log = originalLog;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("bounded integer parsers and parseModelAndToolFlags validate bounds and omit empty overrides", () => {
+  assert.equal(parsePositiveIntFlag("1", "--limit"), 1);
+  assert.throws(() => parsePositiveIntFlag("0", "--limit"), /expected positive integer/);
+  assert.throws(() => parsePositiveIntFlag("01", "--limit"), /expected positive integer/);
+  assert.equal(parseNonNegativeIntFlag("0", "--budget"), 0);
+  assert.throws(() => parseNonNegativeIntFlag("-1", "--budget"), /expected non-negative integer/);
+  assert.equal(parseIntRangeFlag("0", "--context", 0, 5), 0);
+  assert.equal(parseIntRangeFlag("5", "--context", 0, 5), 5);
+  assert.throws(() => parseIntRangeFlag("6", "--context", 0, 5), /expected integer 0\.\.5/);
+
+  assert.deepEqual(parseModelAndToolFlags({}), {});
+  assert.deepEqual(
+    parseModelAndToolFlags({
+      routerModel: "openai/gpt-4o",
+      workerTools: "+powershell,-bash",
+      codemodeMode: "only",
+    }),
+    {
+      models: { router: { provider: "openai", modelId: "gpt-4o" } },
+      tools: { worker: { powershell: true, bash: false }, codemode: { mode: "only" } },
+    },
+  );
+});
+
+test("runAbortableEngineCommand and runStreamCommand handle normal, JSON, abort, and error paths", async () => {
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/settings") {
+      writeHttpJson(res, 200, { maxActiveWorkers: 7 });
+      return;
+    }
+    if (req.method === "GET" && req.url === "/projects/demo/board/stream") {
+      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+      res.write(
+        `event: board\ndata: ${JSON.stringify({ workers: [], tickets: [], questions: [] })}\n\n`,
+      );
+      res.write(`event: end\ndata: ${JSON.stringify({ reason: "closed" })}\n\n`);
+      res.end();
+      return;
+    }
+    writeHttpJson(res, 404, { code: "not_found", message: "Not found" });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const env: NodeJS.ProcessEnv = {
+    EEVEE_HOME: "/tmp/eevee-cli-abort-stream-test",
+    EEVEE_URL: `http://127.0.0.1:${address.port}`,
+    EEVEE_TOKEN: "test-token",
+  };
+
+  const logs: string[] = [];
+  const stdoutChunks: string[] = [];
+  const originalLog = console.log;
+  const originalWrite = process.stdout.write.bind(process.stdout);
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    stdoutChunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+    return true;
+  }) as typeof process.stdout.write;
+
+  const beforeSigint = process.listenerCount("SIGINT");
+  try {
+    await runAbortableEngineCommand(
+      env,
+      {},
+      async (client, signal) => {
+        assert.equal(signal.aborted, false);
+        return client.getSettings();
+      },
+      (s) => `workers=${s.maxActiveWorkers}`,
+    );
+    assert.deepEqual(logs, ["workers=7"]);
+
+    logs.length = 0;
+    await runAbortableEngineCommand(
+      env,
+      { json: true },
+      (client) => client.getSettings(),
+      () => "ignored",
+    );
+    assert.deepEqual(JSON.parse(logs[0] ?? "{}"), { maxActiveWorkers: 7 });
+
+    // Returning undefined skips printResult.
+    logs.length = 0;
+    await runAbortableEngineCommand(
+      env,
+      {},
+      async () => undefined,
+      () => "never-printed",
+    );
+    assert.deepEqual(logs, []);
+
+    // Aborting inside runAbortableEngineCommand invokes onAbort and suppresses abort error.
+    let abortHookRan = false;
+    const beforeSet = new Set(process.listeners("SIGINT"));
+    const abortedRun = runAbortableEngineCommand(
+      env,
+      {},
+      (_client, signal) =>
+        new Promise<string>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        }),
+      (v) => v,
+      () => {
+        abortHookRan = true;
+      },
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    const addedSigint = process.listeners("SIGINT").filter((listener) => !beforeSet.has(listener));
+    assert.equal(addedSigint.length, 1);
+    addedSigint[0]?.("SIGINT");
+    await abortedRun;
+    assert.equal(abortHookRan, true);
+    assert.deepEqual(logs, []);
+
+    // Non-abort error propagates.
+    await assert.rejects(
+      runAbortableEngineCommand(
+        env,
+        {},
+        async () => {
+          throw new Error("command-boom");
+        },
+        (v) => String(v),
+      ),
+      /command-boom/,
+    );
+
+    // runStreamCommand in human mode & JSON mode with custom formatJson
+    const seenEvents: string[] = [];
+    await runStreamCommand(
+      env,
+      {},
+      (client, signal) => client.streamBoard("demo", { signal }),
+      (event) => {
+        seenEvents.push(event.type);
+      },
+    );
+    assert.deepEqual(seenEvents, ["board", "end"]);
+
+    stdoutChunks.length = 0;
+    await runStreamCommand(
+      env,
+      { json: true },
+      (client, signal) => client.streamBoard("demo", { signal }),
+      () => {
+        throw new Error("should not call onEvent in json mode");
+      },
+      (event) => (event.type === "board" ? event.board : undefined),
+    );
+    assert.deepEqual(
+      stdoutChunks.map((line) => JSON.parse(line.trim())),
+      [{ workers: [], tickets: [], questions: [] }],
+    );
+    assert.equal(process.listenerCount("SIGINT"), beforeSigint);
+  } finally {
+    console.log = originalLog;
+    process.stdout.write = originalWrite;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("login-ui handles pre-aborted signals and active abort cancellation in both standalone and CLI modes", async () => {
+  const cancelledUrls: string[] = [];
+  let providerListCalls = 0;
+
+  const server = createServer(async (req, res) => {
+    const method = req.method ?? "GET";
+    const url = req.url ?? "/";
+
+    if (method === "GET" && url === "/providers") {
+      providerListCalls += 1;
+      writeHttpJson(res, 200, {
+        providers: [
+          {
+            id: "dual",
+            name: "Dual Provider",
+            authMethods: { apiKey: true, apiKeyLogin: false, oauth: true },
+            configured: false,
+            modelCount: 1,
+          },
+        ],
+      });
+      return;
+    }
+    if (method === "POST" && url === "/providers/dual/auth/login") {
+      writeHttpJson(res, 201, { sessionId: "prov-hang", providerId: "dual", type: "oauth" });
+      return;
+    }
+    if (method === "GET" && url === "/providers/dual/auth/login/prov-hang/stream") {
+      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+      res.write(
+        `event: auth\ndata: ${JSON.stringify({ type: "auth_url", url: "https://dual.example/auth" })}\n\n`,
+      );
+      req.on("close", () => res.end());
+      return;
+    }
+    if (method === "POST" && url === "/providers/dual/auth/login/prov-hang/cancel") {
+      cancelledUrls.push(url);
+      writeHttpJson(res, 200, { ok: true });
+      return;
+    }
+    if (method === "POST" && url === "/mcp/servers/docs/oauth/login") {
+      writeHttpJson(res, 201, { sessionId: "mcp-hang", server: "docs" });
+      return;
+    }
+    if (method === "GET" && url === "/mcp/servers/docs/oauth/login/mcp-hang/stream") {
+      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+      res.write(
+        `event: auth_url\ndata: ${JSON.stringify({
+          type: "auth_url",
+          url: "https://mcp.example/authorize",
+          redirectUrl: "http://127.0.0.1:4000/cb",
+        })}\n\n`,
+      );
+      req.on("close", () => res.end());
+      return;
+    }
+    if (method === "POST" && url === "/mcp/servers/docs/oauth/login/mcp-hang/cancel") {
+      cancelledUrls.push(url);
+      writeHttpJson(res, 200, { ok: true });
+      return;
+    }
+    writeHttpJson(res, 404, { code: "not_found", message: `Unhandled ${method} ${url}` });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const client = new EeveeClient({
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    token: "test-token",
+  });
+  const env: NodeJS.ProcessEnv = {
+    EEVEE_HOME: "/tmp/eevee-cli-login-abort-test",
+    EEVEE_URL: `http://127.0.0.1:${address.port}`,
+    EEVEE_TOKEN: "test-token",
+  };
+
+  try {
+    // Pre-aborted external signal short-circuits without hitting /providers.
+    const preAborted = new AbortController();
+    preAborted.abort();
+    assert.equal(
+      await runProviderLogin({ client, providerId: "dual", signal: preAborted.signal }),
+      undefined,
+    );
+    assert.equal(providerListCalls, 0);
+
+    // External signal abort cancels active MCP OAuth session cleanly without extra SIGINT listeners.
+    const beforeSigint = process.listenerCount("SIGINT");
+    const mcpAbort = new AbortController();
+    const mcpPromise = runMcpOAuthLogin({
+      client,
+      serverName: "docs",
+      signal: mcpAbort.signal,
+      streams: {
+        stdin: new PassThrough(),
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        isTTY: false,
+      },
+    });
+    assert.equal(process.listenerCount("SIGINT"), beforeSigint);
+    await new Promise((r) => setTimeout(r, 40));
+    mcpAbort.abort();
+    assert.equal(await mcpPromise, undefined);
+    assert.ok(cancelledUrls.includes("/mcp/servers/docs/oauth/login/mcp-hang/cancel"));
+
+    // CLI `auth login dual --json` installs exactly one SIGINT listener and cancels session on abort.
+    const beforeSet = new Set(process.listeners("SIGINT"));
+    const originalStderrWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    try {
+      const cliLogin = createProgram(env).parseAsync([
+        "node",
+        "eevee",
+        "auth",
+        "login",
+        "dual",
+        "--json",
+      ]);
+      await new Promise((r) => setTimeout(r, 40));
+      const addedSigint = process
+        .listeners("SIGINT")
+        .filter((listener) => !beforeSet.has(listener));
+      assert.equal(addedSigint.length, 1);
+      addedSigint[0]?.("SIGINT");
+      await cliLogin;
+    } finally {
+      process.stderr.write = originalStderrWrite;
+    }
+    assert.ok(cancelledUrls.includes("/providers/dual/auth/login/prov-hang/cancel"));
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

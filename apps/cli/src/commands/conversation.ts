@@ -1,4 +1,3 @@
-import { connectLocalEngine } from "@eevee/engine";
 import {
   type ConversationRef,
   parseWithSchema,
@@ -9,7 +8,7 @@ import {
 } from "@eevee/protocol";
 import type { Command } from "commander";
 import { parseConversationRefArg, parsePositiveIntFlag } from "../args.ts";
-import { runEngineCommand, withSignalAbort } from "../command-helpers.ts";
+import { runEngineCommand, runStreamCommand } from "../command-helpers.ts";
 import { ConversationWatchRenderer, formatBoard, formatQuestionAnswered } from "../format.ts";
 
 export function registerConversationCommands(program: Command, env: NodeJS.ProcessEnv): void {
@@ -59,21 +58,18 @@ export function registerConversationCommands(program: Command, env: NodeJS.Proce
         await runEngineCommand(env, options, (client) => client.getBoard(projectId), formatBoard);
         return;
       }
-      const { client } = await connectLocalEngine(env);
-      await withSignalAbort(async (signal) => {
-        for await (const event of client.streamBoard(projectId, { signal })) {
+      await runStreamCommand(
+        env,
+        options,
+        (client, signal) => client.streamBoard(projectId, { signal }),
+        (event) => {
           if (event.type === "board") {
-            if (options.json) {
-              console.log(JSON.stringify(event.board));
-            } else {
-              console.log(formatBoard(event.board));
-              console.log("---");
-            }
-          } else if (event.type === "end") {
-            break;
+            console.log(formatBoard(event.board));
+            console.log("---");
           }
-        }
-      });
+        },
+        (event) => (event.type === "board" ? event.board : undefined),
+      );
     });
 
   program
@@ -97,22 +93,20 @@ export function registerConversationCommands(program: Command, env: NodeJS.Proce
           options.lastEventId === undefined
             ? undefined
             : parsePositiveIntFlag(options.lastEventId, "--last-event-id");
-        const { client } = await connectLocalEngine(env);
         const renderer = new ConversationWatchRenderer((chunk) => {
           process.stdout.write(chunk);
         });
 
-        await withSignalAbort(async (signal) => {
-          for await (const event of client.streamConversation(projectId, ref, {
-            ...(from === undefined ? {} : { from }),
-            ...(lastEventId === undefined ? {} : { lastEventId }),
-            signal,
-          })) {
-            if (options.json) {
-              process.stdout.write(`${JSON.stringify(event)}\n`);
-              if (event.type === "end") break;
-              continue;
-            }
+        await runStreamCommand(
+          env,
+          options,
+          (client, signal) =>
+            client.streamConversation(projectId, ref, {
+              ...(from === undefined ? {} : { from }),
+              ...(lastEventId === undefined ? {} : { lastEventId }),
+              signal,
+            }),
+          (event) => {
             if (event.type === "snapshot") {
               renderer.onSnapshot(event.view);
             } else if (event.type === "patch") {
@@ -121,10 +115,9 @@ export function registerConversationCommands(program: Command, env: NodeJS.Proce
               renderer.onFailed(event.message);
             } else if (event.type === "end") {
               renderer.onEnd();
-              break;
             }
-          }
-        });
+          },
+        );
       },
     );
 
