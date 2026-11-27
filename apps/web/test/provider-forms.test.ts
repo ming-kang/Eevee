@@ -6,6 +6,7 @@ import type {
   ModelDetail,
   ProbedModel,
   ProviderDetail,
+  ProviderSummary,
 } from "@eevee/protocol";
 import {
   applyCandidateDiffs,
@@ -16,12 +17,15 @@ import {
 import {
   defaultThinkingLevels,
   describeConnectionUrl,
+  sortProvidersForSidebar,
   toImportModelPayload,
   validateBaseUrl,
 } from "../src/components/settings/provider-utils.ts";
 import {
+  addProviderReducer,
   buildBuiltinOverrideRequest,
   buildCustomProviderRequest,
+  createAddProviderState,
 } from "../src/components/settings/providers/add-provider-state.ts";
 import {
   buildProviderPatch,
@@ -453,4 +457,78 @@ test("validateBaseUrl and describeConnectionUrl delegate cleanly to @eevee/proto
     warning: true,
   });
   assert.equal(describeConnectionUrl("openai-completions", "invalid"), undefined);
+});
+
+test("sortProvidersForSidebar prioritizes configured and custom providers above unconfigured builtins", () => {
+  const mk = (id: string, name: string, opts: Partial<ProviderSummary> = {}): ProviderSummary => ({
+    id,
+    name,
+    authMethods: { apiKey: true, apiKeyLogin: false, oauth: false },
+    configured: false,
+    modelCount: 1,
+    kind: "builtin",
+    ...opts,
+  });
+
+  const sorted = sortProvidersForSidebar([
+    mk("amazon-bedrock", "Amazon Bedrock"),
+    mk("anthropic", "Anthropic", { configured: true }),
+    mk("openai", "OpenAI", { hasConfigOverride: true }),
+    mk("local-ollama", "Local Ollama", { kind: "custom" }),
+    mk("my-proxy", "My Proxy", { kind: "custom", configured: true }),
+    mk("azure", "Azure"),
+  ]);
+
+  assert.deepEqual(
+    sorted.map((item) => item.id),
+    ["my-proxy", "anthropic", "local-ollama", "openai", "amazon-bedrock", "azure"],
+  );
+});
+
+test("addProviderReducer clears previous builtin gateway draft on selectBuiltin", () => {
+  let state = createAddProviderState(undefined);
+  state = addProviderReducer(state, {
+    type: "patchBuiltin",
+    patch: {
+      selectedId: "openai",
+      apiKey: "sk-old",
+      baseUrl: "https://old.example.com/v1",
+      headers: [{ uid: 1, key: "X-Old", value: "1" }],
+    },
+  });
+  state = addProviderReducer(state, { type: "selectBuiltin", id: "anthropic" });
+  assert.equal(state.builtin.selectedId, "anthropic");
+  assert.equal(state.builtin.apiKey, "");
+  assert.equal(state.builtin.baseUrl, "");
+  assert.deepEqual(state.builtin.headers, []);
+});
+
+test("createModelEditorDraft preserves explicit custom model api and baseUrl overrides without false diffs", () => {
+  const customModel = makeModelDetail({
+    api: "anthropic-messages",
+    baseUrl: "https://custom-endpoint.example.com/v1",
+  });
+  const target = {
+    providerId: "custom-openai",
+    providerApi: "openai-completions",
+    providerBaseUrl: "https://api.example.com/v1",
+    model: customModel,
+  };
+  const draft = createModelEditorDraft(target, COMPAT_SCHEMAS);
+  assert.equal(draft.apiValue, "anthropic-messages");
+  assert.equal(draft.baseUrlValue, "https://custom-endpoint.example.com/v1");
+  assert.deepEqual(buildModelUpsertRequest(target, draft, COMPAT_FIELDS), {});
+
+  const inherited = createModelEditorDraft(
+    {
+      ...target,
+      model: makeModelDetail({
+        api: "openai-completions",
+        baseUrl: "https://api.example.com/v1",
+      }),
+    },
+    COMPAT_SCHEMAS,
+  );
+  assert.equal(inherited.apiValue, "");
+  assert.equal(inherited.baseUrlValue, "");
 });

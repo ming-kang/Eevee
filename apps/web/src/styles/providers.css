@@ -29,6 +29,20 @@
   overflow-x: auto;
 }
 
+.ev-control-overlay .ev-provider-category-filter[data-density="compact"] {
+  width: 100%;
+  padding: 3px;
+  gap: 2px;
+}
+
+.ev-provider-category-filter > button {
+  flex: 1 1 auto;
+  justify-content: center;
+  white-space: nowrap;
+  padding-inline: 6px;
+  font-size: 0.75rem;
+}
+
 .ev-provider-list {
   display: flex;
   flex-direction: column;

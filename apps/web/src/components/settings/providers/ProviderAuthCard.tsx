@@ -258,7 +258,7 @@ export function ProviderAuthCard({
             {detail.authMethods.oauthLabel ?? t("providers.auth.oauthLogin")}
           </Button>
         )}
-        {detail.configured && (
+        {detail.configured && detail.authSource === "auth.json" && (
           <Button
             type="button"
             hierarchy="tertiary"

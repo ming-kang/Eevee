@@ -191,3 +191,20 @@ export function formatAuthMeta(provider: ProviderSummary, translate: typeof t = 
   if (provider.authPreview) parts.push(provider.authPreview);
   return parts.join(" · ");
 }
+
+function providerSidebarRank(provider: ProviderSummary): number {
+  const isCustom = provider.kind === "custom";
+  if (provider.configured && isCustom) return 0;
+  if (provider.configured) return 1;
+  if (isCustom) return 2;
+  if (provider.hasConfigOverride) return 3;
+  return 4;
+}
+
+export function sortProvidersForSidebar(providers: readonly ProviderSummary[]): ProviderSummary[] {
+  return [...providers].sort((a, b) => {
+    const diff = providerSidebarRank(a) - providerSidebarRank(b);
+    if (diff !== 0) return diff;
+    return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+  });
+}

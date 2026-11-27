@@ -148,6 +148,10 @@
     margin: 0;
   }
 
+  #root {
+    isolation: isolate;
+  }
+
   body {
     background: var(--ev-bg);
     color: var(--ev-fg);

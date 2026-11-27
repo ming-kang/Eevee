@@ -31,10 +31,12 @@ export function ProviderConfigForm({
   const [draft, setDraft] = useState<ProviderConfigDraft>(() => createProviderConfigDraft(detail));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | undefined>(undefined);
   const justSavedRef = useRef(false);
 
   useEffect(() => {
     setDraft(createProviderConfigDraft(detail));
+    setSaveError(undefined);
     if (justSavedRef.current) {
       justSavedRef.current = false;
       setSaved(true);
@@ -45,7 +47,10 @@ export function ProviderConfigForm({
 
   const patchDraft = (patch: Partial<ProviderConfigDraft>, resetSaved = true) => {
     setDraft((prev) => ({ ...prev, ...patch }));
-    if (resetSaved) setSaved(false);
+    if (resetSaved) {
+      setSaved(false);
+      setSaveError(undefined);
+    }
   };
 
   const apiOptions = Array.from(
@@ -66,6 +71,7 @@ export function ProviderConfigForm({
     event.preventDefault();
     setSaving(true);
     onDetailError(undefined);
+    setSaveError(undefined);
     setSaved(false);
     try {
       const patch = buildProviderPatch(detail, draft);
@@ -76,7 +82,7 @@ export function ProviderConfigForm({
       }
       setSaved(true);
     } catch (err) {
-      onDetailError(err instanceof Error ? err.message : String(err));
+      setSaveError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -94,7 +100,7 @@ export function ProviderConfigForm({
           </span>
         )}
       </div>
-      <form onSubmit={(event) => void handleSave(event)} className="ev-form-stack">
+      <form noValidate onSubmit={(event) => void handleSave(event)} className="ev-form-stack">
         <div className="ev-model-form-grid">
           <Field.Root>
             <Field.Label>{t("providers.config.displayName")}</Field.Label>
@@ -194,6 +200,8 @@ export function ProviderConfigForm({
           <Field.Label>{t("providers.customHeadersLabelKv")}</Field.Label>
           <HeadersEditor rows={draft.headers} onChange={(headers) => patchDraft({ headers })} />
         </Field.Root>
+
+        {saveError && <div className="ev-error-banner">{saveError}</div>}
 
         <div className="ev-inline-actions">
           <Button type="submit" hierarchy="primary" density="compact" pending={saving}>

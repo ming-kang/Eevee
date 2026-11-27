@@ -21,6 +21,15 @@ export type ModelProbeSelectorProps = {
   readonly statusSlot?: ReactNode;
 };
 
+function formatProbeModelMeta(model: ProbedModel, existsSuffix: string): string {
+  const parts: string[] = [];
+  if (model.contextWindow !== undefined) parts.push(formatTokens(model.contextWindow));
+  if (model.reasoning === true) parts.push("reasoning");
+  if (model.input?.includes("image") === true) parts.push("image");
+  if (model.exists) parts.push(existsSuffix.replace(/^\s*·\s*/, ""));
+  return parts.join(" · ");
+}
+
 export function ModelProbeSelector({
   models,
   selected,
@@ -105,6 +114,7 @@ export function ModelProbeSelector({
           <div className="ev-probe-chip-grid">
             {visibleModels.map((model) => {
               const checked = selected[model.id] === true;
+              const meta = formatProbeModelMeta(model, t("probe.existsSuffix"));
               return (
                 <button
                   type="button"
@@ -115,12 +125,7 @@ export function ModelProbeSelector({
                   onClick={() => toggleModel(model.id, !checked)}
                 >
                   <span className="ev-probe-chip-title ev-mono">{model.id}</span>
-                  <span className="ev-probe-chip-meta">
-                    {model.contextWindow !== undefined && formatTokens(model.contextWindow)}
-                    {model.reasoning === true && " · reasoning"}
-                    {model.input?.includes("image") === true && " · image"}
-                    {model.exists && t("probe.existsSuffix")}
-                  </span>
+                  {meta && <span className="ev-probe-chip-meta">{meta}</span>}
                 </button>
               );
             })}
@@ -129,6 +134,7 @@ export function ModelProbeSelector({
           <div className="ev-probe-list">
             {visibleModels.map((model) => {
               const checked = selected[model.id] === true;
+              const meta = formatProbeModelMeta(model, t("probe.existsSuffix"));
               return (
                 <label key={model.id} className="ev-probe-row" data-active={checked}>
                   <input
@@ -141,12 +147,7 @@ export function ModelProbeSelector({
                   {model.name && model.name !== model.id && (
                     <span className="ev-inline-muted ev-truncate">{model.name}</span>
                   )}
-                  <span className="ev-probe-row-meta ev-num">
-                    {model.contextWindow !== undefined && formatTokens(model.contextWindow)}
-                    {model.reasoning === true && " · reasoning"}
-                    {model.input?.includes("image") === true && " · image"}
-                    {model.exists && t("probe.existsSuffix")}
-                  </span>
+                  {meta && <span className="ev-probe-row-meta ev-num">{meta}</span>}
                 </label>
               );
             })}

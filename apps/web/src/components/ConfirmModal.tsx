@@ -40,7 +40,7 @@ export function ConfirmModal({
       <Modal.Portal>
         <Modal.Backdrop />
         <Modal.Viewport>
-          <Modal.Popup>
+          <Modal.Popup className="ev-confirm-dialog">
             <Modal.Title>{title}</Modal.Title>
             {(description !== undefined || error !== undefined) && (
               <Modal.Body>

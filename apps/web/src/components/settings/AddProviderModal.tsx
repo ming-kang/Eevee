@@ -62,18 +62,16 @@ export function AddProviderModal({
   }, []);
 
   const selectedBuiltinId = state.builtin.selectedId;
+  const selectedHasOverride =
+    catalog?.providers.find((item) => item.id === selectedBuiltinId)?.hasConfigOverride === true;
 
   useEffect(() => {
     detailAbortRef.current?.abort();
-    const target = catalog?.providers.find((item) => item.id === selectedBuiltinId);
-    if (!target?.hasConfigOverride) {
-      dispatch({ type: "patchBuiltin", patch: { baseUrl: "", headers: [] } });
-      return;
-    }
+    if (!selectedBuiltinId || !selectedHasOverride) return;
     const controller = new AbortController();
     detailAbortRef.current = controller;
     api
-      .getProviderDetail(target.id, controller.signal)
+      .getProviderDetail(selectedBuiltinId, controller.signal)
       .then((res) => {
         if (controller.signal.aborted) return;
         dispatch({
@@ -92,7 +90,7 @@ export function AddProviderModal({
           });
         }
       });
-  }, [catalog, selectedBuiltinId]);
+  }, [selectedBuiltinId, selectedHasOverride]);
 
   const builtinProviders = catalog?.providers ?? [];
   const selectedBuiltin = builtinProviders.find((item) => item.id === selectedBuiltinId);
@@ -221,30 +219,32 @@ export function AddProviderModal({
         <Modal.Viewport>
           <Modal.Popup className="ev-add-provider-dialog">
             <Modal.Title>{t("providers.addModal.title")}</Modal.Title>
+            <div className="ev-settings-head" style={{ flex: "none" }}>
+              <SegmentedControl.Root
+                density="compact"
+                value={[state.mode]}
+                onValueChange={(values) => {
+                  const next = values[0];
+                  if (next === "builtin" || next === "custom") {
+                    dispatch({ type: "setMode", mode: next });
+                  }
+                }}
+              >
+                <SegmentedControl.Item value="builtin">
+                  {t("providers.addModal.modeBuiltin")}
+                </SegmentedControl.Item>
+                <SegmentedControl.Item value="custom">
+                  {t("providers.addModal.modeCustom")}
+                </SegmentedControl.Item>
+              </SegmentedControl.Root>
+            </div>
+            {state.error && (
+              <div className="ev-error-banner" style={{ flex: "none" }}>
+                {state.error}
+              </div>
+            )}
             <Modal.Body className="ev-editor-body">
               <div className="ev-form-stack">
-                <div className="ev-settings-head">
-                  <SegmentedControl.Root
-                    density="compact"
-                    value={[state.mode]}
-                    onValueChange={(values) => {
-                      const next = values[0];
-                      if (next === "builtin" || next === "custom") {
-                        dispatch({ type: "setMode", mode: next });
-                      }
-                    }}
-                  >
-                    <SegmentedControl.Item value="builtin">
-                      {t("providers.addModal.modeBuiltin")}
-                    </SegmentedControl.Item>
-                    <SegmentedControl.Item value="custom">
-                      {t("providers.addModal.modeCustom")}
-                    </SegmentedControl.Item>
-                  </SegmentedControl.Root>
-                </div>
-
-                {state.error && <div className="ev-error-banner">{state.error}</div>}
-
                 {state.mode === "builtin" ? (
                   <AddBuiltinProviderForm
                     builtinProviders={builtinProviders}

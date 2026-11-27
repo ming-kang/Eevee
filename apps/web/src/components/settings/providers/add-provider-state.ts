@@ -128,7 +128,7 @@ export function addProviderReducer(
       return {
         ...state,
         error: undefined,
-        builtin: { ...state.builtin, selectedId: action.id, apiKey: "" },
+        builtin: { ...state.builtin, selectedId: action.id, apiKey: "", baseUrl: "", headers: [] },
       };
     case "patchCustom":
       return { ...state, custom: { ...state.custom, ...action.patch } };

@@ -34,7 +34,7 @@ export function AddCustomProviderForm({
   const apiOptions = supportedApis.length > 0 ? supportedApis : [draft.api];
 
   return (
-    <form id="ev-add-custom-form" onSubmit={onSubmit} className="ev-form-stack">
+    <form id="ev-add-custom-form" noValidate onSubmit={onSubmit} className="ev-form-stack">
       <section className="ev-editor-section">
         <div className="ev-editor-section-title">{t("providers.custom.basicSection")}</div>
         <div className="ev-model-form-grid">

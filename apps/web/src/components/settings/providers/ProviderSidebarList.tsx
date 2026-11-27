@@ -1,8 +1,9 @@
 import { SearchIcon } from "@earendil-works/elanor-icons-react";
 import { SegmentedControl, Text } from "@earendil-works/elanor-react";
 import type { ProviderSummary } from "@eevee/protocol";
+import { useEffect, useMemo, useRef } from "react";
 import { useI18n } from "../../../lib/i18n.ts";
-import { formatAuthMeta } from "../provider-utils.ts";
+import { formatAuthMeta, sortProvidersForSidebar } from "../provider-utils.ts";
 
 export type ProviderCategoryFilter = "all" | "configured" | "custom" | "builtin";
 
@@ -26,16 +27,30 @@ export function ProviderSidebarList({
   onSelect,
 }: ProviderSidebarListProps) {
   const { t } = useI18n();
+  const activeItemRef = useRef<HTMLButtonElement | null>(null);
   const query = filter.trim().toLowerCase();
-  const visibleProviders = providers.filter((provider) => {
-    if (category === "configured" && !provider.configured) return false;
-    if (category === "custom" && provider.kind !== "custom") return false;
-    if (category === "builtin" && provider.kind === "custom") return false;
-    if (!query) return true;
-    return `${provider.id} ${provider.name} ${provider.api ?? ""} ${provider.authAccountLabel ?? ""}`
-      .toLowerCase()
-      .includes(query);
-  });
+  const visibleProviders = useMemo(
+    () =>
+      sortProvidersForSidebar(providers).filter((provider) => {
+        if (category === "configured" && !provider.configured) return false;
+        if (category === "custom" && provider.kind !== "custom") return false;
+        if (category === "builtin" && provider.kind === "custom") return false;
+        if (!query) return true;
+        return `${provider.id} ${provider.name} ${provider.api ?? ""} ${provider.authAccountLabel ?? ""}`
+          .toLowerCase()
+          .includes(query);
+      }),
+    [providers, category, query],
+  );
+
+  const selectedIndex = selectedId
+    ? visibleProviders.findIndex((provider) => provider.id === selectedId)
+    : -1;
+
+  useEffect(() => {
+    if (selectedIndex < 0) return;
+    activeItemRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex]);
 
   return (
     <div className="ev-provider-list-pane">
@@ -50,6 +65,7 @@ export function ProviderSidebarList({
           />
         </div>
         <SegmentedControl.Root
+          className="ev-provider-category-filter"
           density="compact"
           value={[category]}
           onValueChange={(values) => {
@@ -89,6 +105,7 @@ export function ProviderSidebarList({
               <button
                 type="button"
                 key={provider.id}
+                ref={provider.id === selectedId ? activeItemRef : undefined}
                 className="ev-provider-item"
                 data-active={provider.id === selectedId}
                 onClick={() => onSelect(provider.id)}

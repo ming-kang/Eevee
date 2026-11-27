@@ -105,11 +105,14 @@ export function ModelEditorModal({
         <Modal.Viewport>
           <Modal.Popup className="ev-editor-dialog">
             <Modal.Title>{title}</Modal.Title>
-            <form onSubmit={(event) => void save(event)} className="ev-form-stack">
+            <form noValidate onSubmit={(event) => void save(event)} className="ev-form-stack">
+              {error && (
+                <div className="ev-error-banner" style={{ flex: "none" }}>
+                  {error}
+                </div>
+              )}
               <Modal.Body className="ev-editor-body">
                 <div className="ev-form-stack">
-                  {error && <div className="ev-error-banner">{error}</div>}
-
                   <ModelBasicSection
                     target={target}
                     isCreate={isCreate}

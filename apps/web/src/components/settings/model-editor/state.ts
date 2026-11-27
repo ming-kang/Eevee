@@ -142,11 +142,17 @@ export function createModelEditorDraft(
 ): ModelEditorDraft {
   const model = target.model;
   const effectiveApi = model?.api ?? target.providerApi ?? "";
+  const apiValue =
+    model?.isCustom && model.api && model.api !== target.providerApi ? model.api : "";
+  const baseUrlValue =
+    model?.isCustom && model.baseUrl && model.baseUrl !== target.providerBaseUrl
+      ? model.baseUrl
+      : "";
   return {
     modelId: model?.id ?? "",
     name: model?.name ?? "",
-    apiValue: "",
-    baseUrlValue: "",
+    apiValue,
+    baseUrlValue,
     apiTouched: false,
     baseUrlTouched: false,
     contextWindow: String(model?.contextWindow ?? 128000),

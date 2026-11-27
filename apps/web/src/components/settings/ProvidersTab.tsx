@@ -15,6 +15,7 @@ import { invalidateEngineModelsCache } from "../../lib/useEngineSettings.ts";
 import { AddProviderModal } from "./AddProviderModal.tsx";
 import { ModelEditorModal, type ModelEditorTarget } from "./ModelEditorModal.tsx";
 import { ProbeModelsModal } from "./ProbeModelsModal.tsx";
+import { sortProvidersForSidebar } from "./provider-utils.ts";
 import { ProviderAuthCard, ProviderOAuthPanel } from "./providers/ProviderAuthCard.tsx";
 import { ProviderConfigForm } from "./providers/ProviderConfigForm.tsx";
 import { ProviderModelsList } from "./providers/ProviderModelsList.tsx";
@@ -43,7 +44,7 @@ export function ProvidersTab() {
   const [detail, setDetail] = useState<ProviderDetail | undefined>(undefined);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | undefined>(undefined);
-  const { run: runLoadDetail } = useAbortableAsync();
+  const { run: runLoadDetail, abort: abortLoadDetail } = useAbortableAsync();
   const { run: runRefreshAll } = useAbortableAsync();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -87,14 +88,14 @@ export function ProvidersTab() {
             ? preferredId
             : fallbackId && providersRes.providers.some((item) => item.id === fallbackId)
               ? fallbackId
-              : (providersRes.providers.find((item) => item.configured)?.id ??
-                providersRes.providers[0]?.id);
+              : sortProvidersForSidebar(providersRes.providers)[0]?.id;
         setSelectedId(targetId);
         setLoading(false);
         if (targetId) {
           await loadDetail(targetId);
         } else {
           setDetail(undefined);
+          setDetailError(undefined);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -129,7 +130,10 @@ export function ProvidersTab() {
   };
 
   const applyDetailChanged = async (next: ProviderDetail) => {
+    abortLoadDetail();
     invalidateEngineModelsCache();
+    setLoadingDetail(false);
+    setDetailError(undefined);
     setDetail(next);
     setSelectedId(next.id);
     try {
@@ -259,12 +263,12 @@ export function ProvidersTab() {
             <div className="ev-settings-card">
               <Text className="ev-inline-hint">{t("providers.loadingDetail")}</Text>
             </div>
-          ) : detail ? (
+          ) : detail && detail.id === selectedId ? (
             <div className="ev-form-stack">
               {detailError && <div className="ev-error-banner">{detailError}</div>}
 
               <ProviderAuthCard
-                key={detail.id}
+                key={`auth:${detail.id}`}
                 detail={detail}
                 onRefresh={refreshMutated}
                 onStartOAuth={(providerId) => void oauth.startOAuth(providerId)}
@@ -273,7 +277,7 @@ export function ProvidersTab() {
               />
 
               <ProviderConfigForm
-                key={detail.id}
+                key={`config:${detail.id}`}
                 detail={detail}
                 supportedApis={catalog?.supportedApis ?? []}
                 onSaved={applyDetailChanged}
@@ -281,7 +285,7 @@ export function ProvidersTab() {
               />
 
               <ProviderModelsList
-                key={detail.id}
+                key={`models:${detail.id}`}
                 detail={detail}
                 onOpenProbe={setProbeProviderId}
                 onAddModel={setEditorTarget}

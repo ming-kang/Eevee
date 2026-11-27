@@ -39,6 +39,12 @@ export function SettingsView({
       if (event.key !== "Escape") return false;
       const target = event.target;
       if (target instanceof HTMLElement && target.closest("input, textarea, select")) return false;
+      if (
+        typeof document !== "undefined" &&
+        document.querySelector('[role="dialog"]:not(.ev-control-overlay), [role="alertdialog"]')
+      ) {
+        return false;
+      }
       event.preventDefault();
       onClose();
       return true;

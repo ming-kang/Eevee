@@ -25,6 +25,12 @@
   --ev-dialog-max-w: 820px;
 }
 
+.ev-confirm-dialog {
+  border-radius: 14px;
+  background: var(--ev-surface);
+  box-shadow: var(--ev-shadow-prominent);
+}
+
 .ev-editor-dialog > form {
   display: flex;
   flex-direction: column;
