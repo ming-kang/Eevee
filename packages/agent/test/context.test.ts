@@ -15,6 +15,9 @@ import {
 
 async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "eevee-context-test-"));
+  // Ancestor walks stop at this boundary, so host machine state such as a real ~/.agents/skills cannot leak into fixtures.
+  await mkdir(join(dir, ".git"), { recursive: true });
+  await writeFile(join(dir, ".git", "HEAD"), "ref: refs/heads/main\n");
   try {
     await fn(dir);
   } finally {
