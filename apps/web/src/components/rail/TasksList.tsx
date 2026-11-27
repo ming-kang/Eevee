@@ -18,16 +18,24 @@ import { TaskLogViewer } from "./TaskLogViewer.tsx";
 export function TasksList({
   projectId,
   workers,
+  filterWorkerId,
+  activeWorkerId,
   onOpenWorker,
 }: {
   readonly projectId: ProjectId;
   readonly workers: readonly WorkerBoardItemPayload[];
+  readonly filterWorkerId?: WorkerId;
+  readonly activeWorkerId?: WorkerId;
   readonly onOpenWorker: (workerId: WorkerId) => void;
 }) {
   const { t } = useI18n();
   const allTasks = useMemo(() => {
-    const out: { worker: WorkerBoardItemPayload; task: BackgroundTaskRecordPayload }[] = [];
+    const out: {
+      readonly worker: WorkerBoardItemPayload;
+      readonly task: BackgroundTaskRecordPayload;
+    }[] = [];
     for (const w of workers) {
+      if (filterWorkerId && w.id !== filterWorkerId) continue;
       for (const task of w.tasks) out.push({ worker: w, task });
     }
     return out.sort((a, b) => {
@@ -37,7 +45,7 @@ export function TasksList({
       if (!aActive && bActive) return 1;
       return b.task.startedAt - a.task.startedAt;
     });
-  }, [workers]);
+  }, [workers, filterWorkerId]);
 
   const [openKey, setOpenKey] = useState<string | undefined>(undefined);
   const [liveTaskEntry, setLiveTaskEntry] = useState<
@@ -49,7 +57,11 @@ export function TasksList({
   }, []);
 
   if (allTasks.length === 0) {
-    return <div className="ev-rail-empty">{t("rail.tasks.empty")}</div>;
+    return (
+      <div className="ev-rail-empty">
+        {filterWorkerId ? t("rail.tasks.emptyWorker") : t("rail.tasks.empty")}
+      </div>
+    );
   }
 
   return (
@@ -64,21 +76,27 @@ export function TasksList({
             ? liveTaskEntry.task
             : task;
         const stage = taskStatusStage(effectiveTask.status);
+        const highlighted = !filterWorkerId && worker.id === activeWorkerId;
         return (
-          <div key={key} className="ev-task-card" data-expanded={expanded}>
+          <div
+            key={key}
+            className="ev-task-card"
+            data-expanded={expanded}
+            data-active={highlighted}
+          >
             <button
               type="button"
-              className="ev-rail-item"
+              className="ev-rail-ticket"
               aria-expanded={expanded}
               onClick={() => {
                 setOpenKey(expanded ? undefined : key);
                 setLiveTaskEntry(undefined);
               }}
             >
-              <span className="ev-dot ev-rail-dot" data-stage={stage} />
               <div className="ev-rail-item-main">
                 <div className="ev-mono ev-truncate ev-task-cmd">{effectiveTask.command}</div>
                 <div className="ev-task-sub">
+                  <span className="ev-chip-id">{effectiveTask.id}</span>
                   <span className="ev-mono">{worker.id}</span>
                   <span>·</span>
                   <span>{taskStatusLabel(effectiveTask.status, effectiveTask.exitCode)}</span>
@@ -97,14 +115,16 @@ export function TasksList({
                     <span
                       className="eevee-badge"
                       data-tone="warning"
-                      title={t("rail.tasks.truncatedTitle")}
+                      title={
+                        effectiveTask.logTruncated ? t("rail.tasks.truncatedTitle") : undefined
+                      }
                     >
                       {t("rail.tasks.truncated")}
                     </span>
                   )}
                 </div>
               </div>
-              <span className="ev-chip-id">{effectiveTask.id}</span>
+              <span className="ev-dot" data-stage={stage} />
             </button>
 
             {expanded && (

@@ -55,6 +55,7 @@ export function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
+  const [questionFocusNonce, setQuestionFocusNonce] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectSummary | undefined>(undefined);
   const [deletingProject, setDeletingProject] = useState<ProjectSummary | undefined>(undefined);
@@ -81,10 +82,12 @@ export function App() {
 
   const activeWorkerId = surfaceRoute.name === "project" ? surfaceRoute.workerId : undefined;
   const withRail = surfaceRoute.name === "project" && activeProject !== undefined;
-  const layout = useShellLayout(activeWorkerId !== undefined);
+  const layout = useShellLayout();
 
   const routeKey =
-    surfaceRoute.name === "project" ? `${surfaceRoute.pid}:${surfaceRoute.view}` : "overview";
+    surfaceRoute.name === "project"
+      ? `${surfaceRoute.pid}:${surfaceRoute.view}:${surfaceRoute.workerId ?? "router"}`
+      : "overview";
   useEffect(() => {
     void routeKey;
     setFindOpen(false);
@@ -99,7 +102,15 @@ export function App() {
     (pid: ProjectId, view: ProjectSubView = "chat", workerId?: WorkerId) => {
       layout.closeDrawer();
       navigate({ name: "project", pid, view, ...(workerId ? { workerId } : {}) });
-      if (workerId) layout.openRail();
+    },
+    [layout],
+  );
+
+  const openQuestion = useCallback(
+    (pid: ProjectId) => {
+      layout.closeDrawer();
+      setQuestionFocusNonce((prev) => prev + 1);
+      navigate({ name: "project", pid, view: "chat" });
     },
     [layout],
   );
@@ -289,28 +300,16 @@ export function App() {
 
   const activeBoard = activeProject ? boards[activeProject.id] : undefined;
   const activeSummary = deriveBoardSummary(activeBoard);
-  const railPills: { key: string; tone: "warning" | "accent"; count: number; label: string }[] = [];
-  if (activeSummary.pendingQuestions > 0) {
-    railPills.push({
-      key: "q",
-      tone: "warning",
-      count: activeSummary.pendingQuestions,
-      label: t("app.pendingQuestions", { count: activeSummary.pendingQuestions }),
-    });
-  }
-  if (activeSummary.activeWorkers > 0) {
-    railPills.push({
-      key: "w",
-      tone: "accent",
-      count: activeSummary.activeWorkers,
-      label: t("app.activeWorkers", { count: activeSummary.activeWorkers }),
-    });
-  }
+  const collapsedRailStage =
+    activeSummary.runningTasks > 0
+      ? ("working" as const)
+      : activeSummary.openTickets > 0
+        ? ("queued" as const)
+        : undefined;
 
   const frameStyle = {
     "--ev-side-w": `${layout.sideWidth}px`,
     "--ev-rail-w": `${layout.railWidth}px`,
-    "--ev-rail-pills": String(layout.railCollapsed ? railPills.length : 0),
   } as CSSProperties;
 
   return (
@@ -332,25 +331,8 @@ export function App() {
       {withRail && (
         <div className="ev-rail-trigger-anchor">
           <div className="ev-rail-toggle-wrap">
-            {layout.railCollapsed && railPills.length > 0 && (
-              <div className="ev-rail-pills">
-                {railPills.map((pill) => (
-                  <button
-                    key={pill.key}
-                    type="button"
-                    className="ev-rail-pill"
-                    data-tone={pill.tone}
-                    title={pill.label}
-                    onClick={layout.openRail}
-                  >
-                    <span
-                      className="ev-dot"
-                      data-stage={pill.tone === "warning" ? "answer" : "working"}
-                    />
-                    <span>{pill.count}</span>
-                  </button>
-                ))}
-              </div>
+            {layout.railCollapsed && collapsedRailStage && (
+              <span className="ev-dot" data-stage={collapsedRailStage} />
             )}
             <IconButton
               aria-label={layout.railCollapsed ? t("app.expandRail") : t("app.collapseRail")}
@@ -368,7 +350,7 @@ export function App() {
       )}
 
       <div
-        className={`ev-frame${withRail ? " with-rail" : ""}${layout.sideCollapsed ? " side-collapsed" : ""}${layout.railCollapsed ? " rail-collapsed" : ""}${layout.railMaximized ? " rail-maximized" : ""}`}
+        className={`ev-frame${withRail ? " with-rail" : ""}${layout.sideCollapsed ? " side-collapsed" : ""}${layout.railCollapsed ? " rail-collapsed" : ""}`}
         style={frameStyle}
       >
         <nav
@@ -379,13 +361,15 @@ export function App() {
             <Sidebar
               projects={projects}
               boards={boards}
-              route={route}
+              activeProject={activeProject}
+              route={surfaceRoute}
               themePreference={theme.preference}
               themeScheme={theme.scheme}
               onOpenOverview={openOverview}
-              onOpenProject={(pid, view) => openProject(pid, view)}
+              onOpenProject={(pid, view, wid) => openProject(pid, view, wid)}
+              onOpenQuestion={openQuestion}
               onNewProject={() => setCreateOpen(true)}
-              onRenameProject={setEditingProject}
+              onEditProject={setEditingProject}
               onDeleteProject={setDeletingProject}
               onOpenPalette={() => setPaletteOpen(true)}
               onOpenControl={() => openControl("general")}
@@ -424,12 +408,16 @@ export function App() {
             <ChatPage
               project={activeProject}
               board={activeBoard}
+              activeWorkerId={activeWorkerId}
+              questionFocusNonce={questionFocusNonce}
               findOpen={findOpen}
               onOpenFind={() => setFindOpen(true)}
               onCloseFind={() => setFindOpen(false)}
               onSelectView={(v) => openProject(activeProject.id, v)}
               onEditProject={() => setEditingProject(activeProject)}
               onOpenWorker={(wid) => openProject(activeProject.id, "chat", wid)}
+              onOpenRouter={() => openProject(activeProject.id, "chat")}
+              onOpenQuestion={() => openQuestion(activeProject.id)}
             />
           )}
           {projectsStore.error && surfaceRoute.name === "project" && activeProject && (
@@ -466,10 +454,7 @@ export function App() {
                 projectId={activeProject.id}
                 board={activeBoard}
                 activeWorkerId={activeWorkerId}
-                maximized={layout.railMaximized}
                 onOpenWorker={(wid) => openProject(activeProject.id, "chat", wid)}
-                onCloseWorker={() => openProject(activeProject.id, "chat")}
-                onToggleMaximize={layout.toggleRailMaximize}
               />
             </div>
           </aside>
@@ -487,12 +472,12 @@ export function App() {
           />
         )}
 
-        {withRail && !layout.railCollapsed && !layout.railMaximized && (
+        {withRail && !layout.railCollapsed && (
           <Sash
             side="right"
             label={t("app.resizeRail")}
-            min={320}
-            max={820}
+            min={300}
+            max={640}
             now={layout.railWidth}
             onResize={layout.setRailWidth}
             onReset={layout.resetRailWidth}

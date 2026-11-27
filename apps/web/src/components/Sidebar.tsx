@@ -1,33 +1,51 @@
 import {
   AddIcon,
-  CloseIcon,
+  CheckIcon,
   DarkModeIcon,
+  DeleteIcon,
+  EditIcon,
+  ExpandMoreIcon,
+  GridViewIcon,
+  HubIcon,
+  KeyboardArrowDownIcon,
   KeyboardIcon,
   LightModeIcon,
   LogoutIcon,
-  MoreHorizIcon,
-  SearchIcon,
+  SubdirectoryArrowRightIcon,
 } from "@earendil-works/elanor-icons-react";
 import { IconButton, Menu } from "@earendil-works/elanor-react";
-import type { BoardViewPayload, ProjectId, ProjectSummary } from "@eevee/protocol";
-import { useMemo, useRef, useState } from "react";
+import type { BoardViewPayload, ProjectId, ProjectSummary, WorkerId } from "@eevee/protocol";
+import { useMemo, useState } from "react";
+import { workerStatusLabel } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
 import type { Route } from "../lib/router.ts";
 import { modLabel } from "../lib/shortcuts.ts";
 import type { ThemePreference, ThemeScheme } from "../lib/theme.ts";
 import { deriveBoardSummary } from "../lib/transcript.ts";
+import {
+  aggregateProjectsStage,
+  openBoardQuestions,
+  partitionSidebarWorkers,
+  workerStage,
+} from "../lib/workspace-nav.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
 
 export type SidebarProps = {
   readonly projects: readonly ProjectSummary[];
   readonly boards: Readonly<Record<string, BoardViewPayload>>;
+  readonly activeProject: ProjectSummary | undefined;
   readonly route: Route;
   readonly themePreference: ThemePreference;
   readonly themeScheme: ThemeScheme;
   readonly onOpenOverview: () => void;
-  readonly onOpenProject: (pid: ProjectId, view?: "chat" | "memory" | "usage") => void;
+  readonly onOpenProject: (
+    pid: ProjectId,
+    view?: "chat" | "memory" | "usage",
+    workerId?: WorkerId,
+  ) => void;
+  readonly onOpenQuestion: (pid: ProjectId) => void;
   readonly onNewProject: () => void;
-  readonly onRenameProject: (project: ProjectSummary) => void;
+  readonly onEditProject: (project: ProjectSummary) => void;
   readonly onDeleteProject: (project: ProjectSummary) => void;
   readonly onOpenPalette: () => void;
   readonly onOpenControl: () => void;
@@ -39,13 +57,15 @@ export type SidebarProps = {
 export function Sidebar({
   projects,
   boards,
+  activeProject,
   route,
   themePreference,
   themeScheme,
   onOpenOverview,
   onOpenProject,
+  onOpenQuestion,
   onNewProject,
-  onRenameProject,
+  onEditProject,
   onDeleteProject,
   onOpenPalette,
   onOpenControl,
@@ -54,22 +74,42 @@ export function Sidebar({
   onLogout,
 }: SidebarProps) {
   const { t } = useI18n();
-  const [filter, setFilter] = useState("");
+  const [showClosed, setShowClosed] = useState(false);
   const themeLabel = t(`sidebar.theme.${themePreference}` as const);
-  const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const filtered = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return projects;
-    return projects.filter((p) => `${p.title} ${p.id}`.toLowerCase().includes(q));
-  }, [projects, filter]);
-
-  const totalPending = useMemo(
-    () => projects.reduce((sum, p) => sum + deriveBoardSummary(boards[p.id]).pendingQuestions, 0),
-    [projects, boards],
+  const activeBoard = activeProject ? boards[activeProject.id] : undefined;
+  const openQuestions = useMemo(() => openBoardQuestions(activeBoard), [activeBoard]);
+  const { active: activeWorkers, closed: closedWorkers } = useMemo(
+    () => partitionSidebarWorkers(activeBoard?.workers ?? []),
+    [activeBoard],
+  );
+  const ticketById = useMemo(
+    () => new Map((activeBoard?.tickets ?? []).map((ticket) => [ticket.id, ticket])),
+    [activeBoard],
   );
 
-  const currentPid = route.name === "project" ? route.pid : undefined;
+  const allProjectsStage = useMemo(
+    () => aggregateProjectsStage(projects, boards),
+    [projects, boards],
+  );
+  const switcherAttentionStage = useMemo(
+    () => aggregateProjectsStage(projects, boards, activeProject?.id),
+    [projects, boards, activeProject?.id],
+  );
+
+  const isProjectChat =
+    route.name === "project" && activeProject !== undefined && route.view === "chat";
+  const activeWorkerId = route.name === "project" ? route.workerId : undefined;
+  const isRouterActive = isProjectChat && activeWorkerId === undefined;
+  const closedExpanded =
+    showClosed || (isProjectChat && closedWorkers.some((w) => w.id === activeWorkerId));
+  const firstQuestionText = openQuestions[0]?.items[0]?.question?.trim();
+
+  const switcherLabel = activeProject
+    ? activeProject.title
+    : projects.length > 0
+      ? t("sidebar.overview")
+      : t("sidebar.selectProject");
 
   return (
     <>
@@ -78,162 +118,293 @@ export function Sidebar({
           <BrandLogo size={20} />
           <span>Eevee</span>
         </button>
-      </div>
-
-      <div className="ev-side-search-wrap">
-        <div className="ev-side-search">
-          <SearchIcon width={14} height={14} />
-          <input
-            ref={inputRef}
-            className="ev-raw-input"
-            type="search"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && filter) {
-                event.preventDefault();
-                setFilter("");
-              }
-            }}
-            placeholder={t("sidebar.searchProjects")}
-            aria-label={t("sidebar.searchProjects")}
-          />
-          {filter ? (
-            <button
-              type="button"
-              style={{
-                border: 0,
-                background: "transparent",
-                color: "var(--ev-fg-subtle)",
-                cursor: "pointer",
-                display: "grid",
-                placeItems: "center",
-                width: 20,
-                height: 20,
-              }}
-              aria-label={t("sidebar.clearFilter")}
-              onClick={() => {
-                setFilter("");
-                inputRef.current?.focus();
-              }}
-            >
-              <CloseIcon width={13} height={13} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="ev-kbd-pill"
-              title={`${t("shortcuts.palette")} (${modLabel()} K)`}
-              onClick={onOpenPalette}
-            >
-              {modLabel()} K
-            </button>
-          )}
-        </div>
-
-        {filter.trim() === "" && (
-          <div className="ev-nav-row" data-active={route.name === "overview"}>
-            <button type="button" className="ev-nav-row-btn" onClick={onOpenOverview}>
-              <span className="ev-truncate" style={{ flex: 1 }}>
-                {t("sidebar.overview")}
-              </span>
-              {totalPending > 0 && (
-                <span className="ev-count-badge" data-tone="warning">
-                  {totalPending > 99 ? "99+" : totalPending}
-                </span>
-              )}
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="ev-side-section">
-        <span>
-          {t("sidebar.projects")} ({projects.length})
-        </span>
-        <IconButton
-          aria-label={t("sidebar.newProject")}
-          title={t("sidebar.newProject")}
-          onClick={onNewProject}
+        <span style={{ flex: 1 }} />
+        <button
+          type="button"
+          className="ev-kbd-pill"
+          title={`${t("shortcuts.palette")} (${modLabel()} K)`}
+          onClick={onOpenPalette}
         >
-          <AddIcon width={16} height={16} />
-        </IconButton>
+          {modLabel()} K
+        </button>
       </div>
 
-      <div className="ev-side-list">
-        {filtered.map((project) => {
-          const summary = deriveBoardSummary(boards[project.id]);
-          const pending = summary.pendingQuestions;
-          const active = currentPid === project.id;
-          return (
-            <div key={project.id} className="ev-nav-row" data-active={active}>
+      <div className="ev-project-switcher-wrap">
+        <Menu.Root>
+          <Menu.Trigger
+            render={
+              <button
+                type="button"
+                className="ev-project-switcher-btn"
+                aria-label={t("sidebar.switchProject")}
+                title={activeProject?.workspaces.join(" · ") ?? switcherLabel}
+              >
+                <span className="ev-truncate ev-project-switcher-label">{switcherLabel}</span>
+                <span className="ev-project-switcher-end">
+                  {switcherAttentionStage !== "idle" && (
+                    <span className="ev-dot" data-stage={switcherAttentionStage} />
+                  )}
+                  <KeyboardArrowDownIcon
+                    width={16}
+                    height={16}
+                    className="ev-project-switcher-chev"
+                  />
+                </span>
+              </button>
+            }
+          />
+          <Menu.Portal>
+            <Menu.Positioner align="start" sideOffset={4}>
+              <Menu.Popup className="ev-project-menu">
+                <Menu.Item
+                  icon={
+                    !activeProject ? (
+                      <CheckIcon width={14} height={14} />
+                    ) : (
+                      <GridViewIcon width={14} height={14} />
+                    )
+                  }
+                  endAdornment={
+                    allProjectsStage !== "idle" ? (
+                      <span className="ev-dot" data-stage={allProjectsStage} />
+                    ) : undefined
+                  }
+                  onClick={onOpenOverview}
+                >
+                  {t("sidebar.overview")}
+                </Menu.Item>
+
+                {projects.length > 0 && <Menu.Separator />}
+
+                {projects.length > 0 && (
+                  <div className="ev-project-menu-list">
+                    {projects.map((project) => {
+                      const summary = deriveBoardSummary(boards[project.id]);
+                      const selected = activeProject?.id === project.id;
+                      return (
+                        <Menu.Item
+                          key={project.id}
+                          icon={
+                            selected ? (
+                              <CheckIcon width={14} height={14} />
+                            ) : (
+                              <span className="ev-project-menu-spacer" aria-hidden="true" />
+                            )
+                          }
+                          endAdornment={
+                            summary.stage !== "idle" ? (
+                              <span className="ev-dot" data-stage={summary.stage} />
+                            ) : undefined
+                          }
+                          onClick={() => onOpenProject(project.id, "chat")}
+                        >
+                          {project.title}
+                        </Menu.Item>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <Menu.Separator />
+
+                <Menu.Item icon={<AddIcon width={14} height={14} />} onClick={onNewProject}>
+                  {t("sidebar.newProject")}
+                </Menu.Item>
+
+                {activeProject && (
+                  <>
+                    <Menu.Item
+                      icon={<EditIcon width={14} height={14} />}
+                      onClick={() => onEditProject(activeProject)}
+                    >
+                      {t("sidebar.editProject")}
+                    </Menu.Item>
+                    <Menu.Item
+                      className="ev-project-menu-danger"
+                      icon={<DeleteIcon width={14} height={14} />}
+                      onClick={() => onDeleteProject(activeProject)}
+                    >
+                      {t("sidebar.deleteProject")}
+                    </Menu.Item>
+                  </>
+                )}
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.Root>
+      </div>
+
+      {activeProject ? (
+        <>
+          <div className="ev-side-router-block">
+            <div className="ev-nav-row" data-active={isRouterActive}>
               <button
                 type="button"
                 className="ev-nav-row-btn"
-                title={project.workspaces.join(" · ")}
-                onClick={() => onOpenProject(project.id, "chat")}
+                onClick={() => onOpenProject(activeProject.id, "chat")}
               >
-                <span className="ev-dot" data-stage={summary.stage} />
+                <HubIcon width={15} height={15} className="ev-nav-row-icon" />
                 <span className="ev-truncate" style={{ flex: 1 }}>
-                  {project.title}
+                  {t("sidebar.router")}
                 </span>
               </button>
-
-              <div className="ev-nav-row-end">
-                {pending > 0 && (
-                  <span
-                    className="ev-count-badge ev-row-badge-hide"
-                    data-tone="warning"
-                    style={{ position: "absolute", pointerEvents: "none" }}
-                  >
-                    {pending > 99 ? "99+" : pending}
-                  </span>
-                )}
-                <Menu.Root>
-                  <Menu.Trigger
-                    render={
-                      <IconButton
-                        className="ev-row-menu-btn"
-                        aria-label={`${project.title} ${t("sidebar.projectActions")}`}
-                        title={t("sidebar.projectActions")}
-                      >
-                        <MoreHorizIcon width={16} height={16} />
-                      </IconButton>
-                    }
-                  />
-                  <Menu.Portal>
-                    <Menu.Positioner align="end" sideOffset={4}>
-                      <Menu.Popup>
-                        <Menu.Item onClick={() => onOpenProject(project.id, "memory")}>
-                          {t("sidebar.memory")}
-                        </Menu.Item>
-                        <Menu.Item onClick={() => onOpenProject(project.id, "usage")}>
-                          {t("sidebar.usage")}
-                        </Menu.Item>
-                        <Menu.Separator />
-                        <Menu.Item onClick={() => onRenameProject(project)}>
-                          {t("sidebar.editProject")}
-                        </Menu.Item>
-                        <Menu.Item onClick={() => onDeleteProject(project)}>
-                          {t("sidebar.deleteProject")}
-                        </Menu.Item>
-                      </Menu.Popup>
-                    </Menu.Positioner>
-                  </Menu.Portal>
-                </Menu.Root>
-              </div>
             </div>
-          );
-        })}
 
-        {projects.length > 0 && filtered.length === 0 && (
-          <div
-            style={{ padding: "8px 10px", fontSize: "0.78125rem", color: "var(--ev-fg-subtle)" }}
-          >
-            {t("sidebar.noMatchingProjects")}
+            {openQuestions.length > 0 && (
+              <button
+                type="button"
+                className="ev-side-question-row"
+                data-active={isRouterActive}
+                title={firstQuestionText ?? t("sidebar.questionRow")}
+                onClick={() => onOpenQuestion(activeProject.id)}
+              >
+                <SubdirectoryArrowRightIcon
+                  width={13}
+                  height={13}
+                  className="ev-side-question-icon"
+                />
+                <span className="ev-truncate ev-side-question-text">
+                  {firstQuestionText || t("sidebar.questionRow")}
+                </span>
+                <span className="ev-dot" data-stage="answer" />
+              </button>
+            )}
           </div>
-        )}
-      </div>
+
+          <hr className="ev-side-divider" />
+
+          <div className="ev-side-section">
+            <span>{t("sidebar.workers")}</span>
+          </div>
+
+          <div className="ev-side-list">
+            {activeWorkers.length === 0 && closedWorkers.length === 0 ? (
+              <div className="ev-side-empty">{t("sidebar.noWorkers")}</div>
+            ) : (
+              <>
+                {activeWorkers.map((worker) => {
+                  const ticket = worker.activeTicketId
+                    ? ticketById.get(worker.activeTicketId)
+                    : undefined;
+                  const active = isProjectChat && activeWorkerId === worker.id;
+                  return (
+                    <div key={worker.id} className="ev-nav-row ev-worker-row" data-active={active}>
+                      <button
+                        type="button"
+                        className="ev-nav-row-btn ev-worker-row-btn"
+                        title={
+                          ticket
+                            ? `${ticket.title} (${worker.id})`
+                            : `${worker.name} (${worker.id})`
+                        }
+                        onClick={() => onOpenProject(activeProject.id, "chat", worker.id)}
+                      >
+                        <div className="ev-worker-row-main">
+                          <span className="ev-truncate ev-worker-row-title">
+                            {ticket ? ticket.title : worker.name}
+                          </span>
+                          <span className="ev-truncate ev-worker-row-sub">
+                            <span className="ev-mono">{worker.id}</span>
+                            {" · "}
+                            {ticket ? worker.name : workerStatusLabel(worker.status)}
+                          </span>
+                        </div>
+                        <span className="ev-dot" data-stage={workerStage(worker)} />
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {closedWorkers.length > 0 && (
+                  <div className="ev-side-closed-group">
+                    <button
+                      type="button"
+                      className="ev-side-group-btn"
+                      aria-expanded={closedExpanded}
+                      onClick={() => setShowClosed((prev) => !prev)}
+                    >
+                      <span>{t("sidebar.closedWorkers")}</span>
+                      <ExpandMoreIcon
+                        width={15}
+                        height={15}
+                        className={`ev-rail-chev${closedExpanded ? "" : " collapsed"}`}
+                      />
+                    </button>
+                    {closedExpanded &&
+                      closedWorkers.map((worker) => {
+                        const active = isProjectChat && activeWorkerId === worker.id;
+                        return (
+                          <div
+                            key={worker.id}
+                            className="ev-nav-row ev-worker-row muted"
+                            data-active={active}
+                          >
+                            <button
+                              type="button"
+                              className="ev-nav-row-btn ev-worker-row-btn"
+                              title={`${worker.name} (${worker.id})`}
+                              onClick={() => onOpenProject(activeProject.id, "chat", worker.id)}
+                            >
+                              <div className="ev-worker-row-main">
+                                <span className="ev-truncate ev-worker-row-title">
+                                  {worker.name}
+                                </span>
+                                <span className="ev-truncate ev-worker-row-sub ev-mono">
+                                  {worker.id}
+                                </span>
+                              </div>
+                              <span className="ev-dot" data-stage="done" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="ev-side-section">
+            <span>{t("sidebar.projects")}</span>
+            <IconButton
+              aria-label={t("sidebar.newProject")}
+              title={t("sidebar.newProject")}
+              onClick={onNewProject}
+            >
+              <AddIcon width={16} height={16} />
+            </IconButton>
+          </div>
+
+          <div className="ev-side-list">
+            {projects.length === 0 ? (
+              <div className="ev-side-empty">{t("sidebar.noProjectsHint")}</div>
+            ) : (
+              projects.map((project) => {
+                const summary = deriveBoardSummary(boards[project.id]);
+                return (
+                  <div key={project.id} className="ev-nav-row">
+                    <button
+                      type="button"
+                      className="ev-nav-row-btn"
+                      title={project.workspaces.join(" · ")}
+                      onClick={() => onOpenProject(project.id, "chat")}
+                    >
+                      <span className="ev-truncate" style={{ flex: 1 }}>
+                        {project.title}
+                      </span>
+                      {summary.stage !== "idle" && (
+                        <span className="ev-dot" data-stage={summary.stage} />
+                      )}
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </>
+      )}
 
       <div className="ev-side-footer">
         <button
