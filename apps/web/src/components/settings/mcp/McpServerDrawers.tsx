@@ -1,6 +1,7 @@
 import { OpenInNewIcon, RefreshIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Input, Link, Text } from "@earendil-works/elanor-react";
 import type { McpServerSnapshotPayload } from "@eevee/protocol";
+import { useI18n } from "../../../lib/i18n.ts";
 import type { OAuthUiSession } from "../useMcpOAuth.ts";
 import {
   DEFAULT_EXPOSURE,
@@ -20,21 +21,22 @@ export function OAuthSessionBox({
   readonly onSubmitRedirect: () => void;
   readonly onSetRedirectInput: (value: string) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="ev-mcp-oauth-box">
       <div className="ev-settings-head">
-        <strong>OAuth 授权流程 · {session.serverName}</strong>
+        <strong>{t("mcp.oauth.flowTitle", { name: session.serverName })}</strong>
         <Button type="button" hierarchy="secondary" density="compact" onClick={onCancel}>
-          {session.done || session.error ? "关闭" : "取消"}
+          {t(session.done || session.error ? "common.close" : "common.cancel")}
         </Button>
       </div>
       {session.instructions && (
-        <Text style={{ margin: 0, fontSize: 13 }}>{session.instructions}</Text>
+        <Text style={{ margin: 0, fontSize: "0.8125rem" }}>{session.instructions}</Text>
       )}
       {session.authUrl && (
         <div className="ev-mcp-oauth-url">
           <Link href={session.authUrl} target="_blank" rel="noreferrer noopener">
-            打开授权页面 <OpenInNewIcon width={13} height={13} />
+            {t("mcp.oauth.openAuthPage")} <OpenInNewIcon width={13} height={13} />
           </Link>
           <span className="ev-mono ev-inline-muted ev-truncate">{session.authUrl}</span>
         </div>
@@ -56,8 +58,8 @@ export function OAuthSessionBox({
             disabled={session.submittingInput}
             placeholder={
               session.redirectHint
-                ? `若未自动回跳，粘贴回调 URL（如 ${session.redirectHint}?code=...）`
-                : "若未自动回跳，粘贴完整回调 URL"
+                ? t("mcp.oauth.redirectPlaceholderWithHint", { hint: session.redirectHint })
+                : t("mcp.oauth.redirectPlaceholder")
             }
             onValueChange={onSetRedirectInput}
           />
@@ -69,14 +71,14 @@ export function OAuthSessionBox({
             pending={session.submittingInput}
             onClick={onSubmitRedirect}
           >
-            提交回调 URL
+            {t("mcp.oauth.submitRedirect")}
           </Button>
         </div>
       )}
       {session.done && (
         <div>
           <span className="eevee-badge" data-tone="positive">
-            授权完成，服务状态已刷新
+            {t("mcp.oauth.authorizedNotice")}
           </span>
         </div>
       )}
@@ -104,6 +106,7 @@ export function ToolsDrawer({
     nextValue: string,
   ) => void;
 }) {
+  const { t } = useI18n();
   const exposure = server.exposure ?? DEFAULT_EXPOSURE;
   const toolsList = server.tools ?? [];
   const explicitTools = getExplicitToolExposure(ownConfig);
@@ -122,18 +125,18 @@ export function ToolsDrawer({
       {toolsList.length === 0 ? (
         <Text className="ev-inline-hint">
           {server.status === "connected" || server.status === "degraded"
-            ? "该服务未暴露任何工具。"
-            : "服务未连接，连接后将显示工具列表。"}
+            ? t("mcp.tools.emptyConnected")
+            : t("mcp.tools.emptyDisconnected")}
         </Text>
       ) : (
         <div className="ev-mcp-tools-table-wrap">
           <table className="ev-mcp-tools-table">
             <thead>
               <tr>
-                <th>工具名称</th>
-                <th>描述</th>
-                <th>生效暴露</th>
-                <th>单工具覆写</th>
+                <th>{t("mcp.tools.colName")}</th>
+                <th>{t("mcp.tools.colDescription")}</th>
+                <th>{t("mcp.tools.colEffectiveExposure")}</th>
+                <th>{t("mcp.tools.colOverride")}</th>
               </tr>
             </thead>
             <tbody>
@@ -142,8 +145,8 @@ export function ToolsDrawer({
                 const globalExplicit = globalToolExposure[tool.name];
                 const defaultLabel =
                   isProject && globalExplicit !== undefined
-                    ? `继承全局 (${globalExplicit})`
-                    : `默认 (${exposure})`;
+                    ? t("mcp.tools.inheritGlobal", { exposure: globalExplicit })
+                    : t("mcp.tools.defaultExposure", { exposure });
 
                 return (
                   <tr key={tool.name}>
@@ -157,7 +160,7 @@ export function ToolsDrawer({
                     <td>
                       <select
                         className="ev-select"
-                        aria-label={`${tool.name} 暴露方式`}
+                        aria-label={t("mcp.tools.exposureAriaLabel", { name: tool.name })}
                         disabled={isBusy}
                         value={explicit ?? ""}
                         onChange={(event) =>
@@ -194,22 +197,23 @@ export function LogsDrawer({
   readonly onRefresh: () => void;
   readonly onClose: () => void;
 }) {
+  const { t } = useI18n();
   const logOutput =
     logState?.loading && logState.lines.length === 0
       ? server.recentLogs && server.recentLogs.length > 0
         ? server.recentLogs.join("\n")
-        : "加载日志中…"
+        : t("mcp.logs.loading")
       : logState && logState.lines.length > 0
         ? logState.lines.join("\n")
         : server.recentLogs && server.recentLogs.length > 0
           ? server.recentLogs.join("\n")
-          : "(暂无日志)";
+          : t("mcp.logs.empty");
 
   return (
     <div className="ev-mcp-drawer">
       <div className="ev-mcp-log-head">
         <span className="ev-mono ev-inline-muted ev-truncate">
-          {logState?.logPath ?? "MCP 运行日志"}
+          {logState?.logPath ?? t("mcp.logs.defaultTitle")}
         </span>
         <div className="ev-inline-actions">
           <Button
@@ -220,10 +224,10 @@ export function LogsDrawer({
             pending={logState?.loading === true}
             onClick={onRefresh}
           >
-            刷新日志
+            {t("mcp.logs.refresh")}
           </Button>
           <Button type="button" hierarchy="tertiary" density="compact" onClick={onClose}>
-            收起
+            {t("mcp.logs.collapse")}
           </Button>
         </div>
       </div>

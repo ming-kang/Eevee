@@ -6,6 +6,7 @@ import type {
   WorkerId,
 } from "@eevee/protocol";
 import { taskStatusLabel, taskStatusStage, taskStatusTone } from "../../lib/format.ts";
+import { type LocaleKey, t } from "../../lib/i18n.ts";
 import type { NoticeInfo, VisualStage } from "../../lib/transcript.ts";
 
 export type NoticeLabelInfo = {
@@ -22,16 +23,16 @@ export type NoticeLabelInfo = {
 
 const TASK_TITLES: Record<
   BackgroundTaskStatus,
-  { readonly prefix: string; readonly danger?: true }
+  { readonly key: LocaleKey; readonly danger?: true }
 > = {
-  completed: { prefix: "后台任务完成" },
-  failed: { prefix: "后台任务失败", danger: true },
-  timed_out: { prefix: "后台任务超时", danger: true },
-  cancelled: { prefix: "后台任务已取消" },
-  interrupted: { prefix: "后台任务中断", danger: true },
-  queued: { prefix: "后台任务" },
-  running: { prefix: "后台任务" },
-  stopping: { prefix: "后台任务" },
+  completed: { key: "transcript.notice.taskCompleted" },
+  failed: { key: "transcript.notice.taskFailed", danger: true },
+  timed_out: { key: "transcript.notice.taskTimedOut", danger: true },
+  cancelled: { key: "transcript.notice.taskCancelled" },
+  interrupted: { key: "transcript.notice.taskInterrupted", danger: true },
+  queued: { key: "transcript.notice.taskGeneric" },
+  running: { key: "transcript.notice.taskGeneric" },
+  stopping: { key: "transcript.notice.taskGeneric" },
 };
 
 function taskNotificationLabel(data: TaskNotificationData): NoticeLabelInfo {
@@ -41,7 +42,7 @@ function taskNotificationLabel(data: TaskNotificationData): NoticeLabelInfo {
       ? "cancelled (user)"
       : taskStatusLabel(data.status, data.exitCode);
   return {
-    title: `${spec.prefix} · ${data.taskId}`,
+    title: t(spec.key, { taskId: data.taskId }),
     tone: spec.danger ? "danger" : "default",
     stage: taskStatusStage(data.status),
     badge: { text: badgeText, tone: taskStatusTone(data.status) },
@@ -52,7 +53,7 @@ function noticeDataLabel(data: NoticeData): NoticeLabelInfo {
   switch (data.type) {
     case "handoff":
       return {
-        title: `Worker 交棒 · ${data.workerName || data.workerId}`,
+        title: t("transcript.notice.handoff", { name: data.workerName || data.workerId }),
         tone: "default",
         stage: "done",
         workerId: data.workerId,
@@ -60,7 +61,7 @@ function noticeDataLabel(data: NoticeData): NoticeLabelInfo {
       };
     case "worker_message":
       return {
-        title: `Worker 消息 · ${data.workerName || data.workerId}`,
+        title: t("transcript.notice.workerMessage", { name: data.workerName || data.workerId }),
         tone: "default",
         stage: "done",
         workerId: data.workerId,
@@ -68,7 +69,7 @@ function noticeDataLabel(data: NoticeData): NoticeLabelInfo {
       };
     case "worker_failed":
       return {
-        title: `Worker 失败 · ${data.workerName || data.workerId}`,
+        title: t("transcript.notice.workerFailed", { name: data.workerName || data.workerId }),
         tone: "danger",
         stage: "blocked",
         workerId: data.workerId,
@@ -76,7 +77,7 @@ function noticeDataLabel(data: NoticeData): NoticeLabelInfo {
       };
     case "question_answered":
       return {
-        title: `用户答复 · ${data.questionId}`,
+        title: t("transcript.notice.questionAnswered", { questionId: data.questionId }),
         tone: "default",
         stage: "done",
       };
@@ -90,6 +91,10 @@ export function noticeMetaLabel(meta: NoticeInfo): NoticeLabelInfo {
     case "task_notification":
       return taskNotificationLabel(meta.data);
     case "generic":
-      return { title: `通知 · ${meta.type}`, tone: "default", stage: "done" };
+      return {
+        title: t("transcript.notice.generic", { type: meta.type }),
+        tone: "default",
+        stage: "done",
+      };
   }
 }

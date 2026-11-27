@@ -3,6 +3,7 @@ import { Button, Modal } from "@earendil-works/elanor-react";
 import type { ProbedModel, ProviderDetail } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { useI18n } from "../../lib/i18n.ts";
 import { ModelProbeSelector } from "./ModelProbeSelector.tsx";
 import { toImportModelPayload } from "./provider-utils.ts";
 
@@ -15,6 +16,7 @@ export function ProbeModelsModal({
   readonly onClose: () => void;
   readonly onImported: (provider: ProviderDetail) => void;
 }) {
+  const { t } = useI18n();
   const [models, setModels] = useState<ProbedModel[]>([]);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [probeError, setProbeError] = useState<string | undefined>(undefined);
@@ -77,7 +79,7 @@ export function ProbeModelsModal({
         <Modal.Backdrop />
         <Modal.Viewport>
           <Modal.Popup className="ev-probe-dialog">
-            <Modal.Title>探测并导入模型 · {providerId}</Modal.Title>
+            <Modal.Title>{t("probe.modalTitle", { providerId })}</Modal.Title>
             <Modal.Body className="ev-editor-body">
               <div className="ev-form-stack">
                 <ModelProbeSelector
@@ -86,8 +88,8 @@ export function ProbeModelsModal({
                   onSelectedChange={setSelected}
                   filter={filter}
                   onFilterChange={setFilter}
-                  filterPlaceholder="筛选探测结果…"
-                  emptyText="没有可导入的模型。"
+                  filterPlaceholder={t("probe.filterPlaceholder")}
+                  emptyText={t("probe.empty")}
                   variant="chips"
                   loading={probing}
                   suppressEmpty={Boolean(probeError)}
@@ -100,20 +102,22 @@ export function ProbeModelsModal({
                       pending={probing}
                       onClick={() => void runProbe()}
                     >
-                      重新探测
+                      {t("probe.reprobe")}
                     </Button>
                   }
                   statusSlot={
                     <>
                       {connectionNote && (
                         <div className="ev-connection-note" data-warning={connectionWarning}>
-                          请求 URL：<span className="ev-mono">{connectionNote}</span>
-                          {connectionWarning && <strong> 检测到可能的 /v1 重复</strong>}
+                          {t("probe.requestUrlLabel")}
+                          <span className="ev-mono">{connectionNote}</span>
+                          {connectionWarning && <strong>{t("probe.duplicateV1Warning")}</strong>}
                         </div>
                       )}
                       {catalogUrl && (
                         <div className="ev-inline-hint">
-                          模型目录：<span className="ev-mono">{catalogUrl}</span>
+                          {t("probe.catalogUrlLabel")}
+                          <span className="ev-mono">{catalogUrl}</span>
                         </div>
                       )}
                       {probeError && <div className="ev-error-banner">{probeError}</div>}
@@ -121,7 +125,7 @@ export function ProbeModelsModal({
                       {truncated && (
                         <div>
                           <span className="eevee-badge" data-tone="warning">
-                            结果已截断，请用筛选定位后导入
+                            {t("probe.truncatedWarning")}
                           </span>
                         </div>
                       )}
@@ -134,7 +138,7 @@ export function ProbeModelsModal({
               <Modal.Close
                 render={
                   <Button type="button" hierarchy="secondary">
-                    取消
+                    {t("common.cancel")}
                   </Button>
                 }
               />
@@ -146,7 +150,7 @@ export function ProbeModelsModal({
                 pending={importing}
                 onClick={() => void importSelected()}
               >
-                导入所选（{selectedModels.length}）
+                {t("probe.importSelected", { count: selectedModels.length })}
               </Button>
             </Modal.Actions>
           </Modal.Popup>

@@ -41,12 +41,12 @@
 }
 
 .ev-stat-k {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ev-fg-muted);
 }
 
 .ev-stat-v {
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 500;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
@@ -66,13 +66,13 @@
 }
 
 .ev-table-frame th {
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   color: var(--ev-fg-muted);
   padding-block: 10px;
 }
 
 .ev-table-frame td {
-  font-size: 13.5px;
+  font-size: 0.84375rem;
   padding-block: 11px;
 }
 
@@ -182,7 +182,7 @@
 
 .ev-header-eq {
   font-family: var(--primitive-font-family-mono);
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ev-fg-subtle);
 }
 
@@ -196,7 +196,7 @@
   border-radius: 8px;
   background: var(--ev-surface);
   border: var(--ev-hairline) solid var(--ev-border);
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ev-fg);
 }
 
@@ -226,7 +226,7 @@
   border: 0;
   background: transparent;
   color: var(--ev-fg);
-  font-size: 13px;
+  font-size: 0.8125rem;
   outline: none;
 }
 
@@ -261,13 +261,13 @@
 
 .ev-tool-group-title {
   color: var(--ev-fg);
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   font-weight: 500;
 }
 
 .ev-tool-group-hint {
   color: var(--ev-fg-subtle);
-  font-size: 11.5px;
+  font-size: 0.71875rem;
 }
 
 .ev-codemode-controls {
@@ -287,7 +287,7 @@
   align-items: center;
   gap: 6px;
   color: var(--ev-fg-muted);
-  font-size: 11.5px;
+  font-size: 0.71875rem;
 }
 
 .ev-inline-budget-input {
@@ -312,7 +312,7 @@
   box-shadow: var(--ev-shadow-stroke);
   color: var(--ev-fg-muted);
   font-family: var(--primitive-font-family-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.4;
   cursor: pointer;
   transition:
@@ -373,7 +373,7 @@
   gap: 8px;
   padding-top: 2px;
   color: var(--ev-fg-subtle);
-  font-size: 11.5px;
+  font-size: 0.71875rem;
 }
 
 .ev-tool-disclosure {
@@ -391,7 +391,7 @@
   min-height: 38px;
   padding: 8px 12px;
   color: var(--ev-fg-muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   list-style: none;
   cursor: pointer;
@@ -469,13 +469,13 @@
 }
 
 .ev-skill-desc {
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.45;
   color: var(--ev-fg-muted);
 }
 
 .ev-skill-path {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   color: var(--ev-fg-subtle);
 }
 
@@ -516,7 +516,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   color: var(--ev-fg-muted);
   cursor: pointer;
   user-select: none;
@@ -561,7 +561,7 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ev-fg-subtle);
 }
 
@@ -594,7 +594,7 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
 }
 
 .ev-mcp-oauth-url > a {
@@ -609,7 +609,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .ev-mcp-oauth-input-row {
@@ -639,7 +639,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ev-fg-muted);
 }
 
@@ -651,7 +651,7 @@
 .ev-mcp-tools-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
 }
 
 .ev-mcp-tools-table th,
@@ -664,7 +664,7 @@
 
 .ev-mcp-tools-table thead th {
   border-top: 0;
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   font-weight: 500;
   color: var(--ev-fg-subtle);
 }
@@ -680,6 +680,125 @@
   justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.ev-pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ev-pref-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.ev-pref-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--ev-fg);
+}
+
+.ev-pref-hint {
+  font-size: 0.78125rem;
+  color: var(--ev-fg-subtle);
+}
+
+.ev-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 8px;
+  border: var(--ev-hairline) solid var(--ev-border);
+  background: var(--ev-sidebar);
+}
+
+.ev-stepper-val {
+  min-width: 44px;
+  text-align: center;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ev-fg);
+}
+
+.ev-typography-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ev-sidebar);
+}
+
+.ev-typography-preview-prose {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--ev-fg);
+}
+
+.ev-project-create-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.ev-workspaces-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.ev-workspaces-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ev-workspace-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 8px;
+  border: var(--ev-hairline) solid var(--ev-border);
+  background: var(--ev-sidebar);
+  min-width: 0;
+}
+
+.ev-workspace-row-icon {
+  flex: none;
+  color: var(--ev-fg-subtle);
+}
+
+.ev-workspace-row-path {
+  flex: 1;
+  font-size: 0.78125rem;
+  color: var(--ev-fg);
+}
+
+.ev-workspaces-empty {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: var(--ev-hairline) dashed var(--ev-border-strong);
+  font-size: 0.78125rem;
+  color: var(--ev-fg-subtle);
+}
+
+.ev-workspaces-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ev-workspaces-input-wrap {
+  flex: 1 1 200px;
+  min-width: 0;
 }
 
 @media (max-width: 640px) {

@@ -7,6 +7,7 @@ import { Button, IconButton, Input } from "@earendil-works/elanor-react";
 import type { QuestionRecordPayload } from "@eevee/protocol";
 import { type FormEvent, type KeyboardEvent, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
+import { useI18n } from "../lib/i18n.ts";
 import { showToast } from "../lib/toasts.ts";
 
 export function QuestionCard({
@@ -18,6 +19,7 @@ export function QuestionCard({
   readonly questions: readonly QuestionRecordPayload[];
   readonly onLater: () => void;
 }) {
+  const { t } = useI18n();
   const [qIndex, setQIndex] = useState(0);
   const [subIndex, setSubIndex] = useState(0);
   const [drafts, setDrafts] = useState<Record<string, string[]>>({});
@@ -123,7 +125,7 @@ export function QuestionCard({
     <form className="ev-qcard" onSubmit={(e) => void handleSubmit(e)} onKeyDown={onKeyDown}>
       <div className="ev-qcard-head">
         <span className="ev-dot" data-stage="answer" />
-        <span>Router 向你提问</span>
+        <span>{t("question.routerTitle")}</span>
         <span className="ev-chip-id">{current.id}</span>
         {questions.length > 1 && (
           <span style={{ display: "inline-flex", gap: 4, marginLeft: 4 }}>
@@ -145,7 +147,7 @@ export function QuestionCard({
         {items.length > 1 && (
           <span className="ev-num" style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
             <IconButton
-              aria-label="上一子问"
+              aria-label={t("question.prevItem")}
               disabled={subIndex === 0}
               onClick={() => setSubIndex((i) => Math.max(0, i - 1))}
             >
@@ -155,7 +157,7 @@ export function QuestionCard({
               {subIndex + 1}/{items.length}
             </span>
             <IconButton
-              aria-label="下一子问"
+              aria-label={t("question.nextItem")}
               disabled={subIndex >= items.length - 1}
               onClick={() => setSubIndex((i) => Math.min(items.length - 1, i + 1))}
             >
@@ -192,7 +194,7 @@ export function QuestionCard({
                     <span>{opt}</span>
                     {opt === activeItem.recommended && (
                       <span className="eevee-badge" style={{ marginLeft: 4 }}>
-                        推荐
+                        {t("question.recommended")}
                       </span>
                     )}
                     {options.length <= 9 && <span className="ev-qdigit">{oi + 1}</span>}
@@ -207,7 +209,7 @@ export function QuestionCard({
               type="text"
               value={currentDraft[subIndex] ?? ""}
               onValueChange={(val) => updateOther(subIndex, val)}
-              placeholder="输入你的答复…"
+              placeholder={t("question.otherPlaceholder")}
             />
           ) : (
             <button
@@ -216,7 +218,7 @@ export function QuestionCard({
               style={{ color: "var(--ev-fg-muted)", paddingLeft: 31 }}
               onClick={() => openOther(subIndex)}
             >
-              其他自定义回答…
+              {t("question.otherOption")}
             </button>
           )}
         </div>
@@ -226,7 +228,7 @@ export function QuestionCard({
         {error && <span style={{ fontSize: 12, color: "var(--ev-danger)" }}>{error}</span>}
         <span style={{ flex: 1 }} />
         <Button type="button" hierarchy="tertiary" density="compact" onClick={onLater}>
-          稍后回答
+          {t("question.later")}
         </Button>
         {items.length > 1 && subIndex < items.length - 1 && (
           <Button
@@ -235,7 +237,7 @@ export function QuestionCard({
             density="compact"
             onClick={() => setSubIndex((i) => i + 1)}
           >
-            下一项
+            {t("question.next")}
           </Button>
         )}
         <Button
@@ -245,7 +247,7 @@ export function QuestionCard({
           disabled={!complete}
           pending={submitting}
         >
-          提交答复
+          {t("question.submit")}
         </Button>
       </div>
     </form>
@@ -263,6 +265,7 @@ export function QuestionStrip({
   readonly count: number;
   readonly onExpand: () => void;
 }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const first = question.items[0];
   const quickOptions =
@@ -301,10 +304,10 @@ export function QuestionStrip({
         }}
         onClick={onExpand}
       >
-        <span className="ev-truncate">{first?.question ?? "待回答的问题"}</span>
+        <span className="ev-truncate">{first?.question ?? t("question.pendingFallback")}</span>
         {count > 1 && <span className="ev-count-badge">+{count - 1}</span>}
       </button>
-      <IconButton aria-label="展开提问卡片" title="展开提问卡片" onClick={onExpand}>
+      <IconButton aria-label={t("question.expand")} title={t("question.expand")} onClick={onExpand}>
         <ExpandLessIcon width={16} height={16} />
       </IconButton>
       {quickOptions && (

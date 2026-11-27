@@ -1,6 +1,7 @@
 import { SearchIcon } from "@earendil-works/elanor-icons-react";
 import { KeyboardKey, KeyboardShortcut, Modal } from "@earendil-works/elanor-react";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useI18n } from "../lib/i18n.ts";
 import type { VisualStage } from "../lib/transcript.ts";
 
 export type PaletteItem = {
@@ -23,6 +24,7 @@ export function CommandPalette({
   readonly items: readonly PaletteItem[];
   readonly onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -86,7 +88,11 @@ export function CommandPalette({
       <Modal.Portal>
         <Modal.Backdrop />
         <Modal.Viewport className="ev-palette-backdrop">
-          <Modal.Popup className="ev-palette-dialog" aria-label="命令面板" onKeyDown={onKeyDown}>
+          <Modal.Popup
+            className="ev-palette-dialog"
+            aria-label={t("palette.title")}
+            onKeyDown={onKeyDown}
+          >
             <div className="ev-palette-input-row">
               <SearchIcon width={17} height={17} />
               <input
@@ -95,22 +101,22 @@ export function CommandPalette({
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索项目、Worker、页面或命令…"
-                aria-label="搜索命令或跳转"
+                placeholder={t("palette.placeholder")}
+                aria-label={t("palette.searchLabel")}
                 autoComplete="off"
               />
             </div>
-            <div className="ev-palette-list" role="listbox" aria-label="匹配结果">
+            <div className="ev-palette-list" role="listbox" aria-label={t("palette.resultsLabel")}>
               {filtered.length === 0 ? (
                 <div
                   style={{
                     padding: "18px 12px",
                     textAlign: "center",
-                    fontSize: 13,
+                    fontSize: "0.8125rem",
                     color: "var(--ev-fg-subtle)",
                   }}
                 >
-                  无匹配项
+                  {t("palette.empty")}
                 </div>
               ) : (
                 filtered.map((item, idx) => {
@@ -121,7 +127,7 @@ export function CommandPalette({
                         <div
                           style={{
                             padding: "7px 10px 3px",
-                            fontSize: 11.5,
+                            fontSize: "0.71875rem",
                             fontWeight: 500,
                             color: "var(--ev-fg-subtle)",
                           }}
@@ -144,7 +150,7 @@ export function CommandPalette({
                         {item.meta && (
                           <span
                             className="ev-mono"
-                            style={{ fontSize: 11.5, color: "var(--ev-fg-subtle)" }}
+                            style={{ fontSize: "0.71875rem", color: "var(--ev-fg-subtle)" }}
                           >
                             {item.meta}
                           </span>
@@ -164,13 +170,13 @@ export function CommandPalette({
             </div>
             <footer className="ev-palette-foot">
               <span>
-                <kbd className="ev-mono">↑ ↓</kbd> 选择
+                <kbd className="ev-mono">↑ ↓</kbd> {t("palette.foot.select")}
               </span>
               <span>
-                <kbd className="ev-mono">↵</kbd> 打开
+                <kbd className="ev-mono">↵</kbd> {t("palette.foot.open")}
               </span>
               <span style={{ marginLeft: "auto" }}>
-                <kbd className="ev-mono">Esc</kbd> 关闭
+                <kbd className="ev-mono">Esc</kbd> {t("palette.foot.close")}
               </span>
             </footer>
           </Modal.Popup>

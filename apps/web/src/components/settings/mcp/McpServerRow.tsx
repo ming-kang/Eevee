@@ -14,6 +14,7 @@ import {
   type McpServerSnapshotPayload,
 } from "@eevee/protocol";
 import { useEffect, useId, useRef, useState } from "react";
+import { useI18n } from "../../../lib/i18n.ts";
 import type { OAuthUiSession } from "../useMcpOAuth.ts";
 import {
   DEFAULT_EXPOSURE,
@@ -77,6 +78,7 @@ export function McpServerRow({
   onSubmitOAuthRedirect,
   onSetOAuthRedirectInput,
 }: McpServerRowProps) {
+  const { t } = useI18n();
   const idPrefix = useId();
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
@@ -168,7 +170,7 @@ export function McpServerRow({
         </div>
 
         <div className="ev-mcp-row-controls">
-          <div className="ev-mcp-roles-inline" title="控制该 MCP 服务对哪些角色可见">
+          <div className="ev-mcp-roles-inline" title={t("mcp.row.rolesTitle")}>
             <div className="ev-mcp-role-check">
               <Checkbox.Root
                 id={`${idPrefix}-router`}
@@ -193,11 +195,16 @@ export function McpServerRow({
             </div>
           </div>
 
-          <div className="ev-mcp-enable-switch" title={server.enabled ? "已启用" : "已禁用"}>
+          <div
+            className="ev-mcp-enable-switch"
+            title={t(server.enabled ? "common.enabled" : "common.disabled")}
+          >
             <Switch.Root
               checked={server.enabled}
               disabled={isBusy}
-              aria-label={`${server.enabled ? "禁用" : "启用"} ${server.name}`}
+              aria-label={t(server.enabled ? "mcp.row.disableAria" : "mcp.row.enableAria", {
+                name: server.name,
+              })}
               onCheckedChange={(checked) => onToggleEnabled(server, checked)}
             >
               <Switch.Thumb />
@@ -217,7 +224,7 @@ export function McpServerRow({
               disabled={!server.enabled || isBusy}
               onClick={() => onStartOAuth(server.name)}
             >
-              OAuth 登录
+              {t("mcp.row.oauthLogin")}
             </Button>
             <Button
               type="button"
@@ -227,7 +234,7 @@ export function McpServerRow({
               disabled={isBusy}
               onClick={() => onLogoutOAuth(server.name)}
             >
-              清除 OAuth
+              {t("mcp.row.oauthLogout")}
             </Button>
           </>
         )}
@@ -240,7 +247,7 @@ export function McpServerRow({
           pending={isReconnecting}
           onClick={() => onReconnect(server.name)}
         >
-          重连
+          {t("mcp.row.reconnect")}
         </Button>
         <Button
           type="button"
@@ -250,7 +257,7 @@ export function McpServerRow({
           disabled={isBusy}
           onClick={() => onEdit(server)}
         >
-          编辑
+          {t("common.edit")}
         </Button>
         <Button
           type="button"
@@ -259,7 +266,7 @@ export function McpServerRow({
           aria-expanded={toolsExpanded}
           onClick={() => setToolsExpanded((prev) => !prev)}
         >
-          工具 ({toolsList.length})
+          {t("mcp.row.toolsCount", { count: toolsList.length })}
         </Button>
         <Button
           type="button"
@@ -269,7 +276,7 @@ export function McpServerRow({
           aria-expanded={logsExpanded}
           onClick={toggleLogs}
         >
-          查看日志
+          {t("mcp.row.viewLogs")}
         </Button>
         {(!isProject || server.scope === "project" || server.scope === "override") && (
           <Button
@@ -287,7 +294,7 @@ export function McpServerRow({
             disabled={isBusy}
             onClick={() => onDelete(server)}
           >
-            {isProject && server.scope === "override" ? "恢复全局" : "删除"}
+            {t(isProject && server.scope === "override" ? "mcp.row.revertGlobal" : "common.delete")}
           </Button>
         )}
       </div>

@@ -13,6 +13,7 @@ import type {
 } from "@eevee/protocol";
 import { useMemo, useState } from "react";
 import { workerStatusLabel } from "../lib/format.ts";
+import { useI18n } from "../lib/i18n.ts";
 import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
 import type { VisualStage } from "../lib/transcript.ts";
 import { TasksList } from "./rail/TasksList.tsx";
@@ -42,6 +43,7 @@ export function RightRail({
   readonly onCloseWorker: () => void;
   readonly onToggleMaximize: () => void;
 }) {
+  const { t } = useI18n();
   const [tab, setTab] = useState<"workers" | "tasks">("workers");
   const [showClosed, setShowClosed] = useState(false);
 
@@ -79,7 +81,11 @@ export function RightRail({
       <div className="ev-rail-head">
         {activeWorkerId ? (
           <>
-            <IconButton aria-label="返回列表" title="返回列表（Esc）" onClick={onCloseWorker}>
+            <IconButton
+              aria-label={t("rail.backToList")}
+              title={t("rail.backToListTitle")}
+              onClick={onCloseWorker}
+            >
               <ArrowBackIcon width={16} height={16} />
             </IconButton>
             <span className="ev-chip-id">{activeWorkerId}</span>
@@ -88,8 +94,8 @@ export function RightRail({
             </span>
             {currentWorker && <span className="ev-dot" data-stage={workerStage(currentWorker)} />}
             <IconButton
-              aria-label={maximized ? "还原右侧面板" : "最大化 Worker 面板"}
-              title={maximized ? "还原右侧面板" : "最大化 Worker 面板"}
+              aria-label={maximized ? t("rail.restore") : t("rail.maximize")}
+              title={maximized ? t("rail.restore") : t("rail.maximize")}
               onClick={onToggleMaximize}
             >
               {maximized ? (
@@ -107,7 +113,7 @@ export function RightRail({
               data-active={tab === "workers"}
               onClick={() => setTab("workers")}
             >
-              <span>Workers</span>
+              <span>{t("rail.tab.workers")}</span>
               {activeWorkers.length > 0 && (
                 <span className="ev-count-badge">{activeWorkers.length}</span>
               )}
@@ -118,7 +124,7 @@ export function RightRail({
               data-active={tab === "tasks"}
               onClick={() => setTab("tasks")}
             >
-              <span>后台任务</span>
+              <span>{t("rail.tab.tasks")}</span>
               {runningTasksCount > 0 && (
                 <span className="ev-count-badge" data-tone="warning">
                   {runningTasksCount}
@@ -138,13 +144,13 @@ export function RightRail({
       ) : (
         <div className="ev-rail-scroll">
           {workers.length === 0 ? (
-            <div className="ev-rail-empty">暂无 Worker</div>
+            <div className="ev-rail-empty">{t("rail.noWorkers")}</div>
           ) : (
             <>
               {activeWorkers.length > 0 && (
                 <>
                   <div className="ev-group-label">
-                    <span>活跃 Workers</span>
+                    <span>{t("rail.activeWorkers")}</span>
                     <span className="ev-num">{activeWorkers.length}</span>
                   </div>
                   {activeWorkers.map((w) => {
@@ -163,7 +169,9 @@ export function RightRail({
                           </div>
                           <div className="ev-truncate ev-rail-item-sub">
                             {w.name} · {workerStatusLabel(w.status)}
-                            {w.activeTaskCount > 0 ? ` · ${w.activeTaskCount} 后台任务` : ""}
+                            {w.activeTaskCount > 0
+                              ? ` · ${t("rail.activeTasks", { count: w.activeTaskCount })}`
+                              : ""}
                           </div>
                         </div>
                         <span className="ev-chip-id">{ticket?.id ?? w.id}</span>
@@ -176,22 +184,24 @@ export function RightRail({
               {openTicketsWithoutActiveWorker.length > 0 && (
                 <>
                   <div className="ev-group-label">
-                    <span>其他进行中 Tickets</span>
+                    <span>{t("rail.otherOpenTickets")}</span>
                     <span className="ev-num">{openTicketsWithoutActiveWorker.length}</span>
                   </div>
-                  {openTicketsWithoutActiveWorker.map((t) => (
+                  {openTicketsWithoutActiveWorker.map((ticket) => (
                     <button
-                      key={t.id}
+                      key={ticket.id}
                       type="button"
                       className="ev-rail-item"
-                      onClick={() => onOpenWorker(t.workerId)}
+                      onClick={() => onOpenWorker(ticket.workerId)}
                     >
                       <span className="ev-dot ev-rail-dot" data-stage="queued" />
                       <div className="ev-rail-item-main">
-                        <div className="ev-truncate ev-rail-item-title-sm">{t.title}</div>
-                        <div className="ev-rail-item-sub-sm">归属 {t.workerId}</div>
+                        <div className="ev-truncate ev-rail-item-title-sm">{ticket.title}</div>
+                        <div className="ev-rail-item-sub-sm">
+                          {t("rail.ownerWorker", { workerId: ticket.workerId })}
+                        </div>
                       </div>
-                      <span className="ev-chip-id">{t.id}</span>
+                      <span className="ev-chip-id">{ticket.id}</span>
                     </button>
                   ))}
                 </>
@@ -200,27 +210,27 @@ export function RightRail({
               {doneTickets.length > 0 && (
                 <>
                   <div className="ev-group-label">
-                    <span>已结束 Tickets</span>
+                    <span>{t("rail.endedTickets")}</span>
                     <span className="ev-num">{doneTickets.length}</span>
                   </div>
-                  {doneTickets.slice(0, 12).map((t) => (
+                  {doneTickets.slice(0, 12).map((ticket) => (
                     <button
-                      key={t.id}
+                      key={ticket.id}
                       type="button"
                       className="ev-rail-item muted"
-                      onClick={() => onOpenWorker(t.workerId)}
+                      onClick={() => onOpenWorker(ticket.workerId)}
                     >
                       <span
                         className="ev-dot ev-rail-dot"
-                        data-stage={t.status === "done" ? "done" : "idle"}
+                        data-stage={ticket.status === "done" ? "done" : "idle"}
                       />
                       <div className="ev-rail-item-main">
-                        <div className="ev-truncate ev-rail-item-title-sm">{t.title}</div>
+                        <div className="ev-truncate ev-rail-item-title-sm">{ticket.title}</div>
                         <div className="ev-rail-item-sub-sm">
-                          {t.workerId} · {t.status}
+                          {ticket.workerId} · {ticket.status}
                         </div>
                       </div>
-                      <span className="ev-chip-id">{t.id}</span>
+                      <span className="ev-chip-id">{ticket.id}</span>
                     </button>
                   ))}
                 </>
@@ -233,7 +243,7 @@ export function RightRail({
                     className="ev-group-label ev-rail-group-btn"
                     onClick={() => setShowClosed((prev) => !prev)}
                   >
-                    <span>已关闭 Workers ({closedWorkers.length})</span>
+                    <span>{t("rail.closedWorkers", { count: closedWorkers.length })}</span>
                     <ExpandMoreIcon
                       width={15}
                       height={15}

@@ -1,4 +1,6 @@
+import { filePartInner, parseFilePart } from "@eevee/protocol";
 import { isRecord } from "../object.ts";
+import type { UserFilePart, UserImagePart } from "./types.ts";
 
 export type ExtractedToolCall = {
   readonly id: string;
@@ -18,6 +20,48 @@ export function extractText(content: unknown): string {
     }
   }
   return parts.join("\n");
+}
+
+export function extractUserParts(content: unknown): {
+  readonly text: string;
+  readonly images: UserImagePart[];
+  readonly files: UserFilePart[];
+} {
+  if (typeof content === "string") {
+    const fileRef = parseFilePart(content);
+    if (fileRef) {
+      const inner = filePartInner(content);
+      return {
+        text: "",
+        images: [],
+        files: [{ ...fileRef, ...(inner === undefined ? {} : { content: inner }) }],
+      };
+    }
+    return { text: content, images: [], files: [] };
+  }
+  if (!Array.isArray(content)) return { text: "", images: [], files: [] };
+  const textParts: string[] = [];
+  const images: UserImagePart[] = [];
+  const files: UserFilePart[] = [];
+  for (const block of content) {
+    if (!isRecord(block)) continue;
+    if (
+      block.type === "image" &&
+      typeof block.data === "string" &&
+      typeof block.mimeType === "string"
+    ) {
+      images.push({ data: block.data, mimeType: block.mimeType });
+    } else if (block.type === "text" && typeof block.text === "string") {
+      const fileRef = parseFilePart(block.text);
+      if (fileRef) {
+        const inner = filePartInner(block.text);
+        files.push({ ...fileRef, ...(inner === undefined ? {} : { content: inner }) });
+      } else {
+        textParts.push(block.text);
+      }
+    }
+  }
+  return { text: textParts.join("\n"), images, files };
 }
 
 export function extractThinking(content: unknown): string {

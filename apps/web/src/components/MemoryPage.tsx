@@ -2,6 +2,7 @@ import { Button, TextArea } from "@earendil-works/elanor-react";
 import type { ProjectSummary } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
+import { useI18n } from "../lib/i18n.ts";
 import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
 import { showToast } from "../lib/toasts.ts";
 import { useAbortableAsync } from "../lib/useAbortableAsync.ts";
@@ -18,6 +19,7 @@ export function MemoryPage({
   readonly onEditProject: () => void;
   readonly onProjectUpdated: (project: ProjectSummary) => void;
 }) {
+  const { t } = useI18n();
   const [savedText, setSavedText] = useState(project.memory ?? "");
   const [text, setText] = useState(project.memory ?? "");
   const [saving, setSaving] = useState(false);
@@ -55,13 +57,13 @@ export function MemoryPage({
         ...project,
         ...(res.memory ? { memory: res.memory } : { memory: undefined }),
       });
-      showToast("项目记忆已保存，下次请求立即生效");
+      showToast(t("memory.saved"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
-  }, [dirty, saving, project, text, onProjectUpdated]);
+  }, [dirty, saving, project, text, onProjectUpdated, t]);
 
   useShortcutLayer({
     id: "memory-save",
@@ -93,7 +95,7 @@ export function MemoryPage({
                 disabled={saving}
                 onClick={() => setText(savedText)}
               >
-                放弃更改
+                {t("memory.discard")}
               </Button>
             )}
             <Button
@@ -103,7 +105,7 @@ export function MemoryPage({
               pending={saving}
               onClick={() => void save()}
             >
-              保存
+              {t("common.save")}
             </Button>
           </div>
         }
@@ -116,7 +118,7 @@ export function MemoryPage({
             rows={20}
             value={text}
             onValueChange={(val) => setText(val)}
-            placeholder="项目背景、约定与约束…"
+            placeholder={t("memory.placeholder")}
           />
         </div>
       </div>

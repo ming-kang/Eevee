@@ -1,19 +1,22 @@
 import { CloseIcon } from "@earendil-works/elanor-icons-react";
 import { Heading, IconButton } from "@earendil-works/elanor-react";
+import { type LocaleKey, useI18n } from "../lib/i18n.ts";
 import type { SettingsSection } from "../lib/router.ts";
 import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
 import { ConfigTab } from "./settings/ConfigTab.tsx";
+import { GeneralTab } from "./settings/GeneralTab.tsx";
 import { McpTab } from "./settings/McpTab.tsx";
 import { ModelsTab } from "./settings/ModelsTab.tsx";
 import { ProvidersTab } from "./settings/ProvidersTab.tsx";
 import { SkillsTab } from "./settings/SkillsTab.tsx";
 
-const SECTIONS: readonly { readonly id: SettingsSection; readonly label: string }[] = [
-  { id: "providers", label: "Providers" },
-  { id: "models", label: "模型" },
-  { id: "mcp", label: "MCP" },
-  { id: "skills", label: "Skills" },
-  { id: "config", label: "配置" },
+const SECTIONS: readonly { readonly id: SettingsSection; readonly labelKey: LocaleKey }[] = [
+  { id: "general", labelKey: "settings.tab.general" },
+  { id: "providers", labelKey: "settings.tab.providers" },
+  { id: "models", labelKey: "settings.tab.models" },
+  { id: "mcp", labelKey: "settings.tab.mcp" },
+  { id: "skills", labelKey: "settings.tab.skills" },
+  { id: "config", labelKey: "settings.tab.config" },
 ];
 
 export function SettingsView({
@@ -25,6 +28,8 @@ export function SettingsView({
   readonly onSelectSection: (section: SettingsSection) => void;
   readonly onClose: () => void;
 }) {
+  const { t } = useI18n();
+
   useShortcutLayer({
     id: "settings-overlay",
     active: true,
@@ -41,13 +46,18 @@ export function SettingsView({
   });
 
   return (
-    <div className="ev-control-overlay" role="dialog" aria-modal="true" aria-label="Engine 设置">
+    <div
+      className="ev-control-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("settings.title")}
+    >
       <header className="ev-page-header" style={{ paddingLeft: 20, paddingRight: 16 }}>
         <Heading level={1} size={6} className="ev-page-title">
-          Engine 设置
+          {t("settings.title")}
         </Heading>
         <span className="ev-header-divider" aria-hidden="true" />
-        <nav className="ev-header-nav" aria-label="设置分组">
+        <nav className="ev-header-nav" aria-label={t("settings.groups")}>
           {SECTIONS.map((item) => (
             <button
               key={item.id}
@@ -57,18 +67,23 @@ export function SettingsView({
               aria-current={section === item.id ? "page" : undefined}
               onClick={() => onSelectSection(item.id)}
             >
-              {item.label}
+              {t(item.labelKey)}
             </button>
           ))}
         </nav>
         <span style={{ flex: 1 }} />
-        <IconButton aria-label="关闭设置" title="关闭（Esc）" onClick={onClose}>
+        <IconButton
+          aria-label={t("common.close")}
+          title={t("settings.closeTitle")}
+          onClick={onClose}
+        >
           <CloseIcon width={18} height={18} />
         </IconButton>
       </header>
 
       <div className="ev-page-scroll">
         <div className="ev-page-narrow" style={{ maxWidth: 880 }}>
+          {section === "general" && <GeneralTab />}
           {section === "providers" && <ProvidersTab />}
           {section === "models" && <ModelsTab />}
           {section === "mcp" && <McpTab />}

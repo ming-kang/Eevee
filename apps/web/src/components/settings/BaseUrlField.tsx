@@ -1,5 +1,6 @@
 import { Field, Input, Text } from "@earendil-works/elanor-react";
 import { type ConnectionNote, providerBaseUrlPlaceholder } from "@eevee/protocol";
+import { useI18n } from "../../lib/i18n.ts";
 import { describeConnectionUrl, validateBaseUrl } from "./provider-utils.ts";
 
 export type BaseUrlPreviewProps = {
@@ -16,9 +17,12 @@ export function BaseUrlPreview({
   baseUrl,
   previewBaseUrl,
   fallbackNote,
-  previewPrefix = "有效请求 URL：",
-  warningText = " 检测到可能的 /v1 重复，请检查 Base URL",
+  previewPrefix,
+  warningText,
 }: BaseUrlPreviewProps) {
+  const { t } = useI18n();
+  const resolvedPreviewPrefix = previewPrefix ?? t("baseUrl.effectiveUrlPrefix");
+  const resolvedWarningText = warningText ?? t("baseUrl.duplicateV1Warning");
   const trimmed = baseUrl.trim();
   const error = trimmed ? validateBaseUrl(trimmed) : undefined;
   const effectiveUrl = previewBaseUrl !== undefined ? previewBaseUrl.trim() : trimmed;
@@ -30,9 +34,9 @@ export function BaseUrlPreview({
       {error && <Text className="ev-inline-error">{error}</Text>}
       {note && (
         <div className="ev-connection-note" data-warning={note.warning === true}>
-          {previewPrefix}
+          {resolvedPreviewPrefix}
           <span className="ev-mono">{note.text}</span>
-          {note.warning && <strong>{warningText}</strong>}
+          {note.warning && <strong>{resolvedWarningText}</strong>}
         </div>
       )}
     </>

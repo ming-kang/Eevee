@@ -1,6 +1,7 @@
 import { CloseIcon, DownloadIcon, UploadIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Heading, IconButton, Text, TextArea } from "@earendil-works/elanor-react";
 import { useState } from "react";
+import { useI18n } from "../../../lib/i18n.ts";
 import { parseImportJson } from "./codec.ts";
 
 export type McpJsonPanelProps = {
@@ -20,6 +21,7 @@ export function McpJsonPanel({
   onImport,
   onClose,
 }: McpJsonPanelProps) {
+  const { t } = useI18n();
   const defaultExportSource = isProject ? projectServers : globalServers;
   const [jsonText, setJsonText] = useState(() =>
     JSON.stringify({ mcpServers: defaultExportSource }, null, 2),
@@ -44,7 +46,7 @@ export function McpJsonPanel({
     <div className="ev-settings-card">
       <div className="ev-settings-head">
         <Heading level={4} size={6}>
-          {isProject ? "项目 MCP JSON 导入 / 导出" : "全局 MCP JSON 导入 / 导出"}
+          {t(isProject ? "mcp.json.titleProject" : "mcp.json.titleGlobal")}
         </Heading>
         <div className="ev-inline-actions">
           {isProject && (
@@ -55,7 +57,7 @@ export function McpJsonPanel({
                 density="compact"
                 onClick={() => setJsonText(JSON.stringify({ mcpServers: projectServers }, null, 2))}
               >
-                载入项目覆盖
+                {t("mcp.json.loadProjectOverrides")}
               </Button>
               <Button
                 type="button"
@@ -65,7 +67,7 @@ export function McpJsonPanel({
                   setJsonText(JSON.stringify({ mcpServers: effectiveServers }, null, 2))
                 }
               >
-                载入生效配置
+                {t("mcp.json.loadEffective")}
               </Button>
             </>
           )}
@@ -78,18 +80,18 @@ export function McpJsonPanel({
               setJsonText(JSON.stringify({ mcpServers: defaultExportSource }, null, 2))
             }
           >
-            刷新导出
+            {t("mcp.json.refreshExport")}
           </Button>
-          <IconButton aria-label="关闭 JSON 面板" onClick={onClose}>
+          <IconButton aria-label={t("mcp.json.closePanel")} onClick={onClose}>
             <CloseIcon width={16} height={16} />
           </IconButton>
         </div>
       </div>
       {error && <div className="ev-error-banner">{error}</div>}
       <Text className="ev-inline-hint">
-        支持标准 <span className="ev-mono">{'{ "mcpServers": { ... } }'}</span>{" "}
-        格式或直接服务映射。导入将整体替换
-        {isProject ? "当前项目的 MCP 覆盖与项目独占配置" : "全局 MCP 配置"}。
+        {t("mcp.json.hintPrefix")}
+        <span className="ev-mono">{'{ "mcpServers": { ... } }'}</span>
+        {t(isProject ? "mcp.json.hintSuffixProject" : "mcp.json.hintSuffixGlobal")}
       </Text>
       <TextArea
         monospace
@@ -110,10 +112,10 @@ export function McpJsonPanel({
           pending={importing}
           onClick={() => void handleImport()}
         >
-          导入并应用
+          {t("mcp.json.importAndApply")}
         </Button>
         <Button type="button" hierarchy="secondary" density="compact" onClick={onClose}>
-          取消
+          {t("common.cancel")}
         </Button>
       </div>
     </div>

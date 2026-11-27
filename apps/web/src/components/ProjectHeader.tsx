@@ -2,7 +2,9 @@ import { EditIcon, SearchIcon } from "@earendil-works/elanor-icons-react";
 import { Heading, IconButton } from "@earendil-works/elanor-react";
 import type { ProjectSummary } from "@eevee/protocol";
 import type { ReactNode } from "react";
+import { useI18n } from "../lib/i18n.ts";
 import type { ProjectSubView } from "../lib/router.ts";
+import { modLabel } from "../lib/shortcuts.ts";
 
 export function ProjectHeader({
   project,
@@ -19,6 +21,7 @@ export function ProjectHeader({
   readonly onOpenFind?: () => void;
   readonly actions?: ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <header className="ev-page-header">
       <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
@@ -30,19 +33,23 @@ export function ProjectHeader({
         >
           {project.title}
         </Heading>
-        <IconButton aria-label="编辑项目设置" title="编辑项目设置" onClick={onEditProject}>
+        <IconButton
+          aria-label={t("project.editSettings")}
+          title={t("project.editSettings")}
+          onClick={onEditProject}
+        >
           <EditIcon width={14} height={14} />
         </IconButton>
       </div>
 
       <span className="ev-header-divider" aria-hidden="true" />
 
-      <nav className="ev-header-nav" aria-label="项目视图">
+      <nav className="ev-header-nav" aria-label={t("project.views")}>
         {(
           [
-            ["chat", "对话"],
-            ["memory", "记忆"],
-            ["usage", "用量"],
+            ["chat", t("project.tab.chat")],
+            ["memory", t("project.tab.memory")],
+            ["usage", t("project.tab.usage")],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -61,7 +68,11 @@ export function ProjectHeader({
       <span style={{ flex: 1 }} />
 
       {view === "chat" && onOpenFind && (
-        <IconButton aria-label="在对话中查找" title="在对话中查找（Ctrl/⌘ F）" onClick={onOpenFind}>
+        <IconButton
+          aria-label={t("project.findInChat")}
+          title={t("project.findInChatTitle", { shortcut: `${modLabel()} F` })}
+          onClick={onOpenFind}
+        >
           <SearchIcon width={16} height={16} />
         </IconButton>
       )}

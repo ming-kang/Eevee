@@ -4,6 +4,7 @@ import type { ProjectSummary, ProjectUsageResponse } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
 import { formatCost, formatTokens } from "../lib/format.ts";
+import { useI18n } from "../lib/i18n.ts";
 import { ProjectHeader } from "./ProjectHeader.tsx";
 
 export function UsagePage({
@@ -15,6 +16,7 @@ export function UsagePage({
   readonly onSelectView: (view: "chat" | "memory" | "usage") => void;
   readonly onEditProject: () => void;
 }) {
+  const { t } = useI18n();
   const [usage, setUsage] = useState<ProjectUsageResponse | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -66,8 +68,8 @@ export function UsagePage({
         onEditProject={onEditProject}
         actions={
           <IconButton
-            aria-label="刷新用量"
-            title="刷新用量"
+            aria-label={t("usage.refresh")}
+            title={t("usage.refresh")}
             disabled={loading}
             onClick={() => void load()}
           >
@@ -82,41 +84,41 @@ export function UsagePage({
 
           <div className="ev-stat-grid">
             <div className="ev-stat-cell">
-              <span className="ev-stat-k">估算费用</span>
+              <span className="ev-stat-k">{t("usage.cost")}</span>
               <span className="ev-stat-v">{formatCost(totals.cost)}</span>
             </div>
             <div className="ev-stat-cell">
-              <span className="ev-stat-k">Input</span>
+              <span className="ev-stat-k">{t("usage.input")}</span>
               <span className="ev-stat-v">{formatTokens(totals.input)}</span>
             </div>
             <div className="ev-stat-cell">
-              <span className="ev-stat-k">Output</span>
+              <span className="ev-stat-k">{t("usage.output")}</span>
               <span className="ev-stat-v">{formatTokens(totals.output)}</span>
             </div>
             <div className="ev-stat-cell">
-              <span className="ev-stat-k">缓存命中率</span>
+              <span className="ev-stat-k">{t("usage.cacheHit")}</span>
               <span className="ev-stat-v">{cacheHitPct}</span>
             </div>
           </div>
 
           <Heading level={2} size={6} style={{ margin: "4px 0 0" }}>
-            按模型
+            {t("usage.byModel")}
           </Heading>
 
           {rows.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--ev-fg-subtle)" }}>
-              {loading ? "加载中…" : "暂无记录"}
+            <div style={{ fontSize: "0.8125rem", color: "var(--ev-fg-subtle)" }}>
+              {loading ? t("common.loading") : t("usage.empty")}
             </div>
           ) : (
             <Table.Container className="ev-table-frame">
               <Table.Root>
                 <Table.Head>
                   <Table.Row>
-                    <Table.HeaderCell>模型</Table.HeaderCell>
-                    <Table.HeaderCell align="end">Input</Table.HeaderCell>
-                    <Table.HeaderCell align="end">Output</Table.HeaderCell>
-                    <Table.HeaderCell align="end">Cache</Table.HeaderCell>
-                    <Table.HeaderCell align="end">费用</Table.HeaderCell>
+                    <Table.HeaderCell>{t("usage.col.model")}</Table.HeaderCell>
+                    <Table.HeaderCell align="end">{t("usage.input")}</Table.HeaderCell>
+                    <Table.HeaderCell align="end">{t("usage.output")}</Table.HeaderCell>
+                    <Table.HeaderCell align="end">{t("usage.col.cache")}</Table.HeaderCell>
+                    <Table.HeaderCell align="end">{t("usage.col.cost")}</Table.HeaderCell>
                   </Table.Row>
                 </Table.Head>
                 <Table.Body>

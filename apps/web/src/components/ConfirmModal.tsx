@@ -1,5 +1,6 @@
 import { Button, Modal, Text } from "@earendil-works/elanor-react";
 import type { ReactNode } from "react";
+import { useI18n } from "../lib/i18n.ts";
 
 export type ConfirmModalProps = {
   readonly open: boolean;
@@ -19,13 +20,16 @@ export function ConfirmModal({
   onOpenChange,
   title,
   description,
-  confirmLabel = "确认",
-  cancelLabel = "取消",
+  confirmLabel,
+  cancelLabel,
   tone = "primary",
   pending = false,
   error,
   onConfirm,
 }: ConfirmModalProps) {
+  const { t } = useI18n();
+  const resolvedConfirm = confirmLabel ?? t("common.confirm");
+  const resolvedCancel = cancelLabel ?? t("common.cancel");
   return (
     <Modal.Root
       open={open}
@@ -55,7 +59,7 @@ export function ConfirmModal({
               <Modal.Close
                 render={
                   <Button type="button" hierarchy="secondary" disabled={pending}>
-                    {cancelLabel}
+                    {resolvedCancel}
                   </Button>
                 }
               />
@@ -66,7 +70,7 @@ export function ConfirmModal({
                 pending={pending}
                 onClick={() => void onConfirm()}
               >
-                {confirmLabel}
+                {resolvedConfirm}
               </Button>
             </Modal.Actions>
           </Modal.Popup>

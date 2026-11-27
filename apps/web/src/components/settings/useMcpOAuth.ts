@@ -1,6 +1,7 @@
 import type { McpOAuthEvent } from "@eevee/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { t } from "../../lib/i18n.ts";
 import { showToast } from "../../lib/toasts.ts";
 import { useAbortableSessionStream } from "./useAbortableStream.ts";
 
@@ -66,7 +67,7 @@ export function markMcpOAuthUnexpectedEnd(
   sessionId: string,
 ): OAuthUiSession | undefined {
   if (!prev || prev.sessionId !== sessionId) return prev;
-  return { ...prev, error: "OAuth 授权流意外中断" };
+  return { ...prev, error: t("mcp.oauth.unexpectedEnd") };
 }
 
 export type UseMcpOAuthOptions = {
@@ -141,7 +142,7 @@ export function useMcpOAuth({
           if (ev.type === "error" && !isCurrent()) return;
           setOauthSession((prev) => applyMcpOAuthEvent(prev, sessionId, ev));
           if (ev.type === "complete") {
-            showToast(`${serverName} OAuth 登录成功`);
+            showToast(t("mcp.oauth.toastSuccess", { name: serverName }));
             await callbacks.onRefresh();
           }
         },
@@ -185,7 +186,7 @@ export function useMcpOAuth({
               redirectInput: "",
               progress: [
                 ...prev.progress,
-                { id: nextOAuthProgressId++, message: "已提交回调 URL，等待验证完成…" },
+                { id: nextOAuthProgressId++, message: t("mcp.oauth.redirectSubmitted") },
               ],
             }
           : prev,
@@ -230,7 +231,7 @@ export function useMcpOAuth({
         });
         await callbacksRef.current.onRefresh();
         if (activeClientRef.current !== client) return;
-        showToast(`已清除「${serverName}」的 OAuth 凭据`);
+        showToast(t("mcp.oauth.toastLoggedOut", { name: serverName }));
       } catch (err) {
         if (activeClientRef.current === client) {
           callbacksRef.current.onError(err instanceof Error ? err.message : String(err));

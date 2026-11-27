@@ -15,6 +15,7 @@ import {
   type ThinkingLevel,
 } from "@eevee/protocol";
 import { useId, useMemo } from "react";
+import { t, useI18n } from "../../../lib/i18n.ts";
 import { SmokeTestResult } from "../SmokeTestResult.tsx";
 import { useModelSmokeTests } from "../useModelSmokeTests.ts";
 
@@ -42,7 +43,7 @@ export function createNextIndexedProfile(
         provider: first?.provider ?? "openai",
         modelId: first?.id ?? "gpt-4o",
       },
-      description: "说明此模型擅长的任务类型与成本特征",
+      description: t("models.defaultProfileDescription"),
     },
   };
 }
@@ -96,6 +97,7 @@ export function ModelProfilesSection({
   onNotesChange,
   onSave,
 }: ModelProfilesSectionProps) {
+  const { t: translate } = useI18n();
   const { tests: profileTests, runTest: runSmokeTest, cancelTest } = useModelSmokeTests();
   const datalistPrefix = useId();
   const providerListId = `${datalistPrefix}-providers`;
@@ -133,7 +135,7 @@ export function ModelProfilesSection({
 
       <div className="ev-settings-head">
         <Heading level={2} size={5}>
-          模型画像
+          {translate("models.profilesTitle")}
         </Heading>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Button
@@ -142,14 +144,14 @@ export function ModelProfilesSection({
             iconStart={<AddIcon width={15} height={15} />}
             onClick={onAddProfile}
           >
-            添加
+            {translate("common.add")}
           </Button>
           <Button hierarchy="primary" density="compact" pending={saving} onClick={onSave}>
-            保存
+            {translate("common.save")}
           </Button>
           {savedNotice && (
             <span className="eevee-badge" data-tone="positive">
-              已保存
+              {translate("common.saved")}
             </span>
           )}
         </div>
@@ -195,7 +197,7 @@ export function ModelProfilesSection({
 
             <div className="ev-profile-row">
               <Field.Root style={{ width: 140 }}>
-                <Field.Label>画像 ID</Field.Label>
+                <Field.Label>{translate("models.profileId")}</Field.Label>
                 <Input
                   type="text"
                   value={profile.id}
@@ -244,9 +246,11 @@ export function ModelProfilesSection({
                     });
                   }}
                 >
-                  <option value="">默认</option>
+                  <option value="">{translate("common.default")}</option>
                   {unsupportedCurrent && (
-                    <option value={currentThinking}>{currentThinking}（不支持）</option>
+                    <option value={currentThinking}>
+                      {translate("models.thinkingUnsupportedOption", { level: currentThinking })}
+                    </option>
                   )}
                   {thinkingChoices.map((level) => (
                     <option key={level} value={level}>
@@ -264,22 +268,27 @@ export function ModelProfilesSection({
                 pending={smoke?.loading === true}
                 onClick={() => runProfileTest(uid, profile)}
               >
-                测试
+                {translate("models.test")}
               </Button>
-              <IconButton aria-label="删除画像" onClick={() => handleRemove(uid)}>
+              <IconButton
+                aria-label={translate("models.deleteProfile")}
+                onClick={() => handleRemove(uid)}
+              >
                 <DeleteIcon width={16} height={16} />
               </IconButton>
             </div>
 
             {unsupportedCurrent && (
               <Text className="ev-inline-error">
-                当前 thinkingLevel「{currentThinking}」不在该模型支持的档位列表（
-                {supportedLevels.join(", ")}）中。
+                {translate("models.thinkingUnsupportedHint", {
+                  level: currentThinking,
+                  supported: supportedLevels.join(", "),
+                })}
               </Text>
             )}
 
             <Field.Root>
-              <Field.Label>用途描述</Field.Label>
+              <Field.Label>{translate("models.profileDescription")}</Field.Label>
               <Input
                 type="text"
                 value={profile.description}
@@ -298,7 +307,7 @@ export function ModelProfilesSection({
                     density="compact"
                     onClick={() => cancelTest(String(uid))}
                   >
-                    收起结果
+                    {translate("models.collapseResult")}
                   </Button>
                 </div>
               </div>
@@ -308,12 +317,12 @@ export function ModelProfilesSection({
       })}
 
       <Field.Root style={{ width: "100%" }}>
-        <Field.Label>补充说明</Field.Label>
+        <Field.Label>{translate("models.notesLabel")}</Field.Label>
         <TextArea
           rows={3}
           value={notes}
           onValueChange={onNotesChange}
-          placeholder="各模型适用场景与优先级…"
+          placeholder={translate("models.notesPlaceholder")}
         />
       </Field.Root>
     </div>

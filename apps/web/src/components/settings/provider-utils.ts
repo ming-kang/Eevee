@@ -10,15 +10,16 @@ import {
   type ThinkingLevelRule,
   validateProviderBaseUrl,
 } from "@eevee/protocol";
+import { type LocaleKey, t } from "../../lib/i18n.ts";
 import { isRecord } from "../../lib/object.ts";
 
-const BASE_URL_ERROR_MAP: Readonly<Record<string, string>> = {
-  "Base URL is required": "Base URL 不能为空",
-  "Base URL must not have leading or trailing whitespace": "Base URL 首尾不能有空白字符",
-  "Base URL must be an absolute URL": "Base URL 必须是完整的绝对 URL",
-  "Base URL must use http or https": "Base URL 必须使用 http 或 https",
-  "Base URL must not contain credentials": "Base URL 不能包含用户名或密码",
-  "Base URL must not contain a query string or fragment": "Base URL 不能包含查询参数或锚点",
+const BASE_URL_ERROR_KEYS: Readonly<Record<string, LocaleKey>> = {
+  "Base URL is required": "baseUrl.error.required",
+  "Base URL must not have leading or trailing whitespace": "baseUrl.error.whitespace",
+  "Base URL must be an absolute URL": "baseUrl.error.absolute",
+  "Base URL must use http or https": "baseUrl.error.protocol",
+  "Base URL must not contain credentials": "baseUrl.error.credentials",
+  "Base URL must not contain a query string or fragment": "baseUrl.error.queryOrFragment",
 };
 
 export function defaultThinkingLevels(): ThinkingLevelConfig {
@@ -82,10 +83,13 @@ export function parseJsonObject(text: string, label: string): Record<string, unk
     parsed = JSON.parse(trimmed);
   } catch (error) {
     throw new Error(
-      `${label} 不是有效 JSON：${error instanceof Error ? error.message : String(error)}`,
+      t("providers.error.invalidJson", {
+        label,
+        detail: error instanceof Error ? error.message : String(error),
+      }),
     );
   }
-  if (!isRecord(parsed)) throw new Error(`${label} 必须是 JSON 对象`);
+  if (!isRecord(parsed)) throw new Error(t("providers.error.jsonObjectRequired", { label }));
   return parsed;
 }
 
@@ -106,9 +110,11 @@ export function parseKeyValueLines(
     const line = lines[index]?.trim() ?? "";
     if (!line) continue;
     const equals = line.indexOf("=");
-    if (equals <= 0) throw new Error(`${label} 第 ${index + 1} 行应为 KEY=VALUE`);
+    if (equals <= 0) {
+      throw new Error(t("providers.error.kvLineFormat", { label, row: index + 1 }));
+    }
     const key = line.slice(0, equals).trim();
-    if (!key) throw new Error(`${label} 第 ${index + 1} 行缺少 KEY`);
+    if (!key) throw new Error(t("providers.error.kvMissingKey", { label, row: index + 1 }));
     result[key] = line.slice(equals + 1).trim();
   }
   return Object.keys(result).length > 0 ? result : undefined;
@@ -116,15 +122,17 @@ export function parseKeyValueLines(
 
 export function parseFiniteNumber(text: string, label: string): number {
   const trimmed = text.trim();
-  if (!trimmed) throw new Error(`${label} 不能为空`);
+  if (!trimmed) throw new Error(t("providers.error.requiredField", { label }));
   const value = Number(trimmed);
-  if (!Number.isFinite(value)) throw new Error(`${label} 必须是数字`);
+  if (!Number.isFinite(value)) throw new Error(t("providers.error.numberRequired", { label }));
   return value;
 }
 
 export function validateBaseUrl(value: string): string | undefined {
   const err = validateProviderBaseUrl(value);
-  return err === undefined ? undefined : (BASE_URL_ERROR_MAP[err] ?? err);
+  if (err === undefined) return undefined;
+  const key = BASE_URL_ERROR_KEYS[err];
+  return key ? t(key) : err;
 }
 
 export function describeConnectionUrl(
@@ -140,7 +148,9 @@ export function normalizeHeaderObject(
 ): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, entry] of Object.entries(value)) {
-    if (typeof entry !== "string") throw new Error(`${label}.${key} 必须是字符串`);
+    if (typeof entry !== "string") {
+      throw new Error(t("providers.error.stringRequired", { label, key }));
+    }
     result[key] = entry;
   }
   return result;
@@ -173,10 +183,10 @@ export function filterProbedModels(
   return models.filter((model) => `${model.id} ${model.name ?? ""}`.toLowerCase().includes(query));
 }
 
-export function formatAuthMeta(provider: ProviderSummary): string {
-  if (!provider.configured) return "未配置";
+export function formatAuthMeta(provider: ProviderSummary, translate: typeof t = t): string {
+  if (!provider.configured) return translate("providers.auth.notConfigured");
   const parts: string[] = [];
-  parts.push(provider.authSource ?? provider.authType ?? "已配置");
+  parts.push(provider.authSource ?? provider.authType ?? translate("providers.auth.configured"));
   if (provider.authAccountLabel) parts.push(provider.authAccountLabel);
   if (provider.authPreview) parts.push(provider.authPreview);
   return parts.join(" · ");

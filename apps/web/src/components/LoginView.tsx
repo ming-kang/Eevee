@@ -1,6 +1,7 @@
 import { Button, Card, Field, Heading, Input, Text } from "@earendil-works/elanor-react";
 import { type FormEvent, useState } from "react";
 import { api } from "../lib/api.ts";
+import { useI18n } from "../lib/i18n.ts";
 
 export type LoginViewProps = {
   readonly initialError?: string;
@@ -8,6 +9,7 @@ export type LoginViewProps = {
 };
 
 export function LoginView({ initialError, onAuthenticated }: LoginViewProps) {
+  const { t } = useI18n();
   const [token, setToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>(initialError);
@@ -16,7 +18,7 @@ export function LoginView({ initialError, onAuthenticated }: LoginViewProps) {
     event.preventDefault();
     const trimmed = token.trim();
     if (!trimmed) {
-      setError("请输入本机 Engine Token。");
+      setError(t("login.emptyToken"));
       return;
     }
     setSubmitting(true);
@@ -47,7 +49,7 @@ export function LoginView({ initialError, onAuthenticated }: LoginViewProps) {
               Eevee
             </Heading>
             <Text style={{ color: "var(--ev-fg-muted)", margin: 0 }}>
-              使用 <code className="ev-mono">eevee web</code> 链接或粘贴{" "}
+              {t("login.usePrefix")} <code className="ev-mono">eevee web</code> {t("login.orPaste")}{" "}
               <code className="ev-mono">engine.token</code>
             </Text>
           </div>
@@ -61,12 +63,12 @@ export function LoginView({ initialError, onAuthenticated }: LoginViewProps) {
                 type="password"
                 value={token}
                 onValueChange={(value) => setToken(value)}
-                placeholder="粘贴 engine.token 内容"
+                placeholder={t("login.tokenPlaceholder")}
                 autoFocus
               />
             </Field.Root>
             <Button type="submit" hierarchy="primary" pending={submitting}>
-              登录
+              {t("login.submit")}
             </Button>
           </form>
         </div>

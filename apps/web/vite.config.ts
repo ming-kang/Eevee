@@ -9,12 +9,15 @@ const engineTarget = process.env.EEVEE_ENGINE_URL ?? "http://127.0.0.1:4173";
 const API_PREFIXES = [
   "/health",
   "/auth",
+  "/boards",
   "/projects",
   "/providers",
   "/models",
   "/mcp",
+  "/skills",
   "/settings",
   "/config",
+  "/fs",
   "/shutdown",
 ];
 

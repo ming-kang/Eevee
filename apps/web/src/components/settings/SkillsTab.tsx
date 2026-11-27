@@ -15,25 +15,26 @@ import type {
 } from "@eevee/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { type LocaleKey, useI18n } from "../../lib/i18n.ts";
 import { showToast } from "../../lib/toasts.ts";
 import { useAbortableAsync } from "../../lib/useAbortableAsync.ts";
 
 type ProjectSkillChoice = SkillTriggerMode | "inherit";
 
-function modeLabel(mode: SkillTriggerMode): string {
-  if (mode === "model") return "模型可触发";
-  if (mode === "user") return "仅用户触发";
-  return "禁用";
+function modeLabelKey(mode: SkillTriggerMode): LocaleKey {
+  if (mode === "model") return "skills.mode.model";
+  if (mode === "user") return "skills.mode.user";
+  return "skills.mode.disabled";
 }
 
 function diagnosticTone(type: SkillDiagnostic["type"]): "negative" | "warning" {
   return type === "error" ? "negative" : "warning";
 }
 
-function diagnosticLabel(type: SkillDiagnostic["type"]): string {
-  if (type === "collision") return "名称冲突";
-  if (type === "error") return "错误";
-  return "警告";
+function diagnosticLabelKey(type: SkillDiagnostic["type"]): LocaleKey {
+  if (type === "collision") return "skills.diag.collision";
+  if (type === "error") return "skills.diag.error";
+  return "skills.diag.warning";
 }
 
 function buildGlobalPolicy(
@@ -71,6 +72,7 @@ export function SkillsTab({
   readonly projectId?: string;
   readonly compact?: boolean;
 }) {
+  const { t } = useI18n();
   const client = useMemo(() => api.skills(projectId), [projectId]);
   const [data, setData] = useState<SkillsListResponse | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -161,7 +163,7 @@ export function SkillsTab({
       const updated = await client.putPolicy({ policy: null });
       if (activeClientRef.current === client) {
         setData(updated);
-        showToast("已重置项目 Skills 触发策略覆写");
+        showToast(t("skills.resetToast"));
       }
     } catch (err) {
       if (activeClientRef.current === client) {
@@ -181,15 +183,21 @@ export function SkillsTab({
           <Heading level={compact ? 3 : 2} size={compact ? 6 : 5}>
             Skills
           </Heading>
-          <span className="eevee-badge ev-num">共 {summary.total} 个</span>
+          <span className="eevee-badge ev-num">
+            {t("skills.totalCount", { count: summary.total })}
+          </span>
           {summary.total > 0 && (
             <span className="ev-inline-muted ev-num">
-              模型可触发 {summary.model} · 仅用户 {summary.user} · 禁用 {summary.disabled}
+              {t("skills.summaryCounts", {
+                model: summary.model,
+                user: summary.user,
+                disabled: summary.disabled,
+              })}
             </span>
           )}
           {projectId && projectOverrideCount > 0 && (
             <span className="eevee-badge ev-num" data-tone="warning">
-              项目覆写 {projectOverrideCount}
+              {t("skills.projectOverrideCount", { count: projectOverrideCount })}
             </span>
           )}
         </div>
@@ -204,7 +212,7 @@ export function SkillsTab({
               pending={resetting}
               onClick={() => void handleResetProjectOverrides()}
             >
-              重置项目覆写
+              {t("skills.resetOverrides")}
             </Button>
           )}
           <Button
@@ -215,7 +223,7 @@ export function SkillsTab({
             pending={loading}
             onClick={() => void load()}
           >
-            刷新
+            {t("common.refresh")}
           </Button>
         </div>
       </div>
@@ -228,14 +236,14 @@ export function SkillsTab({
             type="text"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索 Skill 名称、描述或路径…"
-            aria-label="筛选 Skills"
+            placeholder={t("skills.searchPlaceholder")}
+            aria-label={t("skills.searchLabel")}
           />
           {query !== "" && (
             <button
               type="button"
               className="ev-task-clear-btn"
-              aria-label="清空搜索"
+              aria-label={t("skills.clearSearch")}
               onClick={() => setQuery("")}
             >
               <CloseIcon width={12} height={12} />
@@ -250,7 +258,7 @@ export function SkillsTab({
         <div className="ev-warning-banner" role="alert">
           <div className="ev-warning-banner-head">
             <WarningIcon width={16} height={16} />
-            <strong>Skills 发现诊断（{diagnostics.length}）</strong>
+            <strong>{t("skills.diagnosticsTitle", { count: diagnostics.length })}</strong>
           </div>
           <div className="ev-diagnostic-list">
             {diagnostics.map((diag) => (
@@ -259,7 +267,7 @@ export function SkillsTab({
                 className="ev-diagnostic-item"
               >
                 <span className="eevee-badge" data-tone={diagnosticTone(diag.type)}>
-                  {diagnosticLabel(diag.type)}
+                  {t(diagnosticLabelKey(diag.type))}
                 </span>
                 {diag.skillName && <span className="ev-mono">{diag.skillName}</span>}
                 <span className="ev-mono ev-inline-muted" title={diag.path}>
@@ -274,16 +282,16 @@ export function SkillsTab({
 
       {loading && data === undefined ? (
         <div className="ev-settings-card" style={{ alignItems: "center", padding: "24px 16px" }}>
-          <Text style={{ color: "var(--ev-fg-subtle)", margin: 0 }}>正在扫描 Skills…</Text>
+          <Text style={{ color: "var(--ev-fg-subtle)", margin: 0 }}>{t("skills.loading")}</Text>
         </div>
       ) : filteredSkills.length === 0 ? (
         <div className="ev-settings-card" style={{ alignItems: "center", padding: "24px 16px" }}>
           <Text style={{ color: "var(--ev-fg-subtle)", margin: 0 }}>
             {skills.length === 0
               ? projectId
-                ? "未在全局 (~/.agents/skills) 或项目 (.agents/skills) 中发现 Skills"
-                : "未在 ~/.agents/skills 中发现全局 Skills"
-              : "没有匹配的 Skill"}
+                ? t("skills.emptyProject")
+                : t("skills.emptyGlobal")
+              : t("skills.emptyMatch")}
           </Text>
         </div>
       ) : (
@@ -291,9 +299,11 @@ export function SkillsTab({
           {filteredSkills.map((skill) => {
             const busy = pendingSkill === skill.name || resetting;
             const inheritedMode = skill.globalOverride ?? skill.defaultMode;
+            const inheritedModeLabel = t(modeLabelKey(inheritedMode));
             const projectChoice: ProjectSkillChoice = skill.projectOverride ?? "inherit";
-            const sourceLabel =
-              skill.source === "workspace" ? "项目 .agents/skills" : "全局 ~/.agents/skills";
+            const sourceLabel = t(
+              skill.source === "workspace" ? "skills.source.workspace" : "skills.source.global",
+            );
 
             return (
               <div key={`${skill.name}:${skill.path}`} className="ev-settings-row">
@@ -309,27 +319,24 @@ export function SkillsTab({
                         {sourceLabel}
                       </span>
                       {skill.disableModelInvocation && (
-                        <span
-                          className="eevee-badge"
-                          title="SKILL.md frontmatter 设置 disable-model-invocation"
-                        >
-                          frontmatter 仅用户
+                        <span className="eevee-badge" title={t("skills.frontmatterUserOnlyTitle")}>
+                          {t("skills.frontmatterUserOnly")}
                         </span>
                       )}
                       {!projectId && skill.globalOverride !== undefined && (
                         <span className="eevee-badge" data-tone="info">
-                          已覆写
+                          {t("skills.overridden")}
                         </span>
                       )}
                       {projectId && skill.projectOverride !== undefined && (
                         <span className="eevee-badge" data-tone="warning">
-                          项目覆写
+                          {t("skills.projectOverride")}
                         </span>
                       )}
                       {projectId &&
                         skill.projectOverride === undefined &&
                         skill.globalOverride !== undefined && (
-                          <span className="eevee-badge">继承全局覆写</span>
+                          <span className="eevee-badge">{t("skills.inheritsGlobalOverride")}</span>
                         )}
                     </div>
                     {skill.description && <div className="ev-skill-desc">{skill.description}</div>}
@@ -358,20 +365,29 @@ export function SkillsTab({
                       {projectId && (
                         <SegmentedControl.Item
                           value="inherit"
-                          title={`继承上级策略：${modeLabel(inheritedMode)}`}
+                          title={t("skills.inheritTitle", { mode: inheritedModeLabel })}
                         >
-                          继承
+                          {t("skills.mode.inherit")}
                         </SegmentedControl.Item>
                       )}
-                      <SegmentedControl.Item value="model">模型可触发</SegmentedControl.Item>
-                      <SegmentedControl.Item value="user">仅用户触发</SegmentedControl.Item>
-                      <SegmentedControl.Item value="disabled">禁用</SegmentedControl.Item>
+                      <SegmentedControl.Item value="model">
+                        {t("skills.mode.model")}
+                      </SegmentedControl.Item>
+                      <SegmentedControl.Item value="user">
+                        {t("skills.mode.user")}
+                      </SegmentedControl.Item>
+                      <SegmentedControl.Item value="disabled">
+                        {t("skills.mode.disabled")}
+                      </SegmentedControl.Item>
                     </SegmentedControl.Root>
                     {projectId && (
                       <span className="ev-inline-muted">
-                        {skill.projectOverride === undefined
-                          ? `当前继承：${modeLabel(inheritedMode)}`
-                          : `上级策略：${modeLabel(inheritedMode)}`}
+                        {t(
+                          skill.projectOverride === undefined
+                            ? "skills.inheritingMode"
+                            : "skills.parentPolicyMode",
+                          { mode: inheritedModeLabel },
+                        )}
                       </span>
                     )}
                   </div>

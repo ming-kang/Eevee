@@ -5,6 +5,7 @@ import type {
   ThinkingLevelConfig,
   UpsertProviderModelRequest,
 } from "@eevee/protocol";
+import { t } from "../../../lib/i18n.ts";
 import { deepEqualJson, isRecord } from "../../../lib/object.ts";
 import {
   cloneThinkingLevels,
@@ -311,16 +312,19 @@ export function buildModelUpsertRequest(
   const effectiveApi = (draft.apiValue.trim() || model?.api || target.providerApi || "").trim();
 
   const trimmedId = draft.modelId.trim();
-  if (!trimmedId) throw new Error("Model ID 不能为空");
-  if (isCreate && !effectiveApi) throw new Error("请选择模型协议 API");
+  if (!trimmedId) throw new Error(t("modelEditor.error.emptyId"));
+  if (isCreate && !effectiveApi) throw new Error(t("modelEditor.error.missingApi"));
 
-  const nextContextWindow = parseFiniteNumber(draft.contextWindow, "上下文窗口");
-  const nextMaxTokens = parseFiniteNumber(draft.maxTokens, "最大输出");
+  const nextContextWindow = parseFiniteNumber(
+    draft.contextWindow,
+    t("modelEditor.error.contextWindow"),
+  );
+  const nextMaxTokens = parseFiniteNumber(draft.maxTokens, t("modelEditor.error.maxTokens"));
   const fullCost: Record<CostKey, number> = {
-    input: parseFiniteNumber(draft.costInput, "输入价格"),
-    output: parseFiniteNumber(draft.costOutput, "输出价格"),
-    cacheRead: parseFiniteNumber(draft.costCacheRead, "缓存读取价格"),
-    cacheWrite: parseFiniteNumber(draft.costCacheWrite, "缓存写入价格"),
+    input: parseFiniteNumber(draft.costInput, t("modelEditor.error.costInput")),
+    output: parseFiniteNumber(draft.costOutput, t("modelEditor.error.costOutput")),
+    cacheRead: parseFiniteNumber(draft.costCacheRead, t("modelEditor.error.costCacheRead")),
+    cacheWrite: parseFiniteNumber(draft.costCacheWrite, t("modelEditor.error.costCacheWrite")),
   };
 
   const input: UpsertProviderModelRequest = {};

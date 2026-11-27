@@ -9,6 +9,7 @@ import {
   mcpConnectionFieldsMatch,
   normalizeMcpExposure,
 } from "@eevee/protocol";
+import { type LocaleKey, t } from "../../../lib/i18n.ts";
 import { isRecord } from "../../../lib/object.ts";
 import { type HeaderRow, headersToRows, rowsToHeaders } from "../header-rows.ts";
 
@@ -18,12 +19,16 @@ export {
   normalizeMcpExposure as normalizeExposure,
 };
 
-const EXPOSURE_LABELS: Readonly<Record<McpExposure, string>> = {
-  codemode: "codemode（默认 · 代码沙盒调用）",
-  deferred: "deferred（按需搜索发现）",
-  direct: "direct（直接注入上下文）",
-  hidden: "hidden（对模型隐藏）",
+const EXPOSURE_LABEL_KEYS: Readonly<Record<McpExposure, LocaleKey>> = {
+  codemode: "mcp.exposure.codemode",
+  deferred: "mcp.exposure.deferred",
+  direct: "mcp.exposure.direct",
+  hidden: "mcp.exposure.hidden",
 };
+
+export function exposureLabelKey(exposure: McpExposure): LocaleKey {
+  return EXPOSURE_LABEL_KEYS[exposure];
+}
 
 const EXPOSURE_PRIORITY: Readonly<Record<McpExposure, number>> = {
   codemode: 0,
@@ -35,7 +40,7 @@ const EXPOSURE_PRIORITY: Readonly<Record<McpExposure, number>> = {
 export const EXPOSURE_OPTIONS: readonly { readonly value: McpExposure; readonly label: string }[] =
   [...MCP_EXPOSURES]
     .sort((a, b) => EXPOSURE_PRIORITY[a] - EXPOSURE_PRIORITY[b])
-    .map((value) => ({ value, label: EXPOSURE_LABELS[value] }));
+    .map((value) => ({ value, label: t(EXPOSURE_LABEL_KEYS[value]) }));
 
 export type TransportKind = "stdio" | "http";
 export type OAuthClientRegistration = "" | "auto" | "dcr" | "cimd";
@@ -115,23 +120,23 @@ export function statusMeta(status: McpServerStatusPayload): {
 } {
   switch (status) {
     case "connected":
-      return { label: "已连接", stage: "done", tone: "positive" };
+      return { label: t("mcp.status.connected"), stage: "done", tone: "positive" };
     case "connecting":
-      return { label: "连接中", stage: "working" };
+      return { label: t("mcp.status.connecting"), stage: "working" };
     case "idle":
-      return { label: "空闲", stage: "queued" };
+      return { label: t("mcp.status.idle"), stage: "queued" };
     case "auth_required":
-      return { label: "需 OAuth 授权", stage: "answer", tone: "warning" };
+      return { label: t("mcp.status.authRequired"), stage: "answer", tone: "warning" };
     case "degraded":
-      return { label: "降级运行", stage: "answer", tone: "warning" };
+      return { label: t("mcp.status.degraded"), stage: "answer", tone: "warning" };
     case "disconnected":
-      return { label: "已断开", stage: "idle", tone: "warning" };
+      return { label: t("mcp.status.disconnected"), stage: "idle", tone: "warning" };
     case "failed":
-      return { label: "连接失败", stage: "blocked", tone: "negative" };
+      return { label: t("mcp.status.failed"), stage: "blocked", tone: "negative" };
     case "disabled":
-      return { label: "已禁用", stage: "idle", tone: "muted" };
+      return { label: t("mcp.status.disabled"), stage: "idle", tone: "muted" };
     case "closed":
-      return { label: "已关闭", stage: "idle", tone: "muted" };
+      return { label: t("mcp.status.closed"), stage: "idle", tone: "muted" };
   }
 }
 
@@ -139,9 +144,9 @@ export function scopeBadge(scope: McpServerSnapshotPayload["scope"]): {
   readonly label: string;
   readonly tone?: "info" | "warning";
 } | null {
-  if (scope === "project") return { label: "项目", tone: "info" };
-  if (scope === "override") return { label: "项目覆盖", tone: "warning" };
-  if (scope === "global") return { label: "全局" };
+  if (scope === "project") return { label: t("mcp.scope.project"), tone: "info" };
+  if (scope === "override") return { label: t("mcp.scope.override"), tone: "warning" };
+  if (scope === "global") return { label: t("mcp.scope.global") };
   return null;
 }
 
@@ -226,10 +231,10 @@ export function formFromConfig(
 export function validateServerName(rawName: string): string {
   const serverName = rawName.trim();
   if (!serverName) {
-    throw new Error("请填写服务名称。");
+    throw new Error(t("mcp.error.nameRequired"));
   }
   if (!MCP_SERVER_NAME_RE.test(serverName)) {
-    throw new Error("服务名称只能包含字母、数字、下划线（_）和连字符（-）。");
+    throw new Error(t("mcp.error.nameInvalid"));
   }
   return serverName;
 }
@@ -243,7 +248,7 @@ export function buildConfigFromForm(
   if (timeoutRaw !== "") {
     const parsed = Number(timeoutRaw);
     if (!Number.isFinite(parsed) || parsed <= 0) {
-      throw new Error("超时时间（秒）必须是大于 0 的数字。");
+      throw new Error(t("mcp.error.invalidTimeout"));
     }
     timeout = parsed;
   }
@@ -264,13 +269,13 @@ export function buildConfigFromForm(
 
   if (form.transport === "stdio") {
     const command = form.command.trim();
-    if (!command) throw new Error("请填写 stdio 启动命令（command）。");
+    if (!command) throw new Error(t("mcp.error.missingCommand"));
     const args = form.argsText
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
     const cwd = form.cwd.trim();
-    const env = rowsToHeaders(form.envRows, "环境变量");
+    const env = rowsToHeaders(form.envRows, t("mcp.label.env"));
     return {
       ...base,
       command,
@@ -281,17 +286,17 @@ export function buildConfigFromForm(
   }
 
   const url = form.url.trim();
-  if (!url) throw new Error("请填写 HTTP 服务 URL。");
+  if (!url) throw new Error(t("mcp.error.missingUrl"));
   let parsedUrl: URL;
   try {
     parsedUrl = new URL(url);
   } catch {
-    throw new Error("URL 格式无效。");
+    throw new Error(t("mcp.error.invalidUrl"));
   }
   if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-    throw new Error("HTTP 服务 URL 必须以 http:// 或 https:// 开头。");
+    throw new Error(t("mcp.error.invalidUrlScheme"));
   }
-  const headers = rowsToHeaders(form.headerRows, "请求头");
+  const headers = rowsToHeaders(form.headerRows, t("mcp.label.headers"));
 
   const oauth: Record<string, unknown> = {};
   if (form.oauthClientId.trim()) oauth.clientId = form.oauthClientId.trim();
@@ -300,7 +305,7 @@ export function buildConfigFromForm(
   if (form.oauthCallbackPort.trim()) {
     const port = Number(form.oauthCallbackPort.trim());
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      throw new Error("OAuth callbackPort 必须是 1~65535 的整数。");
+      throw new Error(t("mcp.error.invalidCallbackPort"));
     }
     oauth.callbackPort = port;
   }
@@ -347,19 +352,21 @@ export function parseImportJson(rawText: string): Record<string, Record<string, 
   try {
     parsed = JSON.parse(rawText);
   } catch (err) {
-    throw new Error(`JSON 解析失败：${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(
+      t("mcp.error.jsonParse", { error: err instanceof Error ? err.message : String(err) }),
+    );
   }
   if (!isRecord(parsed)) {
-    throw new Error("JSON 根节点必须是对象（{ mcpServers: { ... } } 或服务映射对象）。");
+    throw new Error(t("mcp.error.jsonRootObject"));
   }
   const source = "mcpServers" in parsed ? parsed.mcpServers : parsed;
   if (!isRecord(source)) {
-    throw new Error("mcpServers 字段必须是对象。");
+    throw new Error(t("mcp.error.jsonMcpServersObject"));
   }
   const servers: Record<string, Record<string, unknown>> = {};
   for (const [name, entry] of Object.entries(source)) {
     if (!isRecord(entry)) {
-      throw new Error(`服务「${name}」的配置必须是 JSON 对象。`);
+      throw new Error(t("mcp.error.jsonServerObject", { name }));
     }
     servers[name] = entry;
   }

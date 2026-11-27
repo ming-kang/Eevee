@@ -22,6 +22,7 @@ import { Sidebar } from "./components/Sidebar.tsx";
 import { ToastHost } from "./components/ToastHost.tsx";
 import { UsagePage } from "./components/UsagePage.tsx";
 import { useProjectBoards } from "./lib/hooks.ts";
+import { useI18n } from "./lib/i18n.ts";
 import { useShellLayout } from "./lib/layout.ts";
 import {
   navigate,
@@ -38,6 +39,7 @@ import { useAuthSession } from "./lib/useAuthSession.ts";
 import { useProjectsStore } from "./lib/useProjectsStore.ts";
 
 export function App() {
+  const { t } = useI18n();
   const theme = useTheme();
   const { auth, login, logout } = useAuthSession();
   const authenticated = auth.kind === "authenticated";
@@ -103,7 +105,7 @@ export function App() {
   );
 
   const openControl = useCallback(
-    (section: SettingsSection = "providers") => {
+    (section: SettingsSection = "general") => {
       layout.closeDrawer();
       navigate({ name: "control", section });
     },
@@ -185,44 +187,46 @@ export function App() {
     },
   });
 
+  const themeLabel = t(`sidebar.theme.${theme.preference}` as const);
+
   const paletteItems = useMemo<PaletteItem[]>(() => {
     const mod = modLabel();
     const list: PaletteItem[] = [
       {
         id: "nav:overview",
-        group: "导航",
-        label: "概览（全局分诊看板）",
+        group: t("palette.group.nav"),
+        label: t("palette.overview"),
         run: openOverview,
       },
       {
         id: "act:new-project",
-        group: "操作",
-        label: "新建项目",
+        group: t("palette.group.actions"),
+        label: t("palette.newProject"),
         run: () => setCreateOpen(true),
       },
       {
         id: "act:settings",
-        group: "操作",
-        label: "打开 Engine 设置",
-        run: () => openControl("providers"),
+        group: t("palette.group.actions"),
+        label: t("palette.openSettings"),
+        run: () => openControl("general"),
       },
       {
         id: "act:theme",
-        group: "操作",
-        label: `切换主题（当前：${theme.preference}）`,
+        group: t("palette.group.actions"),
+        label: t("palette.cycleTheme", { theme: themeLabel }),
         run: theme.cycle,
       },
       {
         id: "act:shortcuts",
-        group: "操作",
-        label: "查看快捷键",
+        group: t("palette.group.actions"),
+        label: t("palette.openShortcuts"),
         keys: ["?"],
         run: () => setShortcutsOpen(true),
       },
       {
         id: "act:toggle-side",
-        group: "操作",
-        label: "折叠 / 展开左侧栏",
+        group: t("palette.group.actions"),
+        label: t("palette.toggleSide"),
         keys: [mod, "B"],
         run: layout.toggleSide,
       },
@@ -232,7 +236,7 @@ export function App() {
       const summary = deriveBoardSummary(boards[p.id]);
       list.push({
         id: `proj:${p.id}`,
-        group: "项目",
+        group: t("palette.group.projects"),
         label: p.title,
         meta: p.id,
         stage: summary.stage,
@@ -243,7 +247,7 @@ export function App() {
         if (w.status === "closed") continue;
         list.push({
           id: `worker:${p.id}:${w.id}`,
-          group: "Workers",
+          group: t("palette.group.workers"),
           label: `${w.id} · ${w.name}`,
           meta: p.title,
           stage: w.status === "running" ? "working" : w.status === "queued" ? "queued" : "idle",
@@ -252,13 +256,23 @@ export function App() {
       }
     }
     return list;
-  }, [projects, boards, openOverview, openControl, openProject, theme, layout]);
+  }, [
+    projects,
+    boards,
+    openOverview,
+    openControl,
+    openProject,
+    theme.cycle,
+    themeLabel,
+    layout,
+    t,
+  ]);
 
   if (auth.kind === "loading") {
     return (
       <div className="ev-login-page">
         <Heading level={2} size={5}>
-          正在连接本机 Eevee Engine…
+          {t("app.connecting")}
         </Heading>
       </div>
     );
@@ -281,7 +295,7 @@ export function App() {
       key: "q",
       tone: "warning",
       count: activeSummary.pendingQuestions,
-      label: `${activeSummary.pendingQuestions} 待回答`,
+      label: t("app.pendingQuestions", { count: activeSummary.pendingQuestions }),
     });
   }
   if (activeSummary.activeWorkers > 0) {
@@ -289,7 +303,7 @@ export function App() {
       key: "w",
       tone: "accent",
       count: activeSummary.activeWorkers,
-      label: `${activeSummary.activeWorkers} 活跃 Worker`,
+      label: t("app.activeWorkers", { count: activeSummary.activeWorkers }),
     });
   }
 
@@ -303,8 +317,8 @@ export function App() {
     <div className="ev-viewport">
       <div className="ev-side-trigger-anchor">
         <IconButton
-          aria-label={layout.sideCollapsed ? "展开左侧栏" : "折叠左侧栏"}
-          title={`左侧栏（${modLabel()} B）`}
+          aria-label={layout.sideCollapsed ? t("app.expandSide") : t("app.collapseSide")}
+          title={t("app.toggleSide", { shortcut: `${modLabel()} B` })}
           onClick={layout.toggleSide}
         >
           {layout.sideCollapsed ? (
@@ -339,8 +353,8 @@ export function App() {
               </div>
             )}
             <IconButton
-              aria-label={layout.railCollapsed ? "展开右侧面板" : "折叠右侧面板"}
-              title={`Workers 面板（${modLabel()} Alt B）`}
+              aria-label={layout.railCollapsed ? t("app.expandRail") : t("app.collapseRail")}
+              title={t("app.toggleRail", { shortcut: `${modLabel()} Alt B` })}
               onClick={layout.toggleRail}
             >
               {layout.railCollapsed ? (
@@ -359,7 +373,7 @@ export function App() {
       >
         <nav
           className={`ev-sidebar${layout.drawer === "side" ? " drawer-open" : ""}`}
-          aria-label="主导航"
+          aria-label={t("app.mainNav")}
         >
           <div className="ev-sidebar-inner">
             <Sidebar
@@ -374,7 +388,7 @@ export function App() {
               onRenameProject={setEditingProject}
               onDeleteProject={setDeletingProject}
               onOpenPalette={() => setPaletteOpen(true)}
-              onOpenControl={() => openControl("providers")}
+              onOpenControl={() => openControl("general")}
               onOpenShortcuts={() => setShortcutsOpen(true)}
               onCycleTheme={theme.cycle}
               onLogout={() => void logout()}
@@ -425,7 +439,9 @@ export function App() {
                 role="alert"
                 style={{ display: "flex", alignItems: "center", gap: 10 }}
               >
-                <span style={{ flex: 1 }}>刷新项目列表失败：{projectsStore.error}</span>
+                <span style={{ flex: 1 }}>
+                  {t("app.projectsRefreshError", { error: projectsStore.error })}
+                </span>
                 <Button
                   type="button"
                   hierarchy="secondary"
@@ -433,7 +449,7 @@ export function App() {
                   pending={projectsStore.loading}
                   onClick={() => void projectsStore.reload()}
                 >
-                  重试
+                  {t("common.retry")}
                 </Button>
               </div>
             </div>
@@ -443,7 +459,7 @@ export function App() {
         {withRail && activeProject && (
           <aside
             className={`ev-rail${layout.drawer === "rail" ? " drawer-open" : ""}`}
-            aria-label="Workers 与后台任务"
+            aria-label={t("app.railLabel")}
           >
             <div className="ev-rail-inner">
               <RightRail
@@ -462,7 +478,7 @@ export function App() {
         {!layout.sideCollapsed && (
           <Sash
             side="left"
-            label="调整左侧栏宽度"
+            label={t("app.resizeSide")}
             min={200}
             max={400}
             now={layout.sideWidth}
@@ -474,7 +490,7 @@ export function App() {
         {withRail && !layout.railCollapsed && !layout.railMaximized && (
           <Sash
             side="right"
-            label="调整右侧 Workers 面板宽度"
+            label={t("app.resizeRail")}
             min={320}
             max={820}
             now={layout.railWidth}

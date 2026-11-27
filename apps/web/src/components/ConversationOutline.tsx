@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { formatClock } from "../lib/format.ts";
+import { useI18n } from "../lib/i18n.ts";
 import type { OutlineEntry } from "../lib/transcript.ts";
 
 export function ConversationOutline({
@@ -11,6 +12,7 @@ export function ConversationOutline({
   readonly activeIndex: number;
   readonly onPick: (key: string) => void;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
 
   if (entries.length < 3) return null;
@@ -22,7 +24,7 @@ export function ConversationOutline({
       <nav
         className="ev-outline-nav"
         style={{ height }}
-        aria-label="对话大纲"
+        aria-label={t("transcript.outlineLabel")}
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
@@ -42,7 +44,7 @@ export function ConversationOutline({
               className="ev-outline-tick"
               style={{ top }}
               data-active={idx === activeIndex}
-              aria-label={entry.text || "消息"}
+              aria-label={entry.text || t("transcript.outlineMessageFallback")}
               onClick={() => {
                 setOpen(false);
                 onPick(entry.key);
@@ -66,7 +68,7 @@ export function ConversationOutline({
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 6, width: "100%" }}>
                     <span className="ev-truncate" style={{ flex: 1, fontWeight: 500 }}>
-                      {entry.text || "消息"}
+                      {entry.text || t("transcript.outlineMessageFallback")}
                     </span>
                     {entry.at && (
                       <span

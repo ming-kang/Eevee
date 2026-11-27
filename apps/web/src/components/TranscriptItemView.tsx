@@ -1,15 +1,22 @@
+import { DescriptionIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Collapsible } from "@earendil-works/elanor-react";
 import type { WorkerId } from "@eevee/protocol";
-import { type ReactNode, useCallback, useEffect, useRef } from "react";
-import { shortPath } from "../lib/format.ts";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { formatBytes, shortPath } from "../lib/format.ts";
+import { type LocaleKey, useI18n } from "../lib/i18n.ts";
 import type { DisplayItem } from "../lib/transcript.ts";
+import { AttachmentLightbox, type LightboxImage } from "./AttachmentLightbox.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { DisclosureLine } from "./transcript/DisclosureLine.tsx";
 import { noticeMetaLabel } from "./transcript/noticeMeta.ts";
 import { WorkedGroupView } from "./transcript/WorkedGroupView.tsx";
 
+type TranslateFn = (key: LocaleKey, params?: Readonly<Record<string, string | number>>) => string;
+
 type ItemRenderContext = {
+  readonly t: TranslateFn;
   readonly onOpenWorker?: (workerId: WorkerId) => void;
+  readonly onPreviewImage: (image: LightboxImage) => void;
   readonly highlightKey?: string;
   readonly wrapClass?: string;
   readonly setRootRef: (el: HTMLElement | null) => void;
@@ -35,6 +42,7 @@ function EditDisclosure({
   readonly wrapClass?: string;
   readonly setRootRef: (el: HTMLElement | null) => void;
 }) {
+  const { t } = useI18n();
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
 
   useEffect(() => {
@@ -54,11 +62,11 @@ function EditDisclosure({
   const verb =
     item.status === "run"
       ? item.action === "write"
-        ? "正在写入"
-        : "正在编辑"
+        ? t("transcript.edit.writing")
+        : t("transcript.edit.editing")
       : item.action === "write"
-        ? "写入"
-        : "编辑";
+        ? t("transcript.edit.wrote")
+        : t("transcript.edit.edited");
 
   return (
     <DisclosureLine
@@ -73,7 +81,7 @@ function EditDisclosure({
             {shortPath(item.path)}
           </span>
           {item.status === "err" ? (
-            <span className="ev-minus">· 失败</span>
+            <span className="ev-minus">{t("transcript.failed")}</span>
           ) : (
             (item.added > 0 || item.removed > 0) && (
               <span className="ev-mono ev-num ev-diff-counts">
@@ -103,19 +111,105 @@ function EditDisclosure({
   );
 }
 
+function UserMessageItem({
+  item,
+  wrapClass,
+  setRootRef,
+  onPreviewImage,
+}: {
+  readonly item: Extract<DisplayItem, { kind: "user" }>;
+  readonly wrapClass?: string;
+  readonly setRootRef: (el: HTMLElement | null) => void;
+  readonly onPreviewImage: (image: LightboxImage) => void;
+}) {
+  const { t } = useI18n();
+  const [expandedFileKey, setExpandedFileKey] = useState<string | undefined>(undefined);
+  const images = item.images ?? [];
+  const files = item.files ?? [];
+
+  return (
+    <div
+      ref={setRootRef}
+      className={`ev-msg-user${wrapClass ? ` ${wrapClass}` : ""}`}
+      data-item-key={item.key}
+    >
+      {images.length > 0 && (
+        <div className="ev-user-images">
+          {images.map((img, idx) => {
+            const src = `data:${img.mimeType};base64,${img.data}`;
+            const alt = `image-${idx + 1}`;
+            const imgKey = `${item.key}:${img.mimeType}:${img.data.slice(0, 24)}:${img.data.length}`;
+            return (
+              <button
+                key={imgKey}
+                type="button"
+                className="ev-user-image-btn"
+                aria-label={t("composer.attachment.preview", { name: alt })}
+                onClick={() => onPreviewImage({ src, alt })}
+              >
+                <img className="ev-user-image-thumb" src={src} alt={alt} />
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {files.length > 0 && (
+        <div className="ev-user-files">
+          {files.map((file) => {
+            const label = file.path ?? file.name;
+            const fileKey = `${item.key}:${label}:${file.size}`;
+            const isOpen = expandedFileKey === fileKey;
+            const hasContent = file.content !== undefined && file.content.length > 0;
+            return (
+              <div key={fileKey} className="ev-user-file-item">
+                <button
+                  type="button"
+                  className="ev-user-file-chip"
+                  disabled={!hasContent}
+                  aria-expanded={hasContent ? isOpen : undefined}
+                  title={label}
+                  onClick={() => setExpandedFileKey(isOpen ? undefined : fileKey)}
+                >
+                  <DescriptionIcon width={13} height={13} />
+                  <span className="ev-mono ev-truncate">{label}</span>
+                  <span className="ev-attachment-size ev-num">{formatBytes(file.size)}</span>
+                </button>
+                {hasContent && isOpen && (
+                  <pre className="ev-pre ev-user-file-pre">{file.content}</pre>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {item.text && <Markdown text={item.text} />}
+    </div>
+  );
+}
+
 function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode {
-  const { onOpenWorker, highlightKey, wrapClass, setRootRef, revealedEditKey, flashEditKey } = ctx;
+  const {
+    t,
+    onOpenWorker,
+    onPreviewImage,
+    highlightKey,
+    wrapClass,
+    setRootRef,
+    revealedEditKey,
+    flashEditKey,
+  } = ctx;
 
   switch (item.kind) {
     case "user":
       return (
-        <div
-          ref={setRootRef}
-          className={`ev-msg-user${wrapClass ? ` ${wrapClass}` : ""}`}
-          data-item-key={item.key}
-        >
-          <Markdown text={item.text} />
-        </div>
+        <UserMessageItem
+          item={item}
+          wrapClass={wrapClass}
+          setRootRef={setRootRef}
+          onPreviewImage={onPreviewImage}
+        />
       );
 
     case "notice": {
@@ -141,7 +235,7 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
             </div>
             {workerId && onOpenWorker && (
               <Button hierarchy="tertiary" density="compact" onClick={() => onOpenWorker(workerId)}>
-                观察 {workerId}
+                {t("transcript.observeWorker", { workerId })}
               </Button>
             )}
           </div>
@@ -162,7 +256,7 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
           summary={
             <>
               <span className={item.streaming ? "ev-shiny" : undefined}>
-                {item.streaming ? "思考中…" : "已思考"}
+                {item.streaming ? t("transcript.thinking.live") : t("transcript.thinking.done")}
               </span>
               {!item.streaming && firstLine && (
                 <span className="ev-truncate ev-proc-summary-sub">{firstLine}</span>
@@ -185,10 +279,10 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
           summary={
             <>
               <span className={`ev-truncate${item.status === "run" ? " ev-shimmer" : ""}`}>
-                {item.status === "run" ? "正在执行" : "执行"}{" "}
+                {item.status === "run" ? t("transcript.bash.running") : t("transcript.bash.done")}{" "}
                 <span className="ev-mono ev-proc-summary-mono">{item.command}</span>
               </span>
-              {item.status === "err" && <span className="ev-minus">· 失败</span>}
+              {item.status === "err" && <span className="ev-minus">{t("transcript.failed")}</span>}
             </>
           }
         >
@@ -224,7 +318,7 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
           summary={
             <>
               <span className={`ev-truncate${item.live ? " ev-shimmer" : ""}`}>{summaryText}</span>
-              {hasErr && <span className="ev-minus">· 失败</span>}
+              {hasErr && <span className="ev-minus">{t("transcript.failed")}</span>}
             </>
           }
         >
@@ -242,7 +336,7 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
                         className="ev-chip-id ev-dispatch-link"
                         onClick={() => onOpenWorker(workerId)}
                       >
-                        打开 {workerId}
+                        {t("transcript.openWorker", { workerId })}
                       </button>
                     )}
                   </div>
@@ -259,10 +353,13 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
       const label =
         item.steps.length === 1
           ? `${item.steps[0]?.name} · ${item.steps[0]?.label}`
-          : `调用了 ${item.steps.length} 个工具（${item.steps
-              .map((s) => s.name)
-              .slice(0, 3)
-              .join(", ")}）`;
+          : t("transcript.tools.multi", {
+              count: item.steps.length,
+              names: item.steps
+                .map((s) => s.name)
+                .slice(0, 3)
+                .join(", "),
+            });
       const hasErr = item.steps.some((s) => s.status === "error");
       return (
         <DisclosureLine
@@ -273,7 +370,7 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
           summary={
             <>
               <span className={`ev-truncate${item.live ? " ev-shimmer" : ""}`}>{label}</span>
-              {hasErr && <span className="ev-minus">· 异常</span>}
+              {hasErr && <span className="ev-minus">{t("transcript.errorSuffix")}</span>}
             </>
           }
         >
@@ -308,10 +405,12 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
     case "compaction":
       return (
         <div ref={setRootRef} data-item-key={item.key}>
-          <div className="ev-marker">上下文已压缩</div>
+          <div className="ev-marker">{t("transcript.compaction.marker")}</div>
           {item.summary && (
             <Collapsible.Root>
-              <Collapsible.Trigger className="ev-tab-link">查看压缩摘要</Collapsible.Trigger>
+              <Collapsible.Trigger className="ev-tab-link">
+                {t("transcript.compaction.summary")}
+              </Collapsible.Trigger>
               <Collapsible.Panel>
                 <pre className="ev-pre ev-compaction-pre">{item.summary}</pre>
               </Collapsible.Panel>
@@ -323,7 +422,7 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
     case "reset":
       return (
         <div ref={setRootRef} className="ev-marker" data-item-key={item.key}>
-          上下文已重置
+          {t("transcript.reset.marker")}
         </div>
       );
 
@@ -354,7 +453,11 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
           data-item-key={item.key}
         >
           {item.text && <Markdown text={item.text} streaming={item.streaming === true} />}
-          {item.error && <div className="ev-error-banner">响应异常：{item.error}</div>}
+          {item.error && (
+            <div className="ev-error-banner">
+              {t("transcript.responseError", { error: item.error })}
+            </div>
+          )}
         </div>
       );
   }
@@ -375,6 +478,9 @@ export function TranscriptItemView({
   readonly revealedEditKey?: string;
   readonly flashEditKey?: string;
 }) {
+  const { t } = useI18n();
+  const [lightboxImage, setLightboxImage] = useState<LightboxImage | undefined>(undefined);
+
   const setRootRef = useCallback(
     (el: HTMLElement | null) => {
       registerItemNode?.(item.key, el);
@@ -382,12 +488,19 @@ export function TranscriptItemView({
     [registerItemNode, item.key],
   );
 
-  return renderDisplayItem(item, {
-    onOpenWorker,
-    highlightKey,
-    wrapClass: highlightKey === item.key ? "ev-find-current" : undefined,
-    setRootRef,
-    revealedEditKey,
-    flashEditKey,
-  });
+  return (
+    <>
+      {renderDisplayItem(item, {
+        t,
+        onOpenWorker,
+        onPreviewImage: setLightboxImage,
+        highlightKey,
+        wrapClass: highlightKey === item.key ? "ev-find-current" : undefined,
+        setRootRef,
+        revealedEditKey,
+        flashEditKey,
+      })}
+      <AttachmentLightbox image={lightboxImage} onClose={() => setLightboxImage(undefined)} />
+    </>
+  );
 }

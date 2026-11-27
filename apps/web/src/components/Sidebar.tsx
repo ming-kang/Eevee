@@ -11,6 +11,7 @@ import {
 import { IconButton, Menu } from "@earendil-works/elanor-react";
 import type { BoardViewPayload, ProjectId, ProjectSummary } from "@eevee/protocol";
 import { useMemo, useRef, useState } from "react";
+import { useI18n } from "../lib/i18n.ts";
 import type { Route } from "../lib/router.ts";
 import { modLabel } from "../lib/shortcuts.ts";
 import type { ThemePreference, ThemeScheme } from "../lib/theme.ts";
@@ -52,7 +53,9 @@ export function Sidebar({
   onCycleTheme,
   onLogout,
 }: SidebarProps) {
+  const { t } = useI18n();
   const [filter, setFilter] = useState("");
+  const themeLabel = t(`sidebar.theme.${themePreference}` as const);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const filtered = useMemo(() => {
@@ -92,8 +95,8 @@ export function Sidebar({
                 setFilter("");
               }
             }}
-            placeholder="筛选项目…"
-            aria-label="筛选项目"
+            placeholder={t("sidebar.searchProjects")}
+            aria-label={t("sidebar.searchProjects")}
           />
           {filter ? (
             <button
@@ -108,7 +111,7 @@ export function Sidebar({
                 width: 20,
                 height: 20,
               }}
-              aria-label="清空筛选"
+              aria-label={t("sidebar.clearFilter")}
               onClick={() => {
                 setFilter("");
                 inputRef.current?.focus();
@@ -120,7 +123,7 @@ export function Sidebar({
             <button
               type="button"
               className="ev-kbd-pill"
-              title={`打开命令面板（${modLabel()} K）`}
+              title={`${t("shortcuts.palette")} (${modLabel()} K)`}
               onClick={onOpenPalette}
             >
               {modLabel()} K
@@ -132,7 +135,7 @@ export function Sidebar({
           <div className="ev-nav-row" data-active={route.name === "overview"}>
             <button type="button" className="ev-nav-row-btn" onClick={onOpenOverview}>
               <span className="ev-truncate" style={{ flex: 1 }}>
-                概览
+                {t("sidebar.overview")}
               </span>
               {totalPending > 0 && (
                 <span className="ev-count-badge" data-tone="warning">
@@ -145,8 +148,14 @@ export function Sidebar({
       </div>
 
       <div className="ev-side-section">
-        <span>项目 ({projects.length})</span>
-        <IconButton aria-label="新建项目" title="新建项目" onClick={onNewProject}>
+        <span>
+          {t("sidebar.projects")} ({projects.length})
+        </span>
+        <IconButton
+          aria-label={t("sidebar.newProject")}
+          title={t("sidebar.newProject")}
+          onClick={onNewProject}
+        >
           <AddIcon width={16} height={16} />
         </IconButton>
       </div>
@@ -185,8 +194,8 @@ export function Sidebar({
                     render={
                       <IconButton
                         className="ev-row-menu-btn"
-                        aria-label={`${project.title} 操作`}
-                        title="项目操作"
+                        aria-label={`${project.title} ${t("sidebar.projectActions")}`}
+                        title={t("sidebar.projectActions")}
                       >
                         <MoreHorizIcon width={16} height={16} />
                       </IconButton>
@@ -196,16 +205,18 @@ export function Sidebar({
                     <Menu.Positioner align="end" sideOffset={4}>
                       <Menu.Popup>
                         <Menu.Item onClick={() => onOpenProject(project.id, "memory")}>
-                          项目记忆
+                          {t("sidebar.memory")}
                         </Menu.Item>
                         <Menu.Item onClick={() => onOpenProject(project.id, "usage")}>
-                          用量统计
+                          {t("sidebar.usage")}
                         </Menu.Item>
                         <Menu.Separator />
                         <Menu.Item onClick={() => onRenameProject(project)}>
-                          重命名 / 工作目录
+                          {t("sidebar.editProject")}
                         </Menu.Item>
-                        <Menu.Item onClick={() => onDeleteProject(project)}>删除项目</Menu.Item>
+                        <Menu.Item onClick={() => onDeleteProject(project)}>
+                          {t("sidebar.deleteProject")}
+                        </Menu.Item>
                       </Menu.Popup>
                     </Menu.Positioner>
                   </Menu.Portal>
@@ -216,8 +227,10 @@ export function Sidebar({
         })}
 
         {projects.length > 0 && filtered.length === 0 && (
-          <div style={{ padding: "8px 10px", fontSize: 12.5, color: "var(--ev-fg-subtle)" }}>
-            没有匹配的项目
+          <div
+            style={{ padding: "8px 10px", fontSize: "0.78125rem", color: "var(--ev-fg-subtle)" }}
+          >
+            {t("sidebar.noMatchingProjects")}
           </div>
         )}
       </div>
@@ -226,17 +239,21 @@ export function Sidebar({
         <button
           type="button"
           className="ev-nav-row-btn"
-          style={{ padding: "6px 10px", fontSize: 13.5, color: "var(--ev-fg-muted)" }}
+          style={{ padding: "6px 10px", fontSize: "0.84375rem", color: "var(--ev-fg-muted)" }}
           onClick={onOpenControl}
         >
-          Engine 设置
+          {t("sidebar.settings")}
         </button>
-        <IconButton aria-label="快捷键" title="快捷键（?）" onClick={onOpenShortcuts}>
+        <IconButton
+          aria-label={t("sidebar.shortcuts")}
+          title={`${t("sidebar.shortcuts")} (?)`}
+          onClick={onOpenShortcuts}
+        >
           <KeyboardIcon width={16} height={16} />
         </IconButton>
         <IconButton
-          aria-label={`切换主题（当前：${themePreference}）`}
-          title={`主题：${themePreference}`}
+          aria-label={t("sidebar.theme", { theme: themeLabel })}
+          title={t("sidebar.theme", { theme: themeLabel })}
           onClick={onCycleTheme}
         >
           {themeScheme === "dark" ? (
@@ -245,7 +262,7 @@ export function Sidebar({
             <DarkModeIcon width={16} height={16} />
           )}
         </IconButton>
-        <IconButton aria-label="退出登录" title="退出登录" onClick={onLogout}>
+        <IconButton aria-label={t("sidebar.logout")} title={t("sidebar.logout")} onClick={onLogout}>
           <LogoutIcon width={16} height={16} />
         </IconButton>
       </div>

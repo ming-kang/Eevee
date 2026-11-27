@@ -4,11 +4,13 @@ import type { ProviderDetail } from "@eevee/protocol";
 import { useState } from "react";
 import { api } from "../../../lib/api.ts";
 import { formatTime } from "../../../lib/format.ts";
+import { useI18n } from "../../../lib/i18n.ts";
 import { ConfirmModal } from "../../ConfirmModal.tsx";
 import { formatAuthMeta } from "../provider-utils.ts";
 import type { UseProviderOAuthResult } from "./useProviderOAuth.ts";
 
 export function ProviderOAuthPanel({ oauth }: { readonly oauth: UseProviderOAuthResult }) {
+  const { t } = useI18n();
   const { login, promptInput, setPromptInput, submitPrompt, cancelLogin } = oauth;
   if (!login) return null;
 
@@ -16,10 +18,10 @@ export function ProviderOAuthPanel({ oauth }: { readonly oauth: UseProviderOAuth
     <div className="ev-settings-card">
       <div className="ev-settings-head">
         <Heading level={3} size={6}>
-          OAuth 登录 · {login.providerId}
+          {t("providers.oauth.panelTitle", { providerId: login.providerId })}
         </Heading>
         <Button hierarchy="secondary" density="compact" onClick={() => void cancelLogin()}>
-          关闭
+          {t("common.close")}
         </Button>
       </div>
       {login.authEvents.map(({ id, event: ev }) => (
@@ -35,7 +37,8 @@ export function ProviderOAuthPanel({ oauth }: { readonly oauth: UseProviderOAuth
           {ev.type === "device_code" && (
             <div className="ev-form-stack" style={{ gap: 4 }}>
               <Text style={{ margin: 0 }}>
-                授权码：<strong className="ev-mono">{ev.userCode}</strong>
+                {t("providers.oauth.deviceCodeLabel")}
+                <strong className="ev-mono">{ev.userCode}</strong>
               </Text>
               <Link href={ev.verificationUri} target="_blank" rel="noreferrer noopener">
                 {ev.verificationUri}
@@ -72,7 +75,7 @@ export function ProviderOAuthPanel({ oauth }: { readonly oauth: UseProviderOAuth
           )}
           <div>
             <Button hierarchy="primary" density="compact" onClick={() => void submitPrompt()}>
-              提交
+              {t("providers.oauth.submit")}
             </Button>
           </div>
         </div>
@@ -104,6 +107,7 @@ export function ProviderAuthCard({
   onError,
   onDetailError,
 }: ProviderAuthCardProps) {
+  const { t } = useI18n();
   const [apiKeyOpen, setApiKeyOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [savingKey, setSavingKey] = useState(false);
@@ -167,15 +171,17 @@ export function ProviderAuthCard({
           </Heading>
           <span className="ev-mono ev-inline-muted">{detail.id}</span>
           <span className="eevee-badge" data-tone={detail.kind === "custom" ? "info" : "neutral"}>
-            {detail.kind === "custom" ? "自定义" : "内置"}
+            {detail.kind === "custom" ? t("providers.badge.custom") : t("providers.badge.builtin")}
           </span>
           {detail.kind !== "custom" && detail.hasConfigOverride && (
             <span className="eevee-badge" data-tone="warning">
-              已覆盖
+              {t("providers.badge.overridden")}
             </span>
           )}
           <span className="eevee-badge" data-tone={detail.configured ? "positive" : "neutral"}>
-            {detail.configured ? "已配置" : "未配置"}
+            {detail.configured
+              ? t("providers.badge.configured")
+              : t("providers.badge.notConfigured")}
           </span>
         </div>
         <div className="ev-inline-actions">
@@ -192,7 +198,7 @@ export function ProviderAuthCard({
                 setConfirmOpen(true);
               }}
             >
-              删除自定义 Provider
+              {t("providers.auth.deleteCustom")}
             </Button>
           )}
           {detail.kind !== "custom" && detail.hasConfigOverride && (
@@ -208,7 +214,7 @@ export function ProviderAuthCard({
                 setConfirmOpen(true);
               }}
             >
-              还原内置覆盖
+              {t("providers.auth.revertBuiltin")}
             </Button>
           )}
         </div>
@@ -216,11 +222,13 @@ export function ProviderAuthCard({
 
       <div className="ev-auth-summary">
         <span>
-          认证状态：<strong>{formatAuthMeta(detail)}</strong>
+          {t("providers.auth.statusLabel")}
+          <strong>{formatAuthMeta(detail, t)}</strong>
         </span>
         {detail.authExpiresAt !== undefined && (
           <span className="ev-inline-muted ev-num">
-            过期时间：{formatTime(detail.authExpiresAt)}
+            {t("providers.auth.expiresAtLabel")}
+            {formatTime(detail.authExpiresAt)}
           </span>
         )}
       </div>
@@ -237,7 +245,7 @@ export function ProviderAuthCard({
               setApiKeyInput("");
             }}
           >
-            {detail.configured ? "更新 API Key" : "设置 API Key"}
+            {detail.configured ? t("providers.auth.updateApiKey") : t("providers.auth.setApiKey")}
           </Button>
         )}
         {detail.authMethods.oauth && (
@@ -247,7 +255,7 @@ export function ProviderAuthCard({
             density="compact"
             onClick={() => onStartOAuth(detail.id)}
           >
-            {detail.authMethods.oauthLabel ?? "OAuth 登录"}
+            {detail.authMethods.oauthLabel ?? t("providers.auth.oauthLogin")}
           </Button>
         )}
         {detail.configured && (
@@ -259,7 +267,7 @@ export function ProviderAuthCard({
             iconStart={<LogoutIcon width={14} height={14} />}
             onClick={() => void logout()}
           >
-            清除凭据
+            {t("providers.auth.clearCredentials")}
           </Button>
         )}
       </div>
@@ -267,12 +275,12 @@ export function ProviderAuthCard({
       {apiKeyOpen && (
         <div className="ev-inline-key-form">
           <Field.Root style={{ flex: 1 }}>
-            <Field.Label>API Key（写入 auth.json）</Field.Label>
+            <Field.Label>{t("providers.auth.apiKeyAuthJsonLabel")}</Field.Label>
             <Input
               type="password"
               value={apiKeyInput}
               onValueChange={setApiKeyInput}
-              placeholder="输入 API Key（或 $ENV_VAR / !cmd）"
+              placeholder={t("providers.apiKeyInputPlaceholder")}
             />
           </Field.Root>
           <Button
@@ -282,7 +290,7 @@ export function ProviderAuthCard({
             pending={savingKey}
             onClick={() => void saveApiKey()}
           >
-            保存
+            {t("common.save")}
           </Button>
         </div>
       )}
@@ -291,14 +299,18 @@ export function ProviderAuthCard({
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title={
-          isCustom ? `删除自定义 Provider「${detail.id}」？` : `还原内置 Provider「${detail.id}」？`
+          isCustom
+            ? t("providers.auth.confirmDeleteTitle", { id: detail.id })
+            : t("providers.auth.confirmRevertTitle", { id: detail.id })
         }
         description={
           isCustom
-            ? `确定删除自定义 Provider「${detail.id}」及其所有配置与模型？`
-            : `确定还原内置 Provider「${detail.id}」的所有 models.json 覆盖与自定义模型？`
+            ? t("providers.auth.confirmDeleteDesc", { id: detail.id })
+            : t("providers.auth.confirmRevertDesc", { id: detail.id })
         }
-        confirmLabel={isCustom ? "确认删除" : "确认还原"}
+        confirmLabel={
+          isCustom ? t("providers.auth.confirmDeleteLabel") : t("providers.auth.confirmRevertLabel")
+        }
         tone="danger"
         pending={deletingProvider}
         error={confirmError}

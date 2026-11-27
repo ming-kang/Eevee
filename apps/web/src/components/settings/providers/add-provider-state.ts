@@ -4,6 +4,7 @@ import type {
   ProviderCatalogResponse,
   UpsertProviderRequest,
 } from "@eevee/protocol";
+import { t } from "../../../lib/i18n.ts";
 import { type HeaderRow, rowsToHeaders } from "../header-rows.ts";
 import { toImportModelPayload, validateBaseUrl } from "../provider-utils.ts";
 
@@ -187,7 +188,7 @@ export function buildBuiltinOverrideRequest(
     const baseErr = validateBaseUrl(trimmedBaseUrl);
     if (baseErr) throw new Error(baseErr);
   }
-  const headers = rowsToHeaders(builtin.headers, "网关请求头");
+  const headers = rowsToHeaders(builtin.headers, t("providers.gatewayHeadersLabel"));
   if (!trimmedBaseUrl && !headers) return undefined;
   return {
     ...(trimmedBaseUrl ? { baseUrl: trimmedBaseUrl } : {}),
@@ -199,7 +200,7 @@ export function buildDraftProbeRequest(custom: CustomProviderDraft): ProbeProvid
   const trimmedBaseUrl = custom.baseUrl.trim();
   const baseErr = validateBaseUrl(trimmedBaseUrl);
   if (baseErr) throw new Error(baseErr);
-  const headers = rowsToHeaders(custom.headers, "自定义请求头");
+  const headers = rowsToHeaders(custom.headers, t("providers.customHeadersLabel"));
   const trimmedKey = custom.apiKey.trim();
   return {
     baseUrl: trimmedBaseUrl,
@@ -215,12 +216,12 @@ export function buildCustomProviderRequest(
   selectedModels: readonly ProbedModel[],
 ): UpsertProviderRequest {
   const id = custom.id.trim();
-  if (!id) throw new Error("Provider ID 不能为空");
+  if (!id) throw new Error(t("providers.error.emptyId"));
   const trimmedBaseUrl = custom.baseUrl.trim();
   const baseErr = validateBaseUrl(trimmedBaseUrl);
   if (baseErr) throw new Error(baseErr);
-  if (!custom.api) throw new Error("请选择协议 API");
-  const headers = rowsToHeaders(custom.headers, "自定义请求头");
+  if (!custom.api) throw new Error(t("providers.error.missingApi"));
+  const headers = rowsToHeaders(custom.headers, t("providers.customHeadersLabel"));
   const trimmedName = custom.name.trim();
   const trimmedKey = custom.apiKey.trim();
   return {

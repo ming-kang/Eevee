@@ -2,6 +2,7 @@ import { ChevronRightIcon } from "@earendil-works/elanor-icons-react";
 import { Field, Input, Switch, Text, TextArea } from "@earendil-works/elanor-react";
 import type { CompatFieldInfo } from "@eevee/protocol";
 import { type Dispatch, useState } from "react";
+import { useI18n } from "../../../lib/i18n.ts";
 import {
   ADVANCED_KEYS,
   type ModelEditorAction,
@@ -22,14 +23,17 @@ export function ModelCompatSection({
   draft,
   dispatch,
 }: ModelCompatSectionProps) {
+  const { t } = useI18n();
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   return (
     <section className="ev-editor-section">
-      <div className="ev-editor-section-title">协议兼容（compat）</div>
+      <div className="ev-editor-section-title">{t("modelEditor.compat.title")}</div>
       {compatFields.length === 0 ? (
         <Text className="ev-inline-hint">
-          {effectiveApi ? `${effectiveApi} 没有声明兼容字段。` : "先选择协议 API。"}
+          {effectiveApi
+            ? t("modelEditor.compat.emptyForApi", { api: effectiveApi })
+            : t("modelEditor.compat.selectApiFirst")}
         </Text>
       ) : (
         <div className="ev-compat-grid">
@@ -52,7 +56,9 @@ export function ModelCompatSection({
                     >
                       <Switch.Thumb />
                     </Switch.Root>
-                    <span>{value === true ? "开启" : "关闭"}</span>
+                    <span>
+                      {value === true ? t("modelEditor.compat.on") : t("modelEditor.compat.off")}
+                    </span>
                   </div>
                 )}
                 {field.kind === "enum" && (
@@ -67,7 +73,7 @@ export function ModelCompatSection({
                       })
                     }
                   >
-                    <option value="">协议默认</option>
+                    <option value="">{t("modelEditor.compat.protocolDefault")}</option>
                     {(field.options ?? []).map((option) => (
                       <option key={option} value={option}>
                         {option}
@@ -80,7 +86,7 @@ export function ModelCompatSection({
                     type="text"
                     inputMode="decimal"
                     value={text}
-                    placeholder="协议默认"
+                    placeholder={t("modelEditor.compat.protocolDefault")}
                     onValueChange={(next) =>
                       dispatch({ type: "setCompatText", key: field.key, value: next })
                     }
@@ -91,7 +97,11 @@ export function ModelCompatSection({
                     rows={field.kind === "json" ? 4 : 3}
                     monospace={field.kind === "json"}
                     value={text}
-                    placeholder={field.kind === "stringMap" ? "KEY=VALUE，每行一条" : "JSON 对象"}
+                    placeholder={
+                      field.kind === "stringMap"
+                        ? t("modelEditor.compat.kvPlaceholder")
+                        : t("modelEditor.compat.jsonPlaceholder")
+                    }
                     onValueChange={(next) =>
                       dispatch({ type: "setCompatText", key: field.key, value: next })
                     }
@@ -109,7 +119,7 @@ export function ModelCompatSection({
       >
         <summary>
           <ChevronRightIcon className="ev-tool-disclosure-chevron" width={14} height={14} />
-          <span>高级 JSON</span>
+          <span>{t("modelEditor.compat.advancedJson")}</span>
         </summary>
         <div className="ev-tool-disclosure-body">
           {ADVANCED_KEYS.map((key) => (
@@ -121,7 +131,7 @@ export function ModelCompatSection({
                 monospace
                 rows={key === "headers" ? 3 : 5}
                 value={draft.advancedText[key]}
-                placeholder="留空则不设置"
+                placeholder={t("modelEditor.compat.leaveBlank")}
                 onValueChange={(value) => dispatch({ type: "setAdvancedText", key, value })}
               />
             </Field.Root>

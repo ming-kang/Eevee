@@ -5,6 +5,7 @@ import {
   KeyboardShortcut,
   Modal,
 } from "@earendil-works/elanor-react";
+import { useI18n } from "../lib/i18n.ts";
 import { shortcutGroups } from "../lib/shortcuts.ts";
 
 export function ShortcutSheet({
@@ -14,6 +15,7 @@ export function ShortcutSheet({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useI18n();
   const groups = shortcutGroups();
 
   return (
@@ -22,7 +24,7 @@ export function ShortcutSheet({
         <Modal.Backdrop />
         <Modal.Viewport>
           <Modal.Popup>
-            <Modal.Title>快捷键</Modal.Title>
+            <Modal.Title>{t("shortcuts.title")}</Modal.Title>
             <Modal.Body>
               <div className="ev-form-stack" style={{ gap: 18 }}>
                 {groups.map((group) => (
@@ -31,7 +33,7 @@ export function ShortcutSheet({
                       level={3}
                       size={6}
                       style={{
-                        fontSize: "11px",
+                        fontSize: "0.6875rem",
                         letterSpacing: "0.06em",
                         textTransform: "uppercase",
                         color: "var(--ev-fg-subtle)",
@@ -48,7 +50,7 @@ export function ShortcutSheet({
                           justifyContent: "space-between",
                           gap: 16,
                           padding: "3px 0",
-                          fontSize: "13.5px",
+                          fontSize: "0.84375rem",
                           width: "100%",
                         }}
                       >
@@ -68,7 +70,7 @@ export function ShortcutSheet({
               </div>
             </Modal.Body>
             <Modal.Actions>
-              <Modal.Close render={<Button hierarchy="secondary">关闭</Button>} />
+              <Modal.Close render={<Button hierarchy="secondary">{t("common.close")}</Button>} />
             </Modal.Actions>
           </Modal.Popup>
         </Modal.Viewport>

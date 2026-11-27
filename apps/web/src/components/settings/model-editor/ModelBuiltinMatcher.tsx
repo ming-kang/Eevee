@@ -3,6 +3,7 @@ import { Button, Input, Text } from "@earendil-works/elanor-react";
 import type { BuiltinFieldDiff, BuiltinModelCandidate, ModelDetail } from "@eevee/protocol";
 import { useState } from "react";
 import { api } from "../../../lib/api.ts";
+import { useI18n } from "../../../lib/i18n.ts";
 
 function candidateKey(candidate: BuiltinModelCandidate): string {
   return `${candidate.providerId}/${candidate.modelId}`;
@@ -21,6 +22,7 @@ export function ModelBuiltinMatcher({
   modelId,
   onApplyDiffs,
 }: ModelBuiltinMatcherProps) {
+  const { t } = useI18n();
   const isCreate = model === undefined;
   const [matchOpen, setMatchOpen] = useState(false);
   const [matchQuery, setMatchQuery] = useState(model?.id ?? "");
@@ -77,14 +79,16 @@ export function ModelBuiltinMatcher({
       onApplyDiffs(selectedDiffs);
     }
     setMatchNotice(
-      selectedDiffs.length > 0 ? `已应用 ${selectedDiffs.length} 个字段` : "未选择可应用字段",
+      selectedDiffs.length > 0
+        ? t("modelEditor.matcher.applied", { count: selectedDiffs.length })
+        : t("modelEditor.matcher.noneSelected"),
     );
   };
 
   return (
     <section className="ev-editor-section">
       <div className="ev-editor-section-head">
-        <div className="ev-editor-section-title">使用内置数据补全</div>
+        <div className="ev-editor-section-title">{t("modelEditor.matcher.title")}</div>
         <Button
           type="button"
           hierarchy="secondary"
@@ -92,12 +96,10 @@ export function ModelBuiltinMatcher({
           disabled={isCreate}
           onClick={openMatch}
         >
-          {matchOpen ? "收起" : "搜索内置参考"}
+          {matchOpen ? t("modelEditor.matcher.collapse") : t("modelEditor.matcher.expand")}
         </Button>
       </div>
-      {isCreate && (
-        <Text className="ev-inline-hint">保存自定义模型后，即可从内置模型目录匹配并补全字段。</Text>
-      )}
+      {isCreate && <Text className="ev-inline-hint">{t("modelEditor.matcher.saveFirstHint")}</Text>}
       {matchOpen && !isCreate && (
         <div className="ev-match-panel">
           <div className="ev-match-search">
@@ -105,7 +107,7 @@ export function ModelBuiltinMatcher({
               type="text"
               value={matchQuery}
               onValueChange={setMatchQuery}
-              placeholder="搜索内置模型…"
+              placeholder={t("modelEditor.matcher.searchPlaceholder")}
             />
             <Button
               type="button"
@@ -115,7 +117,7 @@ export function ModelBuiltinMatcher({
               pending={matching}
               onClick={() => void runMatch()}
             >
-              匹配
+              {t("modelEditor.matcher.matchButton")}
             </Button>
           </div>
           {matchError && <div className="ev-error-banner">{matchError}</div>}
@@ -168,12 +170,12 @@ export function ModelBuiltinMatcher({
                         <span className="ev-diff-field ev-mono">{diff.field}</span>
                         {!diff.applicable && (
                           <span className="eevee-badge" data-tone="neutral">
-                            跨协议只读
+                            {t("modelEditor.matcher.crossApiReadonly")}
                           </span>
                         )}
                         {diff.same && (
                           <span className="eevee-badge" data-tone="positive">
-                            相同
+                            {t("modelEditor.matcher.same")}
                           </span>
                         )}
                         <span className="ev-diff-values">
@@ -192,7 +194,7 @@ export function ModelBuiltinMatcher({
                       iconStart={<CheckIcon width={14} height={14} />}
                       onClick={applySelectedDiffs}
                     >
-                      应用所选字段
+                      {t("modelEditor.matcher.applyButton")}
                     </Button>
                   </div>
                 </div>
@@ -200,7 +202,7 @@ export function ModelBuiltinMatcher({
             </div>
           )}
           {!matching && candidates.length === 0 && !matchError && (
-            <Text className="ev-inline-hint">输入关键词后点击「匹配」。</Text>
+            <Text className="ev-inline-hint">{t("modelEditor.matcher.emptyPrompt")}</Text>
           )}
         </div>
       )}

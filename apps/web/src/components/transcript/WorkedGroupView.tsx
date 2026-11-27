@@ -1,6 +1,7 @@
 import { ChevronRightIcon } from "@earendil-works/elanor-icons-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { formatDurationMs, shortPath } from "../../lib/format.ts";
+import { useI18n } from "../../lib/i18n.ts";
 import {
   activitySummary,
   closedWorkedItems,
@@ -23,6 +24,7 @@ export function WorkedGroupView({
     flashEditKey?: string,
   ) => ReactNode;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [pathsOpen, setPathsOpen] = useState(false);
   const [revealedEditKey, setRevealedEditKey] = useState<string | undefined>(undefined);
@@ -36,7 +38,10 @@ export function WorkedGroupView({
     return () => window.clearTimeout(timer);
   }, [flashEditKey]);
 
-  const label = item.ms !== undefined ? `耗时 ${formatDurationMs(item.ms)}` : "已完成执行";
+  const label =
+    item.ms !== undefined
+      ? t("transcript.worked.elapsed", { duration: formatDurationMs(item.ms) })
+      : t("transcript.worked.done");
   const summaryText = activitySummary(item.activity);
   const edits = editSummary(item.items);
   const shown = open ? item.items : closedWorkedItems(item);
@@ -77,7 +82,7 @@ export function WorkedGroupView({
             type="button"
             className="ev-diffstat ev-num"
             aria-expanded={pathsOpen}
-            title={`编辑了 ${edits.files} 个文件`}
+            title={t("transcript.worked.filesEditedTitle", { count: edits.files })}
             onClick={() => setPathsOpen((prev) => !prev)}
           >
             {edits.added > 0 && <span className="ev-plus">+{edits.added}</span>}

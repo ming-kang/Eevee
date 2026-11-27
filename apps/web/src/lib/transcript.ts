@@ -32,5 +32,7 @@ export type {
   NoticeInfo,
   OutlineEntry,
   ToolStep,
+  UserFilePart,
+  UserImagePart,
   VisualStage,
 } from "./transcript/types.ts";

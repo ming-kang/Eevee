@@ -1,4 +1,5 @@
 import type { WorkerId } from "@eevee/protocol";
+import { t } from "../i18n.ts";
 import { isRecord } from "../object.ts";
 import { type ExtractedToolCall, formatToolLabel } from "./content.ts";
 import type {
@@ -43,19 +44,19 @@ export function activitySummary(counts: readonly ActivityCount[]): string {
   const parts = sorted.slice(0, 3).map((c) => {
     switch (c.kind) {
       case "read":
-        return `读取 ${c.count} 处`;
+        return t("transcript.activity.read", { count: c.count });
       case "edit":
-        return `编辑 ${c.count} 次`;
+        return t("transcript.activity.edit", { count: c.count });
       case "commands":
-        return `命令 ${c.count} 次`;
+        return t("transcript.activity.commands", { count: c.count });
       case "memory":
-        return `记忆 ${c.count} 次`;
+        return t("transcript.activity.memory", { count: c.count });
       case "search":
-        return `搜索工具 ${c.count} 次`;
+        return t("transcript.activity.search", { count: c.count });
       case "scripts":
-        return `脚本 ${c.count} 次`;
+        return t("transcript.activity.scripts", { count: c.count });
       default:
-        return `工具 ${c.count} 次`;
+        return t("transcript.activity.tools", { count: c.count });
     }
   });
   return parts.join(" · ");
@@ -102,19 +103,21 @@ function buildEditDiff(
 function dispatchVerb(name: string, running: boolean): string {
   switch (name) {
     case "spawn_worker":
-      return running ? "正在派出 Worker" : "派出 Worker";
+      return t(running ? "transcript.dispatch.spawn.run" : "transcript.dispatch.spawn.done");
     case "message_worker":
-      return running ? "正在通知 Worker" : "发消息给 Worker";
+      return t(running ? "transcript.dispatch.message.run" : "transcript.dispatch.message.done");
     case "stop_worker":
-      return running ? "正在停止 Worker" : "停止 Worker";
+      return t(running ? "transcript.dispatch.stop.run" : "transcript.dispatch.stop.done");
     case "close_ticket":
-      return running ? "正在关闭 Ticket" : "关闭 Ticket";
+      return t(
+        running ? "transcript.dispatch.closeTicket.run" : "transcript.dispatch.closeTicket.done",
+      );
     case "inspect_worker":
-      return running ? "正在查看 Worker" : "查看 Worker";
+      return t(running ? "transcript.dispatch.inspect.run" : "transcript.dispatch.inspect.done");
     case "ask_user":
-      return running ? "正在发起提问" : "向你提问";
+      return t(running ? "transcript.dispatch.askUser.run" : "transcript.dispatch.askUser.done");
     case "message_router":
-      return running ? "正在汇报 Router" : "汇报给 Router";
+      return t(running ? "transcript.dispatch.report.run" : "transcript.dispatch.report.done");
     default:
       return name;
   }

@@ -3,6 +3,7 @@ import { Button, Heading, Input, Table } from "@earendil-works/elanor-react";
 import type { ModelInfo } from "@eevee/protocol";
 import { useState } from "react";
 import { formatTokens } from "../../../lib/format.ts";
+import { useI18n } from "../../../lib/i18n.ts";
 
 const DISPLAY_LIMIT = 100;
 
@@ -17,6 +18,7 @@ export function ModelCatalogSection({
   refreshing,
   onRefresh,
 }: ModelCatalogSectionProps) {
+  const { t } = useI18n();
   const [onlyAvailable, setOnlyAvailable] = useState(true);
   const [filter, setFilter] = useState("");
   const [showAllModels, setShowAllModels] = useState(false);
@@ -33,24 +35,34 @@ export function ModelCatalogSection({
     <div className="ev-settings-section">
       <div className="ev-settings-head">
         <Heading level={2} size={5}>
-          模型目录
+          {t("models.catalogTitle")}
           <span
             className="ev-num"
-            style={{ marginLeft: 8, fontSize: 13, fontWeight: 400, color: "var(--ev-fg-subtle)" }}
+            style={{
+              marginLeft: 8,
+              fontSize: "0.8125rem",
+              fontWeight: 400,
+              color: "var(--ev-fg-subtle)",
+            }}
           >
             {visibleModels.length}
           </span>
         </Heading>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div style={{ width: 220 }}>
-            <Input type="text" value={filter} onValueChange={setFilter} placeholder="筛选模型…" />
+            <Input
+              type="text"
+              value={filter}
+              onValueChange={setFilter}
+              placeholder={t("models.filterPlaceholder")}
+            />
           </div>
           <Button
             hierarchy="secondary"
             density="compact"
             onClick={() => setOnlyAvailable((prev) => !prev)}
           >
-            {onlyAvailable ? "仅可用" : "全部"}
+            {t(onlyAvailable ? "models.onlyAvailable" : "models.all")}
           </Button>
           <Button
             hierarchy="secondary"
@@ -59,7 +71,7 @@ export function ModelCatalogSection({
             pending={refreshing}
             onClick={onRefresh}
           >
-            刷新
+            {t("common.refresh")}
           </Button>
         </div>
       </div>
@@ -68,11 +80,11 @@ export function ModelCatalogSection({
         <Table.Root>
           <Table.Head>
             <Table.Row>
-              <Table.HeaderCell>模型</Table.HeaderCell>
-              <Table.HeaderCell>思考档位</Table.HeaderCell>
-              <Table.HeaderCell align="end">上下文</Table.HeaderCell>
-              <Table.HeaderCell align="end">输出</Table.HeaderCell>
-              <Table.HeaderCell align="end">状态</Table.HeaderCell>
+              <Table.HeaderCell>{t("models.col.model")}</Table.HeaderCell>
+              <Table.HeaderCell>{t("models.col.thinking")}</Table.HeaderCell>
+              <Table.HeaderCell align="end">{t("models.col.context")}</Table.HeaderCell>
+              <Table.HeaderCell align="end">{t("models.col.output")}</Table.HeaderCell>
+              <Table.HeaderCell align="end">{t("models.col.status")}</Table.HeaderCell>
             </Table.Row>
           </Table.Head>
           <Table.Body>
@@ -82,7 +94,7 @@ export function ModelCatalogSection({
                   colSpan={5}
                   style={{ color: "var(--ev-fg-subtle)", textAlign: "center", paddingBlock: 24 }}
                 >
-                  {onlyAvailable ? "无可用模型" : "无匹配模型"}
+                  {t(onlyAvailable ? "models.emptyAvailable" : "models.emptyMatch")}
                 </Table.Cell>
               </Table.Row>
             ) : (
@@ -94,19 +106,19 @@ export function ModelCatalogSection({
                         {model.provider}/{model.id}
                       </span>
                       {model.name !== model.id && (
-                        <span className="ev-inline-muted" style={{ fontSize: 12 }}>
+                        <span className="ev-inline-muted" style={{ fontSize: "0.75rem" }}>
                           {model.name}
                         </span>
                       )}
                       <div className="ev-model-badges">
                         {model.isCustom && (
                           <span className="eevee-badge" data-tone="info">
-                            自定义
+                            {t("models.badge.custom")}
                           </span>
                         )}
                         {!model.isCustom && model.hasOverride && (
                           <span className="eevee-badge" data-tone="warning">
-                            已覆盖
+                            {t("models.badge.overridden")}
                           </span>
                         )}
                         {model.input?.includes("image") && (
@@ -140,7 +152,11 @@ export function ModelCatalogSection({
                       className="eevee-badge"
                       data-tone={model.available ? "positive" : "neutral"}
                     >
-                      {model.available ? "可用" : "未认证"}
+                      {t(
+                        model.available
+                          ? "models.status.available"
+                          : "models.status.unauthenticated",
+                      )}
                     </span>
                   </Table.Cell>
                 </Table.Row>
@@ -154,8 +170,8 @@ export function ModelCatalogSection({
         <div className="ev-table-footer">
           <span className="ev-inline-muted ev-num">
             {showAllModels
-              ? `已显示全部 ${visibleModels.length} 个模型`
-              : `当前显示前 ${DISPLAY_LIMIT} 个，共 ${visibleModels.length} 个模型`}
+              ? t("models.showingAll", { count: visibleModels.length })
+              : t("models.showingLimited", { limit: DISPLAY_LIMIT, count: visibleModels.length })}
           </span>
           <Button
             type="button"
@@ -164,8 +180,8 @@ export function ModelCatalogSection({
             onClick={() => setShowAllModels((prev) => !prev)}
           >
             {showAllModels
-              ? `收起为前 ${DISPLAY_LIMIT} 个`
-              : `显示全部 ${visibleModels.length} 个模型`}
+              ? t("models.collapseToLimit", { limit: DISPLAY_LIMIT })
+              : t("models.showAll", { count: visibleModels.length })}
           </Button>
         </div>
       )}

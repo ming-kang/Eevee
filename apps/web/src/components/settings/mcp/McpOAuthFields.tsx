@@ -1,5 +1,6 @@
 import { ChevronRightIcon } from "@earendil-works/elanor-icons-react";
 import { Field, Input } from "@earendil-works/elanor-react";
+import { useI18n } from "../../../lib/i18n.ts";
 import type { OAuthClientRegistration, ServerFormState } from "./codec.ts";
 
 export function McpOAuthFields({
@@ -11,6 +12,7 @@ export function McpOAuthFields({
   readonly saving: boolean;
   readonly onPatch: (patch: Partial<ServerFormState>) => void;
 }) {
+  const { t } = useI18n();
   return (
     <details
       className="ev-tool-disclosure"
@@ -19,7 +21,7 @@ export function McpOAuthFields({
     >
       <summary>
         <ChevronRightIcon className="ev-tool-disclosure-chevron" width={14} height={14} />
-        <span>OAuth 客户端参数（可选，动态注册失败时填写）</span>
+        <span>{t("mcp.oauth.fieldsSummary")}</span>
       </summary>
       <div className="ev-tool-disclosure-body">
         <div className="ev-settings-grid-2">
@@ -39,7 +41,7 @@ export function McpOAuthFields({
               value={form.oauthClientSecret}
               disabled={saving}
               onValueChange={(oauthClientSecret) => onPatch({ oauthClientSecret })}
-              placeholder="支持 $ENV_VAR"
+              placeholder={t("mcp.oauth.secretPlaceholder")}
             />
           </Field.Root>
           <Field.Root>
@@ -64,7 +66,7 @@ export function McpOAuthFields({
                 onPatch({ oauthClientRegistration: reg });
               }}
             >
-              <option value="">默认 (auto)</option>
+              <option value="">{t("mcp.oauth.registrationDefault")}</option>
               <option value="auto">auto</option>
               <option value="dcr">dcr</option>
               <option value="cimd">cimd</option>

@@ -6,6 +6,7 @@ import type {
 } from "@eevee/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { t } from "../../lib/i18n.ts";
 import { showToast } from "../../lib/toasts.ts";
 
 const MAX_LOG_DISPLAY_CHARS = 256 * 1024;
@@ -50,7 +51,7 @@ function formatTaskError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.startsWith("Invalid filter regular expression:")) {
     const detail = msg.slice("Invalid filter regular expression:".length).trim();
-    return `无效的过滤正则：${detail}`;
+    return t("rail.tasks.invalidRegex", { detail });
   }
   return msg;
 }
@@ -150,7 +151,9 @@ export function useTaskOutput({
               if (event.reason === "failed" || event.reason === "closed") {
                 setError(
                   event.message ??
-                    (event.reason === "failed" ? "日志流读取失败" : "日志流连接已中断"),
+                    (event.reason === "failed"
+                      ? t("rail.tasks.streamFailed")
+                      : t("rail.tasks.streamClosed")),
                 );
               }
               setStreaming(false);
@@ -284,7 +287,7 @@ export function useTaskOutput({
       const res = await api.killWorkerTask(projectId, workerId, task.id);
       if (!mountedRef.current) return;
       onTaskUpdate(taskKey, res.task);
-      showToast(`已终止后台任务 ${task.id}`);
+      showToast(t("rail.tasks.terminated", { taskId: task.id }));
       if (!useStream) {
         setRefreshNonce((n) => n + 1);
       }

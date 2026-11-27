@@ -8,8 +8,10 @@ import type {
 } from "@eevee/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { useI18n } from "../../lib/i18n.ts";
 import { showToast } from "../../lib/toasts.ts";
 import { useAbortableAsync } from "../../lib/useAbortableAsync.ts";
+import { invalidateEngineModelsCache } from "../../lib/useEngineSettings.ts";
 import { AddProviderModal } from "./AddProviderModal.tsx";
 import { ModelEditorModal, type ModelEditorTarget } from "./ModelEditorModal.tsx";
 import { ProbeModelsModal } from "./ProbeModelsModal.tsx";
@@ -23,6 +25,7 @@ import {
 import { useProviderOAuth } from "./providers/useProviderOAuth.ts";
 
 export function ProvidersTab() {
+  const { t } = useI18n();
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [diagnostics, setDiagnostics] = useState<ModelsConfigDiagnostic[]>([]);
   const [catalog, setCatalog] = useState<ProviderCatalogResponse | undefined>(undefined);
@@ -105,8 +108,16 @@ export function ProvidersTab() {
     void refreshAll();
   }, [refreshAll]);
 
+  const refreshMutated = useCallback(
+    async (preferredId?: string) => {
+      invalidateEngineModelsCache();
+      await refreshAll(preferredId);
+    },
+    [refreshAll],
+  );
+
   const oauth = useProviderOAuth({
-    onComplete: refreshAll,
+    onComplete: refreshMutated,
     onError: setError,
     onSelectProvider: setSelectedId,
   });
@@ -118,6 +129,7 @@ export function ProvidersTab() {
   };
 
   const applyDetailChanged = async (next: ProviderDetail) => {
+    invalidateEngineModelsCache();
     setDetail(next);
     setSelectedId(next.id);
     try {
@@ -131,7 +143,7 @@ export function ProvidersTab() {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
-      showToast(`刷新 Provider 列表失败：${message}`, "danger");
+      showToast(t("providers.toast.refreshFailed", { error: message }), "danger");
     }
   };
 
@@ -141,9 +153,10 @@ export function ProvidersTab() {
     setReloadNotice(undefined);
     try {
       const res = await api.reloadModels();
+      invalidateEngineModelsCache();
       setDiagnostics(res.diagnostics);
       setReloadNotice(
-        `已重载 models.json（${res.providerCount} Provider / ${res.modelCount} 模型）`,
+        t("providers.reloadNotice", { providers: res.providerCount, models: res.modelCount }),
       );
       await refreshAll(selectedId);
     } catch (err) {
@@ -157,7 +170,7 @@ export function ProvidersTab() {
     <div className="ev-settings-section">
       <div className="ev-settings-head">
         <Heading level={2} size={5}>
-          Providers
+          {t("providers.title")}
         </Heading>
         <div className="ev-inline-actions">
           <Button
@@ -166,7 +179,7 @@ export function ProvidersTab() {
             iconStart={<AddIcon width={15} height={15} />}
             onClick={() => setAddOpen(true)}
           >
-            添加 Provider
+            {t("providers.add")}
           </Button>
           <Button
             hierarchy="secondary"
@@ -175,16 +188,16 @@ export function ProvidersTab() {
             pending={reloading}
             onClick={() => void handleReloadModels()}
           >
-            重载 models.json
+            {t("providers.reloadModels")}
           </Button>
           <Button
             hierarchy="secondary"
             density="compact"
             iconStart={<RefreshIcon width={15} height={15} />}
             pending={loading}
-            onClick={() => void refreshAll(selectedId)}
+            onClick={() => void refreshMutated(selectedId)}
           >
-            刷新
+            {t("common.refresh")}
           </Button>
         </div>
       </div>
@@ -203,7 +216,7 @@ export function ProvidersTab() {
         <div className="ev-warning-banner" role="alert">
           <div className="ev-warning-banner-head">
             <WarningIcon width={16} height={16} />
-            <strong>models.json 配置诊断（{diagnostics.length}）</strong>
+            <strong>{t("providers.diagnosticsHeading", { count: diagnostics.length })}</strong>
           </div>
           <div className="ev-diagnostic-list">
             {diagnostics.map((diag) => (
@@ -240,11 +253,11 @@ export function ProvidersTab() {
         <div className="ev-provider-detail-pane">
           {!selectedId ? (
             <div className="ev-settings-card">
-              <Text className="ev-inline-hint">从左侧选择一个 Provider 查看详情。</Text>
+              <Text className="ev-inline-hint">{t("providers.selectPrompt")}</Text>
             </div>
           ) : loadingDetail && (!detail || detail.id !== selectedId) ? (
             <div className="ev-settings-card">
-              <Text className="ev-inline-hint">加载 Provider 详情…</Text>
+              <Text className="ev-inline-hint">{t("providers.loadingDetail")}</Text>
             </div>
           ) : detail ? (
             <div className="ev-form-stack">
@@ -253,7 +266,7 @@ export function ProvidersTab() {
               <ProviderAuthCard
                 key={detail.id}
                 detail={detail}
-                onRefresh={refreshAll}
+                onRefresh={refreshMutated}
                 onStartOAuth={(providerId) => void oauth.startOAuth(providerId)}
                 onError={setError}
                 onDetailError={setDetailError}
@@ -295,7 +308,7 @@ export function ProvidersTab() {
             if (nextDetail) {
               void applyDetailChanged(nextDetail);
             } else {
-              void refreshAll(providerId);
+              void refreshMutated(providerId);
             }
           }}
           onStartOAuth={(providerId) => {

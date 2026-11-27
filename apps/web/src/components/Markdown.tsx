@@ -16,6 +16,7 @@ import {
 import { common, createLowlight } from "lowlight";
 import { type MarkedToken, marked, type Token } from "marked";
 import { Fragment, type ReactNode, useMemo } from "react";
+import { useI18n } from "../lib/i18n.ts";
 
 const lowlight = createLowlight(common);
 const LANG_ALIASES: Record<string, string> = {
@@ -160,10 +161,11 @@ function renderInline(tokens: readonly Token[] | undefined, prefix: string): Rea
 }
 
 function CodeBlock({ code, lang }: { readonly code: string; readonly lang?: string }) {
+  const { t } = useI18n();
   const highlighted = useMemo(() => highlightCode(code, lang), [code, lang]);
   return (
     <CodeSnippet
-      actions={<CopyButton value={code} aria-label="复制代码" />}
+      actions={<CopyButton value={code} aria-label={t("transcript.copyCode")} />}
       data-language={lang || undefined}
     >
       {highlighted}
@@ -284,11 +286,18 @@ export function Markdown({
   readonly text: string;
   readonly streaming?: boolean;
 }) {
+  const { t } = useI18n();
   const tokens = useMemo(() => marked.lexer(text, { gfm: true, breaks: false }), [text]);
   return (
     <Prose className="eevee-markdown">
       {renderBlocks(tokens, "md")}
-      {streaming && <span className="eevee-streaming-dot" role="status" aria-label="生成中" />}
+      {streaming && (
+        <span
+          className="eevee-streaming-dot"
+          role="status"
+          aria-label={t("transcript.generating")}
+        />
+      )}
     </Prose>
   );
 }

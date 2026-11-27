@@ -2,6 +2,7 @@ import { Button, Field, Heading, Input, Switch } from "@earendil-works/elanor-re
 import { type ProviderDetail, providerBaseUrlPlaceholder } from "@eevee/protocol";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "../../../lib/api.ts";
+import { useI18n } from "../../../lib/i18n.ts";
 import { BaseUrlField } from "../BaseUrlField.tsx";
 import { HeadersEditor } from "../HeadersEditor.tsx";
 import { SecretRevealInput } from "../SecretRevealInput.tsx";
@@ -26,6 +27,7 @@ export function ProviderConfigForm({
   onSaved,
   onDetailError,
 }: ProviderConfigFormProps) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState<ProviderConfigDraft>(() => createProviderConfigDraft(detail));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -84,18 +86,18 @@ export function ProviderConfigForm({
     <div className="ev-settings-card">
       <div className="ev-settings-head">
         <Heading level={3} size={6}>
-          连接与覆盖配置（models.json）
+          {t("providers.config.title")}
         </Heading>
         {saved && (
           <span className="eevee-badge" data-tone="positive">
-            已保存
+            {t("common.saved")}
           </span>
         )}
       </div>
       <form onSubmit={(event) => void handleSave(event)} className="ev-form-stack">
         <div className="ev-model-form-grid">
           <Field.Root>
-            <Field.Label>显示名称</Field.Label>
+            <Field.Label>{t("providers.config.displayName")}</Field.Label>
             <Input
               type="text"
               value={draft.name}
@@ -104,14 +106,16 @@ export function ProviderConfigForm({
             />
           </Field.Root>
           <Field.Root>
-            <Field.Label>协议 API</Field.Label>
+            <Field.Label>{t("providers.field.api")}</Field.Label>
             <select
               className="ev-select"
               value={draft.api}
               onChange={(event) => patchDraft({ api: event.target.value })}
             >
               <option value="">
-                {detail.kind === "custom" ? "由模型各自指定" : "继承内置默认"}
+                {detail.kind === "custom"
+                  ? t("providers.config.apiPerModel")
+                  : t("providers.config.apiInheritBuiltin")}
               </option>
               {apiOptions.map((item) => (
                 <option key={item} value={item}>
@@ -130,12 +134,12 @@ export function ProviderConfigForm({
           placeholder={detail.baseUrl ?? providerBaseUrlPlaceholder(effectiveConfigApi)}
           previewBaseUrl={effectiveBaseUrl}
           fallbackNote={fallbackNote}
-          previewPrefix="有效请求 URL："
-          warningText=" 检测到可能的 /v1 重复，请检查 Base URL"
+          previewPrefix={t("baseUrl.effectiveUrlPrefix")}
+          warningText={t("baseUrl.duplicateV1Warning")}
         />
 
         <Field.Root>
-          <Field.Label>models.json 中的 apiKey（支持 $ENV_VAR / !cmd）</Field.Label>
+          <Field.Label>{t("providers.config.apiKeyLabel")}</Field.Label>
           <SecretRevealInput
             value={draft.apiKey}
             disabled={draft.clearApiKey}
@@ -150,8 +154,8 @@ export function ProviderConfigForm({
             onRevealedChange={(revealApiKey) => patchDraft({ revealApiKey }, false)}
             placeholder={
               detail.config?.hasApiKey && !detail.config?.apiKeyRef
-                ? "已设置密钥（留空保持不变，或输入新值覆盖）"
-                : "留空则使用 auth.json 或环境变量"
+                ? t("providers.config.apiKeySetPlaceholder")
+                : t("providers.config.apiKeyFallbackPlaceholder")
             }
             extraActions={
               detail.config?.hasApiKey ? (
@@ -167,7 +171,9 @@ export function ProviderConfigForm({
                     })
                   }
                 >
-                  {draft.clearApiKey ? "已标记清除" : "清除 apiKey"}
+                  {draft.clearApiKey
+                    ? t("providers.config.apiKeyMarkedClear")
+                    : t("providers.config.clearApiKey")}
                 </Button>
               ) : undefined
             }
@@ -175,7 +181,7 @@ export function ProviderConfigForm({
         </Field.Root>
 
         <div className="ev-toggle-field">
-          <span>使用 Authorization: Bearer 请求头发送 API Key（authHeader）</span>
+          <span>{t("providers.config.authHeaderLabel")}</span>
           <Switch.Root
             checked={draft.authHeader}
             onCheckedChange={(authHeader) => patchDraft({ authHeader })}
@@ -185,13 +191,13 @@ export function ProviderConfigForm({
         </div>
 
         <Field.Root>
-          <Field.Label>自定义请求头（KEY=VALUE）</Field.Label>
+          <Field.Label>{t("providers.customHeadersLabelKv")}</Field.Label>
           <HeadersEditor rows={draft.headers} onChange={(headers) => patchDraft({ headers })} />
         </Field.Root>
 
         <div className="ev-inline-actions">
           <Button type="submit" hierarchy="primary" density="compact" pending={saving}>
-            保存 Provider 配置
+            {t("providers.config.saveButton")}
           </Button>
         </div>
       </form>

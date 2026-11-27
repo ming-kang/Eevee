@@ -9,6 +9,7 @@ import { Button, Heading, Text } from "@earendil-works/elanor-react";
 import type { ProviderDetail } from "@eevee/protocol";
 import { useState } from "react";
 import { formatTokens } from "../../../lib/format.ts";
+import { useI18n } from "../../../lib/i18n.ts";
 import type { ModelEditorTarget } from "../model-editor/state.ts";
 import { SmokeTestResult } from "../SmokeTestResult.tsx";
 import { modelSmokeKey, useModelSmokeTests } from "../useModelSmokeTests.ts";
@@ -26,6 +27,7 @@ export function ProviderModelsList({
   onAddModel,
   onEditModel,
 }: ProviderModelsListProps) {
+  const { t } = useI18n();
   const [modelFilter, setModelFilter] = useState("");
   const { tests: modelTests, runTest, cancelTest } = useModelSmokeTests();
 
@@ -40,7 +42,7 @@ export function ProviderModelsList({
     <div className="ev-settings-card">
       <div className="ev-settings-head">
         <Heading level={3} size={6}>
-          模型列表
+          {t("providers.models.title")}
           <span
             className="ev-num"
             style={{
@@ -61,7 +63,7 @@ export function ProviderModelsList({
             <input
               className="ev-raw-input"
               value={modelFilter}
-              placeholder="筛选模型…"
+              placeholder={t("providers.models.filterPlaceholder")}
               onChange={(event) => setModelFilter(event.target.value)}
             />
           </div>
@@ -72,7 +74,7 @@ export function ProviderModelsList({
             iconStart={<CloudDownloadIcon width={14} height={14} />}
             onClick={() => onOpenProbe(detail.id)}
           >
-            探测并导入模型
+            {t("providers.models.probeAndImport")}
           </Button>
           <Button
             type="button"
@@ -87,7 +89,7 @@ export function ProviderModelsList({
               })
             }
           >
-            新增模型
+            {t("providers.models.addModel")}
           </Button>
         </div>
       </div>
@@ -95,8 +97,8 @@ export function ProviderModelsList({
       {detailModels.length === 0 ? (
         <Text className="ev-inline-hint">
           {detail.models.length === 0
-            ? "该 Provider 暂无模型，可点击「探测并导入模型」或「新增模型」。"
-            : "没有匹配的模型。"}
+            ? t("providers.models.emptyProvider")
+            : t("providers.models.emptyFiltered")}
         </Text>
       ) : (
         <div className="ev-provider-model-list">
@@ -113,12 +115,12 @@ export function ProviderModelsList({
                       <span className="ev-mono ev-inline-muted">{model.id}</span>
                       {model.isCustom && (
                         <span className="eevee-badge" data-tone="info">
-                          自定义
+                          {t("providers.badge.custom")}
                         </span>
                       )}
                       {!model.isCustom && model.hasOverride && (
                         <span className="eevee-badge" data-tone="warning">
-                          已覆盖
+                          {t("providers.badge.overridden")}
                         </span>
                       )}
                       {model.reasoning && <span className="eevee-badge">reasoning</span>}
@@ -126,8 +128,16 @@ export function ProviderModelsList({
                     </div>
                     <div className="ev-provider-model-meta">
                       <span className="ev-mono">{model.api}</span>
-                      <span className="ev-num">上下文 {formatTokens(model.contextWindow)}</span>
-                      <span className="ev-num">最大输出 {formatTokens(model.maxTokens)}</span>
+                      <span className="ev-num">
+                        {t("providers.models.contextWindow", {
+                          tokens: formatTokens(model.contextWindow),
+                        })}
+                      </span>
+                      <span className="ev-num">
+                        {t("providers.models.maxTokens", {
+                          tokens: formatTokens(model.maxTokens),
+                        })}
+                      </span>
                       {model.supportedThinkingLevels.length > 0 && (
                         <span className="ev-thinking-pills">
                           {model.supportedThinkingLevels.map((level) => (
@@ -149,7 +159,7 @@ export function ProviderModelsList({
                       pending={smoke?.loading === true}
                       onClick={() => void runTest(detail.id, model.id)}
                     >
-                      测试
+                      {t("providers.models.test")}
                     </Button>
                     <Button
                       type="button"
@@ -165,7 +175,7 @@ export function ProviderModelsList({
                         })
                       }
                     >
-                      编辑
+                      {t("common.edit")}
                     </Button>
                   </div>
                 </div>
@@ -181,7 +191,7 @@ export function ProviderModelsList({
                         density="compact"
                         onClick={() => cancelTest(testKey)}
                       >
-                        收起结果
+                        {t("providers.models.hideResult")}
                       </Button>
                     </div>
                   </div>

@@ -2,6 +2,7 @@ import { AddIcon, CodeIcon, RefreshIcon } from "@earendil-works/elanor-icons-rea
 import { Button, Heading, Text } from "@earendil-works/elanor-react";
 import type { McpServerSnapshotPayload } from "@eevee/protocol";
 import { useState } from "react";
+import { useI18n } from "../../lib/i18n.ts";
 import { showToast } from "../../lib/toasts.ts";
 import {
   createBlankForm,
@@ -44,6 +45,7 @@ function McpTabContent({
   readonly projectId?: string;
   readonly compact: boolean;
 }) {
+  const { t } = useI18n();
   const isProject = projectId !== undefined;
   const scope = useMcpScope(projectId);
   const {
@@ -107,8 +109,8 @@ function McpTabContent({
       if (formState?.originalName === srv.name) setFormState(undefined);
       showToast(
         isProject && srv.scope === "override"
-          ? `已恢复「${srv.name}」为全局配置`
-          : `已删除 MCP 服务「${srv.name}」`,
+          ? t("mcp.toast.reverted", { name: srv.name })
+          : t("mcp.toast.deleted", { name: srv.name }),
       );
     });
 
@@ -158,14 +160,16 @@ function McpTabContent({
     );
     setFormState(undefined);
     showToast(
-      form.mode === "create" ? `已添加 MCP 服务「${serverName}」` : `已更新「${serverName}」`,
+      form.mode === "create"
+        ? t("mcp.toast.added", { name: serverName })
+        : t("mcp.toast.updated", { name: serverName }),
     );
   };
 
   const handleImportJson = async (servers: Record<string, Record<string, unknown>>) => {
     await scope.putConfig(servers);
     setJsonPanelOpen(false);
-    showToast(isProject ? "已导入项目 MCP 配置" : "已导入全局 MCP 配置");
+    showToast(t(isProject ? "mcp.toast.importedProject" : "mcp.toast.importedGlobal"));
   };
 
   const projectConfigCount = Object.keys(scope.projectServers).length;
@@ -177,10 +181,12 @@ function McpTabContent({
           <Heading level={compact ? 3 : 2} size={compact ? 6 : 5}>
             MCP
           </Heading>
-          <span className="eevee-badge ev-num">{scope.statuses.length} 个服务</span>
+          <span className="eevee-badge ev-num">
+            {t("mcp.serverCount", { count: scope.statuses.length })}
+          </span>
           {isProject && projectConfigCount > 0 && (
             <span className="eevee-badge ev-num" data-tone="warning">
-              项目配置 {projectConfigCount}
+              {t("mcp.projectConfigCount", { count: projectConfigCount })}
             </span>
           )}
         </div>
@@ -192,7 +198,7 @@ function McpTabContent({
             iconStart={<AddIcon width={15} height={15} />}
             onClick={() => setFormState(createBlankForm())}
           >
-            添加服务
+            {t("mcp.addServer")}
           </Button>
           <Button
             type="button"
@@ -201,7 +207,7 @@ function McpTabContent({
             iconStart={<CodeIcon width={15} height={15} />}
             onClick={() => setJsonPanelOpen((prev) => !prev)}
           >
-            JSON 导入/导出
+            {t("mcp.jsonImportExport")}
           </Button>
           <Button
             type="button"
@@ -211,7 +217,7 @@ function McpTabContent({
             pending={reconnecting || scope.loading}
             onClick={() => void handleReconnect()}
           >
-            全部重连
+            {t("mcp.reconnectAll")}
           </Button>
         </div>
       </div>
@@ -241,12 +247,12 @@ function McpTabContent({
 
       {scope.loading && scope.statuses.length === 0 ? (
         <div className="ev-settings-card" style={{ alignItems: "center", padding: "24px 16px" }}>
-          <Text style={{ color: "var(--ev-fg-subtle)", margin: 0 }}>正在加载 MCP 服务…</Text>
+          <Text style={{ color: "var(--ev-fg-subtle)", margin: 0 }}>{t("mcp.loading")}</Text>
         </div>
       ) : scope.statuses.length === 0 ? (
         <div className="ev-settings-card" style={{ alignItems: "center", padding: "24px 16px" }}>
           <Text style={{ color: "var(--ev-fg-subtle)", margin: 0 }}>
-            {isProject ? "当前项目未配置或继承任何 MCP 服务" : "未配置 MCP 服务"}
+            {t(isProject ? "mcp.emptyProject" : "mcp.emptyGlobal")}
           </Text>
         </div>
       ) : (

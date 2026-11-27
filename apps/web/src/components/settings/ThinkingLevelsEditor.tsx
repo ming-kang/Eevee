@@ -1,5 +1,6 @@
 import { Input, Switch, Text } from "@earendil-works/elanor-react";
 import { THINKING_LEVELS, type ThinkingLevel, type ThinkingLevelConfig } from "@eevee/protocol";
+import { useI18n } from "../../lib/i18n.ts";
 import { setThinkingRule } from "./provider-utils.ts";
 
 export function ThinkingLevelsEditor({
@@ -15,6 +16,7 @@ export function ThinkingLevelsEditor({
   readonly showInheritedBadges?: boolean;
   readonly disabled?: boolean;
 }) {
+  const { t } = useI18n();
   const updateRule = (
     level: ThinkingLevel,
     patch: Partial<{ enabled: boolean; mappedTo: string }>,
@@ -37,20 +39,21 @@ export function ThinkingLevelsEditor({
   return (
     <div className="ev-thinking-editor">
       <div className="ev-thinking-grid ev-thinking-grid-head" aria-hidden="true">
-        <span>档位</span>
-        <span>状态</span>
-        <span>映射目标</span>
+        <span>{t("thinking.col.level")}</span>
+        <span>{t("thinking.col.status")}</span>
+        <span>{t("thinking.col.mappedTo")}</span>
       </div>
       {THINKING_LEVELS.map((level) => {
         const rule = value[level];
         const extended = level === "xhigh" || level === "max";
+        const stateText = rule.enabled ? t("thinking.on") : t("thinking.off");
         return (
           <div className="ev-thinking-grid" key={level}>
             <div className="ev-thinking-level">
               <span className="ev-mono">{level}</span>
               {showInheritedBadges && rule.inherited === false && (
                 <span className="eevee-badge" data-tone="info">
-                  已覆盖
+                  {t("thinking.overridden")}
                 </span>
               )}
             </div>
@@ -58,28 +61,30 @@ export function ThinkingLevelsEditor({
               <Switch.Root
                 checked={rule.enabled}
                 disabled={disabled}
-                aria-label={`${level} ${rule.enabled ? "开启" : "关闭"}`}
+                aria-label={t("thinking.toggleAria", { level, state: stateText })}
                 onCheckedChange={(checked) => updateRule(level, { enabled: checked })}
               >
                 <Switch.Thumb />
               </Switch.Root>
-              <span>{rule.enabled ? "开启" : "关闭"}</span>
+              <span>{stateText}</span>
             </div>
             <Input
               type="text"
               value={rule.mappedTo ?? ""}
               disabled={disabled || !rule.enabled}
-              placeholder={extended ? `原档位 (${level})` : "协议默认"}
-              aria-label={`${level} 映射目标`}
+              placeholder={
+                extended
+                  ? t("thinking.originalLevelPlaceholder", { level })
+                  : t("thinking.protocolDefault")
+              }
+              aria-label={t("thinking.mappedTargetAria", { level })}
               onValueChange={(next) => updateRule(level, { mappedTo: next })}
             />
           </div>
         );
       })}
       {reasoning !== true && (
-        <Text className="ev-inline-hint">
-          该模型当前未启用推理；开启「支持推理」后，这些思考档位配置才会生效。
-        </Text>
+        <Text className="ev-inline-hint">{t("thinking.reasoningDisabledHint")}</Text>
       )}
     </div>
   );

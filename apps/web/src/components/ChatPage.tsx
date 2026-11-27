@@ -3,6 +3,7 @@ import { Heading } from "@earendil-works/elanor-react";
 import type { BoardViewPayload, ProjectSummary, WorkerId } from "@eevee/protocol";
 import { useEffect, useMemo, useState } from "react";
 import { shortPath } from "../lib/format.ts";
+import { useI18n } from "../lib/i18n.ts";
 import { useConversationPanel } from "../lib/useConversationPanel.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
 import { ConversationDock } from "./ConversationDock.tsx";
@@ -29,6 +30,7 @@ export function ChatPage({
   readonly onEditProject: () => void;
   readonly onOpenWorker: (workerId: WorkerId) => void;
 }) {
+  const { t } = useI18n();
   const conv = useConversationPanel(project.id, "router");
 
   const openQuestions = useMemo(
@@ -63,7 +65,7 @@ export function ChatPage({
         actions={
           !conv.connected ? (
             <span className="eevee-badge" data-tone="warning">
-              重连中…
+              {t("common.reconnecting")}
             </span>
           ) : undefined
         }
@@ -71,7 +73,7 @@ export function ChatPage({
 
       {conv.error && (
         <div style={{ padding: "8px 20px 0" }}>
-          <div className="ev-error-banner">对话流异常：{conv.error}</div>
+          <div className="ev-error-banner">{t("chat.streamError", { error: conv.error })}</div>
         </div>
       )}
 
@@ -143,6 +145,7 @@ export function ChatPage({
               ) : undefined
             }
             inbox={conv.inbox}
+            board={board}
             draftKey={`router:${project.id}`}
             projectId={project.id}
             activeRef="router"

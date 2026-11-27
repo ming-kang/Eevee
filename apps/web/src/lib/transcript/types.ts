@@ -48,12 +48,27 @@ export type NoticeInfo =
   | { readonly kind: "task_notification"; readonly data: TaskNotificationData }
   | { readonly kind: "generic"; readonly type: string };
 
+export type UserImagePart = {
+  readonly data: string;
+  readonly mimeType: string;
+};
+
+export type UserFilePart = {
+  readonly name: string;
+  readonly mimeType: string;
+  readonly size: number;
+  readonly path?: string;
+  readonly content?: string;
+};
+
 export type DisplayItem =
   | {
       readonly kind: "user";
       readonly key: string;
       readonly id: number;
       readonly text: string;
+      readonly images?: readonly UserImagePart[];
+      readonly files?: readonly UserFilePart[];
       readonly at?: number;
     }
   | {

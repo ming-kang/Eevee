@@ -11,8 +11,14 @@ import {
   TextArea,
 } from "@earendil-works/elanor-react";
 import { type FormEvent, useEffect, useId, useReducer, useState } from "react";
+import { useI18n } from "../../../lib/i18n.ts";
 import { HeadersEditor } from "../HeadersEditor.tsx";
-import { EXPOSURE_OPTIONS, normalizeExposure, type ServerFormState } from "./codec.ts";
+import {
+  EXPOSURE_OPTIONS,
+  exposureLabelKey,
+  normalizeExposure,
+  type ServerFormState,
+} from "./codec.ts";
 import { McpOAuthFields } from "./McpOAuthFields.tsx";
 
 type ServerFormAction =
@@ -43,6 +49,7 @@ export function McpServerForm({
   onSubmit,
   onCancel,
 }: McpServerFormProps) {
+  const { t } = useI18n();
   const idPrefix = useId();
   const [form, dispatch] = useReducer(serverFormReducer, initialForm);
   const [saving, setSaving] = useState(false);
@@ -75,22 +82,16 @@ export function McpServerForm({
       <div className="ev-settings-head">
         <Heading level={4} size={6}>
           {form.mode === "create"
-            ? isProject
-              ? "添加项目 MCP 服务"
-              : "添加 MCP 服务"
-            : `编辑 MCP 服务 · ${form.name}`}
+            ? t(isProject ? "mcp.form.titleCreateProject" : "mcp.form.titleCreate")
+            : t("mcp.form.titleEdit", { name: form.name })}
         </Heading>
-        <IconButton aria-label="关闭编辑表单" onClick={onCancel}>
+        <IconButton aria-label={t("mcp.form.closeLabel")} onClick={onCancel}>
           <CloseIcon width={16} height={16} />
         </IconButton>
       </div>
 
       {isProject && form.mode === "edit" && isGlobalOverrideTarget && (
-        <div className="ev-inline-hint">
-          正在编辑全局服务「{form.name}
-          」的项目配置：仅调整启用状态、暴露方式或角色时将保存为轻量项目覆盖；若修改命令或 URL
-          等连接参数，将创建项目完整配置。
-        </div>
+        <div className="ev-inline-hint">{t("mcp.form.overrideHint", { name: form.name })}</div>
       )}
 
       {error && <div className="ev-error-banner">{error}</div>}
@@ -98,18 +99,18 @@ export function McpServerForm({
       <form onSubmit={(event) => void handleSubmit(event)} className="ev-form-stack">
         <div className="ev-mcp-form-top">
           <Field.Root style={{ flex: 1, minWidth: 160 }}>
-            <Field.Label>服务名</Field.Label>
+            <Field.Label>{t("mcp.form.name")}</Field.Label>
             <Input
               type="text"
               value={form.name}
               disabled={form.mode === "edit" || saving}
               onValueChange={(name) => patchForm({ name })}
-              placeholder="例如：github"
+              placeholder={t("mcp.form.namePlaceholder")}
             />
           </Field.Root>
 
           <Field.Root>
-            <Field.Label>传输方式</Field.Label>
+            <Field.Label>{t("mcp.form.transport")}</Field.Label>
             <SegmentedControl.Root
               density="compact"
               disabled={saving}
@@ -127,7 +128,7 @@ export function McpServerForm({
           </Field.Root>
 
           <Field.Root style={{ minWidth: 210 }}>
-            <Field.Label>默认暴露方式</Field.Label>
+            <Field.Label>{t("mcp.form.exposure")}</Field.Label>
             <select
               className="ev-select"
               disabled={saving}
@@ -136,7 +137,7 @@ export function McpServerForm({
             >
               {EXPOSURE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
-                  {opt.label}
+                  {t(exposureLabelKey(opt.value))}
                 </option>
               ))}
             </select>
@@ -145,7 +146,7 @@ export function McpServerForm({
 
         <div className="ev-mcp-form-toggles">
           <div className="ev-toggle-field" style={{ flex: "1 1 180px" }}>
-            <label htmlFor={`${idPrefix}-form-enabled`}>启用服务</label>
+            <label htmlFor={`${idPrefix}-form-enabled`}>{t("mcp.form.enabled")}</label>
             <Switch.Root
               id={`${idPrefix}-form-enabled`}
               checked={form.enabled}
@@ -157,7 +158,7 @@ export function McpServerForm({
           </div>
 
           <div className="ev-toggle-field" style={{ flex: "2 1 260px" }}>
-            <span>可用角色</span>
+            <span>{t("mcp.form.roles")}</span>
             <div className="ev-mcp-roles-group">
               <div className="ev-mcp-role-check">
                 <Checkbox.Root
@@ -187,25 +188,25 @@ export function McpServerForm({
 
         <div className="ev-settings-grid-2">
           <Field.Root>
-            <Field.Label>描述（可选）</Field.Label>
+            <Field.Label>{t("mcp.form.description")}</Field.Label>
             <Input
               type="text"
               value={form.description}
               disabled={saving}
               onValueChange={(description) => patchForm({ description })}
-              placeholder="一句话说明该服务提供的能力"
+              placeholder={t("mcp.form.descriptionPlaceholder")}
             />
           </Field.Root>
 
           <Field.Root>
-            <Field.Label>单次请求超时（秒，可选）</Field.Label>
+            <Field.Label>{t("mcp.form.timeout")}</Field.Label>
             <Input
               type="text"
               inputMode="numeric"
               value={form.timeoutText}
               disabled={saving}
               onValueChange={(timeoutText) => patchForm({ timeoutText })}
-              placeholder="默认"
+              placeholder={t("common.default")}
             />
           </Field.Root>
         </div>
@@ -214,7 +215,7 @@ export function McpServerForm({
           <>
             <div className="ev-settings-grid-2">
               <Field.Root>
-                <Field.Label>可执行命令（command）</Field.Label>
+                <Field.Label>{t("mcp.form.command")}</Field.Label>
                 <Input
                   type="text"
                   value={form.command}
@@ -224,19 +225,19 @@ export function McpServerForm({
                 />
               </Field.Root>
               <Field.Root>
-                <Field.Label>工作目录 cwd（可选）</Field.Label>
+                <Field.Label>{t("mcp.form.cwd")}</Field.Label>
                 <Input
                   type="text"
                   value={form.cwd}
                   disabled={saving}
                   onValueChange={(cwd) => patchForm({ cwd })}
-                  placeholder="默认继承项目工作目录"
+                  placeholder={t("mcp.form.cwdPlaceholder")}
                 />
               </Field.Root>
             </div>
 
             <Field.Root>
-              <Field.Label>参数 args（每行一个，可选）</Field.Label>
+              <Field.Label>{t("mcp.form.args")}</Field.Label>
               <TextArea
                 monospace
                 rows={3}
@@ -248,15 +249,15 @@ export function McpServerForm({
             </Field.Root>
 
             <Field.Root>
-              <Field.Label>环境变量 env（可选）</Field.Label>
+              <Field.Label>{t("mcp.form.env")}</Field.Label>
               <HeadersEditor
                 rows={form.envRows}
                 disabled={saving}
-                itemLabel="环境变量"
-                emptyText="暂无自定义环境变量。"
-                addLabel="添加环境变量"
+                itemLabel={t("mcp.form.envItemLabel")}
+                emptyText={t("mcp.form.envEmpty")}
+                addLabel={t("mcp.form.envAdd")}
                 keyPlaceholder="ENV_NAME"
-                valuePlaceholder="VALUE（支持 $ENV_VAR 或 !cmd）"
+                valuePlaceholder={t("mcp.form.valuePlaceholder")}
                 onChange={(envRows) => patchForm({ envRows })}
               />
             </Field.Root>
@@ -275,10 +276,14 @@ export function McpServerForm({
             </Field.Root>
 
             <Field.Root>
-              <Field.Label>自定义请求头 headers（可选）</Field.Label>
+              <Field.Label>{t("mcp.form.headers")}</Field.Label>
               <HeadersEditor
                 rows={form.headerRows}
                 disabled={saving}
+                itemLabel="Header"
+                emptyText={t("mcp.form.headersEmpty")}
+                addLabel={t("mcp.form.headersAdd")}
+                valuePlaceholder={t("mcp.form.valuePlaceholder")}
                 onChange={(headerRows) => patchForm({ headerRows })}
               />
             </Field.Root>
@@ -289,10 +294,10 @@ export function McpServerForm({
 
         <div className="ev-inline-actions">
           <Button type="submit" hierarchy="primary" density="compact" pending={saving}>
-            保存并应用
+            {t("mcp.form.saveAndApply")}
           </Button>
           <Button type="button" hierarchy="secondary" density="compact" onClick={onCancel}>
-            取消
+            {t("common.cancel")}
           </Button>
         </div>
       </form>

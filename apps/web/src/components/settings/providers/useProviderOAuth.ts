@@ -1,6 +1,7 @@
 import type { LoginAuthEvent, LoginPromptEvent, LoginStreamEvent } from "@eevee/protocol";
 import { useCallback, useRef, useState } from "react";
 import { api } from "../../../lib/api.ts";
+import { t } from "../../../lib/i18n.ts";
 import { useAbortableSessionStream } from "../useAbortableStream.ts";
 
 export type IndexedAuthEvent = {
@@ -41,7 +42,11 @@ export function applyProviderOAuthEvent(
     case "prompt":
       return { ...prev, prompt: event.prompt };
     case "complete":
-      return { ...prev, prompt: undefined, done: `${event.complete.providerId} 已完成登录` };
+      return {
+        ...prev,
+        prompt: undefined,
+        done: t("providers.oauth.completed", { providerId: event.complete.providerId }),
+      };
     case "error":
       return { ...prev, prompt: undefined, error: event.error.message };
   }
@@ -52,7 +57,7 @@ export function markProviderOAuthUnexpectedEnd(
   sessionId: string,
 ): ActiveProviderLogin | undefined {
   if (!prev || prev.sessionId !== sessionId) return prev;
-  return { ...prev, prompt: undefined, error: "OAuth 授权流意外中断" };
+  return { ...prev, prompt: undefined, error: t("providers.oauth.unexpectedEnd") };
 }
 
 export type UseProviderOAuthOptions = {

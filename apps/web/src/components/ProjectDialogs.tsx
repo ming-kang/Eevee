@@ -1,15 +1,8 @@
-import {
-  Button,
-  Field,
-  Input,
-  Modal,
-  SegmentedControl,
-  Text,
-  TextArea,
-} from "@earendil-works/elanor-react";
+import { Button, Field, Input, Modal, SegmentedControl, Text } from "@earendil-works/elanor-react";
 import type { ProjectSummary, ToolsSettings } from "@eevee/protocol";
 import { useEffect, useId, useState } from "react";
 import { api } from "../lib/api.ts";
+import { useI18n } from "../lib/i18n.ts";
 import { showToast } from "../lib/toasts.ts";
 import { useAbortableAsync } from "../lib/useAbortableAsync.ts";
 import { McpTab } from "./settings/McpTab.tsx";
@@ -19,12 +12,14 @@ import {
   resolveToolsSettings,
   ToolsSettingsEditor,
 } from "./settings/ToolsSettingsEditor.tsx";
+import { mergeWorkspacePaths, WorkspacesField } from "./WorkspacesField.tsx";
 
 type EditProjectTab = "general" | "tools" | "skills" | "mcp";
 
 type ProjectDraft = {
   readonly title: string;
-  readonly workspaces: string;
+  readonly workspaces: readonly string[];
+  readonly pendingPath: string;
   readonly tools: ToolsSettings | undefined;
   readonly inlineBudget: string;
   readonly dirty: boolean;
@@ -32,7 +27,8 @@ type ProjectDraft = {
 
 const EMPTY_DRAFT: ProjectDraft = {
   title: "",
-  workspaces: "",
+  workspaces: [],
+  pendingPath: "",
   tools: undefined,
   inlineBudget: "",
   dirty: false,
@@ -47,6 +43,7 @@ export function EditProjectModal({
   readonly onClose: () => void;
   readonly onUpdated: (updated: ProjectSummary) => void;
 }) {
+  const { t } = useI18n();
   const formId = useId();
   const [activeTab, setActiveTab] = useState<EditProjectTab>("general");
   const [draft, setDraft] = useState<ProjectDraft>(EMPTY_DRAFT);
@@ -64,7 +61,8 @@ export function EditProjectModal({
     setActiveTab("general");
     setDraft({
       title: project.title,
-      workspaces: project.workspaces.join("\n"),
+      workspaces: [...project.workspaces],
+      pendingPath: "",
       tools: project.tools,
       inlineBudget: String(project.tools?.codemode?.inlineBudget ?? ""),
       dirty: false,
@@ -80,9 +78,13 @@ export function EditProjectModal({
       })
       .catch((err: unknown) => {
         setGlobalStatus("error");
-        setError(`全局设置加载失败：${err instanceof Error ? err.message : String(err)}`);
+        setError(
+          t("project.edit.globalLoadError", {
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
       });
-  }, [project, runLoadSettings, abortLoadSettings]);
+  }, [project, runLoadSettings, abortLoadSettings, t]);
 
   const patchDraft = (patch: Partial<Omit<ProjectDraft, "dirty">>) => {
     setDraft((prev) => ({ ...prev, ...patch, dirty: true }));
@@ -90,13 +92,10 @@ export function EditProjectModal({
 
   const saveDraft = async () => {
     if (!project) return;
-    const workspaces = draft.workspaces
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
+    const workspaces = mergeWorkspacePaths(draft.workspaces, draft.pendingPath).next;
     if (workspaces.length === 0) {
       setActiveTab("general");
-      setError("至少保留一个工作目录。");
+      setError(t("project.workspace.atLeastOne"));
       return;
     }
     setSaving(true);
@@ -108,9 +107,9 @@ export function EditProjectModal({
         workspaces,
         tools: nextTools ?? null,
       });
-      setDraft((prev) => ({ ...prev, dirty: false }));
+      setDraft((prev) => ({ ...prev, workspaces, pendingPath: "", dirty: false }));
       onUpdated(res.project);
-      showToast("项目配置已更新");
+      showToast(t("project.edit.updated"));
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -129,7 +128,7 @@ export function EditProjectModal({
         <Modal.Viewport>
           <Modal.Popup className="ev-project-edit-dialog">
             <div className="ev-project-edit-head">
-              <Modal.Title>编辑项目 · {project?.title ?? ""}</Modal.Title>
+              <Modal.Title>{t("project.edit.title", { title: project?.title ?? "" })}</Modal.Title>
               <SegmentedControl.Root
                 density="compact"
                 value={[activeTab]}
@@ -145,12 +144,20 @@ export function EditProjectModal({
                   }
                 }}
               >
-                <SegmentedControl.Item value="general">基本信息</SegmentedControl.Item>
-                <SegmentedControl.Item value="tools">
-                  工具{hasToolOverrides ? " · 已覆盖" : ""}
+                <SegmentedControl.Item value="general">
+                  {t("project.edit.tab.general")}
                 </SegmentedControl.Item>
-                <SegmentedControl.Item value="skills">Skills</SegmentedControl.Item>
-                <SegmentedControl.Item value="mcp">MCP</SegmentedControl.Item>
+                <SegmentedControl.Item value="tools">
+                  {hasToolOverrides
+                    ? t("project.edit.tab.toolsOverridden")
+                    : t("project.edit.tab.tools")}
+                </SegmentedControl.Item>
+                <SegmentedControl.Item value="skills">
+                  {t("project.edit.tab.skills")}
+                </SegmentedControl.Item>
+                <SegmentedControl.Item value="mcp">
+                  {t("project.edit.tab.mcp")}
+                </SegmentedControl.Item>
               </SegmentedControl.Root>
             </div>
 
@@ -169,30 +176,31 @@ export function EditProjectModal({
                   {activeTab === "general" ? (
                     <>
                       <Field.Root>
-                        <Field.Label>名称</Field.Label>
+                        <Field.Label>{t("project.field.name")}</Field.Label>
                         <Input
                           type="text"
                           value={draft.title}
                           onValueChange={(title) => patchDraft({ title })}
                         />
                       </Field.Root>
-                      <Field.Root>
-                        <Field.Label>工作目录（每行一个绝对路径）</Field.Label>
-                        <TextArea
-                          monospace
-                          rows={5}
-                          value={draft.workspaces}
-                          onValueChange={(workspaces) => patchDraft({ workspaces })}
-                        />
-                      </Field.Root>
+                      <WorkspacesField
+                        value={draft.workspaces}
+                        onChange={(workspaces) => {
+                          patchDraft({ workspaces });
+                          if (error) setError(undefined);
+                        }}
+                        pendingPath={draft.pendingPath}
+                        onPendingPathChange={(pendingPath) => patchDraft({ pendingPath })}
+                        disabled={saving}
+                      />
                     </>
                   ) : (
                     <div className="ev-form-stack">
                       {globalStatus !== "ready" && (
                         <div className="ev-tool-group-hint">
                           {globalStatus === "loading"
-                            ? "正在读取全局设置…"
-                            : "全局设置不可用，工具覆盖暂不可编辑。"}
+                            ? t("project.edit.loadingGlobal")
+                            : t("project.edit.globalUnavailable")}
                         </div>
                       )}
                       <ToolsSettingsEditor
@@ -219,20 +227,18 @@ export function EditProjectModal({
                   <Modal.Close
                     render={
                       <Button type="button" hierarchy="secondary">
-                        取消
+                        {t("common.cancel")}
                       </Button>
                     }
                   />
                   <Button type="submit" form={formId} hierarchy="primary" pending={saving}>
-                    保存
+                    {t("common.save")}
                   </Button>
                 </>
               ) : (
                 <>
                   <span className="ev-project-edit-note">
-                    {draft.dirty
-                      ? "基本/工具标签页有未保存修改"
-                      : "Skills 与项目级 MCP 修改即时生效"}
+                    {draft.dirty ? t("project.edit.unsavedNote") : t("project.edit.instantNote")}
                   </span>
                   {draft.dirty && (
                     <Button
@@ -241,13 +247,13 @@ export function EditProjectModal({
                       pending={saving}
                       onClick={() => void saveDraft()}
                     >
-                      保存基本/工具修改
+                      {t("project.edit.saveGeneralTools")}
                     </Button>
                   )}
                   <Modal.Close
                     render={
                       <Button type="button" hierarchy="primary">
-                        完成
+                        {t("common.done")}
                       </Button>
                     }
                   />
@@ -270,6 +276,7 @@ export function DeleteProjectModal({
   readonly onClose: () => void;
   readonly onDeleted: (id: string) => void;
 }) {
+  const { t } = useI18n();
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
@@ -279,7 +286,7 @@ export function DeleteProjectModal({
     setError(undefined);
     try {
       await api.deleteProject(project.id);
-      showToast(`已删除项目「${project.title}」`);
+      showToast(t("project.delete.deleted", { title: project.title }));
       onDeleted(project.id);
       onClose();
     } catch (err) {
@@ -294,25 +301,26 @@ export function DeleteProjectModal({
         <Modal.Backdrop />
         <Modal.Viewport>
           <Modal.Popup>
-            <Modal.Title>删除项目「{project?.title ?? ""}」？</Modal.Title>
+            <Modal.Title>{t("project.delete.title", { title: project?.title ?? "" })}</Modal.Title>
             <Modal.Body>
               <div className="ev-form-stack">
                 {error && <div className="ev-error-banner">{error}</div>}
                 <Text style={{ margin: 0 }}>
-                  此操作会停止该项目未完成的后台任务并清除其 Eevee 会话记录，但
-                  <strong>绝不会触碰工作目录中的任何文件</strong>。
+                  {t("project.delete.bodyPrefix")}
+                  <strong>{t("project.delete.bodyStrong")}</strong>
+                  {t("project.delete.bodySuffix")}
                 </Text>
               </div>
             </Modal.Body>
             <Modal.Actions>
-              <Modal.Close render={<Button hierarchy="secondary">取消</Button>} />
+              <Modal.Close render={<Button hierarchy="secondary">{t("common.cancel")}</Button>} />
               <Button
                 hierarchy="primary"
                 semantic="negative"
                 pending={deleting}
                 onClick={() => void confirm()}
               >
-                确认删除
+                {t("project.delete.confirm")}
               </Button>
             </Modal.Actions>
           </Modal.Popup>

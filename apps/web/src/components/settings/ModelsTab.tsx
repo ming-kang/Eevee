@@ -3,6 +3,7 @@ import type { ModelInfo, ModelProfile } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api.ts";
 import { useAbortableAsync } from "../../lib/useAbortableAsync.ts";
+import { invalidateEngineModelsCache } from "../../lib/useEngineSettings.ts";
 import { ModelCatalogSection } from "./models/ModelCatalogSection.tsx";
 import {
   createNextIndexedProfile,
@@ -50,6 +51,7 @@ export function ModelsTab() {
     try {
       const done = await runRefresh(async (signal) => {
         await api.refreshModels({ force: true }, signal);
+        invalidateEngineModelsCache();
         await load();
         return true;
       });

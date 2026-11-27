@@ -1,6 +1,7 @@
 import { Button } from "@earendil-works/elanor-react";
 import type { ConversationRef, EntryRecordPayload, WorkerId } from "@eevee/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useI18n } from "../lib/i18n.ts";
 import {
   buildDisplayItems,
   findMatches,
@@ -37,6 +38,7 @@ export function TranscriptView({
   onCloseFind,
   compact = false,
 }: TranscriptViewProps) {
+  const { t } = useI18n();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const itemNodesRef = useRef(new Map<string, HTMLElement>());
   const stickRef = useRef(true);
@@ -144,7 +146,7 @@ export function TranscriptView({
                 pending={loadingOlder}
                 onClick={onLoadOlder}
               >
-                加载更早历史
+                {t("transcript.loadOlder")}
               </Button>
             </div>
           )}
@@ -175,18 +177,18 @@ export function TranscriptView({
                 <span className="ev-dot" data-stage="working" />
                 <span>
                   {live.compacting
-                    ? "正在压缩上下文…"
+                    ? t("transcript.compacting")
                     : live.retryError
-                      ? `准备重试：${live.retryError}`
-                      : "正在执行…"}
+                      ? t("transcript.retrying", { error: live.retryError })
+                      : t("transcript.running")}
                 </span>
               </div>
             )}
 
           {live.runFailure && !live.busy && (
             <div className="ev-error-banner">
-              上次执行中断（{live.runFailure.reason}）
-              {live.runFailure.detail ? `：${live.runFailure.detail}` : ""}
+              {t("transcript.runInterrupted", { reason: live.runFailure.reason })}
+              {live.runFailure.detail ? `: ${live.runFailure.detail}` : ""}
             </div>
           )}
         </div>

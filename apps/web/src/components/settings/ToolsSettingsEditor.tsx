@@ -8,6 +8,7 @@ import {
   WORKER_TOGGLEABLE_TOOLS,
 } from "@eevee/protocol";
 import { useId } from "react";
+import { t, useI18n } from "../../lib/i18n.ts";
 
 type EditorVariant = "global" | "project";
 type ToolRole = "router" | "worker";
@@ -82,11 +83,11 @@ export function resolveToolsSettings(
   let inlineBudget: number | undefined;
   if (trimmed) {
     if (!/^\d+$/.test(trimmed)) {
-      throw new Error("inlineBudget 必须是非负整数。");
+      throw new Error(t("tools.invalidInlineBudget"));
     }
     inlineBudget = Number(trimmed);
     if (!Number.isSafeInteger(inlineBudget)) {
-      throw new Error("inlineBudget 必须是非负整数。");
+      throw new Error(t("tools.invalidInlineBudget"));
     }
   }
   const codemode = { ...value?.codemode };
@@ -114,11 +115,14 @@ function ToolGrid({
   readonly disabled: boolean;
   readonly onToggle: (role: ToolRole, name: string) => void;
 }) {
+  const { t: translate } = useI18n();
   return (
     <fieldset className="ev-tool-group" aria-label={label}>
       <div className="ev-tool-group-head">
         <span className="ev-tool-group-title">{label}</span>
-        {variant === "project" && <span className="ev-tool-group-hint">圆点表示项目覆盖</span>}
+        {variant === "project" && (
+          <span className="ev-tool-group-hint">{translate("tools.overrideDotHint")}</span>
+        )}
       </div>
       <div className="ev-tool-grid">
         {tools.map((name) => {
@@ -126,12 +130,12 @@ function ToolGrid({
           const inheritedValue = inheritedTools?.[toolRole]?.[name];
           const enabled = ownValue ?? inheritedValue ?? defaultToolEnabled(toolRole, name);
           const overridden = variant === "project" && ownValue !== undefined;
-          const stateLabel = enabled ? "已启用" : "已禁用";
+          const state = translate(enabled ? "common.enabled" : "common.disabled");
           const title = overridden
-            ? `${name}：${stateLabel}，项目覆盖`
+            ? translate("tools.chipOverriddenTitle", { name, state })
             : variant === "project"
-              ? `${name}：${stateLabel}，继承全局；点击创建项目覆盖`
-              : `${name}：${stateLabel}`;
+              ? translate("tools.chipInheritedTitle", { name, state })
+              : translate("tools.chipGlobalTitle", { name, state });
           return (
             <button
               key={name}
@@ -167,6 +171,7 @@ export function ToolsSettingsEditor({
   onInlineBudgetChange,
   disabled = false,
 }: ToolsSettingsEditorProps) {
+  const { t: translate } = useI18n();
   const budgetId = useId();
   const project = variant === "project";
   const globalTools = inheritedTools ?? {};
@@ -202,10 +207,10 @@ export function ToolsSettingsEditor({
     <div className="ev-tools-editor">
       <div className="ev-tool-group">
         <div className="ev-tool-group-head">
-          <span className="ev-tool-group-title">Codemode 模式</span>
+          <span className="ev-tool-group-title">{translate("tools.codemodeMode")}</span>
           {project && hasCodemodeOverride && (
             <span className="eevee-badge" data-tone="info">
-              项目覆盖
+              {translate("tools.projectOverrideBadge")}
             </span>
           )}
         </div>
@@ -227,16 +232,24 @@ export function ToolsSettingsEditor({
               }
             }}
           >
-            {project && <SegmentedControl.Item value="inherit">继承全局</SegmentedControl.Item>}
-            <SegmentedControl.Item value="off">关闭</SegmentedControl.Item>
-            <SegmentedControl.Item value="on">开启</SegmentedControl.Item>
-            <SegmentedControl.Item value="only">仅 Codemode</SegmentedControl.Item>
+            {project && (
+              <SegmentedControl.Item value="inherit">
+                {translate("tools.mode.inherit")}
+              </SegmentedControl.Item>
+            )}
+            <SegmentedControl.Item value="off">{translate("tools.mode.off")}</SegmentedControl.Item>
+            <SegmentedControl.Item value="on">{translate("tools.mode.on")}</SegmentedControl.Item>
+            <SegmentedControl.Item value="only">
+              {translate("tools.mode.only")}
+            </SegmentedControl.Item>
           </SegmentedControl.Root>
           {effectiveMode !== "off" && (
             <label
               htmlFor={budgetId}
               className="ev-inline-budget"
-              title={project ? "留空以继承全局预算" : "留空使用默认预算 3000"}
+              title={translate(
+                project ? "tools.inlineBudgetProjectTitle" : "tools.inlineBudgetGlobalTitle",
+              )}
             >
               <span className="ev-mono">inlineBudget</span>
               <Input
@@ -258,7 +271,7 @@ export function ToolsSettingsEditor({
 
       <ToolGrid
         toolRole="router"
-        label="Router 内置工具"
+        label={translate("tools.routerBuiltIn")}
         tools={ROUTER_TOGGLEABLE_TOOLS}
         variant={variant}
         value={value}
@@ -268,7 +281,7 @@ export function ToolsSettingsEditor({
       />
       <ToolGrid
         toolRole="worker"
-        label="Worker 内置工具"
+        label={translate("tools.workerBuiltIn")}
         tools={WORKER_TOGGLEABLE_TOOLS}
         variant={variant}
         value={value}
@@ -279,7 +292,7 @@ export function ToolsSettingsEditor({
 
       {project && (
         <div className="ev-tools-editor-footer">
-          <span>未覆盖的设置自动跟随全局配置。</span>
+          <span>{translate("tools.inheritNote")}</span>
           <Button
             type="button"
             hierarchy="secondary"
@@ -287,7 +300,7 @@ export function ToolsSettingsEditor({
             disabled={disabled || !hasOverrides}
             onClick={resetOverrides}
           >
-            重置为继承全局
+            {translate("tools.resetToGlobal")}
           </Button>
         </div>
       )}

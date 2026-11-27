@@ -28,7 +28,10 @@ export function outlineEntries(items: readonly DisplayItem[]): OutlineEntry[] {
 
 export function itemSearchText(item: DisplayItem): string {
   switch (item.kind) {
-    case "user":
+    case "user": {
+      const fileNames = item.files?.map((f) => f.path ?? f.name).join(" ") ?? "";
+      return fileNames ? `${fileNames}\n${item.text}` : item.text;
+    }
     case "notice":
     case "thinking":
     case "assistant":

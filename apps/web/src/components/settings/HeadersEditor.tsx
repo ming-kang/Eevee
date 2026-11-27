@@ -1,5 +1,6 @@
 import { AddIcon, DeleteIcon } from "@earendil-works/elanor-icons-react";
 import { Button, IconButton, Input, Text } from "@earendil-works/elanor-react";
+import { useI18n } from "../../lib/i18n.ts";
 import {
   createEmptyHeaderRow,
   type HeaderRow,
@@ -13,11 +14,11 @@ export function HeadersEditor({
   rows,
   onChange,
   disabled = false,
-  itemLabel = "Header",
-  emptyText = "暂无自定义请求头。",
-  addLabel = "添加 Header",
+  itemLabel,
+  emptyText,
+  addLabel,
   keyPlaceholder = "Header-Name",
-  valuePlaceholder = "VALUE（支持 $ENV_VAR 或 !cmd）",
+  valuePlaceholder,
 }: {
   readonly rows: readonly HeaderRow[];
   readonly onChange: (rows: HeaderRow[]) => void;
@@ -28,6 +29,12 @@ export function HeadersEditor({
   readonly keyPlaceholder?: string;
   readonly valuePlaceholder?: string;
 }) {
+  const { t } = useI18n();
+  const resolvedItemLabel = itemLabel ?? t("headers.itemLabel");
+  const resolvedEmptyText = emptyText ?? t("headers.empty");
+  const resolvedAddLabel = addLabel ?? t("headers.add");
+  const resolvedValuePlaceholder = valuePlaceholder ?? t("headers.valuePlaceholder");
+
   const updateRow = (uid: number, patch: Partial<Pick<HeaderRow, "key" | "value">>) => {
     onChange(rows.map((row) => (row.uid === uid ? { ...row, ...patch } : row)));
   };
@@ -43,7 +50,7 @@ export function HeadersEditor({
   return (
     <div className="ev-headers-editor">
       {rows.length === 0 ? (
-        <Text className="ev-inline-hint">{emptyText}</Text>
+        <Text className="ev-inline-hint">{resolvedEmptyText}</Text>
       ) : (
         rows.map((row, index) => (
           <div key={row.uid} className="ev-header-row">
@@ -52,7 +59,7 @@ export function HeadersEditor({
               value={row.key}
               disabled={disabled}
               placeholder={keyPlaceholder}
-              aria-label={`${itemLabel} ${index + 1} 名称`}
+              aria-label={t("headers.keyAria", { label: resolvedItemLabel, index: index + 1 })}
               onValueChange={(key) => updateRow(row.uid, { key })}
             />
             <span className="ev-header-eq" aria-hidden="true">
@@ -62,14 +69,17 @@ export function HeadersEditor({
               type="text"
               value={row.value}
               disabled={disabled}
-              placeholder={valuePlaceholder}
-              aria-label={`${itemLabel} ${index + 1} 值`}
+              placeholder={resolvedValuePlaceholder}
+              aria-label={t("headers.valueAria", { label: resolvedItemLabel, index: index + 1 })}
               onValueChange={(value) => updateRow(row.uid, { value })}
             />
             <IconButton
               type="button"
               disabled={disabled}
-              aria-label={`删除 ${itemLabel} ${row.key || index + 1}`}
+              aria-label={t("headers.deleteAria", {
+                label: resolvedItemLabel,
+                target: row.key || index + 1,
+              })}
               onClick={() => removeRow(row.uid)}
             >
               <DeleteIcon width={15} height={15} />
@@ -86,7 +96,7 @@ export function HeadersEditor({
           iconStart={<AddIcon width={14} height={14} />}
           onClick={addRow}
         >
-          {addLabel}
+          {resolvedAddLabel}
         </Button>
       </div>
     </div>

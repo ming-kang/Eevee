@@ -1,4 +1,4 @@
-import type { ConversationRef, WhenBusy } from "@eevee/protocol";
+import type { ConversationRef, MessageAttachment, WhenBusy } from "@eevee/protocol";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { api } from "./api.ts";
 import { useConversationStream } from "./hooks.ts";
@@ -28,9 +28,13 @@ export function useConversationPanel(
   }, [live.busy, projectId, ref, interruptEnabled]);
 
   const send = useCallback(
-    async (text: string, whenBusy: WhenBusy) => {
+    async (text: string, whenBusy: WhenBusy, attachments?: readonly MessageAttachment[]) => {
       if (!projectId || !ref) return;
-      await api.sendMessage(projectId, ref, { text, whenBusy });
+      await api.sendMessage(projectId, ref, {
+        text,
+        whenBusy,
+        ...(attachments && attachments.length > 0 ? { attachments: [...attachments] } : {}),
+      });
     },
     [projectId, ref],
   );

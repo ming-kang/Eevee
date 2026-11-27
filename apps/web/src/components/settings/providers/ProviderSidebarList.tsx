@@ -1,6 +1,7 @@
 import { SearchIcon } from "@earendil-works/elanor-icons-react";
 import { SegmentedControl, Text } from "@earendil-works/elanor-react";
 import type { ProviderSummary } from "@eevee/protocol";
+import { useI18n } from "../../../lib/i18n.ts";
 import { formatAuthMeta } from "../provider-utils.ts";
 
 export type ProviderCategoryFilter = "all" | "configured" | "custom" | "builtin";
@@ -24,6 +25,7 @@ export function ProviderSidebarList({
   selectedId,
   onSelect,
 }: ProviderSidebarListProps) {
+  const { t } = useI18n();
   const query = filter.trim().toLowerCase();
   const visibleProviders = providers.filter((provider) => {
     if (category === "configured" && !provider.configured) return false;
@@ -43,7 +45,7 @@ export function ProviderSidebarList({
           <input
             className="ev-raw-input"
             value={filter}
-            placeholder="筛选 Provider…"
+            placeholder={t("providers.sidebar.filterPlaceholder")}
             onChange={(event) => onFilterChange(event.target.value)}
           />
         </div>
@@ -62,17 +64,23 @@ export function ProviderSidebarList({
             }
           }}
         >
-          <SegmentedControl.Item value="all">全部</SegmentedControl.Item>
-          <SegmentedControl.Item value="configured">已配置</SegmentedControl.Item>
-          <SegmentedControl.Item value="custom">自定义</SegmentedControl.Item>
-          <SegmentedControl.Item value="builtin">内置</SegmentedControl.Item>
+          <SegmentedControl.Item value="all">{t("providers.sidebar.all")}</SegmentedControl.Item>
+          <SegmentedControl.Item value="configured">
+            {t("providers.sidebar.configured")}
+          </SegmentedControl.Item>
+          <SegmentedControl.Item value="custom">
+            {t("providers.sidebar.custom")}
+          </SegmentedControl.Item>
+          <SegmentedControl.Item value="builtin">
+            {t("providers.sidebar.builtin")}
+          </SegmentedControl.Item>
         </SegmentedControl.Root>
       </div>
 
       <div className="ev-provider-list">
         {visibleProviders.length === 0 ? (
           <Text className="ev-inline-hint" style={{ padding: 12 }}>
-            没有匹配的 Provider。
+            {t("providers.sidebar.empty")}
           </Text>
         ) : (
           visibleProviders.map((provider) => {
@@ -92,16 +100,20 @@ export function ProviderSidebarList({
                 </div>
                 <div className="ev-provider-item-badges">
                   <span className="eevee-badge" data-tone={isCustom ? "info" : "neutral"}>
-                    {isCustom ? "自定义" : "内置"}
+                    {isCustom ? t("providers.badge.custom") : t("providers.badge.builtin")}
                   </span>
                   {!isCustom && provider.hasConfigOverride && (
                     <span className="eevee-badge" data-tone="warning">
-                      已覆盖
+                      {t("providers.badge.overridden")}
                     </span>
                   )}
-                  <span className="ev-inline-muted ev-num">{provider.modelCount} 模型</span>
+                  <span className="ev-inline-muted ev-num">
+                    {t("providers.modelCount", { count: provider.modelCount })}
+                  </span>
                 </div>
-                <div className="ev-provider-item-meta ev-truncate">{formatAuthMeta(provider)}</div>
+                <div className="ev-provider-item-meta ev-truncate">
+                  {formatAuthMeta(provider, t)}
+                </div>
               </button>
             );
           })

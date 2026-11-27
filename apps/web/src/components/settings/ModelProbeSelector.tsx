@@ -3,6 +3,7 @@ import { Button, Text } from "@earendil-works/elanor-react";
 import type { ProbedModel } from "@eevee/protocol";
 import type { ReactNode } from "react";
 import { formatTokens } from "../../lib/format.ts";
+import { useI18n } from "../../lib/i18n.ts";
 import { filterProbedModels } from "./provider-utils.ts";
 
 export type ModelProbeSelectorProps = {
@@ -26,14 +27,17 @@ export function ModelProbeSelector({
   onSelectedChange,
   filter,
   onFilterChange,
-  filterPlaceholder = "筛选探测结果…",
-  emptyText = "没有可导入的模型。",
+  filterPlaceholder,
+  emptyText,
   variant = "list",
   loading = false,
   suppressEmpty = false,
   toolbarActions,
   statusSlot,
 }: ModelProbeSelectorProps) {
+  const { t } = useI18n();
+  const resolvedFilterPlaceholder = filterPlaceholder ?? t("probe.filterPlaceholder");
+  const resolvedEmptyText = emptyText ?? t("probe.empty");
   const visibleModels = filterProbedModels(models, filter);
   const selectedCount = models.reduce(
     (count, model) => (selected[model.id] === true ? count + 1 : count),
@@ -60,14 +64,14 @@ export function ModelProbeSelector({
           <input
             className="ev-raw-input"
             value={filter}
-            placeholder={filterPlaceholder}
+            placeholder={resolvedFilterPlaceholder}
             onChange={(event) => onFilterChange(event.target.value)}
           />
         </div>
         {models.length > 0 && (
           <>
             <span className="eevee-badge ev-num">
-              已选 {selectedCount} / {models.length}
+              {t("probe.selectedCount", { selected: selectedCount, total: models.length })}
             </span>
             <Button
               type="button"
@@ -75,7 +79,7 @@ export function ModelProbeSelector({
               density="compact"
               onClick={() => toggleAllVisible(true)}
             >
-              全选可见
+              {t("probe.selectAllVisible")}
             </Button>
             <Button
               type="button"
@@ -83,7 +87,7 @@ export function ModelProbeSelector({
               density="compact"
               onClick={() => toggleAllVisible(false)}
             >
-              全不选
+              {t("probe.deselectAllVisible")}
             </Button>
           </>
         )}
@@ -93,7 +97,7 @@ export function ModelProbeSelector({
       {statusSlot}
 
       {!loading && visibleModels.length === 0 && !suppressEmpty && (
-        <Text className="ev-inline-hint">{emptyText}</Text>
+        <Text className="ev-inline-hint">{resolvedEmptyText}</Text>
       )}
 
       {visibleModels.length > 0 &&
@@ -115,7 +119,7 @@ export function ModelProbeSelector({
                     {model.contextWindow !== undefined && formatTokens(model.contextWindow)}
                     {model.reasoning === true && " · reasoning"}
                     {model.input?.includes("image") === true && " · image"}
-                    {model.exists && " · 已存在"}
+                    {model.exists && t("probe.existsSuffix")}
                   </span>
                 </button>
               );
@@ -141,7 +145,7 @@ export function ModelProbeSelector({
                     {model.contextWindow !== undefined && formatTokens(model.contextWindow)}
                     {model.reasoning === true && " · reasoning"}
                     {model.input?.includes("image") === true && " · image"}
-                    {model.exists && " · 已存在"}
+                    {model.exists && t("probe.existsSuffix")}
                   </span>
                 </label>
               );

@@ -3,6 +3,7 @@ import { Button, EmptyState, Heading } from "@earendil-works/elanor-react";
 import type { BoardViewPayload, ProjectId, ProjectSummary, WorkerId } from "@eevee/protocol";
 import { useMemo, useState } from "react";
 import { formatRelativeTime } from "../lib/format.ts";
+import { useI18n } from "../lib/i18n.ts";
 import type { VisualStage } from "../lib/transcript.ts";
 
 type TriageCard = {
@@ -37,6 +38,7 @@ export function OverviewPage({
   readonly onNewProject: () => void;
   readonly onOpenProject: (pid: ProjectId, workerId?: WorkerId) => void;
 }) {
+  const { t } = useI18n();
   const [projectFilter, setProjectFilter] = useState<string>("");
   const [laneFilter, setLaneFilter] = useState<"all" | "pending" | "running" | "done">("all");
   const [query, setQuery] = useState("");
@@ -60,11 +62,11 @@ export function OverviewPage({
           projectId: project.id,
           projectTitle: project.title,
           chip: q.id,
-          title: "Router 向你提问",
+          title: t("overview.routerAsking"),
           context: q.items[0]?.question,
           stage: "answer",
-          stageLabel: "等待回答",
-          actionLabel: "回答",
+          stageLabel: t("overview.stage.answer"),
+          actionLabel: t("overview.action.answer"),
           at: q.askedAt,
         });
       }
@@ -81,11 +83,12 @@ export function OverviewPage({
             title: ticket?.title ?? `${worker.id} · ${worker.name}`,
             context:
               worker.activeTaskCount > 0
-                ? `${worker.activeTaskCount} 个后台任务运行中`
+                ? t("overview.activeTasksCount", { count: worker.activeTaskCount })
                 : `${worker.id} · ${worker.name}`,
             stage: worker.status === "queued" ? "queued" : "working",
-            stageLabel: worker.status === "queued" ? "排队中" : "执行中",
-            actionLabel: "观察",
+            stageLabel:
+              worker.status === "queued" ? t("overview.stage.queued") : t("overview.stage.working"),
+            actionLabel: t("overview.action.observe"),
             at: worker.createdAt,
             workerId: worker.id,
           });
@@ -103,8 +106,8 @@ export function OverviewPage({
             title: ticket.title,
             ...(ticket.note ? { context: ticket.note } : {}),
             stage: "done",
-            stageLabel: "已完成",
-            actionLabel: "查看",
+            stageLabel: t("overview.stage.done"),
+            actionLabel: t("overview.action.view"),
             at: ticket.closedAt ?? ticket.createdAt,
             workerId: ticket.workerId,
           });
@@ -113,7 +116,7 @@ export function OverviewPage({
     }
 
     return out.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
-  }, [projects, boards, projectFilter]);
+  }, [projects, boards, projectFilter, t]);
 
   const matches = (card: TriageCard) => {
     const q = query.trim().toLowerCase();
@@ -185,17 +188,17 @@ export function OverviewPage({
     <section style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
       <header className="ev-page-header">
         <Heading level={1} size={6} className="ev-page-title">
-          概览
+          {t("overview.title")}
         </Heading>
         <span style={{ flex: 1 }} />
         {projects.length > 1 && (
           <select
-            aria-label="筛选项目"
+            aria-label={t("overview.filterProject")}
             className="ev-select"
             value={projectFilter}
             onChange={(event) => setProjectFilter(event.target.value)}
           >
-            <option value="">全部项目</option>
+            <option value="">{t("overview.allProjects")}</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.title}
@@ -209,7 +212,7 @@ export function OverviewPage({
           iconStart={<AddIcon width={15} height={15} />}
           onClick={onNewProject}
         >
-          新建项目
+          {t("overview.newProject")}
         </Button>
       </header>
 
@@ -220,7 +223,7 @@ export function OverviewPage({
             role="alert"
             style={{ display: "flex", alignItems: "center", gap: 10 }}
           >
-            <span style={{ flex: 1 }}>加载项目列表失败：{projectsError}</span>
+            <span style={{ flex: 1 }}>{t("overview.loadError", { error: projectsError })}</span>
             {onRetryProjects && (
               <Button
                 type="button"
@@ -229,7 +232,7 @@ export function OverviewPage({
                 pending={projectsLoading}
                 onClick={onRetryProjects}
               >
-                重试
+                {t("common.retry")}
               </Button>
             )}
           </div>
@@ -248,14 +251,14 @@ export function OverviewPage({
               fontSize: 13.5,
             }}
           >
-            正在加载项目…
+            {t("overview.loadingProjects")}
           </div>
         ) : (
           <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 24 }}>
             <EmptyState.Root>
               <EmptyState.Body>
                 <EmptyState.Copy>
-                  <EmptyState.Title level={2}>暂无项目</EmptyState.Title>
+                  <EmptyState.Title level={2}>{t("overview.emptyTitle")}</EmptyState.Title>
                 </EmptyState.Copy>
                 <EmptyState.Actions>
                   <Button
@@ -263,7 +266,7 @@ export function OverviewPage({
                     iconStart={<AddIcon width={16} height={16} />}
                     onClick={onNewProject}
                   >
-                    新建项目
+                    {t("overview.newProject")}
                   </Button>
                 </EmptyState.Actions>
               </EmptyState.Body>
@@ -275,15 +278,15 @@ export function OverviewPage({
           <div className="ev-overview-bar">
             <fieldset
               className="ev-lane-pills"
-              aria-label="筛选状态"
+              aria-label={t("overview.filterLane")}
               style={{ border: 0, margin: 0 }}
             >
               {(
                 [
-                  ["all", "全部", pending.length + running.length + done.length],
-                  ["pending", "待处理", pending.length],
-                  ["running", "执行中", running.length],
-                  ["done", "近期完成", done.length],
+                  ["all", t("overview.lane.all"), pending.length + running.length + done.length],
+                  ["pending", t("overview.lane.pending"), pending.length],
+                  ["running", t("overview.lane.running"), running.length],
+                  ["done", t("overview.lane.done"), done.length],
                 ] as const
               ).map(([key, label, count]) => (
                 <button
@@ -311,8 +314,8 @@ export function OverviewPage({
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索任务、提问或项目…"
-                aria-label="搜索工作项"
+                placeholder={t("overview.searchPlaceholder")}
+                aria-label={t("overview.searchLabel")}
               />
             </div>
           </div>
@@ -321,7 +324,7 @@ export function OverviewPage({
             {(laneFilter === "all" || laneFilter === "pending") && (
               <section className="ev-lane">
                 <div className="ev-lane-head">
-                  <span>待处理</span>
+                  <span>{t("overview.lane.pending")}</span>
                   <span
                     className="ev-count-badge"
                     data-tone={pending.length > 0 ? "warning" : undefined}
@@ -339,7 +342,7 @@ export function OverviewPage({
                         color: "var(--ev-fg-subtle)",
                       }}
                     >
-                      无待处理
+                      {t("overview.emptyPending")}
                     </div>
                   ) : (
                     pending.map(renderCard)
@@ -361,7 +364,7 @@ export function OverviewPage({
                 {(laneFilter === "all" || laneFilter === "running") && (
                   <section className="ev-lane" style={{ flex: "0 1 auto" }}>
                     <div className="ev-lane-head">
-                      <span>执行中</span>
+                      <span>{t("overview.lane.running")}</span>
                       <span className="ev-count-badge">{running.length}</span>
                     </div>
                     <div className="ev-lane-scroll">
@@ -374,7 +377,7 @@ export function OverviewPage({
                             color: "var(--ev-fg-subtle)",
                           }}
                         >
-                          空闲
+                          {t("overview.emptyRunning")}
                         </div>
                       ) : (
                         running.map(renderCard)
@@ -386,7 +389,7 @@ export function OverviewPage({
                 {(laneFilter === "all" || laneFilter === "done") && (
                   <section className="ev-lane" style={{ flex: "0 1 auto" }}>
                     <div className="ev-lane-head">
-                      <span>近期完成</span>
+                      <span>{t("overview.lane.done")}</span>
                       <span className="ev-count-badge">{done.length}</span>
                     </div>
                     <div className="ev-lane-scroll">
@@ -399,7 +402,7 @@ export function OverviewPage({
                             color: "var(--ev-fg-subtle)",
                           }}
                         >
-                          暂无记录
+                          {t("overview.emptyDone")}
                         </div>
                       ) : (
                         done.slice(0, 20).map(renderCard)

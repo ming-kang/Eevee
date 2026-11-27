@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useI18n } from "../lib/i18n.ts";
 import type { InboxPreview } from "../lib/transcript.ts";
 import { Composer, type ComposerProps } from "./Composer.tsx";
 
@@ -14,14 +15,15 @@ export function ConversationDock({
   hidden = false,
   ...composerProps
 }: ConversationDockProps) {
+  const { t } = useI18n();
   return (
     <div className="ev-composer-stack" hidden={hidden || undefined}>
       {topSlot}
 
       {inbox.length > 0 && (
         <div className="ev-queued-dock">
-          <span style={{ fontSize: 11.5, color: "var(--ev-fg-subtle)", fontWeight: 500 }}>
-            队列中（{inbox.length}）
+          <span style={{ fontSize: "0.71875rem", color: "var(--ev-fg-subtle)", fontWeight: 500 }}>
+            {t("chat.queued", { count: inbox.length })}
           </span>
           {inbox.map((item) => (
             <div

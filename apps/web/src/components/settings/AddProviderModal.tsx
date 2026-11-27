@@ -3,6 +3,7 @@ import { Button, Modal, SegmentedControl } from "@earendil-works/elanor-react";
 import type { ProviderCatalogResponse, ProviderDetail } from "@eevee/protocol";
 import { type FormEvent, useEffect, useReducer, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { useI18n } from "../../lib/i18n.ts";
 import { headersToRows } from "./header-rows.ts";
 import { AddBuiltinProviderForm } from "./providers/AddBuiltinProviderForm.tsx";
 import { AddCustomProviderForm } from "./providers/AddCustomProviderForm.tsx";
@@ -25,6 +26,7 @@ export function AddProviderModal({
   readonly onConfigured: (providerId: string, detail?: ProviderDetail) => void;
   readonly onStartOAuth: (providerId: string) => void;
 }) {
+  const { t } = useI18n();
   const [catalog, setCatalog] = useState<ProviderCatalogResponse | undefined>(initialCatalog);
   const [loadingCatalog, setLoadingCatalog] = useState(initialCatalog === undefined);
   const [state, dispatch] = useReducer(addProviderReducer, initialCatalog, createAddProviderState);
@@ -116,7 +118,7 @@ export function AddProviderModal({
       const key = state.builtin.apiKey.trim();
       const overridePatch = buildBuiltinOverrideRequest(state.builtin);
       if (!key && !overridePatch) {
-        throw new Error("请填写 API Key 或至少一项网关覆盖配置，或直接点击 OAuth 登录");
+        throw new Error(t("providers.addModal.builtinValidation"));
       }
       let detail = overridePatch
         ? (await api.updateProvider(selectedBuiltin.id, overridePatch)).provider
@@ -218,7 +220,7 @@ export function AddProviderModal({
         <Modal.Backdrop />
         <Modal.Viewport>
           <Modal.Popup className="ev-add-provider-dialog">
-            <Modal.Title>添加 Provider</Modal.Title>
+            <Modal.Title>{t("providers.addModal.title")}</Modal.Title>
             <Modal.Body className="ev-editor-body">
               <div className="ev-form-stack">
                 <div className="ev-settings-head">
@@ -232,8 +234,12 @@ export function AddProviderModal({
                       }
                     }}
                   >
-                    <SegmentedControl.Item value="builtin">内置 Provider</SegmentedControl.Item>
-                    <SegmentedControl.Item value="custom">自定义 Provider</SegmentedControl.Item>
+                    <SegmentedControl.Item value="builtin">
+                      {t("providers.addModal.modeBuiltin")}
+                    </SegmentedControl.Item>
+                    <SegmentedControl.Item value="custom">
+                      {t("providers.addModal.modeCustom")}
+                    </SegmentedControl.Item>
                   </SegmentedControl.Root>
                 </div>
 
@@ -266,7 +272,7 @@ export function AddProviderModal({
               <Modal.Close
                 render={
                   <Button type="button" hierarchy="secondary">
-                    取消
+                    {t("common.cancel")}
                   </Button>
                 }
               />
@@ -278,7 +284,7 @@ export function AddProviderModal({
                   disabled={!selectedBuiltin}
                   pending={state.saving}
                 >
-                  保存配置
+                  {t("providers.addModal.saveBuiltin")}
                 </Button>
               ) : (
                 <Button
@@ -289,8 +295,8 @@ export function AddProviderModal({
                   pending={state.saving}
                 >
                   {checkedModels.length > 0
-                    ? `创建并导入 ${checkedModels.length} 个模型`
-                    : "创建 Provider"}
+                    ? t("providers.addModal.createAndImport", { count: checkedModels.length })
+                    : t("providers.addModal.createCustom")}
                 </Button>
               )}
             </Modal.Actions>

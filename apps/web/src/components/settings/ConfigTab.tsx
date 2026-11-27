@@ -5,12 +5,18 @@ import {
   type EngineSettings,
   type ModelChoice,
   parseWithSchema,
-  THINKING_LEVELS,
   type ToolsSettings,
 } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { useI18n } from "../../lib/i18n.ts";
 import { useAbortableAsync } from "../../lib/useAbortableAsync.ts";
+import {
+  refreshEngineSettingsAndModels,
+  setCachedEngineSettings,
+  useEngineSettingsAndModels,
+} from "../../lib/useEngineSettings.ts";
+import { ModelChoiceMenu } from "../ModelChoiceMenu.tsx";
 import { resolveToolsSettings, ToolsSettingsEditor } from "./ToolsSettingsEditor.tsx";
 
 export type ConfigFormState = {
@@ -18,9 +24,9 @@ export type ConfigFormState = {
   readonly backgroundAfterMs: string;
   readonly routerContextTokens: string;
   readonly idleHibernateMs: string;
-  readonly routerModel: string;
-  readonly workerModel: string;
-  readonly dreamerModel: string;
+  readonly routerModel: ModelChoice | undefined;
+  readonly workerModel: ModelChoice | undefined;
+  readonly dreamerModel: ModelChoice | undefined;
   readonly tools: ToolsSettings | undefined;
   readonly inlineBudget: string;
 };
@@ -30,40 +36,12 @@ const INITIAL_FORM_STATE: ConfigFormState = {
   backgroundAfterMs: "30000",
   routerContextTokens: "80000",
   idleHibernateMs: "600000",
-  routerModel: "",
-  workerModel: "",
-  dreamerModel: "",
+  routerModel: undefined,
+  workerModel: undefined,
+  dreamerModel: undefined,
   tools: undefined,
   inlineBudget: "",
 };
-
-function formatChoice(choice: ModelChoice | undefined): string {
-  if (!choice) return "";
-  return `${choice.provider}/${choice.modelId}${choice.thinkingLevel ? `:${choice.thinkingLevel}` : ""}`;
-}
-
-function parseChoice(raw: string): ModelChoice | undefined {
-  const trimmed = raw.trim();
-  if (!trimmed) return undefined;
-  const slash = trimmed.indexOf("/");
-  if (slash <= 0 || slash === trimmed.length - 1) {
-    throw new Error(`模型格式无效："${trimmed}"，应为 provider/modelId`);
-  }
-  const provider = trimmed.slice(0, slash);
-  const rest = trimmed.slice(slash + 1);
-  const colon = rest.lastIndexOf(":");
-  if (colon > 0) {
-    const thinkingLevel = THINKING_LEVELS.find((level) => level === rest.slice(colon + 1));
-    if (thinkingLevel !== undefined) {
-      return {
-        provider,
-        modelId: rest.slice(0, colon),
-        thinkingLevel,
-      };
-    }
-  }
-  return { provider, modelId: rest };
-}
 
 export function configFormFromSettings(settings: EngineSettings): ConfigFormState {
   return {
@@ -71,24 +49,21 @@ export function configFormFromSettings(settings: EngineSettings): ConfigFormStat
     backgroundAfterMs: String(settings.backgroundAfterMs ?? 30_000),
     routerContextTokens: String(settings.routerContextTokens ?? 80_000),
     idleHibernateMs: String(settings.idleHibernateMs ?? 600_000),
-    routerModel: formatChoice(settings.models?.router),
-    workerModel: formatChoice(settings.models?.worker),
-    dreamerModel: formatChoice(settings.models?.dreamer),
+    routerModel: settings.models?.router,
+    workerModel: settings.models?.worker,
+    dreamerModel: settings.models?.dreamer,
     tools: settings.tools,
     inlineBudget: String(settings.tools?.codemode?.inlineBudget ?? ""),
   };
 }
 
 export function buildEngineSettingsFromForm(form: ConfigFormState): EngineSettings {
-  const router = parseChoice(form.routerModel);
-  const worker = parseChoice(form.workerModel);
-  const dreamer = parseChoice(form.dreamerModel);
   const models =
-    router || worker || dreamer
+    form.routerModel || form.workerModel || form.dreamerModel
       ? {
-          ...(router ? { router } : {}),
-          ...(worker ? { worker } : {}),
-          ...(dreamer ? { dreamer } : {}),
+          ...(form.routerModel ? { router: form.routerModel } : {}),
+          ...(form.workerModel ? { worker: form.workerModel } : {}),
+          ...(form.dreamerModel ? { dreamer: form.dreamerModel } : {}),
         }
       : undefined;
 
@@ -104,6 +79,8 @@ export function buildEngineSettingsFromForm(form: ConfigFormState): EngineSettin
 }
 
 export function ConfigTab() {
+  const { t } = useI18n();
+  const { availableModels, refresh: refreshSharedModels } = useEngineSettingsAndModels(true);
   const [form, setForm] = useState<ConfigFormState>(INITIAL_FORM_STATE);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -125,6 +102,7 @@ export function ConfigTab() {
     try {
       const settings = await runLoad((signal) => api.getSettings(signal));
       if (!settings) return;
+      setCachedEngineSettings(settings);
       setForm(configFormFromSettings(settings));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -140,7 +118,8 @@ export function ConfigTab() {
     setSaved(false);
     setError(undefined);
     try {
-      await api.putSettings(buildEngineSettingsFromForm(form));
+      const updated = await api.putSettings(buildEngineSettingsFromForm(form));
+      setCachedEngineSettings(updated);
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -155,7 +134,7 @@ export function ConfigTab() {
     try {
       const bundle = await api.exportConfig();
       setBundleJson(JSON.stringify(bundle, null, 2));
-      setNotice("已导出当前 Engine 配置（不含 auth.json 凭据）。");
+      setNotice(t("config.exportedNotice"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -169,7 +148,8 @@ export function ConfigTab() {
       const parsed = parseWithSchema(ConfigBundleSchema, JSON.parse(bundleJson), "ConfigBundle");
       await api.importConfig(parsed);
       await load();
-      setNotice("配置导入成功并已热生效。");
+      await refreshEngineSettingsAndModels(true);
+      setNotice(t("config.importedNotice"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -181,22 +161,27 @@ export function ConfigTab() {
     <div className="ev-settings-section" style={{ gap: 22 }}>
       {error && <div className="ev-error-banner">{error}</div>}
       {notice && (
-        <div>
-          <span className="eevee-badge" data-tone="positive">
-            {notice}
-          </span>
+        <div
+          style={{
+            padding: "8px 12px",
+            borderRadius: 8,
+            background: "var(--ev-accent-soft)",
+            color: "var(--ev-accent)",
+            fontSize: "0.8125rem",
+          }}
+        >
+          {notice}
         </div>
       )}
 
       <div className="ev-settings-section">
         <Heading level={2} size={5}>
-          运行策略
+          {t("config.runPolicyTitle")}
         </Heading>
-
         <div className="ev-settings-card">
           <div className="ev-settings-grid-2">
             <Field.Root>
-              <Field.Label>并发 Worker 上限</Field.Label>
+              <Field.Label>{t("config.maxActiveWorkers")}</Field.Label>
               <Input
                 type="text"
                 value={form.maxActiveWorkers}
@@ -204,7 +189,7 @@ export function ConfigTab() {
               />
             </Field.Root>
             <Field.Root>
-              <Field.Label>命令转后台阈值 (ms)</Field.Label>
+              <Field.Label>{t("config.backgroundAfterMs")}</Field.Label>
               <Input
                 type="text"
                 value={form.backgroundAfterMs}
@@ -212,7 +197,7 @@ export function ConfigTab() {
               />
             </Field.Root>
             <Field.Root>
-              <Field.Label>Router 记忆阈值 (tokens)</Field.Label>
+              <Field.Label>{t("config.routerContextTokens")}</Field.Label>
               <Input
                 type="text"
                 value={form.routerContextTokens}
@@ -220,7 +205,7 @@ export function ConfigTab() {
               />
             </Field.Root>
             <Field.Root>
-              <Field.Label>空闲休眠 (ms)</Field.Label>
+              <Field.Label>{t("config.idleHibernateMs")}</Field.Label>
               <Input
                 type="text"
                 value={form.idleHibernateMs}
@@ -233,30 +218,42 @@ export function ConfigTab() {
 
           <div className="ev-settings-grid-3">
             <Field.Root>
-              <Field.Label>Router 模型</Field.Label>
-              <Input
-                type="text"
+              <Field.Label>{t("config.routerModel")}</Field.Label>
+              <ModelChoiceMenu
                 value={form.routerModel}
-                onValueChange={(routerModel) => patchForm({ routerModel })}
-                placeholder="provider/model"
+                models={availableModels}
+                placeholder={t("modelMenu.choose")}
+                variant="field"
+                ariaLabel={t("config.routerModel")}
+                onOpen={() => void refreshSharedModels(false)}
+                onChange={(routerModel) => patchForm({ routerModel })}
               />
             </Field.Root>
             <Field.Root>
-              <Field.Label>Worker 模型</Field.Label>
-              <Input
-                type="text"
+              <Field.Label>{t("config.workerModel")}</Field.Label>
+              <ModelChoiceMenu
                 value={form.workerModel}
-                onValueChange={(workerModel) => patchForm({ workerModel })}
-                placeholder="跟随 Router"
+                models={availableModels}
+                placeholder={t("modelMenu.followRouter")}
+                clearLabel={t("modelMenu.followRouter")}
+                variant="field"
+                ariaLabel={t("config.workerModel")}
+                onOpen={() => void refreshSharedModels(false)}
+                onChange={(workerModel) => patchForm({ workerModel })}
               />
             </Field.Root>
             <Field.Root>
-              <Field.Label>Dreamer 模型</Field.Label>
-              <Input
-                type="text"
+              <Field.Label>{t("config.dreamerModel")}</Field.Label>
+              <ModelChoiceMenu
                 value={form.dreamerModel}
-                onValueChange={(dreamerModel) => patchForm({ dreamerModel })}
-                placeholder="未启用"
+                models={availableModels}
+                placeholder={t("modelMenu.disabled")}
+                clearLabel={t("modelMenu.disabled")}
+                variant="field"
+                align="end"
+                ariaLabel={t("config.dreamerModel")}
+                onOpen={() => void refreshSharedModels(false)}
+                onChange={(dreamerModel) => patchForm({ dreamerModel })}
               />
             </Field.Root>
           </div>
@@ -265,7 +262,7 @@ export function ConfigTab() {
 
       <div className="ev-settings-section">
         <Heading level={2} size={5}>
-          工具与 Codemode
+          {t("config.toolsTitle")}
         </Heading>
         <div className="ev-settings-card">
           <ToolsSettingsEditor
@@ -283,11 +280,11 @@ export function ConfigTab() {
               pending={saving}
               onClick={() => void saveSettings()}
             >
-              保存
+              {t("common.save")}
             </Button>
             {saved && (
               <span className="eevee-badge" data-tone="positive">
-                已保存
+                {t("common.saved")}
               </span>
             )}
           </div>
@@ -299,7 +296,7 @@ export function ConfigTab() {
       <div className="ev-settings-section">
         <div className="ev-settings-head">
           <Heading level={2} size={5}>
-            配置导入导出
+            {t("config.transferTitle")}
           </Heading>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Button
@@ -308,7 +305,7 @@ export function ConfigTab() {
               iconStart={<DownloadIcon width={15} height={15} />}
               onClick={() => void handleExport()}
             >
-              导出
+              {t("config.export")}
             </Button>
             <Button
               hierarchy="primary"
@@ -318,7 +315,7 @@ export function ConfigTab() {
               pending={importing}
               onClick={() => void handleImport()}
             >
-              导入
+              {t("config.import")}
             </Button>
           </div>
         </div>

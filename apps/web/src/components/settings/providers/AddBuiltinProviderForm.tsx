@@ -2,6 +2,7 @@ import { KeyIcon, SearchIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Field, Text } from "@earendil-works/elanor-react";
 import { type BuiltinProviderCatalogItem, providerBaseUrlPlaceholder } from "@eevee/protocol";
 import type { Dispatch, FormEvent } from "react";
+import { useI18n } from "../../../lib/i18n.ts";
 import { BaseUrlField } from "../BaseUrlField.tsx";
 import { HeadersEditor } from "../HeadersEditor.tsx";
 import { SecretRevealInput } from "../SecretRevealInput.tsx";
@@ -28,6 +29,7 @@ export function AddBuiltinProviderForm({
   onSubmit,
   onOAuth,
 }: AddBuiltinProviderFormProps) {
+  const { t } = useI18n();
   const query = draft.filter.trim().toLowerCase();
   const visibleBuiltins = query
     ? builtinProviders.filter((item) =>
@@ -45,7 +47,7 @@ export function AddBuiltinProviderForm({
           <input
             className="ev-raw-input"
             value={draft.filter}
-            placeholder="搜索内置 Provider…"
+            placeholder={t("providers.builtin.searchPlaceholder")}
             onChange={(event) =>
               dispatch({ type: "patchBuiltin", patch: { filter: event.target.value } })
             }
@@ -53,9 +55,9 @@ export function AddBuiltinProviderForm({
         </div>
         <div className="ev-catalog-list">
           {loadingCatalog && builtinProviders.length === 0 ? (
-            <Text className="ev-inline-hint">加载目录中…</Text>
+            <Text className="ev-inline-hint">{t("providers.builtin.loadingCatalog")}</Text>
           ) : visibleBuiltins.length === 0 ? (
-            <Text className="ev-inline-hint">无匹配的内置 Provider。</Text>
+            <Text className="ev-inline-hint">{t("providers.builtin.emptyCatalog")}</Text>
           ) : (
             visibleBuiltins.map((item) => (
               <button
@@ -71,15 +73,17 @@ export function AddBuiltinProviderForm({
                   <span className="ev-mono ev-inline-muted">{item.id}</span>
                 </div>
                 <div className="ev-provider-item-badges">
-                  <span className="ev-inline-muted ev-num">{item.modelCount} 模型</span>
+                  <span className="ev-inline-muted ev-num">
+                    {t("providers.modelCount", { count: item.modelCount })}
+                  </span>
                   {item.configured && (
                     <span className="eevee-badge" data-tone="positive">
-                      已配置
+                      {t("providers.badge.configured")}
                     </span>
                   )}
                   {item.hasConfigOverride && (
                     <span className="eevee-badge" data-tone="warning">
-                      已覆盖
+                      {t("providers.badge.overridden")}
                     </span>
                   )}
                 </div>
@@ -99,18 +103,20 @@ export function AddBuiltinProviderForm({
               </div>
               {selectedBuiltin.baseUrl && (
                 <Text className="ev-inline-hint">
-                  默认端点：<span className="ev-mono">{selectedBuiltin.baseUrl}</span>
+                  {t("providers.builtin.defaultEndpoint")}
+                  <span className="ev-mono">{selectedBuiltin.baseUrl}</span>
                 </Text>
               )}
               {selectedBuiltin.apis.length > 0 && (
                 <Text className="ev-inline-hint">
-                  协议：<span className="ev-mono">{selectedBuiltin.apis.join(", ")}</span>
+                  {t("providers.builtin.apis")}
+                  <span className="ev-mono">{selectedBuiltin.apis.join(", ")}</span>
                 </Text>
               )}
             </div>
 
             <div className="ev-editor-section">
-              <div className="ev-editor-section-title">身份验证</div>
+              <div className="ev-editor-section-title">{t("providers.builtin.authSection")}</div>
               {selectedBuiltin.authMethods.apiKey && (
                 <Field.Root>
                   <Field.Label>API Key</Field.Label>
@@ -123,7 +129,7 @@ export function AddBuiltinProviderForm({
                     onRevealedChange={(revealKey) =>
                       dispatch({ type: "patchBuiltin", patch: { revealKey } })
                     }
-                    placeholder="输入 API Key（或 $ENV_VAR / !cmd）"
+                    placeholder={t("providers.apiKeyInputPlaceholder")}
                   />
                 </Field.Root>
               )}
@@ -137,27 +143,27 @@ export function AddBuiltinProviderForm({
                     pending={saving}
                     onClick={onOAuth}
                   >
-                    {selectedBuiltin.authMethods.oauthLabel ?? "开始 OAuth 登录"}
+                    {selectedBuiltin.authMethods.oauthLabel ?? t("providers.builtin.startOAuth")}
                   </Button>
                 </div>
               )}
             </div>
 
             <div className="ev-editor-section">
-              <div className="ev-editor-section-title">网关覆盖（可选）</div>
+              <div className="ev-editor-section-title">{t("providers.builtin.gatewaySection")}</div>
               <BaseUrlField
-                label="自定义 Base URL"
+                label={t("providers.builtin.customBaseUrl")}
                 baseUrl={draft.baseUrl}
                 onValueChange={(baseUrl) => dispatch({ type: "patchBuiltin", patch: { baseUrl } })}
                 api={selectedBuiltin.apis[0]}
                 placeholder={
                   selectedBuiltin.baseUrl ?? providerBaseUrlPlaceholder(selectedBuiltin.apis[0])
                 }
-                previewPrefix="请求 URL 预览："
-                warningText=" 检测到可能的 /v1 重复"
+                previewPrefix={t("baseUrl.previewPrefix")}
+                warningText={t("baseUrl.duplicateV1ShortWarning")}
               />
               <Field.Root>
-                <Field.Label>自定义请求头（KEY=VALUE）</Field.Label>
+                <Field.Label>{t("providers.customHeadersLabelKv")}</Field.Label>
                 <HeadersEditor
                   rows={draft.headers}
                   onChange={(headers) => dispatch({ type: "patchBuiltin", patch: { headers } })}
@@ -166,7 +172,7 @@ export function AddBuiltinProviderForm({
             </div>
           </form>
         ) : (
-          <Text className="ev-inline-hint">从左侧选择一个内置 Provider。</Text>
+          <Text className="ev-inline-hint">{t("providers.builtin.selectPrompt")}</Text>
         )}
       </div>
     </div>

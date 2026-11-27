@@ -1,6 +1,7 @@
 import type { WebSessionResponse } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api, consumeTicketFromHash } from "./api.ts";
+import { t } from "./i18n.ts";
 
 export type AuthSessionState =
   | { readonly kind: "loading" }
@@ -59,7 +60,9 @@ export function useAuthSession(): AuthSession {
           if (active) {
             setAuth({
               kind: "error",
-              error: `登录链接已失效或已使用：${err instanceof Error ? err.message : String(err)}`,
+              error: t("login.ticketExpired", {
+                error: err instanceof Error ? err.message : String(err),
+              }),
             });
           }
         }

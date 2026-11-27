@@ -3,6 +3,7 @@ import { Button, Modal, Text } from "@earendil-works/elanor-react";
 import type { CompatFieldInfo, ProviderDetail, ThinkingLevel } from "@eevee/protocol";
 import { type FormEvent, useReducer, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { useI18n } from "../../lib/i18n.ts";
 import { ConfirmModal } from "../ConfirmModal.tsx";
 import { ModelBasicSection } from "./model-editor/ModelBasicSection.tsx";
 import { ModelBuiltinMatcher } from "./model-editor/ModelBuiltinMatcher.tsx";
@@ -30,6 +31,7 @@ export function ModelEditorModal({
   readonly onClose: () => void;
   readonly onProviderChanged: (provider: ProviderDetail) => void;
 }) {
+  const { t } = useI18n();
   const model = target.model;
   const isCreate = model === undefined;
   const isCustom = isCreate || model.isCustom;
@@ -92,7 +94,9 @@ export function ModelEditorModal({
     });
   };
 
-  const title = isCreate ? "新增模型" : `编辑模型 · ${model.id}`;
+  const title = isCreate
+    ? t("modelEditor.titleCreate")
+    : t("modelEditor.titleEdit", { id: model.id });
 
   return (
     <Modal.Root open onOpenChange={(open) => !open && !confirmOpen && !deleting && onClose()}>
@@ -116,7 +120,9 @@ export function ModelEditorModal({
                   />
 
                   <section className="ev-editor-section">
-                    <div className="ev-editor-section-title">思考档位</div>
+                    <div className="ev-editor-section-title">
+                      {t("modelEditor.thinkingSection")}
+                    </div>
                     <ThinkingLevelsEditor
                       value={draft.thinkingLevels}
                       onChange={(thinkingLevels) =>
@@ -146,9 +152,9 @@ export function ModelEditorModal({
                   />
 
                   <section className="ev-editor-section">
-                    <div className="ev-editor-section-title">测试推理连接</div>
+                    <div className="ev-editor-section-title">{t("modelEditor.smokeSection")}</div>
                     {!model ? (
-                      <Text className="ev-inline-hint">保存模型后即可运行 smoke test。</Text>
+                      <Text className="ev-inline-hint">{t("modelEditor.smokeSaveFirstHint")}</Text>
                     ) : (
                       <div className="ev-smoke-controls">
                         <select
@@ -158,7 +164,7 @@ export function ModelEditorModal({
                             setTestLevel(event.target.value as "" | ThinkingLevel)
                           }
                         >
-                          <option value="">默认 thinking</option>
+                          <option value="">{t("modelEditor.smokeDefaultThinking")}</option>
                           {model.supportedThinkingLevels.map((level) => (
                             <option key={level} value={level}>
                               {level}
@@ -172,7 +178,7 @@ export function ModelEditorModal({
                             checked={testTools}
                             onChange={(event) => setTestTools(event.target.checked)}
                           />
-                          测试工具调用
+                          {t("modelEditor.smokeTestTools")}
                         </label>
                         <Button
                           type="button"
@@ -182,7 +188,7 @@ export function ModelEditorModal({
                           pending={smoke?.loading === true}
                           onClick={runSmokeTest}
                         >
-                          测试连接
+                          {t("modelEditor.smokeTestButton")}
                         </Button>
                       </div>
                     )}
@@ -205,7 +211,7 @@ export function ModelEditorModal({
                         setConfirmOpen(true);
                       }}
                     >
-                      删除模型
+                      {t("modelEditor.deleteModel")}
                     </Button>
                   )}
                   {model && !model.isCustom && model.hasOverride && (
@@ -220,19 +226,19 @@ export function ModelEditorModal({
                         setConfirmOpen(true);
                       }}
                     >
-                      还原内置默认
+                      {t("modelEditor.revertBuiltin")}
                     </Button>
                   )}
                 </div>
                 <Modal.Close
                   render={
                     <Button type="button" hierarchy="secondary">
-                      取消
+                      {t("common.cancel")}
                     </Button>
                   }
                 />
                 <Button type="submit" hierarchy="primary" pending={saving}>
-                  保存
+                  {t("common.save")}
                 </Button>
               </Modal.Actions>
             </form>
@@ -242,15 +248,19 @@ export function ModelEditorModal({
                 onOpenChange={setConfirmOpen}
                 title={
                   model.isCustom
-                    ? `删除模型「${model.id}」？`
-                    : `还原「${model.id}」的内置默认配置？`
+                    ? t("modelEditor.confirmDeleteTitle", { id: model.id })
+                    : t("modelEditor.confirmRevertTitle", { id: model.id })
                 }
                 description={
                   model.isCustom
-                    ? "确认后将从 models.json 中删除该自定义模型配置。"
-                    : "确认后将清除 models.json 中对该内置模型的覆盖配置并恢复默认值。"
+                    ? t("modelEditor.confirmDeleteDesc")
+                    : t("modelEditor.confirmRevertDesc")
                 }
-                confirmLabel={model.isCustom ? "确认删除" : "确认还原"}
+                confirmLabel={
+                  model.isCustom
+                    ? t("modelEditor.confirmDeleteLabel")
+                    : t("modelEditor.confirmRevertLabel")
+                }
                 tone="danger"
                 pending={deleting}
                 error={confirmError}

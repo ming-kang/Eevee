@@ -6,6 +6,7 @@ import {
 } from "@earendil-works/elanor-icons-react";
 import { IconButton } from "@earendil-works/elanor-react";
 import { type KeyboardEvent, useEffect, useRef } from "react";
+import { useI18n } from "../lib/i18n.ts";
 
 export function FindBar({
   query,
@@ -24,6 +25,7 @@ export function FindBar({
   readonly onPrev: () => void;
   readonly onClose: () => void;
 }) {
+  const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -54,8 +56,8 @@ export function FindBar({
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="在对话中查找…"
-          aria-label="在对话中查找"
+          placeholder={t("transcript.findPlaceholder")}
+          aria-label={t("transcript.findLabel")}
         />
         <span
           className="ev-num"
@@ -69,13 +71,13 @@ export function FindBar({
         >
           {query.trim() === "" ? "" : total === 0 ? "0 / 0" : `${index + 1} / ${total}`}
         </span>
-        <IconButton aria-label="上一个匹配" disabled={total === 0} onClick={onPrev}>
+        <IconButton aria-label={t("transcript.findPrev")} disabled={total === 0} onClick={onPrev}>
           <ExpandLessIcon width={16} height={16} />
         </IconButton>
-        <IconButton aria-label="下一个匹配" disabled={total === 0} onClick={onNext}>
+        <IconButton aria-label={t("transcript.findNext")} disabled={total === 0} onClick={onNext}>
           <ExpandMoreIcon width={16} height={16} />
         </IconButton>
-        <IconButton aria-label="关闭查找" onClick={onClose}>
+        <IconButton aria-label={t("transcript.findClose")} onClick={onClose}>
           <CloseIcon width={15} height={15} />
         </IconButton>
       </search>

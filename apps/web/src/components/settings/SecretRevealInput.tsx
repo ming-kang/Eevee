@@ -1,5 +1,6 @@
 import { Button, Input } from "@earendil-works/elanor-react";
 import { type ReactNode, useState } from "react";
+import { useI18n } from "../../lib/i18n.ts";
 
 export type SecretRevealInputProps = {
   readonly id?: string;
@@ -24,6 +25,7 @@ export function SecretRevealInput({
   extraActions,
   "aria-label": ariaLabel,
 }: SecretRevealInputProps) {
+  const { t } = useI18n();
   const [internalRevealed, setInternalRevealed] = useState(false);
   const isRevealed = revealed ?? internalRevealed;
 
@@ -47,7 +49,7 @@ export function SecretRevealInput({
         aria-label={ariaLabel}
       />
       <Button type="button" hierarchy="secondary" density="compact" onClick={toggleReveal}>
-        {isRevealed ? "隐藏" : "显示"}
+        {isRevealed ? t("secret.hide") : t("secret.show")}
       </Button>
       {extraActions}
     </div>

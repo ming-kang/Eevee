@@ -23,6 +23,26 @@
         var scheme = dark ? "dark" : "light";
         document.documentElement.dataset.colorScheme = scheme;
         document.documentElement.dataset.theme = scheme;
+        try {
+          var uiRaw = localStorage.getItem("eevee-ui-size");
+          if (uiRaw && /^\d+$/.test(uiRaw)) {
+            var ui = Number(uiRaw);
+            if (ui >= 12 && ui <= 20) document.documentElement.style.setProperty("--ev-ui-size", ui + "px");
+          }
+          var codeRaw = localStorage.getItem("eevee-code-size");
+          if (codeRaw && /^\d+$/.test(codeRaw)) {
+            var code = Number(codeRaw);
+            if (code >= 10 && code <= 18) document.documentElement.style.setProperty("--ev-code-size", code + "px");
+          }
+          var savedLocale = localStorage.getItem("eevee-locale");
+          var locale =
+            savedLocale === "zh-CN" || savedLocale === "en"
+              ? savedLocale
+              : (navigator.language || "zh-CN").toLowerCase().indexOf("zh") === 0
+                ? "zh-CN"
+                : "en";
+          document.documentElement.lang = locale;
+        } catch (e) {}
       })();
     </script>
   </head>

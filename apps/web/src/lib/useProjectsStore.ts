@@ -1,6 +1,7 @@
 import type { ProjectSummary } from "@eevee/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.ts";
+import { t } from "./i18n.ts";
 import { showToast } from "./toasts.ts";
 
 export type ProjectsStore = {
@@ -33,7 +34,7 @@ export function useProjectsStore(enabled: boolean): ProjectsStore {
       if (controller.signal.aborted) return;
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
-      showToast(`加载项目列表失败：${message}`, "danger");
+      showToast(t("overview.loadError", { error: message }), "danger");
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }

@@ -2,6 +2,7 @@ import { CloudDownloadIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Field, Input, Switch, Text } from "@earendil-works/elanor-react";
 import { providerBaseUrlPlaceholder } from "@eevee/protocol";
 import type { Dispatch, FormEvent } from "react";
+import { useI18n } from "../../../lib/i18n.ts";
 import { BaseUrlField, BaseUrlPreview } from "../BaseUrlField.tsx";
 import { HeadersEditor } from "../HeadersEditor.tsx";
 import { ModelProbeSelector } from "../ModelProbeSelector.tsx";
@@ -29,12 +30,13 @@ export function AddCustomProviderForm({
   onSubmit,
   onProbe,
 }: AddCustomProviderFormProps) {
+  const { t } = useI18n();
   const apiOptions = supportedApis.length > 0 ? supportedApis : [draft.api];
 
   return (
     <form id="ev-add-custom-form" onSubmit={onSubmit} className="ev-form-stack">
       <section className="ev-editor-section">
-        <div className="ev-editor-section-title">基础与连接</div>
+        <div className="ev-editor-section-title">{t("providers.custom.basicSection")}</div>
         <div className="ev-model-form-grid">
           <Field.Root>
             <Field.Label>Provider ID</Field.Label>
@@ -46,16 +48,16 @@ export function AddCustomProviderForm({
             />
           </Field.Root>
           <Field.Root>
-            <Field.Label>显示名称（可选）</Field.Label>
+            <Field.Label>{t("providers.custom.nameLabel")}</Field.Label>
             <Input
               type="text"
               value={draft.name}
               onValueChange={(name) => dispatch({ type: "patchCustom", patch: { name } })}
-              placeholder="留空则使用 Provider ID"
+              placeholder={t("providers.custom.namePlaceholder")}
             />
           </Field.Root>
           <Field.Root>
-            <Field.Label>协议 API</Field.Label>
+            <Field.Label>{t("providers.field.api")}</Field.Label>
             <select
               className="ev-select"
               value={draft.api}
@@ -82,15 +84,15 @@ export function AddCustomProviderForm({
         <BaseUrlPreview
           api={draft.api}
           baseUrl={draft.baseUrl}
-          previewPrefix="有效请求 URL 预览："
-          warningText=" 检测到可能的 /v1 重复，请检查 Base URL"
+          previewPrefix={t("baseUrl.effectivePreviewPrefix")}
+          warningText={t("baseUrl.duplicateV1Warning")}
         />
       </section>
 
       <section className="ev-editor-section">
-        <div className="ev-editor-section-title">鉴权与请求头</div>
+        <div className="ev-editor-section-title">{t("providers.custom.authSection")}</div>
         <Field.Root>
-          <Field.Label>API Key（支持明文、$ENV_VAR 或 !cmd）</Field.Label>
+          <Field.Label>{t("providers.custom.apiKeyLabel")}</Field.Label>
           <SecretRevealInput
             value={draft.apiKey}
             revealed={draft.revealKey}
@@ -98,11 +100,11 @@ export function AddCustomProviderForm({
             onRevealedChange={(revealKey) =>
               dispatch({ type: "patchCustom", patch: { revealKey } })
             }
-            placeholder="sk-... 或 $MY_API_KEY 或 !op read ..."
+            placeholder={t("providers.custom.apiKeyPlaceholder")}
           />
         </Field.Root>
         <div className="ev-toggle-field">
-          <span>通过 Authorization: Bearer 请求头传递 API Key（authHeader）</span>
+          <span>{t("providers.custom.authHeaderLabel")}</span>
           <Switch.Root
             checked={draft.authHeader}
             onCheckedChange={(authHeader) =>
@@ -113,7 +115,7 @@ export function AddCustomProviderForm({
           </Switch.Root>
         </div>
         <Field.Root>
-          <Field.Label>自定义请求头（KEY=VALUE）</Field.Label>
+          <Field.Label>{t("providers.customHeadersLabelKv")}</Field.Label>
           <HeadersEditor
             rows={draft.headers}
             onChange={(headers) => dispatch({ type: "patchCustom", patch: { headers } })}
@@ -123,7 +125,7 @@ export function AddCustomProviderForm({
 
       <section className="ev-editor-section">
         <div className="ev-editor-section-head">
-          <div className="ev-editor-section-title">探测模型（可选，一步导入）</div>
+          <div className="ev-editor-section-title">{t("providers.custom.probeSection")}</div>
           <Button
             type="button"
             hierarchy="secondary"
@@ -132,19 +134,20 @@ export function AddCustomProviderForm({
             pending={probe.probing}
             onClick={onProbe}
           >
-            探测模型
+            {t("providers.custom.probeButton")}
           </Button>
         </div>
         {probe.catalogUrl && (
           <Text className="ev-inline-hint">
-            模型目录：<span className="ev-mono">{probe.catalogUrl}</span>
+            {t("probe.catalogUrlLabel")}
+            <span className="ev-mono">{probe.catalogUrl}</span>
           </Text>
         )}
         {probe.error && <div className="ev-error-banner">{probe.error}</div>}
         {probe.truncated && (
           <div>
             <span className="eevee-badge" data-tone="warning">
-              探测结果已截断，建议先筛选再勾选
+              {t("providers.custom.probeTruncated")}
             </span>
           </div>
         )}
@@ -155,7 +158,7 @@ export function AddCustomProviderForm({
             onSelectedChange={(selected) => dispatch({ type: "patchProbe", patch: { selected } })}
             filter={probe.filter}
             onFilterChange={(filter) => dispatch({ type: "patchProbe", patch: { filter } })}
-            filterPlaceholder="筛选探测到的模型…"
+            filterPlaceholder={t("providers.custom.probeFilterPlaceholder")}
             variant="list"
           />
         )}

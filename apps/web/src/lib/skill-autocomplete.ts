@@ -6,7 +6,7 @@ export type SkillAutocompleteToken = {
   readonly end: number;
 };
 
-type CodeRange = {
+export type CodeRange = {
   readonly start: number;
   readonly end: number;
 };
@@ -25,7 +25,7 @@ function isEscapedByBackslash(text: string, index: number): boolean {
   return count % 2 === 1;
 }
 
-function findCodeRanges(text: string): CodeRange[] {
+export function findCodeRanges(text: string): CodeRange[] {
   const ranges: CodeRange[] = [];
   let index = 0;
   let atLineStart = true;
@@ -139,7 +139,11 @@ function findCodeRanges(text: string): CodeRange[] {
   return ranges;
 }
 
-function overlapsCodeRange(start: number, end: number, ranges: readonly CodeRange[]): boolean {
+export function overlapsCodeRange(
+  start: number,
+  end: number,
+  ranges: readonly CodeRange[],
+): boolean {
   for (const range of ranges) {
     if (range.start >= end) return false;
     if (range.end > start) return true;

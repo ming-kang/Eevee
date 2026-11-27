@@ -10,6 +10,7 @@ import {
   extractText,
   extractThinking,
   extractToolCalls,
+  extractUserParts,
 } from "./content.ts";
 import { buildToolCallItems, type ToolResultRecord } from "./tools.ts";
 import type { DisplayItem, LiveDocView, NoticeInfo, ToolStep } from "./types.ts";
@@ -175,13 +176,15 @@ export function buildDisplayItems(
         ...(at ? { at } : {}),
       });
     } else if (entry.kind === "pi.user" || firstMsg?.role === "user") {
-      const text = extractText(firstMsg?.content);
-      if (text.length > 0) {
+      const userParts = extractUserParts(firstMsg?.content);
+      if (userParts.text.length > 0 || userParts.images.length > 0 || userParts.files.length > 0) {
         items.push({
           kind: "user",
           key: `e:${entry.id}`,
           id: entry.id,
-          text,
+          text: userParts.text,
+          ...(userParts.images.length > 0 ? { images: userParts.images } : {}),
+          ...(userParts.files.length > 0 ? { files: userParts.files } : {}),
           ...(at ? { at } : {}),
         });
       }

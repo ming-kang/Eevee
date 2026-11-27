@@ -1,4 +1,5 @@
 import { type BackgroundTaskStatus, isActiveTaskStatus } from "@eevee/protocol";
+import { t } from "./i18n.ts";
 
 export function formatTime(ms: number | undefined): string {
   if (ms === undefined || !Number.isFinite(ms)) return "";
@@ -31,12 +32,12 @@ export function formatClock(ms: number | undefined): string {
 export function formatRelativeTime(ms: number | undefined): string {
   if (ms === undefined || !Number.isFinite(ms)) return "";
   const diffSec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (diffSec < 60) return `${diffSec}s 前`;
+  if (diffSec < 60) return t("time.secAgo", { n: diffSec });
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m 前`;
+  if (diffMin < 60) return t("time.minAgo", { n: diffMin });
   const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h 前`;
-  return `${Math.floor(diffHr / 24)}d 前`;
+  if (diffHr < 24) return t("time.hrAgo", { n: diffHr });
+  return t("time.dayAgo", { n: Math.floor(diffHr / 24) });
 }
 
 export function formatTokens(count: number): string {
@@ -60,13 +61,13 @@ export function shortPath(path: string): string {
 export function workerStatusLabel(status: string): string {
   switch (status) {
     case "running":
-      return "运行中";
+      return t("status.worker.running");
     case "queued":
-      return "排队中";
+      return t("status.worker.queued");
     case "idle":
-      return "空闲";
+      return t("status.worker.idle");
     case "closed":
-      return "已关闭";
+      return t("status.worker.closed");
     default:
       return status;
   }

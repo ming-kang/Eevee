@@ -2,6 +2,8 @@ import { Button, Field, Input, Modal, TextArea } from "@earendil-works/elanor-re
 import type { ProjectSummary } from "@eevee/protocol";
 import { type FormEvent, useState } from "react";
 import { api } from "../lib/api.ts";
+import { useI18n } from "../lib/i18n.ts";
+import { mergeWorkspacePaths, WorkspacesField } from "./WorkspacesField.tsx";
 
 export type ProjectModalProps = {
   readonly open: boolean;
@@ -10,32 +12,32 @@ export type ProjectModalProps = {
 };
 
 export function ProjectModal({ open, onOpenChange, onCreated }: ProjectModalProps) {
+  const { t } = useI18n();
   const [title, setTitle] = useState("");
-  const [workspacesText, setWorkspacesText] = useState("");
+  const [workspaces, setWorkspaces] = useState<string[]>([]);
+  const [pendingPath, setPendingPath] = useState("");
   const [memory, setMemory] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    const workspaces = workspacesText
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    if (workspaces.length === 0) {
-      setError("至少填写一个工作区绝对路径（每行一个目录）。");
+    const resolved = mergeWorkspacePaths(workspaces, pendingPath).next;
+    if (resolved.length === 0) {
+      setError(t("project.workspace.atLeastOne"));
       return;
     }
     setSubmitting(true);
     setError(undefined);
     try {
       const created = await api.createProject({
-        workspaces,
+        workspaces: resolved,
         ...(title.trim() ? { title: title.trim() } : {}),
         ...(memory.trim() ? { memory: memory.trim() } : {}),
       });
       setTitle("");
-      setWorkspacesText("");
+      setWorkspaces([]);
+      setPendingPath("");
       setMemory("");
       onCreated(created.project);
       onOpenChange(false);
@@ -51,38 +53,38 @@ export function ProjectModal({ open, onOpenChange, onCreated }: ProjectModalProp
       <Modal.Portal>
         <Modal.Backdrop />
         <Modal.Viewport>
-          <Modal.Popup>
-            <Modal.Title>新建项目</Modal.Title>
+          <Modal.Popup className="ev-project-create-dialog">
+            <Modal.Title>{t("project.new.title")}</Modal.Title>
             <form onSubmit={(event) => void handleSubmit(event)} className="ev-form-stack">
               <Modal.Body>
                 <div className="ev-form-stack">
                   {error && <div className="ev-error-banner">{error}</div>}
                   <Field.Root>
-                    <Field.Label>名称</Field.Label>
+                    <Field.Label>{t("project.field.name")}</Field.Label>
                     <Input
                       type="text"
                       value={title}
                       onValueChange={(value) => setTitle(value)}
-                      placeholder="可选"
+                      placeholder={t("common.optional")}
                     />
                   </Field.Root>
+                  <WorkspacesField
+                    value={workspaces}
+                    onChange={(next) => {
+                      setWorkspaces(next);
+                      if (error) setError(undefined);
+                    }}
+                    pendingPath={pendingPath}
+                    onPendingPathChange={setPendingPath}
+                    disabled={submitting}
+                  />
                   <Field.Root>
-                    <Field.Label>工作目录</Field.Label>
-                    <TextArea
-                      monospace
-                      rows={3}
-                      value={workspacesText}
-                      onValueChange={(value) => setWorkspacesText(value)}
-                      placeholder={"/path/to/repo"}
-                    />
-                  </Field.Root>
-                  <Field.Root>
-                    <Field.Label>项目记忆</Field.Label>
+                    <Field.Label>{t("project.field.memory")}</Field.Label>
                     <TextArea
                       rows={3}
                       value={memory}
                       onValueChange={(value) => setMemory(value)}
-                      placeholder="可选"
+                      placeholder={t("common.optional")}
                     />
                   </Field.Root>
                 </div>
@@ -91,12 +93,12 @@ export function ProjectModal({ open, onOpenChange, onCreated }: ProjectModalProp
                 <Modal.Close
                   render={
                     <Button type="button" hierarchy="secondary">
-                      取消
+                      {t("common.cancel")}
                     </Button>
                   }
                 />
                 <Button type="submit" hierarchy="primary" pending={submitting}>
-                  创建
+                  {t("common.create")}
                 </Button>
               </Modal.Actions>
             </form>

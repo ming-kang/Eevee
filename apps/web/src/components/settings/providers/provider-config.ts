@@ -1,4 +1,5 @@
 import type { ProviderDetail, UpsertProviderRequest } from "@eevee/protocol";
+import { t } from "../../../lib/i18n.ts";
 import { deepEqualJson } from "../../../lib/object.ts";
 import { type HeaderRow, headersToRows, rowsToHeaders } from "../header-rows.ts";
 import { validateBaseUrl } from "../provider-utils.ts";
@@ -53,7 +54,7 @@ export function buildProviderPatch(
   if (draft.authHeader !== (detail.config?.authHeader ?? false)) {
     patch.authHeader = draft.authHeader ? true : null;
   }
-  const nextHeaders = rowsToHeaders(draft.headers, "Provider 请求头");
+  const nextHeaders = rowsToHeaders(draft.headers, t("providers.providerHeadersLabel"));
   if (!deepEqualJson(nextHeaders, detail.config?.headers)) {
     patch.headers = nextHeaders ?? null;
   }

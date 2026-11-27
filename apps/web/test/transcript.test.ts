@@ -560,6 +560,45 @@ test("buildDisplayItems and noticeMetaLabel preserve strongly typed NoticeInfo v
   });
 });
 
+test("buildDisplayItems separates user images and <file> parts cleanly", () => {
+  const entries: EntryRecordPayload[] = [
+    {
+      id: 10,
+      conversationId: 1,
+      kind: "pi.user",
+      model: [
+        {
+          role: "user",
+          content: [
+            { type: "image", data: "AAAA", mimeType: "image/png" },
+            {
+              type: "text",
+              text: '<file name="a.ts" path="src/a.ts" type="text/typescript" size="12">\nconst x = 1;\n</file>',
+            },
+            { type: "text", text: "Check @src/a.ts" },
+          ],
+          timestamp: 1000,
+        },
+      ],
+    },
+  ];
+  const items = buildDisplayItems(entries, parseLiveDoc(undefined));
+  assert.equal(items.length, 1);
+  const user = items[0];
+  assert.ok(user && user.kind === "user");
+  assert.equal(user.text, "Check @src/a.ts");
+  assert.deepEqual(user.images, [{ data: "AAAA", mimeType: "image/png" }]);
+  assert.deepEqual(user.files, [
+    {
+      name: "a.ts",
+      path: "src/a.ts",
+      mimeType: "text/typescript",
+      size: 12,
+      content: "const x = 1;",
+    },
+  ]);
+});
+
 test("deriveBoardSummary computes stage priority across questions, workers, and tasks", () => {
   assert.deepEqual(deriveBoardSummary(undefined), {
     stage: "idle",

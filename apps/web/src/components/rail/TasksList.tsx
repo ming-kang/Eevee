@@ -12,6 +12,7 @@ import {
   taskStatusPhase,
   taskStatusStage,
 } from "../../lib/format.ts";
+import { useI18n } from "../../lib/i18n.ts";
 import { TaskLogViewer } from "./TaskLogViewer.tsx";
 
 export function TasksList({
@@ -23,6 +24,7 @@ export function TasksList({
   readonly workers: readonly WorkerBoardItemPayload[];
   readonly onOpenWorker: (workerId: WorkerId) => void;
 }) {
+  const { t } = useI18n();
   const allTasks = useMemo(() => {
     const out: { worker: WorkerBoardItemPayload; task: BackgroundTaskRecordPayload }[] = [];
     for (const w of workers) {
@@ -47,7 +49,7 @@ export function TasksList({
   }, []);
 
   if (allTasks.length === 0) {
-    return <div className="ev-rail-empty">暂无后台任务</div>;
+    return <div className="ev-rail-empty">{t("rail.tasks.empty")}</div>;
   }
 
   return (
@@ -88,16 +90,16 @@ export function TasksList({
                       data-tone="negative"
                       title={effectiveTask.logError}
                     >
-                      日志错误
+                      {t("rail.tasks.logError")}
                     </span>
                   )}
                   {effectiveTask.logTruncated && (
                     <span
                       className="eevee-badge"
                       data-tone="warning"
-                      title="输出超出后台日志大小限制，已截断"
+                      title={t("rail.tasks.truncatedTitle")}
                     >
-                      已截断
+                      {t("rail.tasks.truncated")}
                     </span>
                   )}
                 </div>

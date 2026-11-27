@@ -1,5 +1,6 @@
 import { Field, Input, Switch } from "@earendil-works/elanor-react";
 import type { Dispatch } from "react";
+import { useI18n } from "../../../lib/i18n.ts";
 import type { ModelEditorAction, ModelEditorDraft, ModelEditorTarget } from "./state.ts";
 
 export type ModelBasicSectionProps = {
@@ -19,10 +20,11 @@ export function ModelBasicSection({
   draft,
   dispatch,
 }: ModelBasicSectionProps) {
+  const { t } = useI18n();
   const model = target.model;
   return (
     <section className="ev-editor-section">
-      <div className="ev-editor-section-title">基础信息</div>
+      <div className="ev-editor-section-title">{t("modelEditor.basicSection")}</div>
       <div className="ev-model-form-grid">
         <Field.Root>
           <Field.Label>Model ID</Field.Label>
@@ -35,7 +37,7 @@ export function ModelBasicSection({
           />
         </Field.Root>
         <Field.Root>
-          <Field.Label>显示名称</Field.Label>
+          <Field.Label>{t("modelEditor.field.displayName")}</Field.Label>
           <Input
             type="text"
             value={draft.name}
@@ -43,7 +45,7 @@ export function ModelBasicSection({
           />
         </Field.Root>
         <Field.Root>
-          <Field.Label>上下文窗口</Field.Label>
+          <Field.Label>{t("modelEditor.field.contextWindow")}</Field.Label>
           <Input
             type="text"
             inputMode="numeric"
@@ -52,7 +54,7 @@ export function ModelBasicSection({
           />
         </Field.Root>
         <Field.Root>
-          <Field.Label>最大输出</Field.Label>
+          <Field.Label>{t("modelEditor.field.maxTokens")}</Field.Label>
           <Input
             type="text"
             inputMode="numeric"
@@ -61,7 +63,7 @@ export function ModelBasicSection({
           />
         </Field.Root>
         <div className="ev-toggle-field">
-          <span>支持推理</span>
+          <span>{t("modelEditor.field.reasoning")}</span>
           <Switch.Root
             checked={draft.reasoning}
             onCheckedChange={(reasoning) => dispatch({ type: "patch", patch: { reasoning } })}
@@ -70,7 +72,7 @@ export function ModelBasicSection({
           </Switch.Root>
         </div>
         <div className="ev-toggle-field">
-          <span>支持图像输入</span>
+          <span>{t("modelEditor.field.imageInput")}</span>
           <Switch.Root
             checked={draft.imageInput}
             onCheckedChange={(imageInput) => dispatch({ type: "patch", patch: { imageInput } })}
@@ -81,7 +83,7 @@ export function ModelBasicSection({
         {isCustom && (
           <>
             <Field.Root>
-              <Field.Label>独立 API（可选）</Field.Label>
+              <Field.Label>{t("modelEditor.field.overrideApi")}</Field.Label>
               <select
                 className="ev-select"
                 value={draft.apiValue}
@@ -93,7 +95,9 @@ export function ModelBasicSection({
                 }
               >
                 <option value="">
-                  {target.providerApi ? `继承 Provider (${target.providerApi})` : "选择协议"}
+                  {target.providerApi
+                    ? t("modelEditor.inheritProvider", { value: target.providerApi })
+                    : t("modelEditor.selectApi")}
                 </option>
                 {supportedApis.map((item) => (
                   <option key={item} value={item}>
@@ -103,13 +107,13 @@ export function ModelBasicSection({
               </select>
             </Field.Root>
             <Field.Root>
-              <Field.Label>独立 Base URL（可选）</Field.Label>
+              <Field.Label>{t("modelEditor.field.overrideBaseUrl")}</Field.Label>
               <Input
                 type="url"
                 value={draft.baseUrlValue}
                 placeholder={
                   target.providerBaseUrl
-                    ? `继承 Provider (${target.providerBaseUrl})`
+                    ? t("modelEditor.inheritProvider", { value: target.providerBaseUrl })
                     : "https://api.example.com/v1"
                 }
                 onValueChange={(baseUrlValue) =>
@@ -119,14 +123,18 @@ export function ModelBasicSection({
                   })
                 }
               />
-              {model?.baseUrl && <Field.Description>当前生效：{model.baseUrl}</Field.Description>}
+              {model?.baseUrl && (
+                <Field.Description>
+                  {t("modelEditor.effectiveBaseUrl", { url: model.baseUrl })}
+                </Field.Description>
+              )}
             </Field.Root>
           </>
         )}
       </div>
       <div className="ev-cost-grid">
         <Field.Root>
-          <Field.Label>输入价格 $/M</Field.Label>
+          <Field.Label>{t("modelEditor.field.costInput")}</Field.Label>
           <Input
             type="text"
             inputMode="decimal"
@@ -135,7 +143,7 @@ export function ModelBasicSection({
           />
         </Field.Root>
         <Field.Root>
-          <Field.Label>输出价格 $/M</Field.Label>
+          <Field.Label>{t("modelEditor.field.costOutput")}</Field.Label>
           <Input
             type="text"
             inputMode="decimal"
@@ -144,7 +152,7 @@ export function ModelBasicSection({
           />
         </Field.Root>
         <Field.Root>
-          <Field.Label>缓存读取 $/M</Field.Label>
+          <Field.Label>{t("modelEditor.field.costCacheRead")}</Field.Label>
           <Input
             type="text"
             inputMode="decimal"
@@ -153,7 +161,7 @@ export function ModelBasicSection({
           />
         </Field.Root>
         <Field.Root>
-          <Field.Label>缓存写入 $/M</Field.Label>
+          <Field.Label>{t("modelEditor.field.costCacheWrite")}</Field.Label>
           <Input
             type="text"
             inputMode="decimal"
