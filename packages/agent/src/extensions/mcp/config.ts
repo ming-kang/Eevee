@@ -5,12 +5,7 @@ import {
   type McpStdioServerConfig as PiMcpStdioServerConfig,
   validateMcpServerConfig as validateSharedMcpServerConfig,
 } from "@earendil-works/pi-mcp";
-import {
-  getConfigValueEnvVarNames,
-  isCommandConfigValue,
-  resolveConfigValue,
-  resolveHeaders,
-} from "../../shared/config-value.ts";
+import { type ConfigValueFailure, resolveConfigRecordStrict } from "../../shared/config-value.ts";
 import { errorMessage, isRecord } from "../../shared/guards.ts";
 import { stripBom, stripJsonComments } from "../../shared/json.ts";
 
@@ -195,59 +190,33 @@ export function getMcpToolExposure(config: McpServerConfig, toolName: string): M
   return config.exposure ?? DEFAULT_MCP_EXPOSURE;
 }
 
-function missingEnvNames(
-  raw: string,
-  baseEnv: Readonly<Record<string, string | undefined>> | undefined,
-): string[] {
-  return getConfigValueEnvVarNames(raw).filter((name) => {
-    const explicit = baseEnv?.[name];
-    if (explicit !== undefined && explicit !== "") return false;
-    const ambient = process.env[name];
-    return ambient === undefined || ambient === "";
-  });
-}
-
-function resolutionError(
-  kind: "env" | "header",
-  key: string,
-  raw: string,
-  baseEnv: Readonly<Record<string, string | undefined>> | undefined,
-): Error {
-  if (isCommandConfigValue(raw)) {
-    return new Error(`MCP ${kind} "${key}" command produced no value: ${raw}`);
+function formatMcpResolutionError(kind: "env" | "header", failure: ConfigValueFailure): Error {
+  if (failure.isCommand) {
+    return new Error(`MCP ${kind} "${failure.key}" command produced no value: ${failure.raw}`);
   }
-  const names = missingEnvNames(raw, baseEnv);
-  if (names.length > 0) {
-    const suffix = names.length === 1 ? "" : "s";
+  if (failure.missingEnvVars.length > 0) {
+    const suffix = failure.missingEnvVars.length === 1 ? "" : "s";
     return new Error(
-      `MCP ${kind} "${key}" references unresolved environment variable${suffix}: ${names.join(", ")}`,
+      `MCP ${kind} "${failure.key}" references unresolved environment variable${suffix}: ${failure.missingEnvVars.join(", ")}`,
     );
   }
-  return new Error(`MCP ${kind} "${key}" could not be resolved`);
+  return new Error(`MCP ${kind} "${failure.key}" could not be resolved`);
 }
 
 export function resolveServerEnv(
   env: Readonly<Record<string, string>> | undefined,
   baseEnv?: Readonly<Record<string, string | undefined>>,
 ): Record<string, string> | undefined {
-  if (env === undefined) return undefined;
-  const resolved: Record<string, string> = {};
-  for (const [key, raw] of Object.entries(env)) {
-    const value = resolveConfigValue(raw, baseEnv);
-    if (value === undefined) throw resolutionError("env", key, raw, baseEnv);
-    resolved[key] = value;
-  }
-  return Object.keys(resolved).length > 0 ? resolved : undefined;
+  return resolveConfigRecordStrict(env, baseEnv, {
+    formatError: (failure) => formatMcpResolutionError("env", failure),
+  });
 }
 
 export function resolveServerHeaders(
   headers: Readonly<Record<string, string>> | undefined,
   baseEnv?: Readonly<Record<string, string | undefined>>,
 ): Record<string, string> | undefined {
-  if (headers === undefined) return undefined;
-  const resolved = resolveHeaders(headers, baseEnv);
-  for (const [key, raw] of Object.entries(headers)) {
-    if (resolved?.[key] === undefined) throw resolutionError("header", key, raw, baseEnv);
-  }
-  return resolved;
+  return resolveConfigRecordStrict(headers, baseEnv, {
+    formatError: (failure) => formatMcpResolutionError("header", failure),
+  });
 }

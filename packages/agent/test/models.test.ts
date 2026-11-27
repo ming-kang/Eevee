@@ -1240,3 +1240,147 @@ test("custom providers recognize x-goog-api-key for header-only auth", async () 
     assert.equal(summary.preview, "goog...-key");
   });
 });
+
+test("wrapProvider memoizes transformed models across calls and updates after refresh", async () => {
+  const providers = composeProviders(
+    parseModelsConfig(
+      JSON.stringify({
+        providers: {
+          anthropic: {
+            baseUrl: "https://proxy.example.com/v1",
+            compat: { supportsStore: false },
+          },
+        },
+      }),
+    ),
+    { env: {} },
+  );
+  const anthropic = providers.find((provider) => provider.id === "anthropic");
+  assert.ok(anthropic);
+  const firstAll = anthropic.getAllModels?.();
+  const secondAll = anthropic.getAllModels?.();
+  assert.ok(firstAll);
+  assert.equal(firstAll, secondAll);
+  const firstChat = anthropic.getModels();
+  const secondChat = anthropic.getModels();
+  assert.equal(firstChat, secondChat);
+  assert.equal(firstChat[0], firstAll[0]);
+
+  await withTempDir(async (dir) => {
+    await writeFile(
+      join(dir, "models.json"),
+      JSON.stringify({
+        providers: {
+          radius: {
+            oauth: "radius",
+            baseUrl: "https://radius.test",
+            compat: { customFlag: true },
+          },
+        },
+      }),
+    );
+    const runtime = await ModelRuntime.open({ dir, env: {} });
+    const radius = runtime.models().getProvider("radius");
+    assert.ok(radius);
+    const before1 = radius.getModels();
+    const before2 = radius.getModels();
+    assert.equal(before1, before2);
+
+    await runtime.modelsStore.write("radius", {
+      models: [modelForStore("radius", "refreshed-radius-model")],
+      checkedAt: Date.now(),
+    });
+    await runtime.hydrateStoredCatalogs();
+
+    const after1 = radius.getModels();
+    const after2 = radius.getModels();
+    assert.notEqual(after1, before1);
+    assert.equal(after1, after2);
+    assert.equal(after1.length, 1);
+    assert.equal(after1[0]?.id, "refreshed-radius-model");
+    assert.deepEqual(after1[0]?.compat, { customFlag: true });
+  });
+});
+
+test("composeProviders surfaces ModelsConfigError eagerly for radius entries and preserves entry compat under modelOverrides", async () => {
+  const invalidRadius = parseModelsConfig(
+    JSON.stringify({
+      providers: {
+        radius: {
+          oauth: "radius",
+          baseUrl: "https://radius.test",
+          models: [{ id: "missing-api" }],
+        },
+      },
+    }),
+  );
+  assert.throws(() => composeProviders(invalidRadius, { env: {} }), ModelsConfigError);
+
+  const customWithOverride = composeProviders(
+    parseModelsConfig(
+      JSON.stringify({
+        providers: {
+          local: {
+            baseUrl: "http://localhost:1/v1",
+            api: "openai-completions",
+            compat: { supportsStore: false, maxTokensField: "max_tokens" },
+            models: [
+              {
+                id: "m",
+                compat: { supportsStore: true },
+              },
+            ],
+            modelOverrides: {
+              m: { contextWindow: 8192 },
+            },
+          },
+        },
+      }),
+    ),
+    { env: {} },
+  );
+  const model = customWithOverride
+    .find((provider) => provider.id === "local")
+    ?.getModels()
+    .find((entry) => entry.id === "m");
+  assert.ok(model);
+  assert.equal(model.contextWindow, 8192);
+  assert.deepEqual(model.compat, { supportsStore: true, maxTokensField: "max_tokens" });
+});
+
+test("ModelRuntime.getAuthSummary does not re-execute !command apiKey", async () => {
+  await withTempDir(async (dir) => {
+    const hitsFile = join(dir, "summary-hits.txt");
+    const script = join(dir, "summary-cmd.cjs");
+    await writeFile(
+      script,
+      [
+        'const fs = require("node:fs");',
+        `fs.appendFileSync(${JSON.stringify(hitsFile)}, "hit\\n");`,
+        'console.log("sk-command-secret-1234");',
+      ].join("\n"),
+    );
+    await writeFile(
+      join(dir, "models.json"),
+      JSON.stringify({
+        providers: {
+          local: {
+            baseUrl: "http://127.0.0.1:1/v1",
+            api: "openai-completions",
+            apiKey: `!"${process.execPath}" "${script}"`,
+            authHeader: true,
+            models: [{ id: "m" }],
+          },
+        },
+      }),
+    );
+
+    const runtime = await ModelRuntime.open({ dir, env: {} });
+    const summary = await runtime.getAuthSummary("local");
+    assert.equal(summary.configured, true);
+    assert.equal(summary.source, "models.json");
+    assert.equal(summary.preview, "sk-c...1234");
+    const hits = (await readFile(hitsFile, "utf8")).trim().split("\n");
+    assert.equal(hits.length, 1);
+  });
+});

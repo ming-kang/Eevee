@@ -16,8 +16,6 @@ export const CONTEXT_FILENAMES = [
   "CLAUDE.MD",
 ] as const;
 export const SKILL_FILE = "SKILL.md";
-export const SKILLS_DIR = "skills";
-export const PI_SKILLS_DIR = ".pi/skills";
 export const AGENTS_SKILLS_DIR = ".agents/skills";
 
 const IGNORE_FILENAMES = [".gitignore", ".ignore", ".fdignore"] as const;
@@ -128,9 +126,12 @@ function ancestorsOf(dir: string): string[] {
 async function loadContextFileFromDir(
   dir: string,
 ): Promise<{ path: string; content: string } | undefined> {
-  for (const filename of CONTEXT_FILENAMES) {
-    const candidate = join(dir, filename);
-    if (!(await isFile(candidate))) continue;
+  const candidates = CONTEXT_FILENAMES.map((filename) => join(dir, filename));
+  const matches = await Promise.all(candidates.map((candidate) => isFile(candidate)));
+  for (let index = 0; index < candidates.length; index++) {
+    if (!matches[index]) continue;
+    const candidate = candidates[index];
+    if (candidate === undefined) continue;
     const raw = await readTextFile(candidate);
     if (raw !== undefined) {
       return { path: candidate, content: stripBom(raw) };
@@ -143,6 +144,41 @@ type GitPaths = {
   readonly repoDir: string;
   readonly commonGitDir: string;
 };
+
+type ResolvedWorkspace = {
+  readonly resolved: string;
+  readonly canonical: string;
+  readonly canonicalKey: string;
+  readonly gitPaths: GitPaths | undefined;
+  readonly rootToLeafAncestors: readonly string[];
+};
+
+async function resolveWorkspaces(
+  rawWorkspaces: readonly string[] | undefined,
+): Promise<ResolvedWorkspace[]> {
+  if (rawWorkspaces === undefined || rawWorkspaces.length === 0) return [];
+  const resolvedEntries = await Promise.all(
+    rawWorkspaces.map(async (raw) => {
+      const resolved = resolve(raw);
+      const canonical = await canonicalizePath(resolved);
+      return { resolved, canonical, canonicalKey: pathKey(canonical) };
+    }),
+  );
+  const unique: { resolved: string; canonical: string; canonicalKey: string }[] = [];
+  const seen = new Set<string>();
+  for (const entry of resolvedEntries) {
+    if (seen.has(entry.canonicalKey)) continue;
+    seen.add(entry.canonicalKey);
+    unique.push(entry);
+  }
+  return Promise.all(
+    unique.map(async (entry) => ({
+      ...entry,
+      gitPaths: await findGitPaths(entry.resolved),
+      rootToLeafAncestors: ancestorsOf(entry.resolved),
+    })),
+  );
+}
 
 async function findGitPaths(cwd: string): Promise<GitPaths | undefined> {
   let dir = resolve(cwd);
@@ -183,8 +219,10 @@ async function findGitPaths(cwd: string): Promise<GitPaths | undefined> {
   }
 }
 
-async function findShadowedContextFile(cwd: string): Promise<string | undefined> {
-  const gitPaths = await findGitPaths(cwd);
+async function findShadowedContextFile(
+  gitPaths: GitPaths | undefined,
+  loadDir: (dir: string) => Promise<{ path: string; content: string } | undefined>,
+): Promise<string | undefined> {
   if (gitPaths === undefined) return undefined;
   const commonGitDir = await canonicalizePath(gitPaths.commonGitDir);
   const worktreeRoot = await canonicalizePath(gitPaths.repoDir);
@@ -195,49 +233,74 @@ async function findShadowedContextFile(cwd: string): Promise<string | undefined>
   if (!pathsEqual(await canonicalizePath(join(mainRepoRoot, ".git")), commonGitDir)) {
     return undefined;
   }
-  const worktreeContextFile = await loadContextFileFromDir(worktreeRoot);
+  const worktreeContextFile = await loadDir(worktreeRoot);
   return worktreeContextFile === undefined
     ? undefined
     : join(mainRepoRoot, basename(worktreeContextFile.path));
 }
 
-export async function discoverContextFiles(options: PromptContextOptions): Promise<ContextFile[]> {
+async function discoverContextFilesInternal(
+  options: PromptContextOptions,
+  workspaces: readonly ResolvedWorkspace[],
+): Promise<ContextFile[]> {
   const found: ContextFile[] = [];
   const seen = new Set<string>();
 
+  const contextDirCache = new Map<string, Promise<{ path: string; content: string } | undefined>>();
+  const loadDirCached = (dir: string) => {
+    const key = pathKey(dir);
+    let pending = contextDirCache.get(key);
+    if (pending === undefined) {
+      pending = loadContextFileFromDir(dir);
+      contextDirCache.set(key, pending);
+    }
+    return pending;
+  };
+
+  const canonicalCache = new Map<string, Promise<string>>();
+  const canonicalizeCached = (path: string) => {
+    const key = pathKey(path);
+    let pending = canonicalCache.get(key);
+    if (pending === undefined) {
+      pending = canonicalizePath(path);
+      canonicalCache.set(key, pending);
+    }
+    return pending;
+  };
+
   if (options.globalDir !== undefined) {
-    const globalFile = await loadContextFileFromDir(options.globalDir);
+    const globalFile = await loadDirCached(options.globalDir);
     if (globalFile !== undefined) {
-      seen.add(pathKey(await canonicalizePath(globalFile.path)));
+      seen.add(pathKey(await canonicalizeCached(globalFile.path)));
       found.push(globalFile);
     }
   }
 
-  const workspaces: { resolved: string; canonical: string }[] = [];
-  const seenWorkspaces = new Set<string>();
-  for (const workspace of options.workspaces ?? []) {
-    const resolved = resolve(workspace);
-    const canonical = await canonicalizePath(resolved);
-    const key = pathKey(canonical);
-    if (seenWorkspaces.has(key)) continue;
-    seenWorkspaces.add(key);
-    workspaces.push({ resolved, canonical });
-  }
   const multipleWorkspaces = workspaces.length > 1;
+  const workspaceResults = await Promise.all(
+    workspaces.map(async (workspace) => {
+      const [shadowedContextFile, candidates] = await Promise.all([
+        findShadowedContextFile(workspace.gitPaths, loadDirCached),
+        Promise.all(workspace.rootToLeafAncestors.map((dir) => loadDirCached(dir))),
+      ]);
+      return { workspace, shadowedContextFile, candidates };
+    }),
+  );
 
-  for (const workspace of workspaces) {
-    const shadowedContextFile = await findShadowedContextFile(workspace.resolved);
-    for (const dir of ancestorsOf(workspace.resolved)) {
-      const candidate = await loadContextFileFromDir(dir);
+  for (const { workspace, shadowedContextFile, candidates } of workspaceResults) {
+    for (let index = 0; index < workspace.rootToLeafAncestors.length; index++) {
+      const candidate = candidates[index];
       if (candidate === undefined) continue;
-      const canonicalDir = await canonicalizePath(dir);
+      const dir = workspace.rootToLeafAncestors[index];
+      if (dir === undefined) continue;
+      const canonicalDir = await canonicalizeCached(dir);
       // Compare the directory's real path: a worktree context file symlinked to the main repo resolves to the shadowed path.
       const isShadowed =
         shadowedContextFile !== undefined &&
         pathsEqual(join(canonicalDir, basename(candidate.path)), shadowedContextFile);
       if (isShadowed) continue;
 
-      const canonical = pathKey(await canonicalizePath(candidate.path));
+      const canonical = pathKey(await canonicalizeCached(candidate.path));
       if (seen.has(canonical)) continue;
       seen.add(canonical);
 
@@ -257,6 +320,11 @@ export async function discoverContextFiles(options: PromptContextOptions): Promi
   }
 
   return found;
+}
+
+export async function discoverContextFiles(options: PromptContextOptions): Promise<ContextFile[]> {
+  const workspaces = await resolveWorkspaces(options.workspaces);
+  return discoverContextFilesInternal(options, workspaces);
 }
 
 type ExtractedFrontmatter = {
@@ -369,15 +437,14 @@ async function statTarget(path: string): Promise<Stats | undefined> {
   }
 }
 
-function workspaceAncestors(workspace: string, repoDir?: string): string[] {
+function skillAncestorsForWorkspace(workspace: ResolvedWorkspace): string[] {
+  const repoDir = workspace.gitPaths?.repoDir;
   const chain: string[] = [];
-  let current = resolve(workspace);
-  while (true) {
-    chain.push(current);
-    if (repoDir !== undefined && pathsEqual(current, repoDir)) break;
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
+  for (let index = workspace.rootToLeafAncestors.length - 1; index >= 0; index--) {
+    const dir = workspace.rootToLeafAncestors[index];
+    if (dir === undefined) continue;
+    chain.push(dir);
+    if (repoDir !== undefined && pathsEqual(dir, repoDir)) break;
   }
   return chain;
 }
@@ -582,7 +649,10 @@ async function scanSkillsRoot(
   await scanSkillsDirectory(rootDir, "", true, [], new Set<string>(), source, workspace, state);
 }
 
-export async function discoverSkillsWithDiagnostics(options: PromptContextOptions): Promise<{
+async function discoverSkillsWithDiagnosticsInternal(
+  options: PromptContextOptions,
+  workspaces: readonly ResolvedWorkspace[],
+): Promise<{
   readonly skills: readonly SkillInfo[];
   readonly diagnostics: readonly SkillDiagnostic[];
 }> {
@@ -598,37 +668,42 @@ export async function discoverSkillsWithDiagnostics(options: PromptContextOption
     globalHome !== undefined && globalHome !== ""
       ? join(resolve(globalHome), AGENTS_SKILLS_DIR)
       : undefined;
-  const globalSkillsDirKey =
-    globalSkillsDir === undefined ? undefined : pathKey(await canonicalizePath(globalSkillsDir));
-  // Never treat the host ~/.agents/skills as a workspace skill when walking non-git temp/home ancestors.
-  const hostGlobalSkillsDirKey = pathKey(
-    await canonicalizePath(join(resolve(homedir()), AGENTS_SKILLS_DIR)),
-  );
+  const [globalSkillsDirKey, hostGlobalSkillsDirKey] = await Promise.all([
+    globalSkillsDir === undefined
+      ? Promise.resolve(undefined)
+      : canonicalizePath(globalSkillsDir).then(pathKey),
+    // Never treat the host ~/.agents/skills as a workspace skill when walking non-git temp/home ancestors.
+    canonicalizePath(join(resolve(homedir()), AGENTS_SKILLS_DIR)).then(pathKey),
+  ]);
 
   const scannedRoots = new Set<string>();
-  const seenWorkspaces = new Set<string>();
+  const workspaceSkillDirs = await Promise.all(
+    workspaces.map(async (workspace) => {
+      const candidates = await Promise.all(
+        skillAncestorsForWorkspace(workspace).map(async (dir) => {
+          const skillsDir = join(dir, AGENTS_SKILLS_DIR);
+          const info = await statTarget(skillsDir);
+          if (info?.isDirectory() !== true) return undefined;
+          const canonicalRootKey = pathKey(await canonicalizePath(skillsDir));
+          return { skillsDir, canonicalRootKey };
+        }),
+      );
+      return { workspace: workspace.resolved, candidates };
+    }),
+  );
 
-  for (const rawWorkspace of options.workspaces ?? []) {
-    const workspace = resolve(rawWorkspace);
-    const wsCanonicalKey = pathKey(await canonicalizePath(workspace));
-    if (seenWorkspaces.has(wsCanonicalKey)) continue;
-    seenWorkspaces.add(wsCanonicalKey);
-
-    const gitPaths = await findGitPaths(workspace);
-    for (const dir of workspaceAncestors(workspace, gitPaths?.repoDir)) {
-      const skillsDir = join(dir, AGENTS_SKILLS_DIR);
-      const info = await statTarget(skillsDir);
-      if (info?.isDirectory() !== true) continue;
-      const canonicalRootKey = pathKey(await canonicalizePath(skillsDir));
+  for (const { workspace, candidates } of workspaceSkillDirs) {
+    for (const candidate of candidates) {
+      if (candidate === undefined) continue;
       if (
-        canonicalRootKey === hostGlobalSkillsDirKey ||
-        (globalSkillsDirKey !== undefined && canonicalRootKey === globalSkillsDirKey)
+        candidate.canonicalRootKey === hostGlobalSkillsDirKey ||
+        (globalSkillsDirKey !== undefined && candidate.canonicalRootKey === globalSkillsDirKey)
       ) {
         continue;
       }
-      if (scannedRoots.has(canonicalRootKey)) continue;
-      scannedRoots.add(canonicalRootKey);
-      await scanSkillsRoot(skillsDir, "workspace", workspace, state);
+      if (scannedRoots.has(candidate.canonicalRootKey)) continue;
+      scannedRoots.add(candidate.canonicalRootKey);
+      await scanSkillsRoot(candidate.skillsDir, "workspace", workspace, state);
     }
   }
 
@@ -649,15 +724,24 @@ export async function discoverSkillsWithDiagnostics(options: PromptContextOption
   };
 }
 
+export async function discoverSkillsWithDiagnostics(options: PromptContextOptions): Promise<{
+  readonly skills: readonly SkillInfo[];
+  readonly diagnostics: readonly SkillDiagnostic[];
+}> {
+  const workspaces = await resolveWorkspaces(options.workspaces);
+  return discoverSkillsWithDiagnosticsInternal(options, workspaces);
+}
+
 export async function discoverSkills(options: PromptContextOptions): Promise<SkillInfo[]> {
   const result = await discoverSkillsWithDiagnostics(options);
   return [...result.skills];
 }
 
 export async function discoverContext(options: PromptContextOptions): Promise<ContextDiscovery> {
+  const workspaces = await resolveWorkspaces(options.workspaces);
   const [contextFiles, skillsResult] = await Promise.all([
-    discoverContextFiles(options),
-    discoverSkillsWithDiagnostics(options),
+    discoverContextFilesInternal(options, workspaces),
+    discoverSkillsWithDiagnosticsInternal(options, workspaces),
   ]);
   return {
     contextFiles,

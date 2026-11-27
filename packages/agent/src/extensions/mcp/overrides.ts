@@ -1,6 +1,6 @@
-import { isMcpServerOverride } from "@earendil-works/pi-mcp";
+import { isMcpServerOverride, mcpNamespace } from "@earendil-works/pi-mcp";
 import { isRecord } from "../../shared/guards.ts";
-import { type McpServerEntry, parseMcpConfig, validateMcpServerEntry } from "./config.ts";
+import { type McpServerConfig, type McpServerEntry, validateMcpServerEntry } from "./config.ts";
 import { buildOfflineMcpSnapshot, type McpServerSnapshot } from "./snapshot.ts";
 
 export { isMcpServerOverride };
@@ -49,7 +49,10 @@ export function resolveEffectiveMcpServers(
   projectServers: Readonly<Record<string, unknown>>,
   options: ResolveEffectiveMcpServersOptions = {},
 ): ResolvedEffectiveMcpServers {
-  const mergedRaw: Record<string, unknown> = { ...globalServers };
+  const resolvedConfigs = new Map<string, McpServerConfig | undefined>();
+  for (const name of Object.keys(globalServers)) {
+    resolvedConfigs.set(name, undefined);
+  }
   const normalizedProjectServers: Record<string, Record<string, unknown>> = {};
   const errors: string[] = [];
 
@@ -69,11 +72,11 @@ export function resolveEffectiveMcpServers(
       if (typeof validated === "string") {
         errors.push(validated);
         if (!options.fallbackOnInvalidOverride) {
-          delete mergedRaw[name];
+          resolvedConfigs.delete(name);
         }
         continue;
       }
-      mergedRaw[name] = merged;
+      resolvedConfigs.set(name, validated);
       normalizedProjectServers[name] = { ...raw };
       continue;
     }
@@ -82,16 +85,37 @@ export function resolveEffectiveMcpServers(
       errors.push(validated);
       continue;
     }
-    mergedRaw[name] = { ...validated };
+    resolvedConfigs.set(name, validated);
     normalizedProjectServers[name] = { ...validated };
   }
 
-  const parsed = parseMcpConfig({ mcpServers: mergedRaw });
-  errors.push(...parsed.errors);
+  const entries: McpServerEntry[] = [];
+  const namespaces = new Map<string, string>();
+  for (const [name, prevalidated] of resolvedConfigs) {
+    let config = prevalidated;
+    if (config === undefined) {
+      const validated = validateMcpServerEntry(name, globalServers[name]);
+      if (typeof validated === "string") {
+        errors.push(validated);
+        continue;
+      }
+      config = validated;
+    }
+    const namespace = mcpNamespace(name);
+    const conflicting = namespaces.get(namespace);
+    if (conflicting !== undefined && conflicting !== name) {
+      errors.push(
+        `server "${name}" conflicts with "${conflicting}": both use namespace "${namespace}"`,
+      );
+      continue;
+    }
+    namespaces.set(namespace, name);
+    entries.push({ name, config });
+  }
 
   return {
-    entries: parsed.servers,
-    effectiveServers: normalizeMcpServerMap(parsed.servers),
+    entries,
+    effectiveServers: normalizeMcpServerMap(entries),
     normalizedProjectServers,
     errors,
   };

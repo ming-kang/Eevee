@@ -14,7 +14,6 @@ import {
   type MutableModels,
 } from "@earendil-works/pi-ai";
 import type { ModelRef } from "@earendil-works/pi-durable";
-import { resolveConfigValue } from "../shared/config-value.ts";
 import { errorMessage, isEnoent, isRecord } from "../shared/guards.ts";
 import { expandHome } from "../shared/paths.ts";
 import { REQUEST_AUTH_HEADER_NAMES } from "./auth-headers.ts";
@@ -232,13 +231,7 @@ export class ModelRuntime {
     const check = await this.#models.checkAuth(providerId);
     const resolved =
       check && stored?.type !== "oauth" ? await this.#models.getAuth(providerId) : undefined;
-    const configKey = this.#config.providers[providerId]?.apiKey;
-    const resolvedConfigKey =
-      stored || configKey === undefined
-        ? undefined
-        : resolveConfigValue(configKey, this.#env, { cacheCommands: false });
-    let secret = stored?.type === "api_key" ? stored.key : resolvedConfigKey;
-    secret ??= resolved?.auth.apiKey;
+    let secret = stored?.type === "api_key" ? stored.key : resolved?.auth.apiKey;
     if (!secret && stored?.type === "oauth") secret = stored.access;
     if (!secret) {
       const headers = resolved?.auth.headers ?? {};

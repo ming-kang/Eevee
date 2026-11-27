@@ -80,7 +80,6 @@ export class McpOAuthCredentialStore {
   readonly filePath: string;
   private readonly store: LockedJsonMapStore<McpOAuthState>;
   private readonly refreshLockTimeoutMs?: number;
-  private readonly activeRefreshes = new Map<string, Promise<void>>();
 
   constructor(dir: string, options: McpOAuthCredentialStoreOptions = {}) {
     this.filePath = join(dir, MCP_AUTH_FILE);
@@ -112,31 +111,6 @@ export class McpOAuthCredentialStore {
           this.refreshLockTimeoutMs === undefined
             ? undefined
             : AbortSignal.timeout(this.refreshLockTimeoutMs);
-        const waitForExisting = async (): Promise<void> => {
-          while (true) {
-            const active = this.activeRefreshes.get(key);
-            if (active === undefined) return;
-            if (signal === undefined) {
-              await active;
-              continue;
-            }
-            if (signal.aborted) throw new McpRefreshLockBusyError();
-            await new Promise<void>((resolve, reject) => {
-              const onAbort = () => reject(new McpRefreshLockBusyError());
-              signal.addEventListener("abort", onAbort, { once: true });
-              active.finally(() => {
-                signal.removeEventListener("abort", onAbort);
-                resolve();
-              });
-            });
-          }
-        };
-        await waitForExisting();
-        let releaseLocal!: () => void;
-        const local = new Promise<void>((resolve) => {
-          releaseLocal = resolve;
-        });
-        this.activeRefreshes.set(key, local);
         try {
           return await withFileLock(
             refreshLockPath,
@@ -151,11 +125,6 @@ export class McpOAuthCredentialStore {
             throw new McpRefreshLockBusyError();
           }
           throw error;
-        } finally {
-          releaseLocal();
-          if (this.activeRefreshes.get(key) === local) {
-            this.activeRefreshes.delete(key);
-          }
         }
       },
     };

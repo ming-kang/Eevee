@@ -5,6 +5,7 @@ import {
   type ListResourceTemplatesResult,
   type McpOutputSaver,
   type McpRequestOptions,
+  type Tool as McpTool,
   type McpTransport,
   mcpNamespace,
   type ReadResourceResult,
@@ -59,6 +60,14 @@ export type McpHubOptions = {
   readonly saveOutput?: McpOutputSaver;
 };
 
+type CachedServerExtension = {
+  readonly configEntry: McpServerEntry;
+  readonly tools: readonly McpTool[];
+  readonly instructions: string | undefined;
+  readonly timeoutMs: number;
+  readonly entry: McpServerExtensionEntry;
+};
+
 export type McpHubStartOptions = {
   readonly awaitConnections?: boolean;
 };
@@ -104,6 +113,11 @@ export class McpHub implements McpResourceHost {
   private readonly saveOutput: McpOutputSaver;
   private readonly listeners = new Set<() => void>();
   private readonly registryBindings = new McpRegistryBindings();
+  private readonly serverExtensionCache = new WeakMap<McpServerConnection, CachedServerExtension>();
+  private cachedHubExtension?: {
+    readonly hasResourceServers: boolean;
+    readonly extension: Extension;
+  };
   private reloadChain: Promise<void> = Promise.resolve();
   private closePromise?: Promise<void>;
   private closed = false;
@@ -251,23 +265,25 @@ export class McpHub implements McpResourceHost {
   }
 
   extension(): Extension {
-    return createMcpHubExtension({
+    const hasResourceServers = this.hasResourceServers();
+    if (this.cachedHubExtension?.hasResourceServers === hasResourceServers) {
+      return this.cachedHubExtension.extension;
+    }
+    const extension = createMcpHubExtension({
       getConnections: () => [...this.connections.values()],
       host: this,
       saveOutput: this.saveOutput,
       timeoutMs: this.defaultTimeoutMs,
+      hasResourceServers,
     });
+    this.cachedHubExtension = { hasResourceServers, extension };
+    return extension;
   }
 
   serverExtensionEntries(): McpServerExtensionEntry[] {
     return [...this.connections.values()]
       .filter((conn) => conn.enabled)
-      .map((conn) =>
-        createMcpServerExtensionEntry({
-          connection: conn,
-          saveOutput: this.saveOutput,
-        }),
-      );
+      .map((conn) => this.getServerExtensionEntry(conn));
   }
 
   rolesForExtension(extensionName: string): ResolvedMcpServerRoles | undefined {
@@ -315,6 +331,42 @@ export class McpHub implements McpResourceHost {
       this.listeners.clear();
     })();
     return this.closePromise;
+  }
+
+  private hasResourceServers(): boolean {
+    for (const conn of this.connections.values()) {
+      if (conn.enabled && conn.hasResources) return true;
+    }
+    return false;
+  }
+
+  private getServerExtensionEntry(conn: McpServerConnection): McpServerExtensionEntry {
+    const configEntry = conn.configEntry;
+    const tools = conn.tools;
+    const instructions = conn.instructions;
+    const timeoutMs = conn.timeoutMs();
+    const cached = this.serverExtensionCache.get(conn);
+    if (
+      cached !== undefined &&
+      cached.configEntry === configEntry &&
+      (cached.tools === tools || (cached.tools.length === 0 && tools.length === 0)) &&
+      cached.instructions === instructions &&
+      cached.timeoutMs === timeoutMs
+    ) {
+      return cached.entry;
+    }
+    const entry = createMcpServerExtensionEntry({
+      connection: conn,
+      saveOutput: this.saveOutput,
+    });
+    this.serverExtensionCache.set(conn, {
+      configEntry,
+      tools,
+      instructions,
+      timeoutMs,
+      entry,
+    });
+    return entry;
   }
 
   private requireConnection(name: string): McpServerConnection {
@@ -405,5 +457,5 @@ export type McpExtension = Extension & {
 
 export function createMcpExtension(source: McpHub | McpHubOptions = {}): McpExtension {
   const hub = source instanceof McpHub ? source : createMcpHub(source);
-  return Object.assign(hub.extension(), { hub });
+  return { ...hub.extension(), hub };
 }

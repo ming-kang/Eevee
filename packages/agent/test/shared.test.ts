@@ -8,6 +8,7 @@ import {
   getConfigValueEnvVarNames,
   isCommandConfigValue,
   isConfigValueConfigured,
+  resolveConfigRecordStrict,
   resolveConfigValue,
   resolveHeaders,
   resolveHeadersStrict,
@@ -163,6 +164,29 @@ test("resolveHeadersStrict names unresolved headers and environment variables", 
   );
 });
 
+test("resolveConfigRecordStrict supports custom labels and error formatters", () => {
+  assert.deepEqual(
+    resolveConfigRecordStrict({ VAR: "$VALUE" }, { VALUE: "ok" }, { label: "env" }),
+    { VAR: "ok" },
+  );
+  assert.throws(
+    () => resolveConfigRecordStrict({ VAR: "$MISSING_VAR" }, {}, { label: "env" }),
+    /Failed to resolve env "VAR": missing environment variable: MISSING_VAR/,
+  );
+  assert.throws(
+    () =>
+      resolveConfigRecordStrict(
+        { VAR: "$MISSING_ONE-$MISSING_TWO" },
+        {},
+        {
+          formatError: (failure) =>
+            new Error(`custom ${failure.key}: ${failure.missingEnvVars.join(",")}`),
+        },
+      ),
+    /custom VAR: MISSING_ONE,MISSING_TWO/,
+  );
+});
+
 test("formatSize formats bytes, kilobytes, and megabytes", () => {
   assert.equal(formatSize(0), "0B");
   assert.equal(formatSize(1023), "1023B");
@@ -253,6 +277,46 @@ test("withFileLock breaks a stale lock directory left by a dead process", async 
     await utimes(`${file}.lock`, past, past);
     const result = await withFileLock(file, async () => "acquired");
     assert.equal(result, "acquired");
+    await assert.rejects(stat(`${file}.lock`));
+  });
+});
+
+test("withFileLock aborts queued waiter on signal without breaking subsequent waiters", async () => {
+  await withTempDir(async (dir) => {
+    const file = join(dir, "abort-queue.txt");
+    const events: string[] = [];
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    const first = withFileLock(file, async () => {
+      events.push("first:start");
+      await firstGate;
+      events.push("first:end");
+    });
+
+    const second = withFileLock(
+      file,
+      async () => {
+        events.push("second:should-not-run");
+      },
+      AbortSignal.timeout(30),
+    );
+    const third = withFileLock(file, async () => {
+      events.push("third:start");
+      events.push("third:end");
+    });
+
+    await assert.rejects(
+      second,
+      (err: unknown) => err instanceof Error && err.name === "TimeoutError",
+    );
+    assert.deepEqual(events, ["first:start"]);
+
+    releaseFirst();
+    await Promise.all([first, third]);
+    assert.deepEqual(events, ["first:start", "first:end", "third:start", "third:end"]);
     await assert.rejects(stat(`${file}.lock`));
   });
 });

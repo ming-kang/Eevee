@@ -817,3 +817,121 @@ test("McpServerConnection epoch isolation ignores stale connect failures and clo
     await log.close();
   }
 });
+
+test("McpHub caches unchanged server extensions across sibling state transitions and skips redundant registry installs", async () => {
+  const alpha = new LifecycleFakeMcpServer([
+    { name: "alpha_v1", description: "Alpha v1", inputSchema: { type: "object", properties: {} } },
+  ]);
+  const beta = new LifecycleFakeMcpServer([
+    { name: "beta_v1", description: "Beta v1", inputSchema: { type: "object", properties: {} } },
+  ]);
+  beta.hangInitialize = true;
+
+  const alphaEntry: McpServerEntry = {
+    name: "alpha",
+    config: { command: "alpha", exposure: "direct" },
+  };
+  const betaEntry: McpServerEntry = {
+    name: "beta",
+    config: { command: "beta", exposure: "direct" },
+  };
+
+  const hub = createMcpHub({
+    servers: [alphaEntry, betaEntry],
+    createTransport: (entry) =>
+      entry.name === "alpha" ? alpha.createTransport() : beta.createTransport(),
+  });
+  const th = await createTestHarness();
+  const installedNames: string[] = [];
+  const uninstalledNames: string[] = [];
+  const spyRegistry = {
+    snapshot: () => th.registry.snapshot(),
+    subscribe: (listener: () => void) => th.registry.subscribe(listener),
+    install: (extension: Parameters<typeof th.registry.install>[0]) => {
+      installedNames.push(extension.name);
+      th.registry.install(extension);
+    },
+    uninstall: (extension: Parameters<typeof th.registry.uninstall>[0]) => {
+      uninstalledNames.push(extension.name);
+      th.registry.uninstall(extension);
+    },
+  };
+  const unbind = hub.bindRegistry(spyRegistry);
+
+  try {
+    // Initial bind installs hub extension + alpha + beta once.
+    assert.deepEqual(installedNames, [
+      "eevee.mcp",
+      mcpServerExtensionName("alpha"),
+      mcpServerExtensionName("beta"),
+    ]);
+    installedNames.length = 0;
+
+    const initialHubExt = hub.extension();
+    const initialBetaExt = hub
+      .serverExtensions()
+      .find((ext) => ext.name === mcpServerExtensionName("beta"));
+    assert.ok(initialBetaExt);
+
+    hub.startBackground();
+    await hub.ensureServerReady("alpha");
+    await waitFor(
+      () => hub.status().find((s) => s.name === "alpha")?.status === "connected",
+      "alpha connected",
+    );
+
+    // Alpha transitioning idle -> connecting -> connected must not reinstall or rebuild beta or eevee.mcp.
+    assert.equal(hub.extension(), initialHubExt);
+    assert.equal(
+      hub.serverExtensions().find((ext) => ext.name === mcpServerExtensionName("beta")),
+      initialBetaExt,
+    );
+    assert.deepEqual(installedNames, [mcpServerExtensionName("alpha")]);
+    installedNames.length = 0;
+
+    // Alpha dynamic tool refresh must only reinstall alpha.
+    const alphaExtBefore = hub
+      .serverExtensions()
+      .find((ext) => ext.name === mcpServerExtensionName("alpha"));
+    alpha.tools = [
+      {
+        name: "alpha_v2",
+        description: "Alpha v2",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ];
+    alpha.pushToolsChanged();
+    await waitFor(
+      () =>
+        hub
+          .serverExtensions()
+          .find((ext) => ext.name === mcpServerExtensionName("alpha"))
+          ?.tools?.some((t) => t.name === "mcp__alpha__alpha_v2") ?? false,
+      "alpha v2 tool update",
+    );
+    const alphaExtAfter = hub
+      .serverExtensions()
+      .find((ext) => ext.name === mcpServerExtensionName("alpha"));
+    assert.notEqual(alphaExtAfter, alphaExtBefore);
+    assert.equal(hub.extension(), initialHubExt);
+    assert.equal(
+      hub.serverExtensions().find((ext) => ext.name === mcpServerExtensionName("beta")),
+      initialBetaExt,
+    );
+    assert.deepEqual(installedNames, [mcpServerExtensionName("alpha")]);
+    installedNames.length = 0;
+
+    // Removing beta via reload uninstalls only beta and leaves cached alpha untouched.
+    await hub.reload([alphaEntry]);
+    assert.deepEqual(uninstalledNames, [mcpServerExtensionName("beta")]);
+    assert.deepEqual(installedNames, []);
+    assert.equal(
+      hub.serverExtensions().find((ext) => ext.name === mcpServerExtensionName("alpha")),
+      alphaExtAfter,
+    );
+  } finally {
+    unbind();
+    await hub.close();
+    await th.cleanup();
+  }
+});

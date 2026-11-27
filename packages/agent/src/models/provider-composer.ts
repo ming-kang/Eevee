@@ -24,7 +24,12 @@ import { openAICodexResponsesApi } from "@earendil-works/pi-ai/api/openai-codex-
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { piMessagesApi } from "@earendil-works/pi-ai/api/pi-messages.lazy";
-import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
+import {
+  builtinProviders,
+  getAllBuiltinModels,
+  getBuiltinModels,
+  getBuiltinProviders,
+} from "@earendil-works/pi-ai/providers/all";
 import { radiusProvider } from "@earendil-works/pi-ai/providers/radius";
 import {
   isConfigValueConfigured,
@@ -220,6 +225,17 @@ function hasConfiguredAuthHeader(
   );
 }
 
+function validateAuthHeaderApisForSet(providerId: string, apis: ReadonlySet<string>): void {
+  for (const api of apis) {
+    if (!AUTH_HEADER_SUPPORTED_APIS.has(api)) {
+      throw new ModelsConfigError(
+        `providers.${providerId}.authHeader`,
+        `authHeader is not supported for api "${api}"; supported APIs: ${[...AUTH_HEADER_SUPPORTED_APIS].join(", ")}`,
+      );
+    }
+  }
+}
+
 function validateAuthHeaderApis(
   providerId: string,
   config: ProviderConfig,
@@ -231,14 +247,7 @@ function validateAuthHeaderApis(
   for (const model of models) {
     if (isChatModel(model)) apis.add(model.api);
   }
-  for (const api of apis) {
-    if (!AUTH_HEADER_SUPPORTED_APIS.has(api)) {
-      throw new ModelsConfigError(
-        `providers.${providerId}.authHeader`,
-        `authHeader is not supported for api "${api}"; supported APIs: ${[...AUTH_HEADER_SUPPORTED_APIS].join(", ")}`,
-      );
-    }
-  }
+  validateAuthHeaderApisForSet(providerId, apis);
 }
 
 function wrapOAuthAuth(
@@ -415,11 +424,7 @@ function mergeSamplingByLevel(
   return merged as Model<Api>["samplingParamsByThinkingLevel"];
 }
 
-function applyModelOverride(
-  model: AnyModel,
-  override: ModelOverrideConfig,
-  config: ProviderConfig,
-): AnyModel {
+function applyModelOverride(model: AnyModel, override: ModelOverrideConfig): AnyModel {
   const inputLimits =
     override.inputLimits === undefined
       ? model.inputLimits
@@ -434,10 +439,7 @@ function applyModelOverride(
   };
   if (!isChatModel(base)) {
     if (base.type === "classifier") {
-      const compat = mergeCompat(
-        base.compat as CompatConfig | undefined,
-        mergeCompat(config.compat, override.compat),
-      );
+      const compat = mergeCompat(base.compat as CompatConfig | undefined, override.compat);
       return {
         ...base,
         ...(override.contextWindow === undefined ? {} : { contextWindow: override.contextWindow }),
@@ -448,10 +450,7 @@ function applyModelOverride(
     }
     return base;
   }
-  const compat = mergeCompat(
-    mergeCompat(base.compat as CompatConfig | undefined, config.compat),
-    override.compat,
-  );
+  const compat = mergeCompat(base.compat as CompatConfig | undefined, override.compat);
   const { thinkingLevelMap: baseThinkingLevelMap, ...baseWithoutThinkingMap } = base;
   const thinkingLevelMap =
     override.thinkingLevelMap === undefined
@@ -529,12 +528,26 @@ function transformModels(
     const index = out.findIndex((model) => model.id === modelId);
     if (index >= 0) {
       const current = out[index];
-      if (current !== undefined) out[index] = applyModelOverride(current, override, config);
+      if (current !== undefined) out[index] = applyModelOverride(current, override);
     }
   }
 
   return out;
 }
+
+function sameModelArray(left: readonly AnyModel[], right: readonly AnyModel[]): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index++) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+type WrapProviderOptions = {
+  readonly ensureApiKeyAuth?: boolean;
+  readonly transform?: boolean;
+};
 
 function resolveModelConfigHeaders(
   config: ProviderConfig,
@@ -551,26 +564,71 @@ function wrapProvider(
   base: Provider,
   config: ProviderConfig,
   env?: ComposeEnvironment,
-  ensureApiKeyAuth = false,
+  options: WrapProviderOptions = {},
 ): Provider {
-  const inject = <TOptions>(model: AnyModel, options: TOptions): TOptions => {
+  const inject = <TOptions>(model: AnyModel, streamOptions: TOptions): TOptions => {
     const headers = resolveModelConfigHeaders(config, model.id, env);
-    if (!headers) return options;
-    const current = isRecord(options) ? options : undefined;
+    if (!headers) return streamOptions;
+    const current = isRecord(streamOptions) ? streamOptions : undefined;
     const existing = isRecord(current?.headers) ? (current.headers as ProviderHeaders) : undefined;
     return { ...current, headers: mergeHeaders(headers, existing) } as TOptions;
   };
-  const transform = (models: readonly AnyModel[]): AnyModel[] =>
-    transformModels(models, config, base.id);
-  const chatOnly = (models: readonly AnyModel[]): Model<Api>[] =>
-    transform(models).filter(isChatModel);
   const baseUrl = config.baseUrl ?? base.baseUrl;
   const includeApiKey =
-    ensureApiKeyAuth ||
+    (options.ensureApiKeyAuth ?? false) ||
     base.auth.apiKey !== undefined ||
     config.apiKey !== undefined ||
     hasRecognizedAuthHeader(config.headers);
   const { getAllModels, fetchDeferred, cancelDeferred, generateImages, classify } = base;
+
+  let cachedAll:
+    | {
+        readonly raw: readonly AnyModel[];
+        readonly all: readonly AnyModel[];
+        readonly rawChat: readonly Model<Api>[];
+        readonly chat: readonly Model<Api>[];
+      }
+    | undefined;
+  let cachedChat:
+    | {
+        readonly raw: readonly Model<Api>[];
+        readonly chat: readonly Model<Api>[];
+      }
+    | undefined;
+
+  const shouldTransform = options.transform ?? true;
+  const wrappedGetAllModels =
+    getAllModels === undefined || !shouldTransform
+      ? undefined
+      : (): readonly AnyModel[] => {
+          const raw = getAllModels.call(base);
+          if (cachedAll !== undefined && sameModelArray(raw, cachedAll.raw)) {
+            return cachedAll.all;
+          }
+          const all = transformModels(raw, config, base.id);
+          cachedAll = {
+            raw,
+            all,
+            rawChat: raw.filter(isChatModel),
+            chat: all.filter(isChatModel),
+          };
+          return all;
+        };
+  const wrappedGetModels = !shouldTransform
+    ? undefined
+    : (): readonly Model<Api>[] => {
+        const raw = base.getModels();
+        if (cachedChat !== undefined && sameModelArray(raw, cachedChat.raw)) {
+          return cachedChat.chat;
+        }
+        if (cachedAll !== undefined && sameModelArray(raw, cachedAll.rawChat)) {
+          cachedChat = { raw, chat: cachedAll.chat };
+          return cachedAll.chat;
+        }
+        const chat = transformModels(raw, config, base.id).filter(isChatModel);
+        cachedChat = { raw, chat };
+        return chat;
+      };
 
   return {
     ...base,
@@ -582,50 +640,36 @@ function wrapProvider(
         ? {}
         : { oauth: wrapOAuthAuth(base.auth.oauth, config, env) }),
     },
-    getModels: () => {
-      try {
-        return chatOnly(base.getModels());
-      } catch {
-        return [];
-      }
-    },
-    ...(getAllModels === undefined
-      ? {}
-      : {
-          getAllModels: () => {
-            try {
-              return transform(getAllModels.call(base));
-            } catch {
-              return [];
-            }
-          },
-        }),
-    stream: (model, context, options) => base.stream(model, context, inject(model, options)),
-    streamSimple: (model, context, options) =>
-      base.streamSimple(model, context, inject(model, options)),
+    ...(wrappedGetModels === undefined ? {} : { getModels: wrappedGetModels }),
+    ...(wrappedGetAllModels === undefined ? {} : { getAllModels: wrappedGetAllModels }),
+    stream: (model, context, streamOptions) =>
+      base.stream(model, context, inject(model, streamOptions)),
+    streamSimple: (model, context, streamOptions) =>
+      base.streamSimple(model, context, inject(model, streamOptions)),
     ...(fetchDeferred === undefined
       ? {}
       : {
-          fetchDeferred: (model, handle, options) =>
-            fetchDeferred(model, handle, inject(model, options)),
+          fetchDeferred: (model, handle, streamOptions) =>
+            fetchDeferred(model, handle, inject(model, streamOptions)),
         }),
     ...(cancelDeferred === undefined
       ? {}
       : {
-          cancelDeferred: async (model, handle, options) => {
-            await cancelDeferred(model, handle, inject(model, options));
+          cancelDeferred: async (model, handle, streamOptions) => {
+            await cancelDeferred(model, handle, inject(model, streamOptions));
           },
         }),
     ...(generateImages === undefined
       ? {}
       : {
-          generateImages: (model, context, options) =>
-            generateImages(model, context, inject(model, options)),
+          generateImages: (model, context, streamOptions) =>
+            generateImages(model, context, inject(model, streamOptions)),
         }),
     ...(classify === undefined
       ? {}
       : {
-          classify: (model, context, options) => classify(model, context, inject(model, options)),
+          classify: (model, context, streamOptions) =>
+            classify(model, context, inject(model, streamOptions)),
         }),
   };
 }
@@ -651,29 +695,44 @@ function requireEndpoint(config: ProviderConfig, providerId: string): void {
   }
 }
 
-function createCustomProvider(
-  id: string,
-  config: ProviderConfig,
-  env?: ComposeEnvironment,
-): Provider {
+function resolveCustomProviderApis(id: string, config: ProviderConfig): Set<string> {
   requireEndpoint(config, id);
-  const placeholder = transformModels([], config, id).filter(isChatModel);
   const apis = new Set<string>();
-  for (const model of placeholder) apis.add(model.api);
+  const authApis = new Set<string>();
+  if (config.api !== undefined) authApis.add(config.api);
+  for (const entry of config.models ?? []) {
+    const { api } = entryEndpoint(entry, config, id, undefined);
+    apis.add(api);
+    authApis.add(api);
+  }
   if (apis.size === 0 && config.api !== undefined) apis.add(config.api);
-
-  const streams = new Map<string, ProviderStreams>();
   for (const api of apis) {
-    const factory = CHAT_API_STREAMS[api];
-    if (factory === undefined) {
+    if (!Object.hasOwn(CHAT_API_STREAMS, api)) {
       throw new ModelsConfigError(
         `providers.${id}`,
         `unknown api "${api}"; supported: ${Object.keys(CHAT_API_STREAMS).join(", ")}`,
       );
     }
-    streams.set(api, factory());
   }
-  validateAuthHeaderApis(id, config, placeholder);
+  if (config.authHeader === true) {
+    validateAuthHeaderApisForSet(id, authApis);
+  }
+  return apis;
+}
+
+function createCustomProvider(
+  id: string,
+  config: ProviderConfig,
+  env?: ComposeEnvironment,
+): Provider {
+  const apis = resolveCustomProviderApis(id, config);
+  const models = transformModels([], config, id);
+
+  const streams = new Map<string, ProviderStreams>();
+  for (const api of apis) {
+    const factory = CHAT_API_STREAMS[api];
+    if (factory !== undefined) streams.set(api, factory());
+  }
   const single = streams.size === 1 ? [...streams.values()][0] : undefined;
   const apiMap: Partial<Record<Api, ProviderStreams>> | undefined =
     single === undefined ? Object.fromEntries(streams) : undefined;
@@ -683,22 +742,79 @@ function createCustomProvider(
     ...(config.name === undefined ? {} : { name: config.name }),
     ...(config.baseUrl === undefined ? {} : { baseUrl: config.baseUrl }),
     auth: {},
-    models: [],
+    models,
     ...(single === undefined ? {} : { api: single }),
     ...(apiMap === undefined ? {} : { api: apiMap }),
   });
-  return wrapProvider(base, config, env, true);
+  return wrapProvider(base, config, env, { ensureApiKeyAuth: true, transform: false });
 }
 
-function createRadiusProvider(id: string, config: ProviderConfig): Provider {
+function validateRadiusConfig(id: string, config: ProviderConfig): void {
   if (config.baseUrl === undefined) {
     throw new ModelsConfigError(`providers.${id}`, 'oauth "radius" requires a baseUrl');
   }
+  if (config.authHeader === true) {
+    throw new ModelsConfigError(
+      `providers.${id}.authHeader`,
+      `authHeader is not supported for oauth "radius" (api "pi-messages"); supported APIs: ${[...AUTH_HEADER_SUPPORTED_APIS].join(", ")}`,
+    );
+  }
+}
+
+function createRadiusProvider(id: string, config: ProviderConfig): Provider {
+  validateRadiusConfig(id, config);
   return radiusProvider({
     id,
     ...(config.name === undefined ? {} : { name: config.name }),
     gateway: config.baseUrl,
   });
+}
+
+function validateBuiltinProviderConfig(
+  providerId: string,
+  config: ProviderConfig,
+  builtinModels: readonly AnyModel[],
+): void {
+  const effectiveApiById = new Map<string, string>();
+  for (const model of builtinModels) {
+    if (isChatModel(model)) effectiveApiById.set(model.id, model.api);
+  }
+  for (const entry of config.models ?? []) {
+    const replaced = builtinModels.find((model) => isChatModel(model) && model.id === entry.id);
+    const { api } = entryEndpoint(entry, config, providerId, replaced);
+    effectiveApiById.set(entry.id, api);
+  }
+  if (config.authHeader === true) {
+    const apis = new Set<string>(effectiveApiById.values());
+    if (config.api !== undefined) apis.add(config.api);
+    validateAuthHeaderApisForSet(providerId, apis);
+  }
+}
+
+export function validateComposedModelsConfig(config: ModelsConfig): void {
+  const builtinIds = new Map(getBuiltinProviders().map((id) => [id as string, id]));
+  for (const [providerId, providerConfig] of Object.entries(config.providers)) {
+    const builtinId = builtinIds.get(providerId);
+    if (builtinId !== undefined) {
+      const models = getAllBuiltinModels(builtinId);
+      validateBuiltinProviderConfig(providerId, providerConfig, models);
+      continue;
+    }
+    if (providerConfig.oauth === "radius") {
+      validateRadiusConfig(providerId, providerConfig);
+      const normalizedGateway = /^https?:\/\//iu.test(providerConfig.baseUrl ?? "")
+        ? (providerConfig.baseUrl ?? "").replace(/\/+$/u, "")
+        : `https://${(providerConfig.baseUrl ?? "").replace(/\/+$/u, "")}`;
+      const baseline =
+        normalizedGateway === "https://radius.pi.dev" ? getBuiltinModels("radius") : [];
+      for (const entry of providerConfig.models ?? []) {
+        const replaced = baseline.find((model) => model.id === entry.id);
+        entryEndpoint(entry, providerConfig, providerId, replaced);
+      }
+      continue;
+    }
+    resolveCustomProviderApis(providerId, providerConfig);
+  }
 }
 
 export function composeProviders(config: ModelsConfig, options?: ComposeOptions): Provider[] {
@@ -709,11 +825,7 @@ export function composeProviders(config: ModelsConfig, options?: ComposeOptions)
     const builtin = builtins.get(providerId);
     if (builtin) {
       const wrapped = wrapProvider(builtin, providerConfig, options?.env);
-      const transformed = transformModels(
-        builtin.getAllModels?.() ?? builtin.getModels(),
-        providerConfig,
-        providerId,
-      );
+      const transformed = wrapped.getAllModels?.() ?? wrapped.getModels();
       validateAuthHeaderApis(providerId, providerConfig, transformed);
       configured.set(providerId, wrapped);
       builtins.delete(providerId);
@@ -721,13 +833,9 @@ export function composeProviders(config: ModelsConfig, options?: ComposeOptions)
     }
     if (providerConfig.oauth === "radius") {
       const base = createRadiusProvider(providerId, providerConfig);
-      if (providerConfig.authHeader === true) {
-        throw new ModelsConfigError(
-          `providers.${providerId}.authHeader`,
-          `authHeader is not supported for oauth "radius" (api "pi-messages"); supported APIs: ${[...AUTH_HEADER_SUPPORTED_APIS].join(", ")}`,
-        );
-      }
-      configured.set(providerId, wrapProvider(base, providerConfig, options?.env));
+      const wrapped = wrapProvider(base, providerConfig, options?.env);
+      wrapped.getModels();
+      configured.set(providerId, wrapped);
       continue;
     }
     configured.set(providerId, createCustomProvider(providerId, providerConfig, options?.env));

@@ -403,14 +403,8 @@ function parseProviderConfig(value: unknown, path: string): ProviderConfig {
   return result;
 }
 
-export function parseModelsConfig(text: string): ModelsConfig {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stripJsonTrailingCommas(stripJsonComments(stripBom(text))));
-  } catch (error) {
-    throw new ModelsConfigError("", `invalid JSON: ${errorMessage(error)}`);
-  }
-  const root = asObject(parsed, "");
+export function parseModelsConfigValue(value: unknown): ModelsConfig {
+  const root = asObject(value, "");
   const providersValue = root.providers;
   if (providersValue === undefined) return { providers: {} };
   const providersObject = asObject(providersValue, "providers");
@@ -419,4 +413,14 @@ export function parseModelsConfig(text: string): ModelsConfig {
     providers[providerId] = parseProviderConfig(providerValue, `providers.${providerId}`);
   }
   return { providers };
+}
+
+export function parseModelsConfig(text: string): ModelsConfig {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripJsonTrailingCommas(stripJsonComments(stripBom(text))));
+  } catch (error) {
+    throw new ModelsConfigError("", `invalid JSON: ${errorMessage(error)}`);
+  }
+  return parseModelsConfigValue(parsed);
 }

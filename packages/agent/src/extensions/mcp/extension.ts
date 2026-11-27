@@ -160,10 +160,11 @@ export function createMcpHubExtension(options: {
   readonly host: McpResourceHost;
   readonly saveOutput: McpOutputSaver;
   readonly timeoutMs: number;
+  readonly hasResourceServers?: boolean;
 }): Extension {
-  const hasResourceServers = options
-    .getConnections()
-    .some((conn) => conn.enabled && conn.hasResources);
+  const hasResourceServers =
+    options.hasResourceServers ??
+    options.getConnections().some((conn) => conn.enabled && conn.hasResources);
   return defineExtension({
     name: MCP_EXTENSION,
     ...(hasResourceServers
@@ -217,19 +218,19 @@ export function createMcpServerExtensionEntry(options: {
 
 type RegistryBinding = {
   readonly registry: Registry;
-  installed: Set<string>;
+  readonly installed: Map<string, Extension>;
 };
 
 export class McpRegistryBindings {
   private readonly bindings = new Set<RegistryBinding>();
 
   bind(registry: Registry, getExtensions: () => readonly Extension[]): () => void {
-    const binding: RegistryBinding = { registry, installed: new Set() };
+    const binding: RegistryBinding = { registry, installed: new Map() };
     this.bindings.add(binding);
     this.publishTo(binding, getExtensions());
     return () => {
       if (!this.bindings.delete(binding)) return;
-      for (const name of binding.installed) registry.uninstall({ name });
+      for (const name of binding.installed.keys()) registry.uninstall({ name });
       binding.installed.clear();
     };
   }
@@ -247,14 +248,19 @@ export class McpRegistryBindings {
   }
 
   private publishTo(binding: RegistryBinding, desired: readonly Extension[]): void {
-    const names = new Set<string>();
+    const desiredNames = new Set<string>();
     for (const extension of desired) {
-      binding.registry.install(extension);
-      names.add(extension.name);
+      desiredNames.add(extension.name);
+      if (binding.installed.get(extension.name) !== extension) {
+        binding.registry.install(extension);
+        binding.installed.set(extension.name, extension);
+      }
     }
-    for (const name of binding.installed) {
-      if (!names.has(name)) binding.registry.uninstall({ name });
+    for (const name of [...binding.installed.keys()]) {
+      if (!desiredNames.has(name)) {
+        binding.registry.uninstall({ name });
+        binding.installed.delete(name);
+      }
     }
-    binding.installed = names;
   }
 }

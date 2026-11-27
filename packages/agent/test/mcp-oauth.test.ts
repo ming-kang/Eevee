@@ -327,6 +327,59 @@ test("McpOAuthCredentialStore persists keyed credentials with 0600 mode, summari
   }
 });
 
+test("McpOAuthCredentialStore.withRefreshLock serializes concurrent in-process refreshes and maps timeouts without masking callback errors", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "eevee-mcp-oauth-lock-"));
+  try {
+    const url = "https://lock.example.com/mcp";
+    const serializedStore = new McpOAuthCredentialStore(dir, { refreshLockTimeoutMs: 1_000 });
+    const serverStore = serializedStore.forServer("srv", url);
+
+    const order: string[] = [];
+    const first = serverStore.withRefreshLock(async () => {
+      order.push("first:start");
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      order.push("first:end");
+      return 1;
+    });
+    const second = serverStore.withRefreshLock(async () => {
+      order.push("second:start");
+      order.push("second:end");
+      return 2;
+    });
+    assert.deepEqual(await Promise.all([first, second]), [1, 2]);
+    assert.deepEqual(order, ["first:start", "first:end", "second:start", "second:end"]);
+
+    // Non-reentrant timeout throws McpRefreshLockBusyError while allowing subsequent refreshes after release.
+    const shortTimeoutStore = new McpOAuthCredentialStore(dir, { refreshLockTimeoutMs: 40 });
+    const shortServer = shortTimeoutStore.forServer("srv", url);
+    let releaseSlow!: () => void;
+    const slowGate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+    const slow = shortServer.withRefreshLock(async () => {
+      await slowGate;
+      return "slow-done";
+    });
+    await assert.rejects(
+      shortServer.withRefreshLock(async () => "timed-out"),
+      McpRefreshLockBusyError,
+    );
+    releaseSlow();
+    assert.equal(await slow, "slow-done");
+    assert.equal(await shortServer.withRefreshLock(async () => "recovered"), "recovered");
+
+    // TimeoutError thrown by the callback itself is NOT mapped to McpRefreshLockBusyError.
+    await assert.rejects(
+      shortServer.withRefreshLock(async () => {
+        throw DOMException ? new DOMException("callback timeout", "TimeoutError") : new Error("x");
+      }),
+      (err: unknown) => err instanceof Error && err.name === "TimeoutError",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
 test("McpHub transitions to auth_required on 401 and connects after interactive PKCE loopback sign-in", async () => {
   const dir = await mkdtemp(join(tmpdir(), "eevee-mcp-oauth-loopback-"));
   const mock = await startMockOAuthMcpServer();

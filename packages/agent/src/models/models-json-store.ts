@@ -6,6 +6,7 @@ import {
   findNodeAtLocation,
   format,
   modify,
+  type ParseError,
   parseTree,
 } from "jsonc-parser";
 import { withFileLock, writeFileAtomic } from "../shared/file-lock.ts";
@@ -16,8 +17,9 @@ import {
   type ModelsConfig,
   type ProviderConfig,
   parseModelsConfig,
+  parseModelsConfigValue,
 } from "./model-config.ts";
-import { composeProviders } from "./provider-composer.ts";
+import { validateComposedModelsConfig } from "./provider-composer.ts";
 
 export type Mutable<T> = {
   -readonly [K in keyof T]: T[K] extends readonly (infer Item)[]
@@ -165,8 +167,8 @@ async function backupExists(filePath: string): Promise<boolean> {
 }
 
 function validateModelsConfig(config: unknown): ModelsConfig {
-  const candidate = parseModelsConfig(JSON.stringify(config));
-  composeProviders(candidate);
+  const candidate = parseModelsConfigValue(config);
+  validateComposedModelsConfig(candidate);
   return candidate;
 }
 
@@ -210,15 +212,18 @@ export async function mutateModelsJson(
     } else {
       const bom = document.rawText.charCodeAt(0) === 0xfeff ? "\ufeff" : "";
       const body = bom ? document.rawText.slice(1) : document.rawText;
-      parseTree(body);
       nextText = bom + applyMinimalEdits(body, document.config, candidate, formattingOptions(body));
     }
 
-    const tree = parseTree(nextText.charCodeAt(0) === 0xfeff ? nextText.slice(1) : nextText);
-    if (!tree || !findNodeAtLocation(tree, ["providers"])) {
+    const parseErrors: ParseError[] = [];
+    const tree = parseTree(
+      nextText.charCodeAt(0) === 0xfeff ? nextText.slice(1) : nextText,
+      parseErrors,
+      { allowTrailingComma: true },
+    );
+    if (!tree || parseErrors.length > 0 || !findNodeAtLocation(tree, ["providers"])) {
       throw new Error("Refusing to write models.json: generated document has no providers object");
     }
-    parseModelsConfig(nextText);
 
     return {
       candidate,

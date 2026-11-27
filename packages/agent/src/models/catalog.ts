@@ -245,37 +245,77 @@ function diffText(value: unknown): string {
   return JSON.stringify(value);
 }
 
+type BuiltinDiffField =
+  | "name"
+  | "reasoning"
+  | "contextWindow"
+  | "maxTokens"
+  | "input"
+  | "inputLimits"
+  | "cost"
+  | "promptCache"
+  | "samplingParams"
+  | "samplingParamsByThinkingLevel"
+  | "thinkingLevelMap"
+  | "compat";
+
+const BUILTIN_DIFF_FIELDS: readonly BuiltinDiffField[] = [
+  "name",
+  "reasoning",
+  "contextWindow",
+  "maxTokens",
+  "input",
+  "inputLimits",
+  "cost",
+  "promptCache",
+  "samplingParams",
+  "samplingParamsByThinkingLevel",
+  "thinkingLevelMap",
+  "compat",
+];
+
+function diffFieldValue(
+  model: Partial<Model<Api>> | ModelEntryConfig | ModelOverrideConfig | Model<Api>,
+  field: BuiltinDiffField,
+): unknown {
+  switch (field) {
+    case "cost":
+      return withoutCostTiers(model.cost);
+    case "name":
+      return model.name;
+    case "reasoning":
+      return model.reasoning;
+    case "contextWindow":
+      return model.contextWindow;
+    case "maxTokens":
+      return model.maxTokens;
+    case "input":
+      return model.input;
+    case "inputLimits":
+      return model.inputLimits;
+    case "promptCache":
+      return model.promptCache;
+    case "samplingParams":
+      return model.samplingParams;
+    case "samplingParamsByThinkingLevel":
+      return model.samplingParamsByThinkingLevel;
+    case "thinkingLevelMap":
+      return model.thinkingLevelMap;
+    case "compat":
+      return model.compat;
+  }
+}
+
 export function computeBuiltinFieldDiffs(
   current: Partial<Model<Api>> | ModelEntryConfig | ModelOverrideConfig,
   referenceModel: Model<Api>,
   effectiveApi: string,
 ): readonly BuiltinFieldDiff[] {
-  const source = current as Readonly<Record<string, unknown>>;
-  const reference = referenceModel as unknown as Readonly<Record<string, unknown>>;
-  const fields = [
-    "name",
-    "reasoning",
-    "contextWindow",
-    "maxTokens",
-    "input",
-    "inputLimits",
-    "cost",
-    "promptCache",
-    "samplingParams",
-    "samplingParamsByThinkingLevel",
-    "thinkingLevelMap",
-    "compat",
-  ] as const;
-
-  return fields.map((field) => {
+  return BUILTIN_DIFF_FIELDS.map((field) => {
     const apiSpecific = field === "thinkingLevelMap" || field === "compat";
     const applicable = !apiSpecific || effectiveApi === referenceModel.api;
-    const currentValue =
-      field === "cost"
-        ? withoutCostTiers(source.cost as Partial<ModelCost> | undefined)
-        : source[field];
-    const referenceValue =
-      field === "cost" ? withoutCostTiers(referenceModel.cost) : reference[field];
+    const currentValue = diffFieldValue(current, field);
+    const referenceValue = diffFieldValue(referenceModel, field);
     const same = applicable && isDeepStrictEqual(currentValue, referenceValue);
     return {
       field,

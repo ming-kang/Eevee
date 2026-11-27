@@ -9,6 +9,18 @@ export type ResolveConfigValueOptions = {
   readonly cacheCommands?: boolean;
 };
 
+export type ConfigValueFailure = {
+  readonly key: string;
+  readonly raw: string;
+  readonly isCommand: boolean;
+  readonly missingEnvVars: readonly string[];
+};
+
+export type ResolveConfigRecordStrictOptions = ResolveConfigValueOptions & {
+  readonly label?: string;
+  readonly formatError?: (failure: ConfigValueFailure) => Error;
+};
+
 type TemplatePart =
   | { readonly type: "literal"; value: string }
   | { readonly type: "env"; readonly name: string };
@@ -185,27 +197,40 @@ export function resolveHeaders(
   return Object.keys(resolved).length > 0 ? resolved : undefined;
 }
 
+export function resolveConfigRecordStrict(
+  record: Readonly<Record<string, string>> | undefined,
+  env?: Readonly<Record<string, string | undefined>>,
+  options?: ResolveConfigRecordStrictOptions,
+): Record<string, string> | undefined {
+  if (!record) return undefined;
+  const resolved: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(record)) {
+    const value = resolveConfigValue(raw, env, options);
+    if (value === undefined) {
+      const missingEnvVars = getConfigValueEnvVarNames(raw).filter(
+        (name) => readEnv(name, env) === undefined,
+      );
+      const isCommand = isCommandConfigValue(raw);
+      if (options?.formatError) {
+        throw options.formatError({ key, raw, isCommand, missingEnvVars });
+      }
+      const label = options?.label ?? "config value";
+      const reason = isCommand
+        ? "its !command failed or returned an empty value"
+        : missingEnvVars.length > 0
+          ? `missing environment variable${missingEnvVars.length === 1 ? "" : "s"}: ${missingEnvVars.join(", ")}`
+          : "the value could not be resolved";
+      throw new Error(`Failed to resolve ${label} "${key}": ${reason}`);
+    }
+    resolved[key] = value;
+  }
+  return Object.keys(resolved).length > 0 ? resolved : undefined;
+}
+
 export function resolveHeadersStrict(
   headers: Readonly<Record<string, string>> | undefined,
   env?: Readonly<Record<string, string | undefined>>,
   options?: ResolveConfigValueOptions,
 ): Record<string, string> | undefined {
-  if (!headers) return undefined;
-  const resolved: Record<string, string> = {};
-  for (const [key, raw] of Object.entries(headers)) {
-    const value = resolveConfigValue(raw, env, options);
-    if (value === undefined) {
-      const envNames = getConfigValueEnvVarNames(raw).filter(
-        (name) => readEnv(name, env) === undefined,
-      );
-      const reason = isCommandConfigValue(raw)
-        ? "its !command failed or returned an empty value"
-        : envNames.length > 0
-          ? `missing environment variable${envNames.length === 1 ? "" : "s"}: ${envNames.join(", ")}`
-          : "the value could not be resolved";
-      throw new Error(`Failed to resolve header "${key}": ${reason}`);
-    }
-    resolved[key] = value;
-  }
-  return Object.keys(resolved).length > 0 ? resolved : undefined;
+  return resolveConfigRecordStrict(headers, env, { ...options, label: "header" });
 }
