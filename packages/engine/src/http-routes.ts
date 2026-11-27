@@ -32,12 +32,14 @@ import {
 import { ENGINE_PROTOCOL_VERSION, ENGINE_VERSION } from "./constants.ts";
 import type { Engine, ScopedMcpHandle } from "./engine.ts";
 import {
+  type PathParamsFor,
   parseEntriesQuery,
   parseListWorkerTasksQuery,
   parseModelsQuery,
   parseReadWorkerTaskQuery,
   parseStreamWorkerTaskQuery,
   parseWindowParams,
+  prefixedRoute,
   type Route,
   readBody,
   readOptionalBody,
@@ -64,68 +66,58 @@ async function withDisconnectSignal(
   }
 }
 
-type ScopedMcpParams = {
-  readonly projectId?: string;
-  readonly serverName: string;
-  readonly sessionId: string;
-};
+type ScopedMcpPrefix = "/mcp" | "/projects/:projectId/mcp";
 
 function createScopedMcpRoutes<
   TState extends McpStateResponse | ProjectMcpStateResponse,
   TPutInput extends Static<typeof PutMcpConfigRequestSchema>,
   TUpsertInput extends Static<typeof UpsertMcpServerRequestSchema>,
 >(
-  prefix: "/mcp" | "/projects/:projectId/mcp",
+  prefix: ScopedMcpPrefix,
   schemas: {
     readonly putConfig: Schema<TPutInput>;
     readonly putConfigLabel: string;
     readonly upsertServer: Schema<TUpsertInput>;
     readonly upsertServerLabel: string;
   },
-  getHandle: (params: ScopedMcpParams) => ScopedMcpHandle<TState, TPutInput, TUpsertInput>,
+  getHandle: (projectId?: string) => ScopedMcpHandle<TState, TPutInput, TUpsertInput>,
   streams: SseStreamHandlers,
 ): readonly Route[] {
-  const mcpRoute = (
+  const mcpRoute = <Suffix extends string>(
     method: string,
-    suffix: string,
+    suffix: Suffix,
     handle: (ctx: {
       readonly req: IncomingMessage;
       readonly res: ServerResponse;
-      readonly mcp: ScopedMcpHandle<TState, TPutInput, TUpsertInput>;
-      readonly params: ScopedMcpParams;
+      readonly params: PathParamsFor<`${ScopedMcpPrefix}${Suffix}`>;
     }) => Promise<void> | void,
-  ): Route =>
-    route(
-      method,
-      `${prefix}${suffix}` as `/projects/:projectId/mcp/servers/:serverName/oauth/login/:sessionId/stream`,
-      ({ req, res, params }) => handle({ req, res, mcp: getHandle(params), params }),
-    );
+  ): Route => prefixedRoute<ScopedMcpPrefix, Suffix>(method, prefix, suffix, handle);
 
   return [
-    mcpRoute("GET", "", ({ res, mcp }) => {
-      sendJson(res, 200, mcp.getState());
+    mcpRoute("GET", "", ({ res, params }) => {
+      sendJson(res, 200, getHandle(params.projectId).getState());
     }),
-    mcpRoute("PUT", "", async ({ req, res, mcp }) => {
+    mcpRoute("PUT", "", async ({ req, res, params }) => {
       const input = await readBody(req, schemas.putConfig, schemas.putConfigLabel);
-      sendJson(res, 200, await mcp.putConfig(input));
+      sendJson(res, 200, await getHandle(params.projectId).putConfig(input));
     }),
-    mcpRoute("POST", "/reconnect", async ({ req, res, mcp }) => {
+    mcpRoute("POST", "/reconnect", async ({ req, res, params }) => {
       const input = await readOptionalBody(req, ReconnectMcpRequestSchema, "ReconnectMcpRequest");
-      sendJson(res, 200, await mcp.reconnect(input));
+      sendJson(res, 200, await getHandle(params.projectId).reconnect(input));
     }),
-    mcpRoute("PUT", "/servers/:serverName", async ({ req, res, mcp, params }) => {
+    mcpRoute("PUT", "/servers/:serverName", async ({ req, res, params }) => {
       const input = await readBody(req, schemas.upsertServer, schemas.upsertServerLabel);
-      sendJson(res, 200, await mcp.upsertServer(params.serverName, input));
+      sendJson(res, 200, await getHandle(params.projectId).upsertServer(params.serverName, input));
     }),
-    mcpRoute("DELETE", "/servers/:serverName", async ({ res, mcp, params }) => {
-      sendJson(res, 200, await mcp.deleteServer(params.serverName));
+    mcpRoute("DELETE", "/servers/:serverName", async ({ res, params }) => {
+      sendJson(res, 200, await getHandle(params.projectId).deleteServer(params.serverName));
     }),
-    mcpRoute("GET", "/servers/:serverName/logs", ({ res, mcp, params }) => {
-      sendJson(res, 200, mcp.getLogs(params.serverName));
+    mcpRoute("GET", "/servers/:serverName/logs", ({ res, params }) => {
+      sendJson(res, 200, getHandle(params.projectId).getLogs(params.serverName));
     }),
-    mcpRoute("POST", "/servers/:serverName/oauth/login", async ({ req, res, mcp, params }) => {
+    mcpRoute("POST", "/servers/:serverName/oauth/login", async ({ req, res, params }) => {
       await readOptionalJsonBody(req);
-      sendJson(res, 201, await mcp.startOAuth(params.serverName));
+      sendJson(res, 201, await getHandle(params.projectId).startOAuth(params.serverName));
     }),
     mcpRoute(
       "GET",
@@ -143,21 +135,29 @@ function createScopedMcpRoutes<
     mcpRoute(
       "POST",
       "/servers/:serverName/oauth/login/:sessionId/input",
-      async ({ req, res, mcp, params }) => {
+      async ({ req, res, params }) => {
         const input = await readBody(req, McpOAuthInputRequestSchema, "McpOAuthInputRequest");
-        sendJson(res, 200, mcp.submitOAuthInput(params.serverName, params.sessionId, input));
+        sendJson(
+          res,
+          200,
+          getHandle(params.projectId).submitOAuthInput(params.serverName, params.sessionId, input),
+        );
       },
     ),
     mcpRoute(
       "POST",
       "/servers/:serverName/oauth/login/:sessionId/cancel",
-      async ({ req, res, mcp, params }) => {
+      async ({ req, res, params }) => {
         await readOptionalJsonBody(req);
-        sendJson(res, 200, mcp.cancelOAuth(params.serverName, params.sessionId));
+        sendJson(
+          res,
+          200,
+          getHandle(params.projectId).cancelOAuth(params.serverName, params.sessionId),
+        );
       },
     ),
-    mcpRoute("DELETE", "/servers/:serverName/oauth", async ({ res, mcp, params }) => {
-      sendJson(res, 200, await mcp.logoutOAuth(params.serverName));
+    mcpRoute("DELETE", "/servers/:serverName/oauth", async ({ res, params }) => {
+      sendJson(res, 200, await getHandle(params.projectId).logoutOAuth(params.serverName));
     }),
   ];
 }
@@ -382,6 +382,9 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
   ];
 
   const projectRoutes: readonly Route[] = [
+    route("GET", "/boards/stream", async ({ req, res }) => {
+      await streams.handleAllBoardsStream(req, res);
+    }),
     route("GET", "/projects", ({ res }) => {
       sendJson(res, 200, { projects: projects.list() });
     }),
@@ -409,6 +412,10 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     route("GET", "/projects/:projectId/usage", async ({ res, params }) => {
       sendJson(res, 200, await projects.getUsage(params.projectId));
     }),
+    route("GET", "/projects/:projectId/tasks", async ({ res, url, params }) => {
+      const query = parseListWorkerTasksQuery(url);
+      sendJson(res, 200, await projects.listProjectTasks(params.projectId, query));
+    }),
     route("GET", "/projects/:projectId/skills", async ({ res, params }) => {
       sendJson(res, 200, await skills.list(params.projectId));
     }),
@@ -424,7 +431,7 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
         upsertServer: UpsertMcpServerRequestSchema,
         upsertServerLabel: "UpsertMcpServerRequest",
       },
-      ({ projectId }) => engine.mcp(projectId ?? ""),
+      (projectId) => engine.mcp(projectId ?? ""),
       streams,
     ),
     route("GET", "/projects/:projectId/board", async ({ res, params }) => {

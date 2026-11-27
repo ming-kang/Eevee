@@ -1,8 +1,15 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import type { ConversationWatch, ConversationWindow } from "@earendil-works/pi-durable";
+import type { BoardView } from "@eevee/core";
 import type { ConversationRef, McpOAuthEvent, WorkerId } from "@eevee/protocol";
-import type { Engine, LoginSseFrame, WorkerTaskStream } from "./engine.ts";
+import {
+  type Engine,
+  EngineError,
+  type LoginSseFrame,
+  type PoolBoardEvent,
+  type WorkerTaskStream,
+} from "./engine.ts";
 import type { StreamWorkerTaskQuery } from "./http-io.ts";
 
 const SSE_KEEPALIVE_MS = 20_000;
@@ -14,6 +21,7 @@ export type SseStreamDeps = {
 };
 
 export type SseStreamHandlers = {
+  readonly handleAllBoardsStream: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
   readonly handleBoardStream: (
     req: IncomingMessage,
     res: ServerResponse,
@@ -284,6 +292,92 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     );
   }
 
+  async function handleAllBoardsStream(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const stream = new SseStream(req, res, deps);
+    const pending: PoolBoardEvent[] = [];
+    let snapshotReady = false;
+    const sentSignatures = new Map<string, string>();
+    let unsubscribe = () => {};
+
+    const emitEvent = (event: PoolBoardEvent) => {
+      if (stream.ended) return;
+      if (event.type === "board") {
+        const signature = JSON.stringify(event.board);
+        if (sentSignatures.get(event.projectId) === signature) return;
+        sentSignatures.set(event.projectId, signature);
+        stream.send("board", { projectId: event.projectId, board: event.board });
+      } else {
+        if (!sentSignatures.has(event.projectId)) return;
+        sentSignatures.delete(event.projectId);
+        stream.send("removed", { projectId: event.projectId });
+      }
+    };
+
+    try {
+      unsubscribe = engine.subscribeBoardEvents((event) => {
+        if (stream.ended) return;
+        if (!snapshotReady) {
+          pending.push(event);
+          return;
+        }
+        emitEvent(event);
+      });
+
+      const boards: Record<string, BoardView> = {};
+      for (const projectId of engine.store.listProjectIds()) {
+        if (isClosing() || res.destroyed || req.socket.destroyed) {
+          unsubscribe();
+          return;
+        }
+        const cached = !engine.isProjectOpen(projectId)
+          ? engine.getCachedBoard(projectId)
+          : undefined;
+        if (cached !== undefined) {
+          boards[projectId] = cached;
+          continue;
+        }
+        try {
+          const handle = await engine.openProject(projectId);
+          const board = await handle.board(BACKGROUND_CONTEXT);
+          engine.cacheBoard(projectId, board);
+          boards[projectId] = board;
+        } catch (error) {
+          if (error instanceof EngineError && error.status === 404) {
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      if (
+        !stream.open({
+          onServerClose: () => ({ event: "end", data: { reason: "closed" } }),
+          onCleanup: () => {
+            unsubscribe();
+          },
+        })
+      ) {
+        unsubscribe();
+        return;
+      }
+
+      for (const [projectId, board] of Object.entries(boards)) {
+        sentSignatures.set(projectId, JSON.stringify(board));
+      }
+      stream.flush();
+      stream.send("snapshot", { boards });
+      snapshotReady = true;
+      for (const event of pending) {
+        emitEvent(event);
+      }
+      pending.length = 0;
+    } catch (error) {
+      if (stream.opened) await stream.finish();
+      else unsubscribe();
+      throw error;
+    }
+  }
+
   async function handleBoardStream(
     req: IncomingMessage,
     res: ServerResponse,
@@ -473,6 +567,7 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
   }
 
   return {
+    handleAllBoardsStream,
     handleBoardStream,
     handleConversationStream,
     handleTaskStream,

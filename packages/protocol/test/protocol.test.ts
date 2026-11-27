@@ -3,6 +3,10 @@ import { test } from "node:test";
 import { compile } from "@earendil-works/pi-schema";
 import {
   AgentDocPayloadSchema,
+  AllBoardsRemovedEventSchema,
+  AllBoardsSnapshotEventSchema,
+  type AllBoardsStreamEvent,
+  AllBoardsUpdateEventSchema,
   AnswerQuestionRequestSchema,
   AnswerQuestionResponseSchema,
   AuthTypeSchema,
@@ -45,6 +49,7 @@ import {
   ListEntriesResponseSchema,
   ListModelsResponseSchema,
   ListProjectsResponseSchema,
+  ListProjectTasksResponseSchema,
   ListProvidersResponseSchema,
   ListWorkerTasksQuerySchema,
   ListWorkerTasksResponseSchema,
@@ -96,6 +101,7 @@ import {
   ProjectMcpStateResponseSchema,
   ProjectMemoryResponseSchema,
   ProjectSummarySchema,
+  ProjectTaskItemSchema,
   ProjectUsageResponseSchema,
   ProviderCatalogResponseSchema,
   ProviderDetailResponseSchema,
@@ -2525,6 +2531,8 @@ test("EeveeClient exposes domain sub-clients with flat method parity and termina
   assert.equal(client instanceof EeveeClient, true);
   assert.equal(client.health, client.settings.health);
   assert.equal(client.listProjects, client.projects.listProjects);
+  assert.equal(client.listProjectTasks, client.projects.listProjectTasks);
+  assert.equal(client.streamAllBoards, client.projects.streamAllBoards);
   assert.equal(client.listEntries, client.conversations.listEntries);
   assert.equal(client.listProviders, client.providers.listProviders);
   assert.equal(client.listSkills, client.skills().list);
@@ -2547,6 +2555,103 @@ test("EeveeClient exposes domain sub-clients with flat method parity and termina
   }
   assert.deepEqual(boardEvents, [
     { type: "board", board: { workers: [], tickets: [], questions: [] } },
+    { type: "end", reason: "closed" },
+  ]);
+});
+
+test("Task 6 protocol schemas and client methods decode merge updates, project tasks, and multiplexed boards stream", async () => {
+  assert.equal(
+    compile(UpdateProjectRequestSchema).check({
+      merge: true,
+      models: { worker: { provider: "anthropic", modelId: "claude" } },
+      tools: { router: { grep: true } },
+    }),
+    true,
+  );
+  assert.equal(
+    compile(ProjectTaskItemSchema).check({
+      id: "task-1",
+      workerId: "w1",
+      command: "echo hi",
+      status: "running",
+      startedAt: 100,
+    }),
+    true,
+  );
+  assert.equal(
+    compile(ListProjectTasksResponseSchema).check({
+      tasks: [
+        {
+          id: "task-1",
+          workerId: "w1",
+          command: "echo hi",
+          status: "completed",
+          exitCode: 0,
+          startedAt: 100,
+          endedAt: 200,
+        },
+      ],
+    }),
+    true,
+  );
+  const emptyBoard = { workers: [], tickets: [], questions: [] };
+  assert.equal(compile(AllBoardsSnapshotEventSchema).check({ boards: { demo: emptyBoard } }), true);
+  assert.equal(
+    compile(AllBoardsUpdateEventSchema).check({ projectId: "demo", board: emptyBoard }),
+    true,
+  );
+  assert.equal(compile(AllBoardsRemovedEventSchema).check({ projectId: "demo" }), true);
+
+  const requests: { url: string; method: string; body?: string }[] = [];
+  const client = new EeveeClient({
+    baseUrl: "http://127.0.0.1:4173",
+    token: "tok",
+    fetch: async (input, init) => {
+      const url = new URL(String(input));
+      requests.push({
+        url: `${url.pathname}${url.search}`,
+        method: init?.method ?? "GET",
+        ...(typeof init?.body === "string" ? { body: init.body } : {}),
+      });
+      if (url.pathname === "/projects/demo/tasks") {
+        return Response.json({
+          tasks: [
+            {
+              id: "task-2",
+              workerId: "w2",
+              command: "npm test",
+              status: "running",
+              startedAt: 200,
+            },
+          ],
+        });
+      }
+      if (url.pathname === "/boards/stream") {
+        return sseResponse([
+          `event: snapshot\ndata: ${JSON.stringify({ boards: { p1: emptyBoard } })}\n\n`,
+          `event: board\ndata: ${JSON.stringify({ projectId: "p2", board: emptyBoard })}\n\n`,
+          `event: removed\ndata: ${JSON.stringify({ projectId: "p1" })}\n\n`,
+          `event: end\ndata: ${JSON.stringify({ reason: "closed" })}\n\n`,
+          `event: board\ndata: ${JSON.stringify({ projectId: "ignored", board: emptyBoard })}\n\n`,
+        ]);
+      }
+      return Response.json({ code: "not_found", message: "missing" }, { status: 404 });
+    },
+  });
+
+  const tasks = await client.listProjectTasks("demo", { status: "active", limit: 5 });
+  assert.equal(tasks.tasks.length, 1);
+  assert.equal(tasks.tasks[0]?.workerId, "w2");
+  assert.equal(requests[0]?.url, "/projects/demo/tasks?status=active&limit=5");
+
+  const allEvents: AllBoardsStreamEvent[] = [];
+  for await (const evt of client.streamAllBoards()) {
+    allEvents.push(evt);
+  }
+  assert.deepEqual(allEvents, [
+    { type: "snapshot", boards: { p1: emptyBoard } },
+    { type: "board", projectId: "p2", board: emptyBoard },
+    { type: "removed", projectId: "p1" },
     { type: "end", reason: "closed" },
   ]);
 });

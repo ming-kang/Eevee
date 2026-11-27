@@ -25,6 +25,7 @@ export {
   type StreamMcpOAuthOptions,
 } from "./mcp.ts";
 export {
+  type AllBoardsStreamEvent,
   type BoardStreamEvent,
   createProjectsClient,
   type ListWorkerTasksOptions,

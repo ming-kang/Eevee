@@ -46,12 +46,14 @@ export {
   type ListEntriesParams,
   type LoginSseFrame,
   type OpenProjectStorage,
+  type PoolBoardEvent,
   type ProjectMcpHandle,
   type ProjectsHandle,
   type ProvidersHandle,
   type ScopedMcpHandle,
   type SettingsHandle,
   type SkillsHandle,
+  StoreValidationError,
   type WorkerTaskStream,
   type WorkerTaskStreamCallbacks,
 } from "./engine.ts";
@@ -68,5 +70,11 @@ export {
   type StartForegroundEngineOptions,
   startForegroundEngine,
 } from "./server.ts";
-export { EngineStore, type UpdateProjectInput } from "./store.ts";
+export {
+  EngineStore,
+  mergeModelSlots,
+  mergeToolsSettings,
+  type ProjectMcpEntry,
+  type UpdateProjectInput,
+} from "./store.ts";
 export { type RunSupervisorOptions, runSupervisor } from "./supervisor.ts";

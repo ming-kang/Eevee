@@ -122,41 +122,62 @@ async function healthyEngine(
   }
 }
 
-export async function getDaemonStatus(options: DaemonControlOptions = {}): Promise<DaemonStatus> {
-  const layout = daemonLayout(options);
+type DaemonInspection = {
+  readonly status: DaemonStatus;
+  readonly supervisor: SupervisorRuntimeState | undefined;
+};
+
+async function inspectDaemonStatus(layout: DataDirLayout): Promise<DaemonInspection> {
   const supervisor = await readSupervisorState(layout.supervisorStateFile);
   const supervisorAlive = supervisor !== undefined && isProcessAlive(supervisor.pid);
   const healthy = await healthyEngine(layout);
   if (supervisorAlive && supervisor.stopping) {
     return {
-      status: "stopping",
-      supervisorPid: supervisor.pid,
-      ...(supervisor.enginePid === undefined ? {} : { enginePid: supervisor.enginePid }),
-      restartCount: supervisor.restartCount,
-      startedAt: supervisor.startedAt,
+      supervisor,
+      status: {
+        status: "stopping",
+        supervisorPid: supervisor.pid,
+        ...(supervisor.enginePid === undefined ? {} : { enginePid: supervisor.enginePid }),
+        restartCount: supervisor.restartCount,
+        startedAt: supervisor.startedAt,
+      },
     };
   }
   if (healthy !== undefined && (!supervisorAlive || supervisor.enginePid === healthy.pid)) {
     return {
-      status: "running",
-      ...(supervisorAlive ? { supervisorPid: supervisor.pid } : {}),
-      enginePid: healthy.pid,
-      url: healthy.url,
-      restartCount: supervisorAlive ? supervisor.restartCount : 0,
-      ...(supervisorAlive ? { startedAt: supervisor.startedAt } : {}),
-      engineStartedAt: healthy.startedAt,
+      supervisor,
+      status: {
+        status: "running",
+        ...(supervisorAlive ? { supervisorPid: supervisor.pid } : {}),
+        enginePid: healthy.pid,
+        url: healthy.url,
+        restartCount: supervisorAlive ? supervisor.restartCount : 0,
+        ...(supervisorAlive ? { startedAt: supervisor.startedAt } : {}),
+        engineStartedAt: healthy.startedAt,
+      },
     };
   }
   if (supervisorAlive) {
     return {
-      status: supervisor.restartCount > 0 ? "restarting" : "starting",
-      supervisorPid: supervisor.pid,
-      ...(supervisor.enginePid === undefined ? {} : { enginePid: supervisor.enginePid }),
-      restartCount: supervisor.restartCount,
-      startedAt: supervisor.startedAt,
+      supervisor,
+      status: {
+        status: supervisor.restartCount > 0 ? "restarting" : "starting",
+        supervisorPid: supervisor.pid,
+        ...(supervisor.enginePid === undefined ? {} : { enginePid: supervisor.enginePid }),
+        restartCount: supervisor.restartCount,
+        startedAt: supervisor.startedAt,
+      },
     };
   }
-  return { status: "stopped", restartCount: 0 };
+  return {
+    supervisor,
+    status: { status: "stopped", restartCount: 0 },
+  };
+}
+
+export async function getDaemonStatus(options: DaemonControlOptions = {}): Promise<DaemonStatus> {
+  const layout = daemonLayout(options);
+  return (await inspectDaemonStatus(layout)).status;
 }
 
 export async function startDaemon(options: StartDaemonOptions): Promise<DaemonStartResult> {
@@ -167,8 +188,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonSt
   const startLock = await acquireProcessLock(layout.startLockFile, { timeoutMs });
   let child: ReturnType<typeof spawn> | undefined;
   try {
-    const initial = await getDaemonStatus(options);
-    const previousSupervisor = await readSupervisorState(layout.supervisorStateFile);
+    const { status: initial, supervisor: previousSupervisor } = await inspectDaemonStatus(layout);
     if (initial.status === "stopping") {
       throw new Error("Eevee engine is stopping; retry after it stops");
     }

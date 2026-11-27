@@ -1,7 +1,8 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { type FSWatcher, watch } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
 import { mkdir, open, rm } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { removeEngineState } from "./auth.ts";
 import {
   isSupervisorStopRequested,
@@ -41,7 +42,8 @@ export async function runSupervisor(options: RunSupervisorOptions): Promise<void
   let child: ChildProcess | undefined;
   let restartTimer: ReturnType<typeof setTimeout> | undefined;
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
-  let pollTimer: ReturnType<typeof setInterval> | undefined;
+  let fallbackTimer: ReturnType<typeof setInterval> | undefined;
+  let stopWatcher: FSWatcher | undefined;
   let finishing: Promise<void> | undefined;
   let finishRun: (() => void) | undefined;
   const runFinished = new Promise<void>((resolveRun) => {
@@ -62,11 +64,22 @@ export async function runSupervisor(options: RunSupervisorOptions): Promise<void
     void persistSnapshot(state).catch((error: unknown) => console.error(error));
   };
 
+  const stopWatching = () => {
+    if (fallbackTimer !== undefined) {
+      clearInterval(fallbackTimer);
+      fallbackTimer = undefined;
+    }
+    if (stopWatcher !== undefined) {
+      stopWatcher.close();
+      stopWatcher = undefined;
+    }
+  };
+
   const finish = () => {
     finishing ??= (async () => {
       if (restartTimer !== undefined) clearTimeout(restartTimer);
       if (shutdownTimer !== undefined) clearTimeout(shutdownTimer);
-      if (pollTimer !== undefined) clearInterval(pollTimer);
+      stopWatching();
       process.off("SIGINT", requestStop);
       process.off("SIGTERM", requestStop);
       await persistChain;
@@ -86,6 +99,7 @@ export async function runSupervisor(options: RunSupervisorOptions): Promise<void
   const requestStop = () => {
     if (state.stopping) return;
     state = { ...state, stopping: true };
+    stopWatching();
     enqueuePersist();
     if (restartTimer !== undefined) {
       clearTimeout(restartTimer);
@@ -165,6 +179,29 @@ export async function runSupervisor(options: RunSupervisorOptions): Promise<void
     });
   };
 
+  let checkingStop = false;
+  let recheckStop = false;
+  const checkStopFile = () => {
+    if (state.stopping) return;
+    if (checkingStop) {
+      recheckStop = true;
+      return;
+    }
+    checkingStop = true;
+    void isSupervisorStopRequested(layout)
+      .then((requested) => {
+        if (requested) requestStop();
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        checkingStop = false;
+        if (recheckStop && !state.stopping) {
+          recheckStop = false;
+          checkStopFile();
+        }
+      });
+  };
+
   try {
     const previous = await readSupervisorState(layout.supervisorStateFile);
     if (previous !== undefined && previous.pid !== process.pid) {
@@ -172,11 +209,23 @@ export async function runSupervisor(options: RunSupervisorOptions): Promise<void
     }
     await rm(layout.supervisorStopFile, { force: true });
     await persistSnapshot(state);
-    pollTimer = setInterval(() => {
-      void isSupervisorStopRequested(layout).then((requested) => {
-        if (requested) requestStop();
+    const stopFileName = basename(layout.supervisorStopFile);
+    try {
+      stopWatcher = watch(dirname(layout.supervisorStopFile), (_eventType, filename) => {
+        if (filename === null || filename === undefined || String(filename) === stopFileName) {
+          checkStopFile();
+        }
       });
-    }, 50);
+      stopWatcher.on("error", () => {
+        stopWatcher?.close();
+        stopWatcher = undefined;
+      });
+    } catch {
+      stopWatcher = undefined;
+    }
+    fallbackTimer = setInterval(checkStopFile, 500);
+    fallbackTimer.unref?.();
+    checkStopFile();
     process.on("SIGINT", requestStop);
     process.on("SIGTERM", requestStop);
     startEngine();

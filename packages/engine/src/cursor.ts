@@ -1,10 +1,14 @@
-import type { Cursor } from "@earendil-works/pi-durable";
+import type { Cursor, ScanOrder } from "@earendil-works/pi-durable";
 import { EngineError } from "./engine-error.ts";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
+}
+
+function isScanOrder(value: unknown): value is ScanOrder {
+  return value === "ascending" || value === "descending";
 }
 
 export function encodeCursor(cursor: Cursor): string {
@@ -21,7 +25,18 @@ export function decodeCursor(raw: string): Cursor {
     if (!isPlainObject(parsed)) {
       throw new EngineError(400, "invalid_query", "Invalid pagination cursor");
     }
-    return parsed as Cursor;
+    const keys = Object.keys(parsed);
+    if (keys.some((key) => key !== "after" && key !== "order")) {
+      throw new EngineError(400, "invalid_query", "Invalid pagination cursor");
+    }
+    const { after, order } = parsed;
+    if (typeof after !== "number" || !Number.isSafeInteger(after) || after < 0) {
+      throw new EngineError(400, "invalid_query", "Invalid pagination cursor");
+    }
+    if (order !== undefined && !isScanOrder(order)) {
+      throw new EngineError(400, "invalid_query", "Invalid pagination cursor");
+    }
+    return order === undefined ? { after } : { after, order };
   } catch (error) {
     if (error instanceof EngineError) throw error;
     throw new EngineError(400, "invalid_query", "Invalid pagination cursor");

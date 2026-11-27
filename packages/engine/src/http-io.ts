@@ -9,7 +9,6 @@ import {
   type ConversationRef,
   ConversationRefSchema,
   EntriesQuerySchema,
-  formatValidationErrors,
   ListWorkerTasksQuerySchema,
   ModelsQuerySchema,
   type Problem,
@@ -21,12 +20,12 @@ import {
   type StreamWorkerTaskQuery,
   StreamWorkerTaskQuerySchema,
   validateTaskReadOptions,
-  validateWithSchema,
   WindowQuerySchema,
   type WorkerId,
   WorkerIdSchema,
 } from "@eevee/protocol";
 import { EngineError, type ListEntriesParams } from "./engine.ts";
+import { parseQueryParams } from "./engine-error.ts";
 
 const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
 
@@ -186,15 +185,7 @@ function parseQueryWithSchema<S extends Schema>(
     const parsed = parseField(raw, key);
     if (parsed !== undefined) candidate[key] = parsed;
   }
-  const checked = validateWithSchema(schema, candidate);
-  if (!checked.ok) {
-    throw new EngineError(
-      400,
-      "invalid_query",
-      `Invalid query parameters: ${formatValidationErrors(checked.errors)}`,
-    );
-  }
-  return checked.value;
+  return parseQueryParams(schema, candidate);
 }
 
 function parsePositiveInt(raw: string, label: string): number {
@@ -342,11 +333,31 @@ type ParamName<Path extends string> = Path extends `${string}:${infer Name}/${in
     ? Name
     : never;
 
+type ParamKeys<Path extends string> = ParamName<Path> & keyof PathParams;
+
+type OptionalParamKeys<Path extends string> = {
+  [K in ParamKeys<Path>]: Path extends infer Branch
+    ? Branch extends string
+      ? K extends ParamName<Branch>
+        ? never
+        : K
+      : never
+    : never;
+}[ParamKeys<Path>];
+
+type RequiredParamKeys<Path extends string> = Exclude<ParamKeys<Path>, OptionalParamKeys<Path>>;
+
+export type PathParamsFor<Path extends string> = {
+  readonly [K in RequiredParamKeys<Path>]: PathParams[K];
+} & {
+  readonly [K in OptionalParamKeys<Path>]?: PathParams[K];
+};
+
 type RouteContext<Path extends string> = {
   readonly req: IncomingMessage;
   readonly res: ServerResponse;
   readonly url: URL;
-  readonly params: Pick<PathParams, ParamName<Path> & keyof PathParams>;
+  readonly params: PathParamsFor<Path>;
 };
 
 export type Route = {
@@ -365,6 +376,15 @@ export function route<Path extends string>(
     pattern: path.split("/").filter((part) => part.length > 0),
     handle: handle as Route["handle"],
   };
+}
+
+export function prefixedRoute<Prefix extends string, Suffix extends string>(
+  method: string,
+  prefix: Prefix,
+  suffix: Suffix,
+  handle: (context: RouteContext<`${Prefix}${Suffix}`>) => Promise<void> | void,
+): Route {
+  return route(method, `${prefix}${suffix}`, handle);
 }
 
 type TrieNode = {

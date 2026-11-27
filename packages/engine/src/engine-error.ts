@@ -1,7 +1,20 @@
 import { ConversationBusy, StorageRequestError } from "@earendil-works/pi-durable";
+import type { Schema, Static } from "@earendil-works/pi-schema";
 import { ModelsConfigError } from "@eevee/agent/models";
 import { ProjectError, type ProjectErrorCode } from "@eevee/core";
-import { type Problem, SchemaValidationError } from "@eevee/protocol";
+import {
+  formatValidationErrors,
+  type Problem,
+  SchemaValidationError,
+  validateWithSchema,
+} from "@eevee/protocol";
+
+export class StoreValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StoreValidationError";
+  }
+}
 
 export class EngineError extends Error {
   readonly status: number;
@@ -38,6 +51,9 @@ const PROJECT_ERROR_HTTP: Record<ProjectErrorCode, readonly [status: number, cod
 };
 
 export function toEngineError(error: unknown): unknown {
+  if (error instanceof StoreValidationError) {
+    return new EngineError(400, "invalid_request", error.message);
+  }
   if (error instanceof ModelsConfigError) {
     return new EngineError(400, "invalid_request", error.message);
   }
@@ -58,6 +74,18 @@ export function toEngineError(error: unknown): unknown {
     return new EngineError(400, "invalid_request", error.message);
   }
   return error;
+}
+
+export function parseQueryParams<S extends Schema>(schema: S, value: unknown): Static<S> {
+  const checked = validateWithSchema(schema, value);
+  if (!checked.ok) {
+    throw new EngineError(
+      400,
+      "invalid_query",
+      `Invalid query parameters: ${formatValidationErrors(checked.errors)}`,
+    );
+  }
+  return checked.value;
 }
 
 export function guardSync<TArgs extends readonly unknown[], TResult>(

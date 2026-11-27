@@ -7,6 +7,9 @@ import {
   type WorkerId,
 } from "../schemas/common.ts";
 import {
+  AllBoardsRemovedEventSchema,
+  AllBoardsSnapshotEventSchema,
+  AllBoardsUpdateEventSchema,
   type AnswerQuestionRequest,
   type AnswerQuestionResponse,
   AnswerQuestionResponseSchema,
@@ -24,6 +27,8 @@ import {
   KillWorkerTaskResponseSchema,
   type ListProjectsResponse,
   ListProjectsResponseSchema,
+  type ListProjectTasksResponse,
+  ListProjectTasksResponseSchema,
   type ListWorkerTasksResponse,
   ListWorkerTasksResponseSchema,
   type OutputSlice,
@@ -43,6 +48,20 @@ import { buildQuery, type HttpTransport } from "./transport.ts";
 
 export type BoardStreamEvent =
   | { readonly type: "board"; readonly board: BoardViewPayload }
+  | {
+      readonly type: "end";
+      readonly reason: StreamEndEvent["reason"];
+      readonly message?: string;
+    };
+
+export type AllBoardsStreamEvent =
+  | { readonly type: "snapshot"; readonly boards: Record<string, BoardViewPayload> }
+  | {
+      readonly type: "board";
+      readonly projectId: string;
+      readonly board: BoardViewPayload;
+    }
+  | { readonly type: "removed"; readonly projectId: string }
   | {
       readonly type: "end";
       readonly reason: StreamEndEvent["reason"];
@@ -172,6 +191,18 @@ export function createProjectsClient(transport: HttpTransport) {
         AnswerQuestionResponseSchema,
         input,
         signal,
+      );
+    },
+
+    listProjectTasks(
+      projectId: string,
+      opts?: ListWorkerTasksOptions,
+    ): Promise<ListProjectTasksResponse> {
+      const query = buildQuery({ status: opts?.status, limit: opts?.limit });
+      return transport.get(
+        `/projects/${encodeURIComponent(projectId)}/tasks${query}`,
+        ListProjectTasksResponseSchema,
+        opts?.signal,
       );
     },
 
@@ -309,6 +340,53 @@ export function createProjectsClient(transport: HttpTransport) {
               sse,
               StreamEndEventSchema,
               "board end SSE payload",
+            );
+            return {
+              type: "end",
+              reason: end.reason,
+              ...(end.message === undefined ? {} : { message: end.message }),
+            };
+          }
+          return undefined;
+        },
+      );
+    },
+
+    streamAllBoards(opts?: StreamBoardOptions): AsyncGenerator<AllBoardsStreamEvent> {
+      const path = "/boards/stream";
+      return transport.streamDecodedSse<AllBoardsStreamEvent>(
+        path,
+        { signal: opts?.signal, isTerminal: (event) => event.type === "end" },
+        (sse) => {
+          if (sse.event === "snapshot") {
+            const parsed = transport.decodeSseEvent(
+              sse,
+              AllBoardsSnapshotEventSchema,
+              "boards snapshot SSE payload",
+            );
+            return { type: "snapshot", boards: parsed.boards };
+          }
+          if (sse.event === "board") {
+            const parsed = transport.decodeSseEvent(
+              sse,
+              AllBoardsUpdateEventSchema,
+              "boards update SSE payload",
+            );
+            return { type: "board", projectId: parsed.projectId, board: parsed.board };
+          }
+          if (sse.event === "removed") {
+            const parsed = transport.decodeSseEvent(
+              sse,
+              AllBoardsRemovedEventSchema,
+              "boards removed SSE payload",
+            );
+            return { type: "removed", projectId: parsed.projectId };
+          }
+          if (sse.event === "end") {
+            const end = transport.decodeSseEvent(
+              sse,
+              StreamEndEventSchema,
+              "boards end SSE payload",
             );
             return {
               type: "end",

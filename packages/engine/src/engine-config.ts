@@ -1,6 +1,6 @@
 import { readFile, rm } from "node:fs/promises";
 import { isMcpServerOverride } from "@earendil-works/pi-mcp";
-import { map } from "@earendil-works/pi-schema";
+import { map, type Schema } from "@earendil-works/pi-schema";
 import {
   isRecord,
   type McpHub,
@@ -41,7 +41,9 @@ import type { DataDirLayout } from "./data-dir.ts";
 import { EngineError, guardAsync, guardSync } from "./engine-error.ts";
 import { GLOBAL_MCP_OAUTH_SCOPE, projectMcpOAuthScope } from "./mcp-oauth-sessions.ts";
 import type { KeyedSerialQueue } from "./serial-queue.ts";
-import type { EngineStore } from "./store.ts";
+import { type EngineStore, mergeModelSlots, mergeToolsSettings } from "./store.ts";
+
+export { mergeModelSlots, mergeToolsSettings } from "./store.ts";
 
 export const KV_SETTINGS = "settings";
 export const KV_MODEL_PROFILES = "model_profiles";
@@ -160,45 +162,12 @@ export function effectiveSkillsPolicy(store: EngineStore, projectId: string): Sk
   return { ...globalPolicy, ...projectPolicy };
 }
 
-export function mergeToolsSettings(
-  base: ToolsSettings | undefined,
-  patch: ToolsSettings | undefined,
-): ToolsSettings | undefined {
-  if (base === undefined && patch === undefined) return undefined;
-  const router =
-    base?.router === undefined && patch?.router === undefined
-      ? undefined
-      : { ...base?.router, ...patch?.router };
-  const worker =
-    base?.worker === undefined && patch?.worker === undefined
-      ? undefined
-      : { ...base?.worker, ...patch?.worker };
-  const codemode =
-    base?.codemode === undefined && patch?.codemode === undefined
-      ? undefined
-      : { ...base?.codemode, ...patch?.codemode };
-  return {
-    ...(router === undefined ? {} : { router }),
-    ...(worker === undefined ? {} : { worker }),
-    ...(codemode === undefined ? {} : { codemode }),
-  };
-}
-
 export function mergeEngineSettings(
   current: EngineSettings,
   validated: EngineSettings,
 ): EngineSettings {
-  const mergedModels =
-    validated.models === undefined
-      ? current.models
-      : {
-          ...current.models,
-          ...validated.models,
-        };
-  const mergedTools =
-    validated.tools === undefined
-      ? current.tools
-      : mergeToolsSettings(current.tools, validated.tools);
+  const mergedModels = mergeModelSlots(current.models, validated.models);
+  const mergedTools = mergeToolsSettings(current.tools, validated.tools);
   return {
     ...(validated.maxActiveWorkers !== undefined
       ? { maxActiveWorkers: validated.maxActiveWorkers }
@@ -375,10 +344,9 @@ function collectReferencedOAuthKeys(store: EngineStore): Set<string> {
     }
   };
   addFromMap(getMcpServersRecord(store));
-  for (const project of store.listProjects()) {
-    const projectServers = store.getProjectMcpServers(project.id);
-    if (projectServers !== undefined) {
-      addFromMap(projectServers);
+  for (const project of store.listProjectMcpEntries()) {
+    if (project.servers !== undefined) {
+      addFromMap(project.servers);
     }
   }
   return keys;
@@ -388,12 +356,11 @@ export function pruneOrphanProjectMcpOverrides(
   store: EngineStore,
   nextGlobalServers: Readonly<Record<string, unknown>>,
 ): void {
-  for (const project of store.listProjects()) {
-    const projectServers = store.getProjectMcpServers(project.id);
-    if (projectServers === undefined) continue;
+  for (const project of store.listProjectMcpEntries()) {
+    if (project.servers === undefined) continue;
     let changed = false;
     const nextProjectServers: Record<string, McpServerEntryInput> = {};
-    for (const [name, raw] of Object.entries(projectServers)) {
+    for (const [name, raw] of Object.entries(project.servers)) {
       if (isRecord(raw) && isMcpServerOverride(raw) && !Object.hasOwn(nextGlobalServers, name)) {
         changed = true;
         continue;
@@ -425,8 +392,8 @@ export function collectGlobalMcpOAuthCancellations(
       serverNames: removedGlobalHttp.map((entry) => entry.name),
     },
   ];
-  for (const project of store.listProjects()) {
-    const projectServers = store.getProjectMcpServers(project.id) ?? {};
+  for (const project of store.listProjectMcpEntries()) {
+    const projectServers = project.servers ?? {};
     const inheritedNames = removedGlobalHttp
       .filter((entry) => {
         const raw = projectServers[entry.name];
@@ -495,7 +462,7 @@ export type GlobalMcpReplacementDeps = {
 
 export type ApplyGlobalMcpReplacementOptions = {
   readonly servers: readonly McpServerEntry[];
-  readonly extraKvKeys?: readonly string[];
+  readonly extraKvEntries?: readonly { readonly key: string; readonly schema: Schema }[];
   readonly mutateExtraStore?: () => void;
   readonly beforeReload?: () => Promise<void>;
   readonly onRollback?: () => Promise<void>;
@@ -506,18 +473,19 @@ export async function applyGlobalMcpReplacement(
   options: ApplyGlobalMcpReplacementOptions,
 ): Promise<void> {
   const nextGlobal = normalizeMcpServerMap(options.servers);
-  const kvKeys = [KV_MCP_SERVERS, ...(options.extraKvKeys ?? [])];
+  const kvTargets: readonly { readonly key: string; readonly schema: Schema }[] = [
+    { key: KV_MCP_SERVERS, schema: McpServersMapSchema },
+    ...(options.extraKvEntries ?? []),
+  ];
   const { kvSnapshots, previousProjects, removedHttp, cancellations } = deps.store.transaction(
     () => {
-      const snapshots = kvKeys.map((key) => ({
+      const snapshots = kvTargets.map(({ key, schema }) => ({
         key,
-        value: deps.store.getKv<unknown>(key),
+        present: deps.store.hasKv(key),
+        value: deps.store.getKvParsed(key, schema),
       }));
       const prevGlobal = getMcpServersRecord(deps.store);
-      const prevProjects = deps.store.listProjects().map((project) => ({
-        id: project.id,
-        servers: deps.store.getProjectMcpServers(project.id),
-      }));
+      const prevProjects = deps.store.listProjectMcpEntries();
       const removed = findRemovedHttpMcpServers(prevGlobal, nextGlobal);
       const scopes = collectGlobalMcpOAuthCancellations(deps.store, removed);
       options.mutateExtraStore?.();
@@ -538,7 +506,7 @@ export async function applyGlobalMcpReplacement(
   } catch (error) {
     deps.store.transaction(() => {
       for (const entry of kvSnapshots) {
-        if (entry.value === undefined) {
+        if (!entry.present || entry.value === undefined) {
           deps.store.deleteKv(entry.key);
         } else {
           deps.store.setKv(entry.key, entry.value);
@@ -618,7 +586,11 @@ export async function importEngineConfig(
 
     await applyGlobalMcpReplacement(deps, {
       servers: parsedMcp.servers,
-      extraKvKeys: [KV_SETTINGS, KV_MODEL_PROFILES, KV_SKILLS_POLICY],
+      extraKvEntries: [
+        { key: KV_SETTINGS, schema: EngineSettingsSchema },
+        { key: KV_MODEL_PROFILES, schema: ModelProfilesDocumentSchema },
+        { key: KV_SKILLS_POLICY, schema: SkillPolicyMapSchema },
+      ],
       mutateExtraStore: () => {
         deps.store.setKv(KV_SETTINGS, bundle.settings);
         deps.store.setKv(KV_MODEL_PROFILES, bundle.modelProfiles);

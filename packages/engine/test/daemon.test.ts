@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
+import { requestSupervisorStop } from "../src/daemon.ts";
 import {
+  dataDirLayout,
   getDaemonStatus,
   isProcessAlive,
   readEngineState,
@@ -242,5 +244,90 @@ test("concurrent stale-lock recovery selects exactly one valid lock holder witho
     await after.release();
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("runSupervisor responds cleanly to requestSupervisorStop via fs.watch and cleans up state", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "eevee-supervisor-watch-"));
+  const layout = dataDirLayout(dir);
+  const readyFile = join(dir, "child.ready");
+  const stubCli = join(dir, "stub-cli.mjs");
+  await writeFile(
+    stubCli,
+    `import { writeFileSync } from "node:fs";
+writeFileSync(process.env.STUB_READY_FILE, String(process.pid), "utf8");
+process.on("message", (msg) => {
+  if (msg && msg.type === "eevee:shutdown") process.exit(0);
+});
+setInterval(() => {}, 1000);
+`,
+    "utf8",
+  );
+
+  const supervisorUrl = pathToFileURL(join(import.meta.dirname, "../src/supervisor.ts")).href;
+  const runnerScript = join(dir, "run-supervisor.mjs");
+  await writeFile(
+    runnerScript,
+    `import { runSupervisor } from ${JSON.stringify(supervisorUrl)};
+await runSupervisor({
+  dataDir: process.argv[2],
+  cliEntry: process.argv[3],
+  port: 0,
+  env: { STUB_READY_FILE: process.argv[4] },
+});
+`,
+    "utf8",
+  );
+  const supervisorProc = spawn(
+    process.execPath,
+    ["--conditions=eevee-source", runnerScript, dir, stubCli, readyFile],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  let stderr = "";
+  supervisorProc.stderr.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString("utf8");
+  });
+
+  const exited = new Promise<number | null>((resolve, reject) => {
+    supervisorProc.once("error", reject);
+    supervisorProc.once("exit", (code) => resolve(code));
+  });
+
+  try {
+    const deadline = Date.now() + 10_000;
+    let enginePid: number | undefined;
+    while (Date.now() < deadline) {
+      const state = await readSupervisorState(layout.supervisorStateFile);
+      if (state?.enginePid !== undefined) {
+        try {
+          const readyPid = Number((await readFile(readyFile, "utf8")).trim());
+          if (readyPid === state.enginePid) {
+            enginePid = readyPid;
+            break;
+          }
+        } catch {
+          // Wait until stub writes readyFile.
+        }
+      }
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.ok(enginePid !== undefined, `supervisor child did not start cleanly: ${stderr}`);
+
+    await requestSupervisorStop(layout);
+    const code = await Promise.race([
+      exited,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Supervisor did not exit in time: ${stderr}`)), 5_000),
+      ),
+    ]);
+    assert.equal(code, 0, stderr);
+    assert.equal(isProcessAlive(enginePid), false);
+    assert.equal(await readSupervisorState(layout.supervisorStateFile), undefined);
+  } finally {
+    if (supervisorProc.exitCode === null && supervisorProc.signalCode === null) {
+      supervisorProc.kill("SIGKILL");
+      await exited.catch(() => undefined);
+    }
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });

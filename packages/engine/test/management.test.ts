@@ -20,16 +20,19 @@ import {
   type Provider,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
+import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import {
   LATEST_PROTOCOL_VERSION,
   type Tool as McpTool,
   type McpTransport,
   PipeTransport,
 } from "@earendil-works/pi-mcp";
+import { int, obj } from "@earendil-works/pi-schema";
 import type { McpServerEntry } from "@eevee/agent";
 import { AuthStorage } from "@eevee/agent/models";
 import { MemoryMetaDoc } from "@eevee/memory";
 import {
+  type AllBoardsStreamEvent,
   ConfigBundleSchema,
   DeleteProjectResponseSchema,
   EeveeApiError,
@@ -56,7 +59,7 @@ import {
   readEngineSettings,
   readGlobalSkillsPolicy,
 } from "../src/engine-config.ts";
-import { EngineStore, startForegroundEngine } from "../src/index.ts";
+import { Engine, EngineStore, StoreValidationError, startForegroundEngine } from "../src/index.ts";
 
 const MODEL_ID = "faux-1";
 
@@ -1144,33 +1147,41 @@ test("config export omits auth.json secrets, rejects invalid imports upfront, an
 test("EngineStore.transaction commits nested savepoints and rolls back cleanly on error", async () => {
   await withTempDir(async (dir) => {
     const store = EngineStore.open(join(dir, "engine.db"));
+    const kvSchema = obj({ v: int() });
     try {
       store.setKv("k1", { v: 1 });
+      assert.deepEqual(store.getKvParsed("k1", kvSchema), { v: 1 });
 
       assert.throws(() => {
         store.transaction(() => {
           store.setKv("k1", { v: 2 });
           store.setKv("k2", { v: 2 });
+          // Populate cache inside uncommitted tx to confirm rollback invalidates caches.
+          assert.deepEqual(store.getKvParsed("k1", kvSchema), { v: 2 });
+          assert.deepEqual(store.getKvParsed("k2", kvSchema), { v: 2 });
           throw new Error("boom inside tx");
         });
       }, /boom inside tx/);
 
-      assert.deepEqual(store.getKv("k1"), { v: 1 });
-      assert.equal(store.getKv("k2"), undefined);
+      assert.deepEqual(store.getKvParsed("k1", kvSchema), { v: 1 });
+      assert.equal(store.hasKv("k2"), false);
+      assert.equal(store.getKvParsed("k2", kvSchema), undefined);
 
       store.transaction(() => {
         store.setKv("k1", { v: 3 });
+        assert.deepEqual(store.getKvParsed("k1", kvSchema), { v: 3 });
         assert.throws(() => {
           store.transaction(() => {
             store.setKv("k1", { v: 4 });
+            assert.deepEqual(store.getKvParsed("k1", kvSchema), { v: 4 });
             throw new Error("inner fail");
           });
         }, /inner fail/);
         store.setKv("k2", { v: 3 });
       });
 
-      assert.deepEqual(store.getKv("k1"), { v: 3 });
-      assert.deepEqual(store.getKv("k2"), { v: 3 });
+      assert.deepEqual(store.getKvParsed("k1", kvSchema), { v: 3 });
+      assert.deepEqual(store.getKvParsed("k2", kvSchema), { v: 3 });
     } finally {
       store.close();
     }
@@ -1425,6 +1436,337 @@ test("EngineStore PRAGMA user_version migrations are idempotent, upgrade legacy 
       assert.throws(() => readGlobalSkillsPolicy(readCorrupt), /Invalid stored kv "skills_policy"/);
     } finally {
       readCorrupt.close();
+    }
+  });
+});
+
+test("PATCH /projects/:id supports atomic merge mode alongside default wholesale replacement", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws = join(dir, "ws");
+    await mkdir(ws, { recursive: true });
+
+    const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+
+    const foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      models,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+    });
+
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      const created = await client.createProject({
+        workspaces: [ws],
+        title: "MergeMode",
+        models: {
+          router: { provider: faux.provider.id, modelId: MODEL_ID, thinkingLevel: "low" },
+          worker: { provider: faux.provider.id, modelId: MODEL_ID, thinkingLevel: "medium" },
+        },
+        tools: {
+          router: { ls: false, read: true },
+          worker: { bash: false },
+          codemode: { mode: "only", inlineBudget: 2_500 },
+        },
+      });
+      const projectId = created.project.id;
+
+      // merge: true deep-merges models & tools atomically inside SQLite transaction
+      const merged = await client.updateProject(projectId, {
+        merge: true,
+        models: {
+          worker: { provider: faux.provider.id, modelId: MODEL_ID, thinkingLevel: "high" },
+          dreamer: { provider: faux.provider.id, modelId: MODEL_ID },
+        },
+        tools: {
+          router: { grep: true },
+          codemode: { inlineBudget: 5_000 },
+        },
+      });
+      assert.deepEqual(merged.project.models, {
+        router: { provider: faux.provider.id, modelId: MODEL_ID, thinkingLevel: "low" },
+        worker: { provider: faux.provider.id, modelId: MODEL_ID, thinkingLevel: "high" },
+        dreamer: { provider: faux.provider.id, modelId: MODEL_ID },
+      });
+      assert.deepEqual(merged.project.tools, {
+        router: { ls: false, read: true, grep: true },
+        worker: { bash: false },
+        codemode: { mode: "only", inlineBudget: 5_000 },
+      });
+
+      // Default (merge omitted / false) performs wholesale replacement
+      const replaced = await client.updateProject(projectId, {
+        models: { router: { provider: faux.provider.id, modelId: MODEL_ID } },
+        tools: { worker: { powershell: true } },
+      });
+      assert.deepEqual(replaced.project.models, {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+      });
+      assert.deepEqual(replaced.project.tools, {
+        worker: { powershell: true },
+      });
+
+      // merge: true still clears when models/tools are explicitly null
+      const cleared = await client.updateProject(projectId, {
+        merge: true,
+        models: null,
+        tools: null,
+      });
+      assert.equal(cleared.project.models, undefined);
+      assert.equal(cleared.project.tools, undefined);
+    } finally {
+      await foreground.close();
+    }
+  });
+});
+
+test("GET /boards/stream multiplexes snapshots, creations, live updates, hibernation caching, deletions, and shutdown", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws1 = join(dir, "ws1");
+    const ws2 = join(dir, "ws2");
+    await mkdir(ws1, { recursive: true });
+    await mkdir(ws2, { recursive: true });
+
+    const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+
+    const brain: FauxResponseFactory = (context) => {
+      const last = lastMessage(context);
+      if (last?.role === "user" && messageText(last).includes("spawn-one")) {
+        return fauxAssistantMessage(
+          [fauxToolCall("spawn_worker", { name: "helper", prompt: "do-job" })],
+          { stopReason: "toolUse" },
+        );
+      }
+      if (last?.role === "toolResult" && last.toolName === "spawn_worker") {
+        return fauxAssistantMessage("spawned");
+      }
+      return fauxAssistantMessage("ack");
+    };
+    faux.setResponses(Array.from({ length: 20 }, () => brain));
+
+    const foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      models,
+      idleHibernateMs: 5_000,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+        worker: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+    });
+
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      const p1 = (await client.createProject({ workspaces: [ws1], title: "BoardOne" })).project.id;
+
+      // Connect multiplexed /boards/stream
+      const streamAbort = new AbortController();
+      const events: AllBoardsStreamEvent[] = [];
+      const streamLoop = (async () => {
+        for await (const evt of client.streamAllBoards({ signal: streamAbort.signal })) {
+          events.push(evt);
+        }
+      })();
+
+      await waitFor(() => events.length >= 1, "initial boards snapshot");
+      assert.equal(events[0]?.type, "snapshot");
+      if (events[0]?.type === "snapshot") {
+        assert.ok(Object.hasOwn(events[0].boards, p1));
+        assert.equal(events[0].boards[p1]?.workers.length, 0);
+      }
+
+      // Create a second project while connected -> emits "board"
+      const p2 = (await client.createProject({ workspaces: [ws2], title: "BoardTwo" })).project.id;
+      await waitFor(
+        () => events.some((evt) => evt.type === "board" && evt.projectId === p2),
+        "board event for newly created project p2",
+      );
+
+      // Trigger worker spawn on p1 -> emits live "board" update
+      const handle1 = await foreground.engine.openProject(p1);
+      const sent = await client.sendMessage(p1, "router", { text: "spawn-one" });
+      await (
+        await handle1.harness.submission(sent.submissionId as never, BACKGROUND_CONTEXT)
+      )?.wait(BACKGROUND_CONTEXT);
+      await waitFor(
+        () =>
+          events.some(
+            (evt) => evt.type === "board" && evt.projectId === p1 && evt.board.workers.length === 1,
+          ),
+        "live board update for p1 worker",
+      );
+
+      // Wait until p1 workers and router settle, then hibernate p1 WHILE /boards/stream is connected!
+      await waitFor(
+        async () =>
+          (await foreground.engine.hibernateIdleProjects(Date.now() + 60_000)).includes(p1),
+        "p1 hibernation while /boards/stream is connected",
+      );
+      assert.equal(foreground.engine.isProjectOpen(p1), false);
+
+      // A second /boards/stream client gets p1's cached board WITHOUT reopening hibernated p1!
+      const secondAbort = new AbortController();
+      const secondEvents: AllBoardsStreamEvent[] = [];
+      const secondLoop = (async () => {
+        for await (const evt of client.streamAllBoards({ signal: secondAbort.signal })) {
+          secondEvents.push(evt);
+          if (evt.type === "snapshot") secondAbort.abort();
+        }
+      })();
+      await secondLoop;
+      assert.equal(foreground.engine.isProjectOpen(p1), false);
+      assert.equal(secondEvents[0]?.type, "snapshot");
+      if (secondEvents[0]?.type === "snapshot") {
+        assert.equal(secondEvents[0].boards[p1]?.workers.length, 1);
+      }
+
+      // Delete p2 -> emits "removed"
+      await client.deleteProject(p2);
+      await waitFor(
+        () => events.some((evt) => evt.type === "removed" && evt.projectId === p2),
+        "removed event for deleted project p2",
+      );
+
+      // Server shutdown emits "end" (reason: "closed")
+      await foreground.close();
+      await streamLoop;
+      const lastEvt = events.at(-1);
+      assert.equal(lastEvt?.type, "end");
+      if (lastEvt?.type === "end") {
+        assert.equal(lastEvt.reason, "closed");
+      }
+      streamAbort.abort();
+    } finally {
+      await foreground.close();
+    }
+  });
+});
+
+test("EngineStore caches isolate callers, invalidate on writes/rollbacks, expose lightweight queries, and validate domains", async () => {
+  await withTempDir(async (dir) => {
+    const store = EngineStore.open(join(dir, "engine.db"));
+    try {
+      assert.throws(() => store.createProject({ workspaces: [] }), StoreValidationError);
+      assert.throws(() => store.createProject({ workspaces: ["  "] }), StoreValidationError);
+
+      const p1 = store.createProject({
+        workspaces: [dir],
+        title: "Alpha",
+        models: { router: { provider: "p", modelId: "m1" } },
+        tools: { router: { ls: false } },
+      });
+      assert.throws(() => store.updateProject(p1.id, { title: "   " }), StoreValidationError);
+
+      // Defensive copies prevent external mutations from corrupting store caches
+      const fetched = store.getProject(p1.id);
+      assert.ok(fetched !== undefined);
+      fetched.workspaces.push("mutated-path");
+      if (fetched.tools?.router !== undefined) fetched.tools.router.ls = true;
+      const refetched = store.getProject(p1.id);
+      assert.equal(refetched?.workspaces.length, 1);
+      assert.equal(refetched?.tools?.router?.ls, false);
+
+      const listed = store.listProjects();
+      assert.equal(listed.length, 1);
+      listed[0]?.workspaces.push("mutated-list");
+      assert.equal(store.listProjects()[0]?.workspaces.length, 1);
+
+      // Rolled-back project mutation inside transaction does NOT poison project caches
+      assert.throws(() => {
+        store.transaction(() => {
+          store.updateProject(p1.id, { title: "RolledBackTitle" });
+          assert.equal(store.getProject(p1.id)?.title, "RolledBackTitle");
+          throw new Error("abort project update");
+        });
+      }, /abort project update/);
+      assert.equal(store.getProject(p1.id)?.title, "Alpha");
+      assert.equal(store.listProjects()[0]?.title, "Alpha");
+
+      // setProjectMcpServers / setProjectSkillsPolicy invalidate project updatedAt cache & listProjectMcpEntries works
+      const p2 = store.createProject({ workspaces: [dir], title: "Beta" });
+      assert.deepEqual(store.listProjectIds(), [p1.id, p2.id]);
+      store.setProjectMcpServers(p2.id, { srv: { command: "srv-cmd" } });
+      assert.deepEqual(store.listProjectMcpEntries(), [
+        { id: p1.id, servers: undefined },
+        { id: p2.id, servers: { srv: { command: "srv-cmd" } } },
+      ]);
+      store.setProjectSkillsPolicy(p1.id, { mySkill: "disabled" });
+      assert.deepEqual(store.getProjectSkillsPolicy(p1.id), { mySkill: "disabled" });
+
+      assert.equal(store.deleteProject(p2.id), true);
+      assert.equal(store.getProject(p2.id), undefined);
+      assert.deepEqual(store.listProjectIds(), [p1.id]);
+    } finally {
+      store.close();
+    }
+  });
+});
+
+test("Engine.recoverProjects opens projects with bounded concurrency and aggregates failures", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws = join(dir, "ws");
+    await mkdir(ws, { recursive: true });
+
+    const setup = await Engine.open({ dataDir: home });
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      ids.push(setup.projects.create({ workspaces: [ws], title: `Proj${i}` }).id);
+    }
+    await setup.close();
+
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const openedIds: string[] = [];
+    const concurrentEngine = await Engine.open({
+      dataDir: home,
+      openProjectStorage: async (sessionDbPath, project) => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        openedIds.push(project.id);
+        await new Promise((r) => setTimeout(r, 30));
+        try {
+          return await openNodeSqliteStorage(sessionDbPath);
+        } finally {
+          inFlight -= 1;
+        }
+      },
+    });
+    try {
+      await concurrentEngine.recoverProjects();
+      assert.equal(openedIds.length, 6);
+      assert.ok(maxInFlight > 1, `expected parallel recovery, saw maxInFlight=${maxInFlight}`);
+      assert.ok(maxInFlight <= 4, `expected bounded concurrency <= 4, saw ${maxInFlight}`);
+    } finally {
+      await concurrentEngine.close();
+    }
+
+    const failingEngine = await Engine.open({
+      dataDir: home,
+      openProjectStorage: async (sessionDbPath, project) => {
+        if (project.id === ids[1] || project.id === ids[4]) {
+          throw new Error(`boom-${project.id}`);
+        }
+        return openNodeSqliteStorage(sessionDbPath);
+      },
+    });
+    try {
+      await assert.rejects(
+        failingEngine.recoverProjects(),
+        (err: unknown) => err instanceof AggregateError && err.errors.length === 2,
+      );
+      assert.equal(failingEngine.isProjectOpen(ids[0] ?? ""), true);
+      assert.equal(failingEngine.isProjectOpen(ids[1] ?? ""), false);
+    } finally {
+      await failingEngine.close();
     }
   });
 });

@@ -16,35 +16,46 @@ import type {
   ProjectHandle,
   ProjectTarget,
 } from "@eevee/core";
-import type {
-  AnswerQuestionRequest,
-  AnswerQuestionResponse,
-  ConversationRef,
-  CreateProjectRequest,
-  DeleteProjectResponse,
-  EntryRecordPayload,
-  GetProjectResponse,
-  KillWorkerTaskResponse,
-  ListEntriesResponse,
-  ListWorkerTasksResponse,
-  OkResponse,
-  ProjectMemoryResponse,
-  ProjectSummary,
-  ProjectUsageResponse,
-  PutProjectMemoryRequest,
-  QuestionId,
-  ReadWorkerTaskResponse,
-  ScanOrder,
-  SendMessageRequest,
-  SendMessageResponse,
-  UpdateProjectRequest,
-  WorkerId,
+import {
+  type AnswerQuestionRequest,
+  type AnswerQuestionResponse,
+  type ConversationRef,
+  type CreateProjectRequest,
+  type DeleteProjectResponse,
+  EntriesQuerySchema,
+  type EntryRecordPayload,
+  type GetProjectResponse,
+  isActiveTaskStatus,
+  type KillWorkerTaskResponse,
+  type ListEntriesResponse,
+  type ListProjectTasksResponse,
+  ListWorkerTasksQuerySchema,
+  type ListWorkerTasksResponse,
+  type OkResponse,
+  type ProjectMemoryResponse,
+  type ProjectSummary,
+  type ProjectTaskItemPayload,
+  type ProjectUsageResponse,
+  type PutProjectMemoryRequest,
+  type QuestionId,
+  type ReadWorkerTaskResponse,
+  type ScanOrder,
+  type SendMessageRequest,
+  type SendMessageResponse,
+  type UpdateProjectRequest,
+  validateTaskReadOptions as validateProtocolTaskReadOptions,
+  type WorkerId,
 } from "@eevee/protocol";
-import { validateTaskReadOptions as validateProtocolTaskReadOptions } from "@eevee/protocol";
 import { decodeCursor, encodeCursor } from "./cursor.ts";
 import { type DataDirLayout, projectPaths } from "./data-dir.ts";
 import type { EngineKnobs } from "./engine-config.ts";
-import { EngineError, guardAsync, guardSync, toEngineError } from "./engine-error.ts";
+import {
+  EngineError,
+  guardAsync,
+  guardSync,
+  parseQueryParams,
+  toEngineError,
+} from "./engine-error.ts";
 import { expandMessageSkills, type SkillsDeps } from "./engine-skills.ts";
 import { subscribeWorkerTaskStream, type WorkerTaskStream } from "./engine-task-stream.ts";
 import type { ProjectPool } from "./project-pool.ts";
@@ -102,6 +113,10 @@ export type ProjectsHandle = {
     questionId: QuestionId,
     input: AnswerQuestionRequest,
   ): Promise<AnswerQuestionResponse>;
+  listProjectTasks(
+    projectId: string,
+    options?: CoreListWorkerTasksOptions,
+  ): Promise<ListProjectTasksResponse>;
   listWorkerTasks(
     projectId: string,
     workerId: WorkerId,
@@ -151,17 +166,14 @@ async function inProject<T>(
 }
 
 export function createProject(deps: ProjectOpsDeps, input: CreateProjectRequest): ProjectSummary {
-  if (input.workspaces.length === 0) {
-    throw new EngineError(400, "invalid_request", "workspaces must contain at least one directory");
-  }
+  let created: ProjectSummary;
   try {
-    return deps.store.createProject(input);
+    created = deps.store.createProject(input);
   } catch (error) {
-    if (error instanceof Error) {
-      throw new EngineError(400, "invalid_request", error.message);
-    }
-    throw error;
+    throw toEngineError(error);
   }
+  deps.pool.notifyProjectCreated(created.id);
+  return created;
 }
 
 export function listProjects(deps: ProjectOpsDeps): ProjectSummary[] {
@@ -182,10 +194,7 @@ export async function updateProject(
   try {
     updated = deps.store.updateProject(projectId, patch);
   } catch (error) {
-    if (error instanceof Error) {
-      throw new EngineError(400, "invalid_request", error.message);
-    }
-    throw error;
+    throw toEngineError(error);
   }
   if (updated === undefined) {
     throw new EngineError(404, "project_not_found", `Unknown project ${projectId}`);
@@ -272,15 +281,13 @@ export async function listEntries(
   ref: ConversationRef,
   params: ListEntriesParams = {},
 ): Promise<ListEntriesResponse> {
-  const limit = params.limit ?? 50;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
-    throw new EngineError(400, "invalid_query", "limit must be an integer between 1 and 500");
-  }
-  const cursor = params.cursor === undefined ? undefined : decodeCursor(params.cursor);
+  const validated = parseQueryParams(EntriesQuerySchema, params);
+  const limit = validated.limit ?? 50;
+  const cursor = validated.cursor === undefined ? undefined : decodeCursor(validated.cursor);
   const query: Omit<EntryQuery, "conversationId"> = {
-    ...(params.order === undefined ? {} : { order: params.order }),
-    ...(params.minEntryId === undefined ? {} : { minEntryId: params.minEntryId as EntryId }),
-    ...(params.maxEntryId === undefined ? {} : { maxEntryId: params.maxEntryId as EntryId }),
+    ...(validated.order === undefined ? {} : { order: validated.order }),
+    ...(validated.minEntryId === undefined ? {} : { minEntryId: validated.minEntryId as EntryId }),
+    ...(validated.maxEntryId === undefined ? {} : { maxEntryId: validated.maxEntryId as EntryId }),
   };
   return inProject(deps, projectId, async (handle) => {
     const page = await handle.listEntries(
@@ -333,21 +340,47 @@ export async function answerQuestion(
   }));
 }
 
+export async function listProjectTasks(
+  deps: ProjectOpsDeps,
+  projectId: string,
+  options?: CoreListWorkerTasksOptions,
+): Promise<ListProjectTasksResponse> {
+  const validated =
+    options === undefined ? undefined : parseQueryParams(ListWorkerTasksQuerySchema, options);
+  const board = await getBoard(deps, projectId);
+  const tasks: ProjectTaskItemPayload[] = [];
+  for (const worker of board.workers) {
+    for (const task of worker.tasks) {
+      tasks.push({ ...task, workerId: worker.id });
+    }
+  }
+  tasks.sort((a, b) => {
+    if (a.startedAt !== b.startedAt) return a.startedAt - b.startedAt;
+    if (a.workerId !== b.workerId) return a.workerId < b.workerId ? -1 : 1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  const status = validated?.status ?? "all";
+  const limit = validated?.limit;
+  const active = tasks.filter((task) => isActiveTaskStatus(task.status));
+  const finished = tasks.filter((task) => !isActiveTaskStatus(task.status));
+  if (status === "active") {
+    return { tasks: limit === undefined ? active : active.slice(-limit) };
+  }
+  const boundedFinished = limit === undefined ? finished : finished.slice(-limit);
+  return { tasks: status === "finished" ? boundedFinished : [...active, ...boundedFinished] };
+}
+
 export async function listWorkerTasks(
   deps: ProjectOpsDeps,
   projectId: string,
   workerId: WorkerId,
   options?: CoreListWorkerTasksOptions,
 ): Promise<ListWorkerTasksResponse> {
-  if (
-    options?.limit !== undefined &&
-    (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100)
-  ) {
-    throw new EngineError(400, "invalid_query", "limit must be an integer between 1 and 100");
-  }
+  const validated =
+    options === undefined ? undefined : parseQueryParams(ListWorkerTasksQuerySchema, options);
   return inProject(deps, projectId, async (handle) => ({
     tasks: [
-      ...(await handle.listWorkerTasks(workerId as CoreWorkerId, options, BACKGROUND_CONTEXT)),
+      ...(await handle.listWorkerTasks(workerId as CoreWorkerId, validated, BACKGROUND_CONTEXT)),
     ],
   }));
 }
@@ -403,7 +436,9 @@ export async function killWorkerTask(
 }
 
 export async function getBoard(deps: ProjectOpsDeps, projectId: string): Promise<BoardView> {
-  return inProject(deps, projectId, (handle) => handle.board(BACKGROUND_CONTEXT));
+  const board = await inProject(deps, projectId, (handle) => handle.board(BACKGROUND_CONTEXT));
+  deps.pool.cacheBoard(projectId, board);
+  return board;
 }
 
 export async function watchConversation(
@@ -448,6 +483,9 @@ export function createProjectsHandle(deps: ProjectOpsDeps): ProjectsHandle {
     ),
     answerQuestion: guardAsync(deps.assertOpen, (projectId, questionId, input) =>
       answerQuestion(deps, projectId, questionId, input),
+    ),
+    listProjectTasks: guardAsync(deps.assertOpen, (projectId, options) =>
+      listProjectTasks(deps, projectId, options),
     ),
     listWorkerTasks: guardAsync(deps.assertOpen, (projectId, workerId, options) =>
       listWorkerTasks(deps, projectId, workerId, options),

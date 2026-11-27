@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -14,6 +14,7 @@ import {
   type Message,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
+import { bool, obj } from "@earendil-works/pi-schema";
 import {
   type BoardStreamEvent,
   BoardViewSchema,
@@ -25,14 +26,17 @@ import {
   GetProjectResponseSchema,
   HealthResponseSchema,
   ListProjectsResponseSchema,
+  ListProjectTasksResponseSchema,
   ProblemSchema,
   parseWithSchema,
   SendMessageResponseSchema,
 } from "@eevee/protocol";
+import { decodeCursor, encodeCursor } from "../src/cursor.ts";
 import { RouteTrie, route } from "../src/http-io.ts";
 import {
   connectLocalEngine,
   Engine,
+  EngineError,
   EngineStore,
   ensureAuthToken,
   readAuthToken,
@@ -162,7 +166,9 @@ test("startEngineHttpServer rejects non-127.0.0.1 hosts and enforces bearer auth
           ["POST", "/shutdown"],
           ["GET", "/projects"],
           ["POST", "/projects"],
+          ["GET", "/boards/stream"],
           ["GET", "/projects/demo"],
+          ["GET", "/projects/demo/tasks"],
           ["POST", "/projects/demo/conversations/router/messages"],
           ["GET", "/projects/demo/board"],
           ["GET", "/projects/demo/board/stream"],
@@ -536,10 +542,14 @@ test("HTTP endpoints satisfy protocol contracts, stream Board and Conversation S
 
     // Reopen Engine on same dataDir -> SQLite persists projects, kv, and conversation entries
     const store = EngineStore.open(join(home, "engine.sqlite"));
+    const customSchema = obj({ enabled: bool() });
+    assert.equal(store.hasKv("custom"), false);
     store.setKv("custom", { enabled: true });
-    assert.deepEqual(store.getKv("custom"), { enabled: true });
+    assert.equal(store.hasKv("custom"), true);
+    assert.deepEqual(store.getKvParsed("custom", customSchema), { enabled: true });
     assert.equal(store.deleteKv("custom"), true);
-    assert.equal(store.getKv("custom"), undefined);
+    assert.equal(store.hasKv("custom"), false);
+    assert.equal(store.getKvParsed("custom", customSchema), undefined);
     store.close();
     store.close(); // idempotent close
 
@@ -653,6 +663,237 @@ test("RouteTrie enforces static-before-param precedence regardless of registrati
     } finally {
       await server.close();
       await engine.close();
+    }
+  });
+});
+
+test("decodeCursor enforces strict Cursor shape and rejects invalid payloads", () => {
+  const withOrder = encodeCursor({ after: 42, order: "descending" });
+  assert.deepEqual(decodeCursor(withOrder), { after: 42, order: "descending" });
+
+  const legacy = Buffer.from(JSON.stringify({ after: 7 }), "utf8").toString("base64url");
+  assert.deepEqual(decodeCursor(legacy), { after: 7 });
+
+  const badPayloads: unknown[] = [
+    null,
+    [],
+    "cursor",
+    123,
+    {},
+    { order: "ascending" },
+    { after: -1, order: "ascending" },
+    { after: 1.5, order: "ascending" },
+    { after: 9007199254740992, order: "ascending" },
+    { after: "1", order: "ascending" },
+    { after: 1, order: "sideways" },
+    { after: 1, order: "ascending", extra: true },
+  ];
+  for (const payload of badPayloads) {
+    const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+    assert.throws(
+      () => decodeCursor(encoded),
+      (err: unknown) => err instanceof EngineError && err.status === 400,
+    );
+  }
+  assert.throws(
+    () => decodeCursor(""),
+    (err: unknown) => err instanceof EngineError && err.status === 400,
+  );
+  assert.throws(
+    () => decodeCursor("not!base64"),
+    (err: unknown) => err instanceof EngineError && err.status === 400,
+  );
+});
+
+test("HTTP maps StoreValidationError to 400 while surfacing genuine SQLite failures as 500", async () => {
+  await withTempDir(async (dir) => {
+    const engine = await Engine.open({ dataDir: dir });
+    const server = await startEngineHttpServer(engine, {
+      port: 0,
+      token: "store-err-token",
+      webDistDir: false,
+    });
+    try {
+      const client = new EeveeClient({ baseUrl: server.url, token: "store-err-token" });
+
+      // Domain validation errors in store -> 400 invalid_request
+      await assert.rejects(
+        client.createProject({ workspaces: ["   "], title: "Valid" }),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 400 &&
+          err.problem.code === "invalid_request",
+      );
+
+      const created = await client.createProject({ workspaces: [dir], title: "Good" });
+      await assert.rejects(
+        client.updateProject(created.project.id, { title: "   " }),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 400 &&
+          err.problem.code === "invalid_request",
+      );
+
+      // Genuine SQLite failure (store closed unexpectedly) -> 500 internal_error, NOT masked as 400
+      engine.store.close();
+      await assert.rejects(
+        client.createProject({ workspaces: [dir], title: "After DB Close" }),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 500 &&
+          err.problem.code === "internal_error",
+      );
+      await assert.rejects(
+        client.updateProject(created.project.id, { title: "After DB Close" }),
+        (err: unknown) =>
+          err instanceof EeveeApiError &&
+          err.status === 500 &&
+          err.problem.code === "internal_error",
+      );
+    } finally {
+      await server.close();
+      await engine.close();
+    }
+  });
+});
+
+test("GET /projects/:projectId/tasks aggregates, sorts deterministically, and preserves active tasks under limit", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws = join(dir, "ws");
+    await mkdir(ws, { recursive: true });
+    const faux = fauxProvider({ models: [{ id: MODEL_ID }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+
+    const nodeBin = JSON.stringify(process.execPath.replace(/\\/g, "/"));
+    const quickCmd = `${nodeBin} -e 'process.stdout.write("done\\n");'`;
+    const holdCmd = `${nodeBin} -e 'process.stdout.write("holding\\n"); setInterval(() => {}, 1000);'`;
+
+    const brain: FauxResponseFactory = (context) => {
+      const last = lastMessage(context);
+      if (last?.role === "user") {
+        const text = messageText(last);
+        if (text.includes("spawn-two")) {
+          return fauxAssistantMessage(
+            [
+              fauxToolCall("spawn_worker", { name: "alpha", prompt: "alpha-init" }),
+              fauxToolCall("spawn_worker", { name: "beta", prompt: "beta-init" }),
+            ],
+            { stopReason: "toolUse" },
+          );
+        }
+        if (text.includes("run-finished-1")) {
+          return fauxAssistantMessage(
+            [fauxToolCall("bash", { command: quickCmd, background: true })],
+            { stopReason: "toolUse" },
+          );
+        }
+        if (text.includes("run-finished-2")) {
+          return fauxAssistantMessage(
+            [fauxToolCall("bash", { command: quickCmd, background: true })],
+            { stopReason: "toolUse" },
+          );
+        }
+        if (text.includes("run-active")) {
+          return fauxAssistantMessage(
+            [fauxToolCall("bash", { command: holdCmd, background: true })],
+            { stopReason: "toolUse" },
+          );
+        }
+      }
+      if (last?.role === "toolResult") {
+        return fauxAssistantMessage("done-step");
+      }
+      return fauxAssistantMessage("ack");
+    };
+    faux.setResponses(Array.from({ length: 60 }, () => brain));
+
+    const foreground = await startForegroundEngine({
+      dataDir: home,
+      port: 0,
+      models,
+      defaultModelSlots: {
+        router: { provider: faux.provider.id, modelId: MODEL_ID },
+        worker: { provider: faux.provider.id, modelId: MODEL_ID },
+      },
+    });
+
+    try {
+      const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
+      const projectId = (await client.createProject({ workspaces: [ws], title: "ProjectTasks" }))
+        .project.id;
+
+      await client.sendMessage(projectId, "router", { text: "spawn-two" });
+      await waitFor(async () => {
+        const board = await client.getBoard(projectId);
+        return board.workers.length === 2 && board.workers.every((w) => w.status === "idle");
+      }, "both workers w1 and w2 idle");
+
+      // Finished tasks on w1 and w2
+      await client.sendMessage(projectId, "w1", { text: "run-finished-1" });
+      await waitFor(async () => {
+        const res = await client.listWorkerTasks(projectId, "w1", { status: "finished" });
+        return res.tasks.length >= 1;
+      }, "w1 finished task-1");
+
+      await client.sendMessage(projectId, "w2", { text: "run-finished-2" });
+      await waitFor(async () => {
+        const res = await client.listWorkerTasks(projectId, "w2", { status: "finished" });
+        return res.tasks.length >= 1;
+      }, "w2 finished task-1");
+
+      // Active tasks on both w1 and w2
+      await client.sendMessage(projectId, "w1", { text: "run-active" });
+      await client.sendMessage(projectId, "w2", { text: "run-active" });
+      await waitFor(async () => {
+        const res = await client.listProjectTasks(projectId, { status: "active" });
+        return res.tasks.length === 2;
+      }, "2 active tasks across w1 and w2");
+
+      const all = await client.listProjectTasks(projectId);
+      parseWithSchema(ListProjectTasksResponseSchema, all);
+      assert.equal(all.tasks.length, 4);
+
+      const activeOnly = await client.listProjectTasks(projectId, { status: "active" });
+      assert.equal(activeOnly.tasks.length, 2);
+      assert.deepEqual(activeOnly.tasks.map((t) => t.workerId).sort(), ["w1", "w2"]);
+
+      const finishedOnly = await client.listProjectTasks(projectId, { status: "finished" });
+      assert.equal(finishedOnly.tasks.length, 2);
+
+      // Verify deterministic sort order (startedAt asc, then workerId, then id) within each bucket
+      const sortedCheck = [...finishedOnly.tasks].sort((a, b) => {
+        if (a.startedAt !== b.startedAt) return a.startedAt - b.startedAt;
+        if (a.workerId !== b.workerId) return a.workerId < b.workerId ? -1 : 1;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      });
+      assert.deepEqual(finishedOnly.tasks, sortedCheck);
+
+      // status="all" with limit=1 preserves ALL active tasks AND returns only last 1 finished task
+      const limitedAll = await client.listProjectTasks(projectId, { status: "all", limit: 1 });
+      assert.equal(limitedAll.tasks.length, 3);
+      assert.deepEqual(limitedAll.tasks.slice(0, 2), activeOnly.tasks);
+      assert.deepEqual(limitedAll.tasks.slice(2), finishedOnly.tasks.slice(-1));
+
+      // status="active" with limit=1 bounds active tasks to 1
+      const limitedActive = await client.listProjectTasks(projectId, {
+        status: "active",
+        limit: 1,
+      });
+      assert.equal(limitedActive.tasks.length, 1);
+
+      // Query validation & missing project checks
+      await assert.rejects(
+        client.listProjectTasks(projectId, { limit: 0 }),
+        (err: unknown) => err instanceof EeveeApiError && err.status === 400,
+      );
+      await assert.rejects(
+        client.listProjectTasks("missing-project"),
+        (err: unknown) => err instanceof EeveeApiError && err.status === 404,
+      );
+    } finally {
+      await foreground.close();
     }
   });
 });

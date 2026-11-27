@@ -12,7 +12,7 @@ import {
   type McpServerEntry,
   mcpOAuthStoreKey,
 } from "@eevee/agent";
-import { openProject as openCoreProject, type ProjectHandle } from "@eevee/core";
+import { type BoardView, openProject as openCoreProject, type ProjectHandle } from "@eevee/core";
 import type { ProjectSummary } from "@eevee/protocol";
 import { type DataDirLayout, projectPaths } from "./data-dir.ts";
 import {
@@ -28,6 +28,12 @@ import {
 import { EngineError } from "./engine-error.ts";
 import { KeyedSerialQueue } from "./serial-queue.ts";
 import type { EngineStore } from "./store.ts";
+
+export type PoolBoardEvent =
+  | { readonly type: "board"; readonly projectId: string; readonly board: BoardView }
+  | { readonly type: "removed"; readonly projectId: string };
+
+const EMPTY_BOARD: BoardView = { workers: [], tickets: [], questions: [] };
 
 export type OpenProjectStorage = (
   sessionDbPath: string,
@@ -64,12 +70,51 @@ export class ProjectPool {
   readonly #mcpQueue = new KeyedSerialQueue();
   readonly #deletingProjects = new Set<string>();
   readonly #streamCounts = new Map<string, number>();
+  readonly #boardListeners = new Set<(event: PoolBoardEvent) => void>();
+  readonly #boardCache = new Map<
+    string,
+    { readonly board: BoardView; readonly signature: string }
+  >();
+  readonly #boardUnsubs = new Map<string, () => void>();
   #hibernateTimer: ReturnType<typeof setInterval> | undefined;
   #closed = false;
 
   constructor(deps: ProjectPoolDeps) {
     this.#deps = deps;
     this.#rescheduleHibernateSweeper();
+  }
+
+  getCachedBoard(projectId: string): BoardView | undefined {
+    return this.#boardCache.get(projectId)?.board;
+  }
+
+  cacheBoard(projectId: string, board: BoardView): void {
+    if (this.#closed || this.#deletingProjects.has(projectId)) return;
+    this.#recordAndEmitBoard(projectId, board);
+  }
+
+  notifyProjectCreated(projectId: string): void {
+    if (this.#closed || this.#deletingProjects.has(projectId)) return;
+    this.#recordAndEmitBoard(projectId, EMPTY_BOARD);
+  }
+
+  subscribeBoardEvents(listener: (event: PoolBoardEvent) => void): () => void {
+    if (this.#closed) return () => {};
+    this.#boardListeners.add(listener);
+    if (this.#boardListeners.size === 1) {
+      for (const [projectId, entry] of this.#projects) {
+        this.#attachBoardFeed(projectId, entry.handle);
+      }
+    }
+    return () => {
+      this.#boardListeners.delete(listener);
+      if (this.#boardListeners.size === 0) {
+        for (const unsub of this.#boardUnsubs.values()) {
+          unsub();
+        }
+        this.#boardUnsubs.clear();
+      }
+    };
   }
 
   isProjectOpen(projectId: string): boolean {
@@ -177,21 +222,34 @@ export class ProjectPool {
         await this.#closeOpenProject(projectId);
       }
       await remove();
+      this.#emitProjectRemoved(projectId);
     } finally {
       this.#deletingProjects.delete(projectId);
     }
   }
 
   async recoverProjects(): Promise<void> {
+    const projectIds = this.#deps.store.listProjectIds();
+    if (projectIds.length === 0) return;
     const errors: unknown[] = [];
-    for (const project of this.#deps.store.listProjects()) {
-      if (this.#closed) break;
-      try {
-        await this.openProject(project.id);
-      } catch (error) {
-        errors.push(error);
+    const concurrency = Math.min(4, projectIds.length);
+    let index = 0;
+
+    const worker = async (): Promise<void> => {
+      while (!this.#closed) {
+        const current = index;
+        index += 1;
+        const projectId = projectIds[current];
+        if (projectId === undefined) return;
+        try {
+          await this.openProject(projectId);
+        } catch (error) {
+          errors.push(error);
+        }
       }
-    }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
     if (errors.length > 0) {
       throw new AggregateError(errors, `Failed to recover ${errors.length} project(s)`);
     }
@@ -218,6 +276,20 @@ export class ProjectPool {
         continue;
       }
       if (inspection.tasks.length > 0 || inspection.submissions.length > 0) continue;
+
+      if (this.#closed || this.#projects.get(projectId) !== entry) continue;
+      if ((this.#streamCounts.get(projectId) ?? 0) > 0) continue;
+      if (now - entry.lastActivityAt < idleMs) continue;
+      if (entry.handle.harness.wake().active) continue;
+
+      try {
+        const board = await entry.handle.board(BACKGROUND_CONTEXT);
+        if (!this.#closed && this.#projects.get(projectId) === entry) {
+          this.#recordAndEmitBoard(projectId, board);
+        }
+      } catch {
+        // Proceed with closing even if final board snapshot fails.
+      }
 
       if (this.#closed || this.#projects.get(projectId) !== entry) continue;
       if ((this.#streamCounts.get(projectId) ?? 0) > 0) continue;
@@ -343,6 +415,12 @@ export class ProjectPool {
 
   async closeAll(): Promise<void> {
     this.#closed = true;
+    for (const unsub of this.#boardUnsubs.values()) {
+      unsub();
+    }
+    this.#boardUnsubs.clear();
+    this.#boardListeners.clear();
+    this.#boardCache.clear();
     if (this.#hibernateTimer !== undefined) {
       clearInterval(this.#hibernateTimer);
       this.#hibernateTimer = undefined;
@@ -462,6 +540,8 @@ export class ProjectPool {
   }
 
   async #closeOpenProject(projectId: string): Promise<void> {
+    this.#boardUnsubs.get(projectId)?.();
+    this.#boardUnsubs.delete(projectId);
     const entry = this.#projects.get(projectId);
     if (entry === undefined) {
       const existingClosing = this.#closingProjects.get(projectId);
@@ -568,11 +648,57 @@ export class ProjectPool {
       };
       entryRef = entry;
       this.#projects.set(project.id, entry);
+      if (this.#boardListeners.size > 0) {
+        this.#attachBoardFeed(project.id, handle);
+      }
       return handle;
     } catch (error) {
       await projectMcpHub?.close().catch(() => undefined);
       await storage.close(BACKGROUND_CONTEXT).catch(() => undefined);
       throw error;
+    }
+  }
+
+  #attachBoardFeed(projectId: string, handle: ProjectHandle): void {
+    if (
+      this.#closed ||
+      this.#deletingProjects.has(projectId) ||
+      this.#boardListeners.size === 0 ||
+      this.#boardUnsubs.has(projectId)
+    ) {
+      return;
+    }
+    let primed = false;
+    const unsub = handle.subscribeBoard((board) => {
+      if (!primed || this.#closed || this.#deletingProjects.has(projectId)) return;
+      this.#recordAndEmitBoard(projectId, board);
+    });
+    primed = true;
+    this.#boardUnsubs.set(projectId, unsub);
+  }
+
+  #recordAndEmitBoard(projectId: string, board: BoardView): void {
+    const signature = JSON.stringify(board);
+    const cached = this.#boardCache.get(projectId);
+    if (cached !== undefined && cached.signature === signature) return;
+    this.#boardCache.set(projectId, { board, signature });
+    for (const listener of [...this.#boardListeners]) {
+      try {
+        listener({ type: "board", projectId, board });
+      } catch {
+        // Isolate subscriber exceptions.
+      }
+    }
+  }
+
+  #emitProjectRemoved(projectId: string): void {
+    this.#boardCache.delete(projectId);
+    for (const listener of [...this.#boardListeners]) {
+      try {
+        listener({ type: "removed", projectId });
+      } catch {
+        // Isolate subscriber exceptions.
+      }
     }
   }
 }

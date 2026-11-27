@@ -66,6 +66,7 @@ export const UpdateProjectRequestSchema = obj({
   memory: opt(nullable(str())),
   models: opt(nullable(ModelSlotsOverrideSchema)),
   tools: opt(nullable(ToolsSettingsSchema)),
+  merge: opt(bool()),
 });
 export type UpdateProjectRequest = Static<typeof UpdateProjectRequestSchema>;
 
@@ -127,7 +128,7 @@ export const SendMessageResponseSchema = obj({
 });
 export type SendMessageResponse = Static<typeof SendMessageResponseSchema>;
 
-export const BackgroundTaskRecordSchema = obj({
+const BACKGROUND_TASK_RECORD_PROPERTIES = {
   id: str({ minLength: 1 }),
   durableTaskId: opt(int({ minimum: 1 })),
   shell: opt(TaskShellSchema),
@@ -142,8 +143,20 @@ export const BackgroundTaskRecordSchema = obj({
   cancelReason: opt(TaskCancelReasonSchema),
   startedAt: num(),
   endedAt: opt(num()),
-});
+} as const;
+
+export const BackgroundTaskRecordSchema = obj(BACKGROUND_TASK_RECORD_PROPERTIES);
 export type BackgroundTaskRecordPayload = Static<typeof BackgroundTaskRecordSchema>;
+
+export const ProjectTaskItemSchema = obj({
+  ...BACKGROUND_TASK_RECORD_PROPERTIES,
+  workerId: WorkerIdSchema,
+});
+export type ProjectTaskItemPayload = Static<typeof ProjectTaskItemSchema>;
+export type ProjectTaskItem = ProjectTaskItemPayload;
+
+export const ListProjectTasksResponseSchema = obj({ tasks: arr(ProjectTaskItemSchema) });
+export type ListProjectTasksResponse = Static<typeof ListProjectTasksResponseSchema>;
 
 export const WorkerBoardItemSchema = obj({
   id: WorkerIdSchema,
@@ -195,6 +208,22 @@ export const BoardViewSchema = obj({
   questions: arr(QuestionRecordSchema),
 });
 export type BoardViewPayload = Static<typeof BoardViewSchema>;
+
+export const AllBoardsSnapshotEventSchema = obj({
+  boards: map(BoardViewSchema),
+});
+export type AllBoardsSnapshotEvent = Static<typeof AllBoardsSnapshotEventSchema>;
+
+export const AllBoardsUpdateEventSchema = obj({
+  projectId: ProjectIdSchema,
+  board: BoardViewSchema,
+});
+export type AllBoardsUpdateEvent = Static<typeof AllBoardsUpdateEventSchema>;
+
+export const AllBoardsRemovedEventSchema = obj({
+  projectId: ProjectIdSchema,
+});
+export type AllBoardsRemovedEvent = Static<typeof AllBoardsRemovedEventSchema>;
 
 export const AnswerQuestionRequestSchema = obj({
   answers: arr(str(), { minItems: 1 }),
