@@ -347,7 +347,6 @@ test("providers list, API key login/logout, and interactive OAuth & cancel flows
       const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
       const authHeader = { Authorization: `Bearer ${foreground.token}` };
 
-      // Enforce 401 and 405 on management routes
       const unauthProviders = await fetch(`${foreground.url}/providers`);
       assert.equal(unauthProviders.status, 401);
       const wrongMethodProviders = await fetch(`${foreground.url}/providers`, {
@@ -358,7 +357,6 @@ test("providers list, API key login/logout, and interactive OAuth & cancel flows
       assert.equal(wrongMethodProviders.headers.get("allow"), "GET, POST");
       parseWithSchema(ProblemSchema, await wrongMethodProviders.json());
 
-      // List providers initially unconfigured
       const initialProviders = await client.listProviders();
       parseWithSchema(ListProvidersResponseSchema, initialProviders);
       const oauthEntry = initialProviders.providers.find((p) => p.id === "oauth-test");
@@ -368,12 +366,10 @@ test("providers list, API key login/logout, and interactive OAuth & cancel flows
       assert.equal(oauthEntry.authMethods.apiKeyLogin, true);
       assert.equal(oauthEntry.modelCount, 1);
 
-      // Available models filter excludes unconfigured providers
       const availBefore = await client.listModels({ available: true });
       parseWithSchema(ListModelsResponseSchema, availBefore);
       assert.equal(availBefore.models.length, 0);
 
-      // Direct API key login -> configured & model available
       parseWithSchema(
         OkResponseSchema,
         await client.setProviderApiKey("refreshable", { key: "sk-refresh" }),
@@ -387,7 +383,6 @@ test("providers list, API key login/logout, and interactive OAuth & cancel flows
       assert.equal(listedDynamic.models.length, 1);
       assert.equal(listedDynamic.models[0]?.id, "dynamic-1");
 
-      // Interactive OAuth login via SSE + /input
       const session = await client.startProviderLogin("oauth-test", { type: "oauth" });
       parseWithSchema(StartLoginResponseSchema, session);
 
@@ -423,7 +418,6 @@ test("providers list, API key login/logout, and interactive OAuth & cancel flows
         assert.equal(storedCred.access, "access-pro-code-42");
       }
 
-      // Interactive API key login + cancel flow
       const cancelSession = await client.startProviderLogin("oauth-test", { type: "api_key" });
       const cancelEvents: LoginStreamEvent[] = [];
       for await (const evt of client.streamLoginSession("oauth-test", cancelSession.sessionId)) {
@@ -438,7 +432,6 @@ test("providers list, API key login/logout, and interactive OAuth & cancel flows
         assert.equal(lastCancelEvent.error.code, "login_cancelled");
       }
 
-      // Logout removes stored credential
       parseWithSchema(OkResponseSchema, await client.logoutProvider("oauth-test"));
       const afterLogout = await client.listProviders();
       assert.equal(afterLogout.providers.find((p) => p.id === "oauth-test")?.configured, false);
@@ -500,7 +493,6 @@ test("settings, model profiles, project update, and memory take effect live on t
       assert.ok(seenPrompts[0]?.includes("Project: Alpha"));
       assert.equal(seenPrompts[0]?.includes("fast-worker"), false);
 
-      // Update project memory, model profiles, project metadata, and global settings while open!
       const memUpdate = await client.putProjectMemory(projectId, { memory: "Memory v2 strict" });
       parseWithSchema(ProjectMemoryResponseSchema, memUpdate);
       assert.equal(memUpdate.memory, "Memory v2 strict");
@@ -540,7 +532,6 @@ test("settings, model profiles, project update, and memory take effect live on t
       assert.ok(secondPrompt.includes("Prefer fast-worker for simple tasks."));
       assert.equal(seenModels[1], "faux-2");
 
-      // Clear memory -> memory omitted
       const cleared = await client.putProjectMemory(projectId, { memory: null });
       assert.equal(cleared.memory, null);
       await sendAndWait("turn 3");
@@ -761,13 +752,11 @@ test("shared McpHub propagates live MCP reloads to multiple open projects and su
         await sub?.wait(BACKGROUND_CONTEXT);
       };
 
-      // Open both projects BEFORE adding MCP servers
       await sendAndWait(p1, "warmup-1");
       await sendAndWait(p2, "warmup-2");
       assert.equal(observedToolsByProject[0]?.includes("mcp__alpha__ping"), false);
       assert.equal(observedToolsByProject[1]?.includes("mcp__alpha__ping"), false);
 
-      // Global /mcp PUT and upsert reject empty {} and partial overrides with 400
       for (const [path, body] of [
         ["/mcp", { servers: { bad: {} } }],
         ["/mcp", { servers: { bad: { enabled: false } } }],
@@ -785,7 +774,6 @@ test("shared McpHub propagates live MCP reloads to multiple open projects and su
         assert.equal(res.status, 400, `expected 400 for PUT ${path}`);
       }
 
-      // Invalid namespace collision rejected with 400 BEFORE mutating kv
       await assert.rejects(
         client.putMcpConfig({
           servers: {
@@ -797,7 +785,6 @@ test("shared McpHub propagates live MCP reloads to multiple open projects and su
       );
       assert.deepEqual((await client.getMcpState()).servers, {});
 
-      // Upsert alpha (direct exposure) -> propagates immediately to BOTH already-open projects
       const addedAlpha = await client.upsertMcpServer("alpha", {
         config: { command: "alpha-cmd", exposure: "direct" },
       });
@@ -809,7 +796,6 @@ test("shared McpHub propagates live MCP reloads to multiple open projects and su
       await sendAndWait(p2, "call-alpha-p2");
       assert.equal(alphaServer.calls.length, 2);
 
-      // Add flaky (initially fails) -> reconnect after fixing -> becomes connected
       await client.upsertMcpServer("flaky", {
         config: { command: "flaky-cmd", exposure: "direct" },
       });
@@ -818,7 +804,6 @@ test("shared McpHub propagates live MCP reloads to multiple open projects and su
         "failed",
       );
 
-      // Unknown / disabled reconnect error codes
       await assert.rejects(
         client.reconnectMcp({ server: "unknown-srv" }),
         (err: unknown) => err instanceof EeveeApiError && err.status === 404,
@@ -829,7 +814,6 @@ test("shared McpHub propagates live MCP reloads to multiple open projects and su
       parseWithSchema(ReconnectMcpResponseSchema, reconnected);
       assert.equal(reconnected.status.find((s) => s.name === "flaky")?.status, "connected");
 
-      // Delete alpha -> tool disappears from open projects
       await client.deleteMcpServer("alpha");
       await sendAndWait(p1, "after-delete");
       assert.equal(observedToolsByProject.at(-1)?.includes("mcp__alpha__ping"), false);
@@ -882,14 +866,12 @@ test("project idle hibernation skips active/streaming projects, closes idle ones
       const projectId = (await client.createProject({ workspaces: [ws], title: "Hibernate" }))
         .project.id;
 
-      // Open project via message
       const handle = await foreground.engine.openProject(projectId);
       const sent = await client.sendMessage(projectId, "router", { text: "first" });
       const sub = await handle.harness.submission(sent.submissionId as never, BACKGROUND_CONTEXT);
       await sub?.wait(BACKGROUND_CONTEXT);
       assert.equal(foreground.engine.isProjectOpen(projectId), true);
 
-      // Active SSE stream blocks hibernation even when time advances past idleHibernateMs
       const streamAbort = new AbortController();
       let gotSnapshot = false;
       const streamLoop = (async () => {
@@ -915,7 +897,6 @@ test("project idle hibernation skips active/streaming projects, closes idle ones
       assert.deepEqual(await foreground.engine.hibernateIdleProjects(Date.now() + 60_000), []);
       assert.equal(foreground.engine.isProjectOpen(projectId), true);
 
-      // Active run blocks hibernation too
       streamAbort.abort();
       boardAbort.abort();
       await Promise.all([streamLoop, boardLoop]);
@@ -931,7 +912,6 @@ test("project idle hibernation skips active/streaming projects, closes idle ones
       );
       await slowSub?.wait(BACKGROUND_CONTEXT);
 
-      // Once idle, manual hibernation succeeds
       await waitFor(
         async () =>
           (await foreground.engine.hibernateIdleProjects(Date.now() + 60_000)).length === 1,
@@ -939,12 +919,10 @@ test("project idle hibernation skips active/streaming projects, closes idle ones
       );
       assert.equal(foreground.engine.isProjectOpen(projectId), false);
 
-      // Next request transparently reopens the project with persisted history
       const entries = await client.listEntries(projectId, "router");
       assert.equal(foreground.engine.isProjectOpen(projectId), true);
       assert.ok(entries.entries.some((e) => JSON.stringify(e).includes("hello")));
 
-      // Setting a short idleHibernateMs triggers the periodic unref'd sweeper automatically
       await client.patchSettings({ idleHibernateMs: 50 });
       await waitFor(
         () => !foreground.engine.isProjectOpen(projectId),
@@ -1102,7 +1080,6 @@ test("config export omits auth.json secrets, rejects invalid imports upfront, an
     try {
       const clientB = new EeveeClient({ baseUrl: engineB.url, token: engineB.token });
 
-      // Invalid import (bad models.json provider api) fails with 400 and leaves Engine B clean
       await assert.rejects(
         clientB.importConfig({
           version: 1,
@@ -1123,7 +1100,6 @@ test("config export omits auth.json secrets, rejects invalid imports upfront, an
       );
       assert.deepEqual(await clientB.getSettings(), {});
 
-      // Valid import reproduces identical config bundle
       const parsedBundle = parseWithSchema(ConfigBundleSchema, exportedBundle);
       const imported = await clientB.importConfig(parsedBundle);
       assert.deepEqual(imported, parsedBundle);
@@ -1218,7 +1194,6 @@ test("project usage sums conversation pi.usage and Dreamer MemoryMetaDoc.usage",
       const sub = await handle.harness.submission(sent.submissionId as never, BACKGROUND_CONTEXT);
       await sub?.wait(BACKGROUND_CONTEXT);
 
-      // Record Dreamer usage directly in MemoryMetaDoc to verify combined aggregation
       await handle.harness.commit(async (tx) => {
         const meta = await tx.doc(MemoryMetaDoc, handle.root.id);
         meta.usage["dreamer-provider/dreamer-mini"] = {
@@ -1332,7 +1307,6 @@ test("EngineStore PRAGMA user_version migrations are idempotent, upgrade legacy 
 
     assert.equal(readUserVersion(freshDb), 1);
 
-    // Pre-versioned DB (user_version = 0) missing newer project columns
     const legacyMissingColsDb = join(dir, "legacy-missing.sqlite");
     const rawMissing = new DatabaseSync(legacyMissingColsDb);
     try {
@@ -1372,7 +1346,6 @@ test("EngineStore PRAGMA user_version migrations are idempotent, upgrade legacy 
 
     assert.equal(readUserVersion(legacyMissingColsDb), 1);
 
-    // Pre-versioned DB (user_version = 0) that already had all columns
     const legacyWithColsDb = join(dir, "legacy-with-cols.sqlite");
     const rawWithCols = new DatabaseSync(legacyWithColsDb);
     try {
@@ -1423,7 +1396,6 @@ test("EngineStore PRAGMA user_version migrations are idempotent, upgrade legacy 
 
     assert.equal(readUserVersion(legacyWithColsDb), 1);
 
-    // Corrupt stored JSON / schema-invalid config surfaces errors instead of returning {}
     const corruptDb = join(dir, "corrupt.sqlite");
     const setupCorrupt = EngineStore.open(corruptDb);
     setupCorrupt.setKv(KV_SETTINGS, { maxActiveWorkers: "not-a-number" });
@@ -1476,7 +1448,6 @@ test("PATCH /projects/:id supports atomic merge mode alongside default wholesale
       });
       const projectId = created.project.id;
 
-      // merge: true deep-merges models & tools atomically inside SQLite transaction
       const merged = await client.updateProject(projectId, {
         merge: true,
         models: {
@@ -1499,7 +1470,6 @@ test("PATCH /projects/:id supports atomic merge mode alongside default wholesale
         codemode: { mode: "only", inlineBudget: 5_000 },
       });
 
-      // Default (merge omitted / false) performs wholesale replacement
       const replaced = await client.updateProject(projectId, {
         models: { router: { provider: faux.provider.id, modelId: MODEL_ID } },
         tools: { worker: { powershell: true } },
@@ -1511,7 +1481,6 @@ test("PATCH /projects/:id supports atomic merge mode alongside default wholesale
         worker: { powershell: true },
       });
 
-      // merge: true still clears when models/tools are explicitly null
       const cleared = await client.updateProject(projectId, {
         merge: true,
         models: null,
@@ -1567,7 +1536,6 @@ test("GET /boards/stream multiplexes snapshots, creations, live updates, hiberna
       const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
       const p1 = (await client.createProject({ workspaces: [ws1], title: "BoardOne" })).project.id;
 
-      // Connect multiplexed /boards/stream
       const streamAbort = new AbortController();
       const events: AllBoardsStreamEvent[] = [];
       const streamLoop = (async () => {
@@ -1583,14 +1551,12 @@ test("GET /boards/stream multiplexes snapshots, creations, live updates, hiberna
         assert.equal(events[0].boards[p1]?.workers.length, 0);
       }
 
-      // Create a second project while connected -> emits "board"
       const p2 = (await client.createProject({ workspaces: [ws2], title: "BoardTwo" })).project.id;
       await waitFor(
         () => events.some((evt) => evt.type === "board" && evt.projectId === p2),
         "board event for newly created project p2",
       );
 
-      // Trigger worker spawn on p1 -> emits live "board" update
       const handle1 = await foreground.engine.openProject(p1);
       const sent = await client.sendMessage(p1, "router", { text: "spawn-one" });
       await (
@@ -1604,7 +1570,6 @@ test("GET /boards/stream multiplexes snapshots, creations, live updates, hiberna
         "live board update for p1 worker",
       );
 
-      // Wait until p1 workers and router settle, then hibernate p1 WHILE /boards/stream is connected!
       await waitFor(
         async () =>
           (await foreground.engine.hibernateIdleProjects(Date.now() + 60_000)).includes(p1),
@@ -1612,7 +1577,6 @@ test("GET /boards/stream multiplexes snapshots, creations, live updates, hiberna
       );
       assert.equal(foreground.engine.isProjectOpen(p1), false);
 
-      // A second /boards/stream client gets p1's cached board WITHOUT reopening hibernated p1!
       const secondAbort = new AbortController();
       const secondEvents: AllBoardsStreamEvent[] = [];
       const secondLoop = (async () => {
@@ -1628,14 +1592,12 @@ test("GET /boards/stream multiplexes snapshots, creations, live updates, hiberna
         assert.equal(secondEvents[0].boards[p1]?.workers.length, 1);
       }
 
-      // Delete p2 -> emits "removed"
       await client.deleteProject(p2);
       await waitFor(
         () => events.some((evt) => evt.type === "removed" && evt.projectId === p2),
         "removed event for deleted project p2",
       );
 
-      // Server shutdown emits "end" (reason: "closed")
       await foreground.close();
       await streamLoop;
       const lastEvt = events.at(-1);
@@ -1665,7 +1627,6 @@ test("EngineStore caches isolate callers, invalidate on writes/rollbacks, expose
       });
       assert.throws(() => store.updateProject(p1.id, { title: "   " }), StoreValidationError);
 
-      // Defensive copies prevent external mutations from corrupting store caches
       const fetched = store.getProject(p1.id);
       assert.ok(fetched !== undefined);
       fetched.workspaces.push("mutated-path");
@@ -1679,7 +1640,6 @@ test("EngineStore caches isolate callers, invalidate on writes/rollbacks, expose
       listed[0]?.workspaces.push("mutated-list");
       assert.equal(store.listProjects()[0]?.workspaces.length, 1);
 
-      // Rolled-back project mutation inside transaction does NOT poison project caches
       assert.throws(() => {
         store.transaction(() => {
           store.updateProject(p1.id, { title: "RolledBackTitle" });
@@ -1690,7 +1650,6 @@ test("EngineStore caches isolate callers, invalidate on writes/rollbacks, expose
       assert.equal(store.getProject(p1.id)?.title, "Alpha");
       assert.equal(store.listProjects()[0]?.title, "Alpha");
 
-      // setProjectMcpServers / setProjectSkillsPolicy invalidate project updatedAt cache & listProjectMcpEntries works
       const p2 = store.createProject({ workspaces: [dir], title: "Beta" });
       assert.deepEqual(store.listProjectIds(), [p1.id, p2.id]);
       store.setProjectMcpServers(p2.id, { srv: { command: "srv-cmd" } });

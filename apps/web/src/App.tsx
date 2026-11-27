@@ -57,7 +57,6 @@ export function App() {
   const [editingProject, setEditingProject] = useState<ProjectSummary | undefined>(undefined);
   const [deletingProject, setDeletingProject] = useState<ProjectSummary | undefined>(undefined);
 
-  // Hash routing sync + preserve background route behind Control overlay.
   useEffect(() => {
     const sync = () => {
       const next = parseRoute(window.location.hash);
@@ -82,7 +81,6 @@ export function App() {
   const withRail = surfaceRoute.name === "project" && activeProject !== undefined;
   const layout = useShellLayout(activeWorkerId !== undefined);
 
-  // Close find bar when switching projects or views.
   const routeKey =
     surfaceRoute.name === "project" ? `${surfaceRoute.pid}:${surfaceRoute.view}` : "overview";
   useEffect(() => {

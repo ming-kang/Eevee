@@ -128,7 +128,6 @@ test("Worker coding tools + tasks + PowerShell produce accurate wrapped bash, Po
     assert.ok(rulesText.includes("Be concise in your responses"));
     assert.ok(rulesText.includes("Show file paths clearly when working with files"));
 
-    // Works directly on resolved.tools even without passing extensions
     const directRules = renderRulesSection(resolved.tools);
     assert.ok(directRules?.includes("/dev/null"));
     assert.ok(directRules?.includes("background: true"));

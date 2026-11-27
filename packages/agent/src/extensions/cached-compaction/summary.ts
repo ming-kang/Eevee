@@ -113,11 +113,7 @@ function leadWithSystem(messages: Message[], baseline: Message | null | undefine
   return [system, ...messages.slice(0, index), ...messages.slice(index + 1)];
 }
 
-/**
- * Rebuild the model context a generation over the same entries would send, from the compacted prefix
- * and the raw transcript scan of the kept suffix. Mirrors pi-durable's `deriveRange` so the prefix
- * matches the last request byte-for-byte and the provider prompt cache hits.
- */
+// Mirrors pi-durable's deriveRange so the prefix matches the last request byte-for-byte for cache hits.
 export function reconstructConversationMessages(
   summarizedEntries: readonly EntryRecord[],
   keptEntries: readonly EntryRecord[],
@@ -170,11 +166,7 @@ function messagePreview(message: Message): string | undefined {
   return text.length > 400 ? `${text.slice(0, 400)}…` : text;
 }
 
-/**
- * Locate the boundary the kept messages start at within the reconstructed conversation. Prefers
- * object identity when messages come from `reconstructConversationMessages`, falling back to the
- * last structurally equal message so repeated earlier content cannot shift the boundary backward.
- */
+// Falls back to the last structurally equal message so repeated earlier content cannot shift the boundary backward.
 export function keptStart(
   conversation: readonly Message[],
   keptMessages: readonly Message[],
@@ -299,11 +291,6 @@ function extractCodemodeCalls(details: unknown, fileOps: FileOperations): void {
   }
 }
 
-/**
- * File operations of the compacted prefix: direct `read`/`write`/`edit` tool calls, nested calls a
- * codemode script made, and the file lists a prior compaction recorded in its summary, so repeated
- * compaction keeps the cumulative history without extra stored state.
- */
 export function extractFileOps(entries: readonly EntryRecord[]): FileOperations {
   const fileOps: FileOperations = { read: new Set(), written: new Set(), edited: new Set() };
   for (const entry of entries) {
@@ -351,10 +338,6 @@ export function formatFileOperations(
   return `\n\n${sections.join("\n\n")}`;
 }
 
-/**
- * The authoritative checkpoint summary: file-operation blocks the model emitted despite being told
- * not to are stripped, and the extracted lists are appended instead.
- */
 export function checkpointSummary(
   text: string,
   fileOps: FileOperations,
@@ -362,7 +345,7 @@ export function checkpointSummary(
   const { readFiles, modifiedFiles } = computeFileLists(fileOps);
   const body = text.replace(/<(read-files|modified-files)>[\s\S]*?<\/\1>/g, "").trim();
   const operations = formatFileOperations(readFiles, modifiedFiles);
-  // The formatter prefixes a non-empty operation list; an empty summary body has no leading blank lines.
+  // formatFileOperations prefixes "\n\n"; strip it when the summary body is empty.
   const summary = body ? body + operations : operations.slice(2);
   return { summary, readFiles, modifiedFiles };
 }

@@ -514,7 +514,6 @@ test("Skills discovery, global & project policy overrides, config export/import,
       const projectId = (await client.createProject({ workspaces: [ws], title: "SkillsDemo" }))
         .project.id;
 
-      // Global skills discovery only includes userHome skills
       const globalSkills = await client.listSkills();
       parseWithSchema(SkillsListResponseSchema, globalSkills);
       assert.deepEqual(
@@ -526,7 +525,6 @@ test("Skills discovery, global & project policy overrides, config export/import,
       );
       assert.equal(globalSkills.projectPolicy, undefined);
 
-      // Project skills discovery includes workspace + global + diagnostics
       const projSkills = await client.skills(projectId).list();
       parseWithSchema(SkillsListResponseSchema, projSkills);
       assert.ok(projSkills.skills.some((s) => s.name === "ws-skill" && s.source === "workspace"));
@@ -534,7 +532,6 @@ test("Skills discovery, global & project policy overrides, config export/import,
         projSkills.diagnostics.some((d) => d.type === "error" && d.skillName === "broken-skill"),
       );
 
-      // Global override: shared-skill -> disabled, global-manual -> model
       const afterGlobal = await client.putSkillsPolicy({
         policy: { "shared-skill": "disabled", "global-manual": "model" },
       });
@@ -547,7 +544,6 @@ test("Skills discovery, global & project policy overrides, config export/import,
         "disabled",
       );
 
-      // Config export captures global skillsPolicy
       const bundle = await client.exportConfig();
       parseWithSchema(ConfigBundleSchema, bundle);
       assert.deepEqual(bundle.skillsPolicy, {
@@ -556,7 +552,6 @@ test("Skills discovery, global & project policy overrides, config export/import,
       });
       exportedBundle = bundle;
 
-      // Project override: shared-skill -> model (overrides global disabled), ws-skill -> disabled
       const afterProj = await client.skills(projectId).putPolicy({
         policy: { "shared-skill": "model", "ws-skill": "disabled" },
       });
@@ -569,7 +564,6 @@ test("Skills discovery, global & project policy overrides, config export/import,
       assert.equal(sharedEntry?.projectOverride, "model");
       assert.equal(sharedEntry?.effectiveMode, "model");
 
-      // Send disabled /skill:ws-skill -> 400 skill_disabled, nothing recorded
       await assert.rejects(
         client.sendMessage(projectId, "router", { text: "/skill:ws-skill do work" }),
         (err: unknown) =>
@@ -580,7 +574,6 @@ test("Skills discovery, global & project policy overrides, config export/import,
       );
       assert.equal(seenUserMessages.length, 0);
 
-      // Send enabled /skill:shared-skill -> expands <skill> block & <available_skills> omits ws-skill
       const handle = await engineA.engine.openProject(projectId);
       const sent = await client.sendMessage(projectId, "router", {
         text: "/skill:shared-skill analyze this",
@@ -599,7 +592,6 @@ test("Skills discovery, global & project policy overrides, config export/import,
       assert.ok(prompt.includes("<name>shared-skill</name>"));
       assert.equal(prompt.includes("<name>ws-skill</name>"), false);
 
-      // Clear project override -> shared-skill reverts to global disabled, ws-skill reverts to model
       const clearedProj = await client.skills(projectId).putPolicy({ policy: null });
       assert.equal(clearedProj.projectPolicy, undefined);
       assert.equal(
@@ -613,7 +605,6 @@ test("Skills discovery, global & project policy overrides, config export/import,
         (err: unknown) => err instanceof EeveeApiError && err.problem.code === "skill_disabled",
       );
 
-      // Clear global policy with {} -> removes KV_SKILLS_POLICY
       const clearedGlobal = await client.putSkillsPolicy({ policy: {} });
       assert.deepEqual(clearedGlobal.globalPolicy, {});
       assert.equal((await client.exportConfig()).skillsPolicy, undefined);
@@ -621,7 +612,6 @@ test("Skills discovery, global & project policy overrides, config export/import,
       await engineA.close();
     }
 
-    // Importing exported bundle into a fresh engine restores global skillsPolicy
     const engineB = await startForegroundEngine({
       dataDir: homeB,
       port: 0,
@@ -649,7 +639,6 @@ test("non-blocking Engine.open with slow MCP server, role filtering, and MCP log
     const ws = join(dir, "ws");
     await mkdir(ws, { recursive: true });
 
-    // Pre-seed SQLite with slow + router-only + worker-only + disabled servers
     const store = EngineStore.open(join(home, "engine.sqlite"));
     store.setKv(KV_MCP_SERVERS, {
       slow: { command: "slow-cmd", exposure: "direct" },
@@ -717,7 +706,6 @@ test("non-blocking Engine.open with slow MCP server, role filtering, and MCP log
     const openElapsedMs = Date.now() - openStartedAt;
 
     try {
-      // Engine.open() must return immediately without blocking on slow server
       assert.ok(openElapsedMs < 2000, `Engine.open blocked for ${openElapsedMs}ms`);
 
       const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
@@ -742,7 +730,6 @@ test("non-blocking Engine.open with slow MCP server, role filtering, and MCP log
         worker: true,
       });
 
-      // Emit MCP log notification and verify /mcp/servers/:serverName/logs
       routerOnly.pushLog("info", "router-logger", "hello from router MCP");
       await waitFor(async () => {
         const logs = await client.getMcpLogs("routeronly");
@@ -758,7 +745,6 @@ test("non-blocking Engine.open with slow MCP server, role filtering, and MCP log
         (err: unknown) => err instanceof EeveeApiError && err.status === 404,
       );
 
-      // Role filtering: Router gets routeronly, Worker gets workeronly
       const projectId = (await client.createProject({ workspaces: [ws], title: "Roles" })).project
         .id;
       const handle = await foreground.engine.openProject(projectId);
@@ -805,7 +791,6 @@ test("MCP OAuth SSE sign-in, manual redirect input, cancellation, and logout", a
         .id;
       const handle = await foreground.engine.openProject(projectId);
 
-      // Add HTTP MCP server -> immediately transitions to auth_required
       const added = await client.upsertMcpServer("authed", {
         config: { type: "http", url: mock.mcpUrl, exposure: "direct" },
       });
@@ -813,7 +798,6 @@ test("MCP OAuth SSE sign-in, manual redirect input, cancellation, and logout", a
       assert.equal(snap?.status, "auth_required");
       assert.equal(snap?.authRequired, true);
 
-      // Loopback OAuth flow over SSE
       const started = await client.startMcpOAuth("authed");
       assert.equal(started.server, "authed");
 
@@ -828,7 +812,6 @@ test("MCP OAuth SSE sign-in, manual redirect input, cancellation, and logout", a
       assert.equal(events1[0]?.type, "auth_url");
       assert.equal(events1.at(-1)?.type, "complete");
 
-      // By the time SSE "complete" finishes, server is ALREADY connected and tools synced to project
       const stateAfter = await client.getMcpState();
       const connectedSnap = stateAfter.status.find((s) => s.name === "authed");
       assert.equal(connectedSnap?.status, "connected");
@@ -839,12 +822,10 @@ test("MCP OAuth SSE sign-in, manual redirect input, cancellation, and logout", a
         true,
       );
 
-      // Logout removes tokens and moves status back to auth_required
       assert.deepEqual(await client.logoutMcpOAuth("authed"), { ok: true });
       const afterLogout = await client.getMcpState();
       assert.equal(afterLogout.status.find((s) => s.name === "authed")?.status, "auth_required");
 
-      // Manual redirect submission flow
       const started2 = await client.startMcpOAuth("authed");
       const events2: McpOAuthEvent[] = [];
       for await (const evt of client.streamMcpOAuth("authed", started2.sessionId)) {
@@ -870,7 +851,6 @@ test("MCP OAuth SSE sign-in, manual redirect input, cancellation, and logout", a
         "connected",
       );
 
-      // Cancel flow
       await client.logoutMcpOAuth("authed");
       const started3 = await client.startMcpOAuth("authed");
       const events3: McpOAuthEvent[] = [];
@@ -886,7 +866,6 @@ test("MCP OAuth SSE sign-in, manual redirect input, cancellation, and logout", a
         assert.equal(last3.code, "login_cancelled");
       }
 
-      // Unknown server -> 404
       await assert.rejects(
         client.startMcpOAuth("missing"),
         (err: unknown) => err instanceof EeveeApiError && err.status === 404,
@@ -951,19 +930,16 @@ test("project-level MCP overrides, project-only server with multi-workspace root
         .id;
       const handle = await foreground.engine.openProject(projectId);
 
-      // Before overrides: project shares global hub
       const openCountBefore = sharedSrv.openCount;
       const initialTools = (await handle.root.agent(BACKGROUND_CONTEXT)).tools.map((t) => t.name);
       assert.equal(initialTools.includes("mcp__shared__shared_tool"), true);
       assert.equal(initialTools.includes("mcp__todisable__disabled_tool"), true);
 
-      // Invalid orphan partial override rejected with 400
       await assert.rejects(
         client.mcp(projectId).upsertServer("ghost", { config: { enabled: false } }),
         (err: unknown) => err instanceof EeveeApiError && err.status === 400,
       );
 
-      // Apply project-level overrides + project-only server -> switches live to project-scoped McpHub
       const projState = await client.mcp(projectId).putConfig({
         servers: {
           todisable: { enabled: false },
@@ -979,20 +955,17 @@ test("project-level MCP overrides, project-only server with multi-workspace root
       assert.equal(projState.status.find((s) => s.name === "projonly")?.scope, "project");
       assert.equal(projState.status.find((s) => s.name === "projonly")?.status, "connected");
 
-      // Router sees projonly, NOT disabled todisable, NOT worker-only shared
       const afterTools = (await handle.root.agent(BACKGROUND_CONTEXT)).tools.map((t) => t.name);
       assert.equal(afterTools.includes("mcp__projonly__local_tool"), true);
       assert.equal(afterTools.includes("mcp__todisable__disabled_tool"), false);
       assert.equal(afterTools.includes("mcp__shared__shared_tool"), false);
 
-      // Multi-workspace roots served to project-only MCP server
       const roots1 = await projOnlySrv.requestRoots();
       assert.deepEqual(roots1.roots, [
         { uri: pathToFileURL(ws1).href, name: basename(ws1) },
         { uri: pathToFileURL(ws2).href, name: basename(ws2) },
       ]);
 
-      // Updating project workspaces triggers notifications/roots/list_changed and new roots
       await client.updateProject(projectId, { workspaces: [ws2, ws3] });
       await waitFor(() => projOnlySrv.rootsChangedCount === 1, "project roots list_changed");
       const roots2 = await projOnlySrv.requestRoots();
@@ -1001,14 +974,12 @@ test("project-level MCP overrides, project-only server with multi-workspace root
         { uri: pathToFileURL(ws3).href, name: basename(ws3) },
       ]);
 
-      // Project MCP logs endpoint captures project server logs
       projOnlySrv.pushLog("warn", "proj-logger", "project specific log line");
       await waitFor(async () => {
         const logs = await client.mcp(projectId).getLogs("projonly");
         return logs.lines.some((line) => line.includes("proj-logger: project specific log line"));
       }, "project MCP logs");
 
-      // Hibernation closes project-scoped McpHub automatically!
       const closeCountBeforeHibernate = projOnlySrv.closeCount;
       const hibernated = await foreground.engine.hibernateIdleProjects(Date.now() + 60 * 60_000);
       assert.deepEqual(hibernated, [projectId]);
@@ -1018,12 +989,10 @@ test("project-level MCP overrides, project-only server with multi-workspace root
         "project McpHub transport closed on hibernation",
       );
 
-      // Offline getState works cleanly while hibernated
       const offlineState = await client.mcp(projectId).getState();
       assert.equal(offlineState.status.find((s) => s.name === "projonly")?.status, "idle");
       assert.equal(offlineState.status.find((s) => s.name === "todisable")?.status, "disabled");
 
-      // Reconnecting project MCP opens project hub & connects
       const reconnected = await client.mcp(projectId).reconnect({ server: "projonly" });
       assert.equal(reconnected.status.find((s) => s.name === "projonly")?.status, "connected");
       assert.equal(foreground.engine.isProjectOpen(projectId), true);
@@ -1031,7 +1000,6 @@ test("project-level MCP overrides, project-only server with multi-workspace root
       await foreground.close();
     }
 
-    // Reopen Engine on same dataDir -> SQLite persists project MCP overrides!
     const prevOpens = projOnlySrv.openCount;
     foreground = await startForegroundEngine({
       dataDir: home,
@@ -1058,7 +1026,6 @@ test("project-level MCP overrides, project-only server with multi-workspace root
         return names.includes("mcp__projonly__local_tool");
       }, "persisted projonly tool active after Engine reopen");
 
-      // Removing all project overrides switches back to shared global hub cleanly
       await client.mcp(projectId).deleteServer("todisable");
       await client.mcp(projectId).deleteServer("shared");
       const afterClear = await client.mcp(projectId).deleteServer("projonly");
@@ -1146,7 +1113,6 @@ test("concurrent project MCP mutations serialize per project without leaking hub
         .project.id;
       const handle = await foreground.engine.openProject(projectId);
 
-      // Two concurrent upserts on an open project with no prior overrides
       await Promise.all([
         client.mcp(projectId).upsertServer("srva", {
           config: { command: "a-cmd", exposure: "direct" },
@@ -1165,7 +1131,6 @@ test("concurrent project MCP mutations serialize per project without leaking hub
       assert.equal(agentTools.includes("mcp__srva__tool_a"), true);
       assert.equal(agentTools.includes("mcp__srvb__tool_b"), true);
 
-      // Concurrent delete of one and then delete of last override while re-adding
       await client.mcp(projectId).deleteServer("srvb");
       await Promise.all([
         client.mcp(projectId).upsertServer("srvb", {
@@ -1173,7 +1138,6 @@ test("concurrent project MCP mutations serialize per project without leaking hub
         }),
         client.mcp(projectId).deleteServer("srva"),
       ]);
-      // Now clear remaining server and simultaneously trigger a project add + delete
       await client.mcp(projectId).putConfig({ servers: {} });
       await Promise.all([
         client.mcp(projectId).upsertServer("srva", {
@@ -1238,7 +1202,6 @@ test("global MCP delete, putMcpConfig, and importConfig prune orphan project par
         .project.id;
       const handle = await foreground.engine.openProject(projectId);
 
-      // Add partial override on s1 AND a project-only full server projfull
       await client.mcp(projectId).putConfig({
         servers: {
           s1: { enabled: false },
@@ -1246,17 +1209,14 @@ test("global MCP delete, putMcpConfig, and importConfig prune orphan project par
         },
       });
 
-      // Delete global s1 -> orphan override s1 must be pruned, projfull preserved
       await client.deleteMcpServer("s1");
       const stateAfterDelete = await client.mcp(projectId).getState();
       assert.equal(Object.hasOwn(stateAfterDelete.projectServers, "s1"), false);
       assert.equal(Object.hasOwn(stateAfterDelete.projectServers, "projfull"), true);
 
-      // Subsequent project MCP write must succeed (previously failed with 400 due to orphan s1)
       await client.mcp(projectId).upsertServer("s2", { config: { enabled: false } });
       await client.mcp(projectId).deleteServer("projfull");
 
-      // Only partial override s2 remains -> putMcpConfig replacing s2 with s3 prunes last override and rebinds to global hub
       const s2ClosesBefore = s2.closeCount;
       await client.putMcpConfig({
         servers: {
@@ -1272,12 +1232,10 @@ test("global MCP delete, putMcpConfig, and importConfig prune orphan project par
         return names.includes("mcp__s3__t3") && !names.includes("mcp__s2__t2");
       }, "open project rebound to global hub with s3 after last override pruned");
 
-      // Subsequent upsert on project succeeds
       await client.mcp(projectId).upsertServer("s3", {
         config: { roles: { router: false } },
       });
 
-      // importConfig also prunes orphan overrides
       const bundle = await client.exportConfig();
       await client.importConfig({ ...bundle, mcpServers: {} });
       assert.deepEqual((await client.mcp(projectId).getState()).projectServers, {});
@@ -1295,7 +1253,6 @@ test("HTTP MCP deletion/URL change cleans up OAuth sessions and mcp-auth.json cr
     const mock1 = await startMockOAuthMcpServer();
     const mock2 = await startMockOAuthMcpServer();
 
-    // Reserve a free port for fixed callbackPort test
     const probeServer = createServer();
     await new Promise<void>((resolve) => probeServer.listen(0, "127.0.0.1", () => resolve()));
     const addr = probeServer.address();
@@ -1322,7 +1279,6 @@ test("HTTP MCP deletion/URL change cleans up OAuth sessions and mcp-auth.json cr
       const projectId = (await client.createProject({ workspaces: [ws], title: "OAuthCleanup" }))
         .project.id;
 
-      // 1. Re-login with fixed callbackPort cancels prior active session without EADDRINUSE
       await client.upsertMcpServer("fixed", {
         config: {
           type: "http",
@@ -1349,7 +1305,6 @@ test("HTTP MCP deletion/URL change cleans up OAuth sessions and mcp-auth.json cr
 
       await firstReady;
 
-      // Start second session while first is open and bound to fixedPort
       const secondSession = await client.startMcpOAuth("fixed");
       await firstStreamTask;
       const lastFirst = firstEvents.at(-1);
@@ -1370,8 +1325,6 @@ test("HTTP MCP deletion/URL change cleans up OAuth sessions and mcp-auth.json cr
       assert.equal(secondEvents.at(-1)?.type, "complete");
       assert.equal(await foreground.engine.oauthStore.hasTokens("fixed", mock1.mcpUrl), true);
 
-      // 2. Deleting a signed-in server removes credentials from mcp-auth.json,
-      // and deleting a server with a pending OAuth session cancels that session.
       await client.deleteMcpServer("fixed");
       assert.equal(await foreground.engine.oauthStore.hasTokens("fixed", mock1.mcpUrl), false);
       const authJsonAfterDelete = JSON.parse(
@@ -1413,7 +1366,6 @@ test("HTTP MCP deletion/URL change cleans up OAuth sessions and mcp-auth.json cr
         assert.equal(lastThird.code, "login_cancelled");
       }
 
-      // 3. Changing global URL removes old URL credentials; deleting global server preserves credentials if a project-only server uses same name+URL
       await client.upsertMcpServer("sharedhttp", {
         config: { type: "http", url: mock1.mcpUrl, exposure: "direct" },
       });
@@ -1426,15 +1378,12 @@ test("HTTP MCP deletion/URL change cleans up OAuth sessions and mcp-auth.json cr
       }
       assert.equal(await foreground.engine.oauthStore.hasTokens("sharedhttp", mock1.mcpUrl), true);
 
-      // Add project-only server with exact same name and URL
       await client.mcp(projectId).upsertServer("sharedhttp", {
         config: { type: "http", url: mock1.mcpUrl, exposure: "direct" },
       });
-      // Deleting global server must NOT wipe credentials still referenced by project-only server
       await client.deleteMcpServer("sharedhttp");
       assert.equal(await foreground.engine.oauthStore.hasTokens("sharedhttp", mock1.mcpUrl), true);
 
-      // Changing project-only server URL to mock2 removes mock1 credentials
       await client.mcp(projectId).upsertServer("sharedhttp", {
         config: { type: "http", url: mock2.mcpUrl, exposure: "direct" },
       });
@@ -1511,7 +1460,6 @@ test("project-scoped MCP OAuth sign-in, tool exposure, manual redirect, cancel, 
         .project.id;
       const handle = await foreground.engine.openProject(projectId);
 
-      // Add project-only HTTP MCP server -> transitions to auth_required
       const added = await client.mcp(projectId).upsertServer("projhttp", {
         config: { type: "http", url: mock.mcpUrl, exposure: "direct" },
       });
@@ -1524,7 +1472,6 @@ test("project-scoped MCP OAuth sign-in, tool exposure, manual redirect, cancel, 
         false,
       );
 
-      // Loopback OAuth flow over SSE
       const started = await client.mcp(projectId).startOAuth("projhttp");
       assert.equal(started.server, "projhttp");
 
@@ -1539,7 +1486,6 @@ test("project-scoped MCP OAuth sign-in, tool exposure, manual redirect, cancel, 
       assert.equal(events[0]?.type, "auth_url");
       assert.equal(events.at(-1)?.type, "complete");
 
-      // By completion, project hub has reconnected and synced tools to the project
       const stateAfter = await client.mcp(projectId).getState();
       const connectedSnap = stateAfter.status.find((s) => s.name === "projhttp");
       assert.equal(connectedSnap?.status, "connected");
@@ -1551,7 +1497,6 @@ test("project-scoped MCP OAuth sign-in, tool exposure, manual redirect, cancel, 
         true,
       );
 
-      // Logout clears credentials, returns to auth_required, and removes tools
       assert.deepEqual(await client.mcp(projectId).logoutOAuth("projhttp"), { ok: true });
       assert.equal(await foreground.engine.oauthStore.hasTokens("projhttp", mock.mcpUrl), false);
       const afterLogout = await client.mcp(projectId).getState();
@@ -1562,7 +1507,6 @@ test("project-scoped MCP OAuth sign-in, tool exposure, manual redirect, cancel, 
         false,
       );
 
-      // Manual redirect submission flow
       const started2 = await client.mcp(projectId).startOAuth("projhttp");
       const events2: McpOAuthEvent[] = [];
       for await (const evt of client.mcp(projectId).streamOAuth("projhttp", started2.sessionId)) {
@@ -1582,7 +1526,6 @@ test("project-scoped MCP OAuth sign-in, tool exposure, manual redirect, cancel, 
         "connected",
       );
 
-      // Cancel flow
       await client.mcp(projectId).logoutOAuth("projhttp");
       const started3 = await client.mcp(projectId).startOAuth("projhttp");
       const events3: McpOAuthEvent[] = [];
@@ -1641,7 +1584,6 @@ test("project URL override authenticates against mock2 without authenticating gl
       const h1 = await foreground.engine.openProject(p1);
       await foreground.engine.openProject(p2);
 
-      // p1 overrides shared server URL from mock1 to mock2
       const overrideState = await client.mcp(p1).upsertServer("shared", {
         config: { type: "http", url: mock2.mcpUrl, exposure: "direct" },
       });
@@ -1649,7 +1591,6 @@ test("project URL override authenticates against mock2 without authenticating gl
       assert.equal(p1Snap?.scope, "override");
       assert.equal(p1Snap?.status, "auth_required");
 
-      // Sign in on p1 -> authenticates against mock2 ONLY
       const started = await client.mcp(p1).startOAuth("shared");
       const events: McpOAuthEvent[] = [];
       for await (const evt of client.mcp(p1).streamOAuth("shared", started.sessionId)) {
@@ -1662,7 +1603,6 @@ test("project URL override authenticates against mock2 without authenticating gl
       }
       assert.equal(events.at(-1)?.type, "complete");
 
-      // p1 hub connected with mock2's tool; mock1 remains unauthenticated
       const p1After = await client.mcp(p1).getState();
       const p1Connected = p1After.status.find((s) => s.name === "shared");
       assert.equal(p1Connected?.status, "connected");
@@ -1738,7 +1678,6 @@ test("project-scoped MCP OAuth error paths, cross-scope session isolation, and s
         config: { type: "http", url: mock2.mcpUrl, exposure: "direct" },
       });
 
-      // 404 unknown project
       await assert.rejects(
         client.mcp("missing-project").startOAuth("shared"),
         (err: unknown) =>
@@ -1754,7 +1693,6 @@ test("project-scoped MCP OAuth error paths, cross-scope session isolation, and s
           err.problem.code === "project_not_found",
       );
 
-      // 404 unknown server
       await assert.rejects(
         client.mcp(p1).startOAuth("no-such-server"),
         (err: unknown) =>
@@ -1763,7 +1701,6 @@ test("project-scoped MCP OAuth error paths, cross-scope session isolation, and s
           err.problem.code === "mcp_server_not_found",
       );
 
-      // 400 stdio server
       await assert.rejects(
         client.mcp(p1).startOAuth("stdiosrv"),
         (err: unknown) =>
@@ -1779,7 +1716,6 @@ test("project-scoped MCP OAuth error paths, cross-scope session isolation, and s
           err.problem.code === "mcp_oauth_unsupported",
       );
 
-      // 409 disabled server (while logout succeeds when disabled)
       await assert.rejects(
         client.mcp(p1).startOAuth("disabledsrv"),
         (err: unknown) =>
@@ -1789,7 +1725,6 @@ test("project-scoped MCP OAuth error paths, cross-scope session isolation, and s
       );
       assert.deepEqual(await client.mcp(p1).logoutOAuth("disabledsrv"), { ok: true });
 
-      // Cross-scope session isolation: concurrent global + p1 sessions for "shared" do not collide
       const globalSess = await client.startMcpOAuth("shared");
       const globalWatcher = watchOAuthUntilAuthUrl(
         client.streamMcpOAuth("shared", globalSess.sessionId),
@@ -1803,11 +1738,9 @@ test("project-scoped MCP OAuth error paths, cross-scope session isolation, and s
       const projAuthEvent = await projWatcher.ready;
       assert.ok(projAuthEvent.url.startsWith(mock2.baseUrl));
 
-      // Cross-scope access returns 404
       await assert.rejects(
         async () => {
           for await (const _ of client.mcp(p1).streamOAuth("shared", globalSess.sessionId)) {
-            // drain
           }
         },
         (err: unknown) =>
@@ -1846,7 +1779,6 @@ test("project-scoped MCP OAuth error paths, cross-scope session isolation, and s
           err.problem.code === "mcp_oauth_session_not_found",
       );
 
-      // Deleting p1's override cancels p1's session for "shared" WITHOUT touching globalSess!
       await client.mcp(p1).deleteServer("shared");
       await projWatcher.done;
       const lastProjEvt = projWatcher.events.at(-1);
@@ -1855,7 +1787,6 @@ test("project-scoped MCP OAuth error paths, cross-scope session isolation, and s
         assert.equal(lastProjEvt.code, "login_cancelled");
       }
 
-      // Global session is still alive and can complete normally!
       const globalAuthEvent = globalWatcher.events.find((e) => e.type === "auth_url");
       assert.ok(globalAuthEvent && globalAuthEvent.type === "auth_url");
       const globalBrowserRes = await fetch(globalAuthEvent.url, { redirect: "follow" });
@@ -1863,8 +1794,6 @@ test("project-scoped MCP OAuth error paths, cross-scope session isolation, and s
       await globalWatcher.done;
       assert.equal(globalWatcher.events.at(-1)?.type, "complete");
 
-      // Changing/deleting a global server cancels an inherited project session ("inherited")
-      // while NOT cancelling a project-overridden-URL session ("shared" on p1)
       await client.mcp(p1).upsertServer("shared", {
         config: { type: "http", url: mock2.mcpUrl, exposure: "direct" },
       });
@@ -1880,11 +1809,9 @@ test("project-scoped MCP OAuth error paths, cross-scope session isolation, and s
       );
       const overriddenAuth = await overriddenWatcher.ready;
 
-      // Delete both global "inherited" and global "shared"
       await client.deleteMcpServer("inherited");
       await client.deleteMcpServer("shared");
 
-      // Inherited session was cancelled
       await inheritedWatcher.done;
       const lastInherited = inheritedWatcher.events.at(-1);
       assert.equal(lastInherited?.type, "error");
@@ -1892,7 +1819,6 @@ test("project-scoped MCP OAuth error paths, cross-scope session isolation, and s
         assert.equal(lastInherited.code, "login_cancelled");
       }
 
-      // Overridden project session survived global deletion and can finish
       const overriddenRes = await fetch(overriddenAuth.url, { redirect: "follow" });
       assert.equal(overriddenRes.status, 200);
       await overriddenWatcher.done;

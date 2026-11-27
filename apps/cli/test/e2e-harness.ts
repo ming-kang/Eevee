@@ -580,9 +580,7 @@ async function waitForEngineReady(input: {
       try {
         const health = await client.health();
         if (health.ok) return { url: state.url, token, client };
-      } catch {
-        // Server still binding or starting up.
-      }
+      } catch {}
     }
     await sleep(30);
   }

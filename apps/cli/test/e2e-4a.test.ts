@@ -73,7 +73,6 @@ test("Slice 4A E2E: rejects invalid auth, runs Router -> Worker -> Handoff -> Bo
   });
 
   try {
-    // 1. Missing and wrong bearer tokens are rejected with 401 Problem.
     const noAuthRes = await fetch(`${fixture.engineUrl}/health`);
     assert.equal(noAuthRes.status, 401);
     assert.equal(noAuthRes.headers.get("www-authenticate"), "Bearer");
@@ -85,12 +84,10 @@ test("Slice 4A E2E: rejects invalid auth, runs Router -> Worker -> Handoff -> Bo
     assert.equal(badAuthRes.status, 401);
     parseWithSchema(ProblemSchema, await badAuthRes.json());
 
-    // Verify /health matches HealthResponseSchema.
     const health = await fixture.client.health();
     parseWithSchema(HealthResponseSchema, health);
     assert.equal(health.ok, true);
 
-    // 2. CLI: eevee project create
     const createRes = await fixture.runCli([
       "project",
       "create",
@@ -110,7 +107,6 @@ test("Slice 4A E2E: rejects invalid auth, runs Router -> Worker -> Handoff -> Bo
     const projectId = created.project.id;
     assert.equal(created.project.title, "E2E Demo");
 
-    // 3. CLI: eevee project list & GET /projects/:id
     const listRes = await fixture.runCli(["project", "list", "--json"]);
     assert.equal(listRes.code, 0, listRes.stderr);
     const listed = parseWithSchema(ListProjectsResponseSchema, JSON.parse(listRes.stdout));
@@ -121,7 +117,6 @@ test("Slice 4A E2E: rejects invalid auth, runs Router -> Worker -> Handoff -> Bo
     parseWithSchema(GetProjectResponseSchema, fetched);
     assert.equal(fetched.project.id, projectId);
 
-    // Also subscribe via protocol client in parallel to validate every SSE payload against schemas.
     const streamAbort = new AbortController();
     const clientEvents: unknown[] = [];
     const clientWatchLoop = (async () => {
@@ -149,18 +144,14 @@ test("Slice 4A E2E: rejects invalid auth, runs Router -> Worker -> Handoff -> Bo
       }
     })();
 
-    // 4. Start CLI `eevee watch <project>` (human mode)
     const watchProc = fixture.spawnCli(["watch", projectId]);
-    // Wait until initial snapshot arrives or watch is ready (give brief moment for SSE subscribe)
     await new Promise((resolve) => setTimeout(resolve, 250));
 
-    // 5. CLI: eevee send <project> <text> --json
     const sendRes = await fixture.runCli(["send", projectId, "Build the greeting file.", "--json"]);
     assert.equal(sendRes.code, 0, sendRes.stderr);
     const sent = parseWithSchema(SendMessageResponseSchema, JSON.parse(sendRes.stdout));
     assert.ok(sent.submissionId >= 1);
 
-    // 6. Wait for Router to delegate, Worker to execute, handoff to Router, and Router to reply!
     const watchedText = await watchProc.waitForStdout(
       (stdout) =>
         stdout.includes("Delegating work to builder.") &&
@@ -169,17 +160,14 @@ test("Slice 4A E2E: rejects invalid auth, runs Router -> Worker -> Handoff -> Bo
     );
     await watchProc.stop();
 
-    // Ensure no duplicated assistant text between live stream deltas and committed AssistantEntry.
     assert.equal(watchedText.split("Delegating work to builder.").length - 1, 1);
     assert.equal(watchedText.split("Worker finished! Result is ready.").length - 1, 1);
     assert.ok(watchedText.includes("[user] Build the greeting file."));
     assert.ok(watchedText.includes("[toolCall] spawn_worker"));
 
-    // Verify Worker wrote the file in the project workspace.
     const written = await readFile(join(fixture.workspaceDir, "hello.txt"), "utf8");
     assert.equal(written, "hello from e2e worker");
 
-    // 7. CLI: eevee board <project> --json & human output
     const boardJsonRes = await fixture.runCli(["board", projectId, "--json"]);
     assert.equal(boardJsonRes.code, 0, boardJsonRes.stderr);
     const board = parseWithSchema(BoardViewSchema, JSON.parse(boardJsonRes.stdout));
@@ -197,7 +185,6 @@ test("Slice 4A E2E: rejects invalid auth, runs Router -> Worker -> Handoff -> Bo
     assert.ok(boardHumanRes.stdout.includes('w1 "builder" [idle]'));
     assert.ok(boardHumanRes.stdout.includes("t1 [open] (w1) Build greeting"));
 
-    // 8. CLI: eevee watch --from 1 --json and eevee board --watch --json emit valid NDJSON.
     const watchJsonProc = fixture.spawnCli(["watch", projectId, "--from", "1", "--json"]);
     const watchNdjson = await watchJsonProc.waitForStdout((out) => out.includes("\n"), 10_000);
     await watchJsonProc.stop();

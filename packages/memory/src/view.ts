@@ -103,11 +103,7 @@ export function recallBudget(window: number | undefined, threshold: number): Rec
   };
 }
 
-/**
- * Merge adjacent built sibling pairs, highest `mergeDue` first, once total size passes
- * `budget.max`, until it fits `budget.min`. High-size older prefix lines score low and stay put,
- * preserving the provider prompt-cache prefix.
- */
+// Fold highest mergeDue first so older large prefixes stay put and preserve prompt cache.
 export function fold(
   view: readonly Span[],
   totalLeaves: number,

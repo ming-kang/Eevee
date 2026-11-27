@@ -43,9 +43,7 @@ export function Sash({ side, label, min, max, now, onResize, onReset }: SashProp
     document.documentElement.classList.remove("ev-sash-drag");
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {
-      // Ignore release errors.
-    }
+    } catch {}
     if (rafRef.current !== 0) {
       window.cancelAnimationFrame(rafRef.current);
       rafRef.current = 0;

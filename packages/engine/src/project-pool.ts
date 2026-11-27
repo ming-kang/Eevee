@@ -287,9 +287,7 @@ export class ProjectPool {
         if (!this.#closed && this.#projects.get(projectId) === entry) {
           this.#recordAndEmitBoard(projectId, board);
         }
-      } catch {
-        // Proceed with closing even if final board snapshot fails.
-      }
+      } catch {}
 
       if (this.#closed || this.#projects.get(projectId) !== entry) continue;
       if ((this.#streamCounts.get(projectId) ?? 0) > 0) continue;
@@ -685,9 +683,7 @@ export class ProjectPool {
     for (const listener of [...this.#boardListeners]) {
       try {
         listener({ type: "board", projectId, board });
-      } catch {
-        // Isolate subscriber exceptions.
-      }
+      } catch {}
     }
   }
 
@@ -696,9 +692,7 @@ export class ProjectPool {
     for (const listener of [...this.#boardListeners]) {
       try {
         listener({ type: "removed", projectId });
-      } catch {
-        // Isolate subscriber exceptions.
-      }
+      } catch {}
     }
   }
 }

@@ -91,7 +91,6 @@ test("4B routes enforce bearer auth, 405 Allow headers, and strict param/query v
       const created = await client.createProject({ workspaces: [ws], title: "Validation" });
       const projectId = created.project.id;
 
-      // Auth checks on 4B routes
       const unauthRoutes: [string, string][] = [
         ["GET", `/projects/${projectId}/conversations/router/entries`],
         ["POST", `/projects/${projectId}/conversations/router/interrupt`],
@@ -109,7 +108,6 @@ test("4B routes enforce bearer auth, 405 Allow headers, and strict param/query v
         parseWithSchema(ProblemSchema, await res.json());
       }
 
-      // 405 + Allow checks
       const methodChecks: [string, string, string][] = [
         ["POST", `/projects/${projectId}/conversations/router/entries`, "GET"],
         ["GET", `/projects/${projectId}/conversations/router/interrupt`, "POST"],
@@ -127,7 +125,6 @@ test("4B routes enforce bearer auth, 405 Allow headers, and strict param/query v
         parseWithSchema(ProblemSchema, await res.json());
       }
 
-      // Segment and query validation
       const invalidRequests: [string, RequestInit][] = [
         [
           `/projects/${projectId}/conversations/router/entries?limit=0`,
@@ -272,7 +269,6 @@ test("listEntries paginates ascending/descending, enforces min/max bounds, and r
         await sub?.wait(BACKGROUND_CONTEXT);
       }
 
-      // Collect all entries ascending with limit=2
       const ascEntries: number[] = [];
       let cursor: string | undefined;
       let pages = 0;
@@ -295,7 +291,6 @@ test("listEntries paginates ascending/descending, enforces min/max bounds, and r
         [...ascEntries].sort((a, b) => a - b),
       );
 
-      // Collect all entries descending with limit=2
       const descEntries: number[] = [];
       cursor = undefined;
       do {
@@ -311,7 +306,6 @@ test("listEntries paginates ascending/descending, enforces min/max bounds, and r
 
       assert.deepEqual([...descEntries].reverse(), ascEntries);
 
-      // Bounded minEntryId / maxEntryId
       const lo = ascEntries[1];
       const hi = ascEntries[ascEntries.length - 2];
       assert.ok(lo !== undefined && hi !== undefined);
@@ -326,7 +320,6 @@ test("listEntries paginates ascending/descending, enforces min/max bounds, and r
         ascEntries.slice(1, -1),
       );
 
-      // Invalid cursor variants -> 400 invalid_query
       const firstAscPage = await client.listEntries(projectId, "router", {
         order: "ascending",
         limit: 2,
@@ -350,7 +343,6 @@ test("listEntries paginates ascending/descending, enforces min/max bounds, and r
         );
       }
 
-      // Mismatched scan order with valid cursor -> 400 invalid_query
       await assert.rejects(
         client.listEntries(projectId, "router", {
           order: "descending",
@@ -465,7 +457,6 @@ test("interrupt and retry handle active runs, model errors, busy/queued/closed c
       const projectId = created.project.id;
       const handle = await foreground.engine.openProject(projectId);
 
-      // Unknown worker -> 404 worker_not_found
       await assert.rejects(
         client.interrupt(projectId, "w99"),
         (err: unknown) =>
@@ -484,8 +475,6 @@ test("interrupt and retry handle active runs, model errors, busy/queued/closed c
       await client.sendMessage(projectId, "router", { text: "spawn-two" });
       await worker1StartedPromise;
 
-      // While w1 is running and w2 is queued:
-      // 1. retry(w1) -> 409 conversation_busy
       await assert.rejects(
         client.retry(projectId, "w1"),
         (err: unknown) =>
@@ -494,7 +483,6 @@ test("interrupt and retry handle active runs, model errors, busy/queued/closed c
           err.problem.code === "conversation_busy",
       );
 
-      // 2. retry(w2) -> 409 worker_queued
       await assert.rejects(
         client.retry(projectId, "w2"),
         (err: unknown) =>
@@ -503,12 +491,10 @@ test("interrupt and retry handle active runs, model errors, busy/queued/closed c
           err.problem.code === "worker_queued",
       );
 
-      // 3. Interrupt w1 mid-turn
       const interrupted = await client.interrupt(projectId, "w1");
       parseWithSchema(OkResponseSchema, interrupted);
       assert.equal(interrupted.ok, true);
 
-      // w1 is now idle (w2 may run on the pump; wait until w1 has no active run)
       const w1Record = (await handle.workers()).find((w) => w.id === "w1");
       assert.ok(w1Record !== undefined);
       await waitFor(async () => {
@@ -520,7 +506,6 @@ test("interrupt and retry handle active runs, model errors, busy/queued/closed c
         return live?.run === undefined;
       }, "w1 interrupt to settle");
 
-      // 4. First retry hits simulated model error; second retry recovers and completes!
       const retry1 = await client.retry(projectId, "w1");
       parseWithSchema(SendMessageResponseSchema, retry1);
       const retry1Sub = await handle.harness.submission(
@@ -539,13 +524,11 @@ test("interrupt and retry handle active runs, model errors, busy/queued/closed c
       const settled2 = await retry2Sub?.wait(BACKGROUND_CONTEXT);
       assert.equal(settled2?.status, "done");
 
-      // Router closes w1 after handoff
       await waitFor(async () => {
         const board = await client.getBoard(projectId);
         return board.workers.some((w) => w.id === "w1" && w.status === "closed");
       }, "w1 to close via router");
 
-      // 5. retry(w1) when closed -> 409 worker_closed
       await assert.rejects(
         client.retry(projectId, "w1"),
         (err: unknown) =>
@@ -612,7 +595,6 @@ test("answerQuestion handles valid answers, 404, 400 count mismatch, and 409 clo
       const projectId = created.project.id;
       const handle = await foreground.engine.openProject(projectId);
 
-      // 404 unknown question
       await assert.rejects(
         client.answerQuestion(projectId, "q99", { answers: ["a"] }),
         (err: unknown) =>
@@ -627,7 +609,6 @@ test("answerQuestion handles valid answers, 404, 400 count mismatch, and 409 clo
         return board.questions.some((q) => q.id === "q1");
       }, "question q1 to be recorded");
 
-      // 400 answer count mismatch
       await assert.rejects(
         client.answerQuestion(projectId, "q1", { answers: ["only-one"] }),
         (err: unknown) =>
@@ -636,7 +617,6 @@ test("answerQuestion handles valid answers, 404, 400 count mismatch, and 409 clo
           err.problem.code === "invalid_request",
       );
 
-      // 200 valid answer
       const answered = await client.answerQuestion(projectId, "q1", {
         answers: ["8080", "localhost"],
       });
@@ -645,7 +625,6 @@ test("answerQuestion handles valid answers, 404, 400 count mismatch, and 409 clo
       assert.deepEqual(answered.question.answers, ["8080", "localhost"]);
       assert.ok(answered.question.answeredAt !== undefined);
 
-      // 409 already answered
       await assert.rejects(
         client.answerQuestion(projectId, "q1", { answers: ["8080", "localhost"] }),
         (err: unknown) =>
@@ -654,7 +633,6 @@ test("answerQuestion handles valid answers, 404, 400 count mismatch, and 409 clo
           err.problem.code === "question_closed",
       );
 
-      // Router resumes with user's answers
       await waitFor(async () => {
         const page = await client.listEntries(projectId, "router", { order: "descending" });
         return page.entries.some((entry) =>
@@ -662,7 +640,6 @@ test("answerQuestion handles valid answers, 404, 400 count mismatch, and 409 clo
         );
       }, "router to resume after answer");
 
-      // Also verify withdrawn question -> 409 question_closed
       await handle.harness.commit(async (tx) => {
         const board = await tx.doc(ProjectBoardDoc);
         const id = "q2" as QuestionId;
@@ -758,13 +735,11 @@ test("readWorkerTask supports head/tail/sinceBytes and killWorkerTask cancels ta
         return w1?.tasks.some((t) => t.id === "task-1" && t.status === "running") ?? false;
       }, "worker w1 task-1 to start running");
 
-      // Wait until worker finishes its turn announcing task-1
       await waitFor(async () => {
         const entries = await client.listEntries(projectId, "w1", { order: "ascending" });
         return entries.entries.some((e) => JSON.stringify(e).includes("started background task-1"));
       }, "w1 initial turn to settle");
 
-      // Wait for at least two lines of output
       let slice1 = await client.readWorkerTask(projectId, "w1", "task-1", {
         mode: "head",
         bytes: 256,
@@ -781,7 +756,6 @@ test("readWorkerTask supports head/tail/sinceBytes and killWorkerTask cancels ta
       const firstCursor = slice1.output.endByte;
       assert.ok(firstCursor > 0);
 
-      // Wait for additional bytes and read incrementally with sinceBytes
       let incremental = await client.readWorkerTask(projectId, "w1", "task-1", {
         sinceBytes: firstCursor,
       });
@@ -795,7 +769,6 @@ test("readWorkerTask supports head/tail/sinceBytes and killWorkerTask cancels ta
       assert.equal(incremental.output.fromByte, firstCursor);
       assert.equal(incremental.output.text.includes("tick-1\n"), false);
 
-      // Tail read check
       const tailRead = await client.readWorkerTask(projectId, "w1", "task-1", {
         mode: "tail",
         bytes: 256,
@@ -803,7 +776,6 @@ test("readWorkerTask supports head/tail/sinceBytes and killWorkerTask cancels ta
       parseWithSchema(ReadWorkerTaskResponseSchema, tailRead);
       assert.ok(tailRead.output.text.length > 0);
 
-      // Unknown worker -> 404 worker_not_found on task endpoints
       await assert.rejects(
         client.readWorkerTask(projectId, "w99", "task-1"),
         (err: unknown) =>
@@ -819,7 +791,6 @@ test("readWorkerTask supports head/tail/sinceBytes and killWorkerTask cancels ta
           err.problem.code === "worker_not_found",
       );
 
-      // Unknown task -> 404 task_not_found
       await assert.rejects(
         client.readWorkerTask(projectId, "w1", "task-999"),
         (err: unknown) =>
@@ -835,13 +806,11 @@ test("readWorkerTask supports head/tail/sinceBytes and killWorkerTask cancels ta
           err.problem.code === "task_not_found",
       );
 
-      // Kill task-1 -> 200 status="cancelled", cancelReason="user"
       const killed = await client.killWorkerTask(projectId, "w1", "task-1");
       parseWithSchema(KillWorkerTaskResponseSchema, killed);
       assert.equal(killed.task.status, "cancelled");
       assert.equal(killed.task.cancelReason, "user");
 
-      // Second kill -> 409 task_not_running
       await assert.rejects(
         client.killWorkerTask(projectId, "w1", "task-1"),
         (err: unknown) =>
@@ -850,7 +819,6 @@ test("readWorkerTask supports head/tail/sinceBytes and killWorkerTask cancels ta
           err.problem.code === "task_not_running",
       );
 
-      // User kill wakes the Worker with a "cancelled by the user" steer notice and settles cleanly.
       await waitFor(async () => {
         const workerEntries = await client.listEntries(projectId, "w1", { limit: 500 });
         const routerEntries = await client.listEntries(projectId, "router", { limit: 500 });
@@ -975,7 +943,6 @@ test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and 
       const created = await client.createProject({ workspaces: [ws], title: "TaskStream" });
       const projectId = created.project.id;
 
-      // 1. Start worker and wait for task-1 to complete
       await client.sendMessage(projectId, "router", { text: "spawn-task-worker" });
       await waitFor(async () => {
         const board = await client.getBoard(projectId);
@@ -983,7 +950,6 @@ test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and 
         return w1?.tasks.some((t) => t.id === "task-1" && t.status === "completed") ?? false;
       }, "task-1 to complete");
 
-      // listWorkerTasks filtering & error checks
       await assert.rejects(
         client.listWorkerTasks(projectId, "w99"),
         (err: unknown) =>
@@ -1004,7 +970,6 @@ test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and 
         1,
       );
 
-      // readWorkerTask endByte backward paging
       const headPart = await client.readWorkerTask(projectId, "w1", "task-1", {
         mode: "head",
         bytes: 256,
@@ -1018,7 +983,6 @@ test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and 
       assert.ok(midSlice.output.endByte <= Math.floor(headPart.output.totalBytes / 2));
       assert.equal(midSlice.output.text.includes("line-12"), false);
 
-      // readWorkerTask filter (substring + contextLines + regex)
       const substrFiltered = await client.readWorkerTask(projectId, "w1", "task-1", {
         filter: "BOOM-MARKER",
         contextLines: 1,
@@ -1039,7 +1003,6 @@ test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and 
       assert.ok(regexFiltered.output.text.includes("5: ERR: boom-marker"));
       assert.ok(regexFiltered.output.text.includes("9: WARN: warn-marker"));
 
-      // Invalid filter regex & contextLines without filter -> 400 invalid_query
       await assert.rejects(
         client.readWorkerTask(projectId, "w1", "task-1", { filter: "/[unclosed/" }),
         (err: unknown) =>
@@ -1055,7 +1018,6 @@ test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and 
           err.problem.code === "invalid_query",
       );
 
-      // streamWorkerTask on already-terminal task -> snapshot + end(reason="terminal")
       const terminalEvents: TaskStreamEvent[] = [];
       for await (const evt of client.streamWorkerTask(projectId, "w1", "task-1")) {
         terminalEvents.push(evt);
@@ -1072,11 +1034,9 @@ test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and 
         assert.equal(terminalEvents[1].reason, "terminal");
       }
 
-      // Pre-SSE 404 checks
       await assert.rejects(
         async () => {
           for await (const _ of client.streamWorkerTask(projectId, "w99", "task-1")) {
-            // consume
           }
         },
         (err: unknown) =>
@@ -1087,7 +1047,6 @@ test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and 
       await assert.rejects(
         async () => {
           for await (const _ of client.streamWorkerTask(projectId, "w1", "task-999")) {
-            // consume
           }
         },
         (err: unknown) =>
@@ -1096,7 +1055,6 @@ test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and 
           err.problem.code === "task_not_found",
       );
 
-      // 2. Start task-2 and stream live output through completion (including multi-byte UTF-8!)
       await client.sendMessage(projectId, "w1", { text: "launch-live-stream" });
       await waitFor(async () => {
         const res = await client.listWorkerTasks(projectId, "w1", { status: "active" });
@@ -1122,7 +1080,6 @@ test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and 
         assert.equal(lastLiveEvt.reason, "completed");
       }
 
-      // Verify exact continuous UTF-8 byte offsets and combined content match disk log!
       let reconstructed = "";
       let expectedByte = 0;
       if (liveEvents[0]?.type === "snapshot") {
@@ -1146,7 +1103,6 @@ test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and 
       assert.ok(reconstructed.includes("chunk-1-🦀"));
       assert.ok(reconstructed.includes("chunk-2"));
 
-      // 3. Start task-3, stream it, and kill it via killWorkerTask -> receives status cancelled + end(completed)
       await client.sendMessage(projectId, "w1", { text: "launch-kill-stream" });
       await waitFor(async () => {
         const res = await client.listWorkerTasks(projectId, "w1", { status: "active" });
@@ -1187,8 +1143,6 @@ test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and 
         assert.equal(finalKillEnd.reason, "completed");
       }
 
-      // 4. listWorkerTasks limit & ambiguous task prefix -> 400 task_ambiguous
-      // Create enough tasks up to task-10 so prefix "1" matches both task-1 and task-10!
       for (let idx = 4; idx <= 10; idx++) {
         await client.sendMessage(projectId, "w1", { text: "launch-extra-task" });
         await waitFor(async () => {
@@ -1226,7 +1180,6 @@ test("listWorkerTasks, filtered/paged readWorkerTask, ambiguous prefix 400, and 
       await assert.rejects(
         async () => {
           for await (const _ of client.streamWorkerTask(projectId, "w1", "1")) {
-            // consume
           }
         },
         (err: unknown) =>

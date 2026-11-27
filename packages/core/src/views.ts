@@ -188,9 +188,7 @@ export class BoardFeed {
     if (this.#current !== undefined) {
       try {
         listener(this.#current);
-      } catch {
-        // Isolate subscriber exceptions.
-      }
+      } catch {}
     }
     this.#pass.request();
     return () => {
@@ -215,9 +213,7 @@ export class BoardFeed {
     for (const listener of [...this.#listeners]) {
       try {
         listener(view);
-      } catch {
-        // Isolate subscriber exceptions.
-      }
+      } catch {}
     }
   }
 }

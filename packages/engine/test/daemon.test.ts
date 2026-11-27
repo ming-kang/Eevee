@@ -173,7 +173,6 @@ test("concurrent stale-lock recovery selects exactly one valid lock holder witho
   try {
     const stalePid = await deadPid();
 
-    // Zero-timeout concurrent race: exactly one waiter acquires, the other sees holds lock.
     await writeFile(lockFile, JSON.stringify({ pid: stalePid, token: "dead-1" }), "utf8");
     const settled = await Promise.allSettled([
       acquireProcessLock(lockFile),
@@ -192,7 +191,6 @@ test("concurrent stale-lock recovery selects exactly one valid lock holder witho
       await winners[0].value.release();
     }
 
-    // Cross-process concurrent stale-lock recovery with timeout: holders never overlap.
     await writeFile(lockFile, JSON.stringify({ pid: stalePid, token: "dead-2" }), "utf8");
     const lockModuleUrl = pathToFileURL(join(import.meta.dirname, "../src/process-lock.ts")).href;
     const workerScript = `
@@ -305,9 +303,7 @@ await runSupervisor({
             enginePid = readyPid;
             break;
           }
-        } catch {
-          // Wait until stub writes readyFile.
-        }
+        } catch {}
       }
       await new Promise((r) => setTimeout(r, 20));
     }

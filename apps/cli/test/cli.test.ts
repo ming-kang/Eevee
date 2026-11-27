@@ -2325,7 +2325,6 @@ test("mergeMcpAddConfig and shouldSwitchMcpTransport combine MCP add configs cle
   );
   assert.equal(shouldSwitchMcpTransport({ enabled: false }, { command: "npx" }), false);
 
-  // Brand-new full server defaults missing role to true; partial override does not.
   assert.deepEqual(
     mergeMcpAddConfig(
       undefined,
@@ -2343,7 +2342,6 @@ test("mergeMcpAddConfig and shouldSwitchMcpTransport combine MCP add configs cle
     { roles: { worker: false } },
   );
 
-  // Merging stdio -> http and http -> stdio drops old transport fields while preserving shared ones.
   assert.deepEqual(
     mergeMcpAddConfig(
       {
@@ -2560,7 +2558,6 @@ test("project update sends atomic merge:true PATCH and mcp add normalizes codemo
   try {
     const run = (argv: string[]) => createProgram(env).parseAsync(["node", "eevee", ...argv]);
 
-    // 1. project update --router-model sends a single atomic PATCH with merge: true (no preceding GET)
     await run(["project", "update", "demo", "--router-model", "openai/gpt-5"]);
     assert.deepEqual(calls.at(-1), {
       method: "PATCH",
@@ -2573,7 +2570,6 @@ test("project update sends atomic merge:true PATCH and mcp add normalizes codemo
       },
     });
 
-    // 2. project update --worker-tools +powershell sends merge: true atomically
     await run(["project", "update", "demo", "--worker-tools", "+powershell"]);
     assert.deepEqual(calls.at(-1), {
       method: "PATCH",
@@ -2586,7 +2582,6 @@ test("project update sends atomic merge:true PATCH and mcp add normalizes codemo
       },
     });
 
-    // 3. project update --codemode-mode sends merge: true atomically
     await run(["project", "update", "demo", "--codemode-mode", "only"]);
     assert.deepEqual(calls.at(-1), {
       method: "PATCH",
@@ -2599,7 +2594,6 @@ test("project update sends atomic merge:true PATCH and mcp add normalizes codemo
       },
     });
 
-    // 3b. project update --clear-models --clear-tools and --title omit merge: true
     await run(["project", "update", "demo", "--clear-models", "--clear-tools"]);
     assert.deepEqual(calls.at(-1), {
       method: "PATCH",
@@ -2619,7 +2613,6 @@ test("project update sends atomic merge:true PATCH and mcp add normalizes codemo
       false,
     );
 
-    // 4. mcp add on existing global HTTP server preserves headers, oauth, roles, exposure, toolExposure
     await run([
       "mcp",
       "add",
@@ -2648,7 +2641,6 @@ test("project update sends atomic merge:true PATCH and mcp add normalizes codemo
       },
     });
 
-    // 5. mcp add --replace replaces existing global server wholesale without fetching GET /mcp
     const callsBeforeReplace = calls.length;
     await run([
       "mcp",
@@ -2675,7 +2667,6 @@ test("project update sends atomic merge:true PATCH and mcp add normalizes codemo
       },
     });
 
-    // 6. mcp add switching stdio -> http drops command/args/cwd/env/type while keeping exposure & roles
     await run(["mcp", "add", "stdio", "--url", "https://stdio-now-http.example/mcp"]);
     assert.deepEqual(calls.at(-1), {
       method: "PUT",
@@ -2689,7 +2680,6 @@ test("project update sends atomic merge:true PATCH and mcp add normalizes codemo
       },
     });
 
-    // 7. mcp add --project demo docs --no-worker preserves existing exposure & roles.router
     await run(["mcp", "add", "docs", "--project", "demo", "--no-worker"]);
     assert.deepEqual(calls.at(-1), {
       method: "PUT",
@@ -2702,7 +2692,6 @@ test("project update sends atomic merge:true PATCH and mcp add normalizes codemo
       },
     });
 
-    // 8. mcp add --exposure codemode-deferred normalizes cleanly to "codemode"
     await run([
       "mcp",
       "add",
@@ -2948,7 +2937,6 @@ test("login-ui drives provider login (menu, auth events, select, secret echo mut
         res.end();
         return;
       }
-      // Keep stream open until redirect URL input arrives, then finish with complete.
       const checkDone = setInterval(() => {
         if (submittedInputs.some((entry) => entry.url.endsWith("/mcp-1/input"))) {
           clearInterval(checkDone);
@@ -3000,7 +2988,6 @@ test("login-ui drives provider login (menu, auth events, select, secret echo mut
       /does not support interactive login; pass --api-key <key>/,
     );
 
-    // Provider login in JSON mode routes prompts & auth events to stderr and mutes secret echo.
     const provIn = new PassThrough();
     const provOut = new PassThrough();
     const provErr = new PassThrough();
@@ -3049,7 +3036,6 @@ test("login-ui drives provider login (menu, auth events, select, secret echo mut
       },
     ]);
 
-    // MCP OAuth manual redirect prompt + completion in human mode
     mcpMode = "complete";
     const mcpIn = new PassThrough();
     const mcpOut = new PassThrough();
@@ -3072,7 +3058,6 @@ test("login-ui drives provider login (menu, auth events, select, secret echo mut
       body: { redirectUrl: "http://127.0.0.1:4000/cb?code=xyz" },
     });
 
-    // MCP OAuth error in human mode throws, in JSON mode returns error event & sets exitCode=1
     mcpMode = "error";
     await assert.rejects(
       runMcpOAuthLogin({
@@ -3113,7 +3098,6 @@ test("login-ui drives provider login (menu, auth events, select, secret echo mut
       process.exitCode = prevExitCode;
     }
 
-    // MCP OAuth unexpected EOF throws
     mcpMode = "eof";
     await assert.rejects(
       runMcpOAuthLogin({
@@ -3306,7 +3290,6 @@ test("runAbortableEngineCommand and runStreamCommand handle normal, JSON, abort,
     );
     assert.deepEqual(JSON.parse(logs[0] ?? "{}"), { maxActiveWorkers: 7 });
 
-    // Returning undefined skips printResult.
     logs.length = 0;
     await runAbortableEngineCommand(
       env,
@@ -3316,7 +3299,6 @@ test("runAbortableEngineCommand and runStreamCommand handle normal, JSON, abort,
     );
     assert.deepEqual(logs, []);
 
-    // Aborting inside runAbortableEngineCommand invokes onAbort and suppresses abort error.
     let abortHookRan = false;
     const beforeSet = new Set(process.listeners("SIGINT"));
     const abortedRun = runAbortableEngineCommand(
@@ -3339,7 +3321,6 @@ test("runAbortableEngineCommand and runStreamCommand handle normal, JSON, abort,
     assert.equal(abortHookRan, true);
     assert.deepEqual(logs, []);
 
-    // Non-abort error propagates.
     await assert.rejects(
       runAbortableEngineCommand(
         env,
@@ -3352,7 +3333,6 @@ test("runAbortableEngineCommand and runStreamCommand handle normal, JSON, abort,
       /command-boom/,
     );
 
-    // runStreamCommand in human mode & JSON mode with custom formatJson
     const seenEvents: string[] = [];
     await runStreamCommand(
       env,
@@ -3464,7 +3444,6 @@ test("login-ui handles pre-aborted signals and active abort cancellation in both
   };
 
   try {
-    // Pre-aborted external signal short-circuits without hitting /providers.
     const preAborted = new AbortController();
     preAborted.abort();
     assert.equal(
@@ -3473,7 +3452,6 @@ test("login-ui handles pre-aborted signals and active abort cancellation in both
     );
     assert.equal(providerListCalls, 0);
 
-    // External signal abort cancels active MCP OAuth session cleanly without extra SIGINT listeners.
     const beforeSigint = process.listenerCount("SIGINT");
     const mcpAbort = new AbortController();
     const mcpPromise = runMcpOAuthLogin({
@@ -3493,7 +3471,6 @@ test("login-ui handles pre-aborted signals and active abort cancellation in both
     assert.equal(await mcpPromise, undefined);
     assert.ok(cancelledUrls.includes("/mcp/servers/docs/oauth/login/mcp-hang/cancel"));
 
-    // CLI `auth login dual --json` installs exactly one SIGINT listener and cancels session on abort.
     const beforeSet = new Set(process.listeners("SIGINT"));
     const originalStderrWrite = process.stderr.write.bind(process.stderr);
     process.stderr.write = (() => true) as typeof process.stderr.write;

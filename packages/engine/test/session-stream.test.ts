@@ -191,7 +191,6 @@ test("KeyedSessionRegistry handles scoped lookup, retention expiry, serialized s
     return entry;
   };
 
-  // Same-key starts serialize; distinct-key starts proceed concurrently
   const s1Promise = registry.start("key-a", async () => {
     events.push("start:a1");
     await gate;
@@ -214,7 +213,6 @@ test("KeyedSessionRegistry handles scoped lookup, retention expiry, serialized s
   const [s1, s2] = await Promise.all([s1Promise, s2Promise]);
   assert.deepEqual(events, ["start:a1", "start:b", "end:a1", "start:a2"]);
 
-  // Scoped lookup enforces predicate & custom error
   assert.equal(
     registry.require(
       s1.sessionId,
@@ -233,7 +231,6 @@ test("KeyedSessionRegistry handles scoped lookup, retention expiry, serialized s
     (err: unknown) => err instanceof EngineError && err.code === "custom_not_found",
   );
 
-  // Retention expiry deletes terminal sessions from registry
   const expiring = await registry.start("key-exp", () =>
     makeSession("s-exp", "scope-exp", { autoComplete: true }),
   );
@@ -249,7 +246,6 @@ test("KeyedSessionRegistry handles scoped lookup, retention expiry, serialized s
     /expired/,
   );
 
-  // cancelWhere drains matching non-terminal sessions without cancelling others
   await registry.cancelWhere(
     (entry) => entry.sessionId === "s1",
     (entry) => {
@@ -261,7 +257,6 @@ test("KeyedSessionRegistry handles scoped lookup, retention expiry, serialized s
   assert.equal(s2.cancelled, false);
   assert.equal(sOther.cancelled, false);
 
-  // close() drains mid-flight starts, rejects queued starts, cancels active sessions, clears registry, and rejects new starts
   let enteredClosingStart!: () => void;
   const entered = new Promise<void>((resolve) => {
     enteredClosingStart = resolve;

@@ -175,7 +175,6 @@ test("Router and Worker enforce exact prompt-cache section ordering, concise pre
     assert.ok(routerBaseline.sections?.rules?.includes("self-contained briefing"));
     assert.ok(routerBaseline.sections?.rules?.includes("final decisions"));
 
-    // Verify board-overview change between router turn 1 and handoff turn emitted only a minimal delta
     const boardOnlyDelta = routerSysEntries1.at(-1)?.model?.[0] as SystemMessage | undefined;
     assert.ok(routerSysEntries1.length >= 2);
     assert.deepEqual(Object.keys(boardOnlyDelta?.sections ?? {}), ["board-overview"]);
@@ -206,7 +205,6 @@ test("Router and Worker enforce exact prompt-cache section ordering, concise pre
     assert.ok(workerBaseline.sections?.["worker-role"]?.includes("message_router"));
     assert.ok(workerBaseline.sections?.rules?.includes("Never poll tasks"));
 
-    // Modify projectMemory -> emits minimal 1-section patch without touching earlier static sections
     const routerSysCountBefore = (await systemEntries(project.root)).length;
     const workerSysCountBefore = (await systemEntries(workerConv)).length;
     projectMemory = "Updated memory fact.";

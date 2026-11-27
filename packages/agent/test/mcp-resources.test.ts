@@ -259,7 +259,6 @@ test("resource tools paginate, filter ui:// and profile=mcp-app, save binary blo
   const unbind = hub.bindRegistry(th.registry);
 
   try {
-    // Before connecting, MCP_EXTENSION does not advertise resource tools.
     assert.equal(th.registry.snapshot().extension(MCP_EXTENSION)?.tools, undefined);
 
     await hub.start();
@@ -311,17 +310,14 @@ test("resource tools paginate, filter ui:// and profile=mcp-app, save binary blo
     const readCalls = results.filter((r) => r.toolName === READ_MCP_RESOURCE_TOOL_NAME);
     assert.equal(readCalls.length, 3);
 
-    // Binary blob saved to temp file
     const binaryText = extractText(readCalls[0]?.content);
     assert.ok(binaryText.includes("saved to"), `unexpected binaryText: ${binaryText}`);
     const savedPath = join(saveDir, "blob.bin");
     assert.equal(await readFile(savedPath, "utf8"), "RAW-BYTES-123");
 
-    // ui:// and profile=mcp-app rejected
     assert.equal(readCalls[1]?.isError, true);
     assert.equal(readCalls[2]?.isError, true);
 
-    // Codemode structured JSON results
     const codemode = results.find((r) => r.toolName === "codemode");
     assert.equal(codemode?.isError, false);
     const cmText = extractText(codemode?.content);
@@ -402,7 +398,6 @@ test("resource tools enforce conversation-scoped server visibility (Router canno
         return roles === undefined || roles.worker;
       });
 
-    // Router lists all resources & tries to read priv -> priv hidden & rejected
     th.faux.setResponses([
       fauxAssistantMessage([fauxToolCall(LIST_MCP_RESOURCES_TOOL_NAME, {})], {
         stopReason: "toolUse",
@@ -428,7 +423,6 @@ test("resource tools enforce conversation-scoped server visibility (Router canno
     const routerPrivRead = captured.get(READ_MCP_RESOURCE_TOOL_NAME)?.[0];
     assert.equal(routerPrivRead?.isError, true);
 
-    // Worker lists & reads priv -> succeeds
     th.faux.setResponses([
       fauxAssistantMessage([fauxToolCall(LIST_MCP_RESOURCES_TOOL_NAME, {})], {
         stopReason: "toolUse",

@@ -859,7 +859,6 @@ test("ModelRuntime.reload() serializes concurrent reloads and settles to latest 
     assert.equal(runtime.resolveModel({ provider: "p1", modelId: "m1" }), undefined);
     assert.ok(runtime.resolveModel({ provider: "p2", modelId: "m2" }));
 
-    // Concurrent mutateModelsJson + runtime.reload() calls settle to the full final state.
     runtime.hydrateStoredCatalogs = originalHydrate;
     await Promise.all([
       upsertProviderConfig(file, "p3", {
@@ -876,7 +875,6 @@ test("ModelRuntime.reload() serializes concurrent reloads and settles to latest 
     assert.ok(runtime.resolveModel({ provider: "p3", modelId: "m3" }));
     assert.ok(runtime.resolveModel({ provider: "p4", modelId: "m4" }));
 
-    // A rejected strict reload must not poison subsequent reloads.
     await writeFile(file, "{ bad json");
     await assert.rejects(runtime.reload({ strict: true }), ModelsConfigError);
     await writeFile(

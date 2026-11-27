@@ -297,7 +297,6 @@ test("reconstructConversationMessages mirrors leadWithSystem, edits, tool orderi
     makeEntry(7, "pi.user", [u3], {
       edits: [{ target: entryId(1), action: "omit" }],
     }),
-    // Re-emitted head marker whose id >= firstKept (8 >= 6) must not be duplicated.
     head,
     makeEntry(9, SystemEntry.kind, [systemMsg("post-head baseline", 9)], {
       edits: [{ target: entryId(2), action: "omit" }],
@@ -403,7 +402,6 @@ test("manual compaction hits cached prefix with same sessionId, tracks file ops,
     assert.ok(compactCall);
     assert.equal(calls.length, 4, "no native fallback call should happen");
 
-    // Prefix of compaction request must match the previous generation's messages identically.
     assert.ok(compactCall.messages.length > lastGenCall.messages.length);
     assert.deepEqual(
       compactCall.messages.slice(0, lastGenCall.messages.length),
@@ -465,9 +463,7 @@ test("automatic threshold compaction uses cached compaction hook", async () => {
     const bigReply = "Detailed first turn analysis ".repeat(40);
     th.faux.setResponses([
       capture(fauxAssistantMessage(bigReply)),
-      // Threshold compaction runs before second generation's model call:
       capture(fauxAssistantMessage("## Goal\nThreshold cached summary.")),
-      // Second generation after threshold compaction:
       capture(fauxAssistantMessage("Second turn completed after threshold compaction.")),
     ]);
 
@@ -527,9 +523,7 @@ test("toolCall or error responses during cached compaction fall back cleanly to 
       th.faux.setResponses([
         capture(fauxAssistantMessage("First turn response with enough words to compact.")),
         capture(fauxAssistantMessage("Second turn stays kept in the tail.")),
-        // Cached compaction attempt returns badResponse -> falls back to native:
         capture(badResponse),
-        // Native compaction request:
         capture(fauxAssistantMessage("## Goal\nNative fallback summary.")),
       ]);
 
@@ -584,16 +578,13 @@ test("overflow compaction bypasses cached compaction and uses native compaction 
       };
     th.faux.setResponses([
       capture(fauxAssistantMessage("First turn content that will be compacted on overflow.")),
-      // Second turn hits provider context overflow:
       capture(
         fauxAssistantMessage("", {
           stopReason: "error",
           errorMessage: "prompt is too long: maximum context length exceeded",
         }),
       ),
-      // Overflow compaction must go straight to native (no cached compaction attempt):
       capture(fauxAssistantMessage("## Goal\nNative overflow summary.")),
-      // Generation retries after overflow compaction and succeeds:
       capture(fauxAssistantMessage("Recovered after overflow.")),
     ]);
 
@@ -643,7 +634,6 @@ test("sequential compactions keep leading system prefix and accumulate file oper
       };
 
     th.faux.setResponses([
-      // Round 1: read a.txt, write b.txt
       capture(
         fauxAssistantMessage(
           [
@@ -654,18 +644,13 @@ test("sequential compactions keep leading system prefix and accumulate file oper
         ),
       ),
       capture(fauxAssistantMessage("Finished round 1 with a.txt and b.txt.")),
-      // Round 2: kept tail for compaction #1
       capture(fauxAssistantMessage("Round 2 answer stays in the kept tail for compaction one.")),
-      // Compaction #1
       capture(fauxAssistantMessage("## Goal\nCheckpoint one.")),
-      // Round 3: read c.txt after compaction #1
       capture(
         fauxAssistantMessage([fauxToolCall("read", { path: "c.txt" })], { stopReason: "toolUse" }),
       ),
       capture(fauxAssistantMessage("Finished round 3 reading c.txt.")),
-      // Round 4: kept tail for compaction #2
       capture(fauxAssistantMessage("Round 4 answer stays in the kept tail for compaction two.")),
-      // Compaction #2
       capture(fauxAssistantMessage("## Goal\nCheckpoint two.")),
     ]);
 

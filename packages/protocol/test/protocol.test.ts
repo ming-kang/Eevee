@@ -650,7 +650,6 @@ test("EeveeClient sends bearer auth, maps Problem errors, validates payloads, an
     };
     assert.equal(live.generation?.message?.content?.[0]?.text, "Hello");
   }
-  // Ensure snapshot was not mutated by applyImmutable.
   if (convEvents[0]?.type === "snapshot") {
     assert.deepEqual(convEvents[0].view.docs["pi.live"], {});
     assert.equal(convEvents[0].view.entries.length, 1);
@@ -668,7 +667,6 @@ test("EeveeClient sends bearer auth, maps Problem errors, validates payloads, an
 
   await assert.rejects(async () => {
     for await (const _ of client.streamConversation("unsafe", "router")) {
-      // consume
     }
   }, /unsafe path segment|__proto__/);
 });
@@ -2232,7 +2230,6 @@ test("global vs project MCP schemas, partial model cost, DeltaOpSchema, and pars
   const checkProjectState = compile(ProjectMcpStateResponseSchema);
   const checkBundle = compile(ConfigBundleSchema);
 
-  // Global MCP schemas reject empty {} and partial overrides, while project schemas accept overrides.
   assert.equal(checkPutGlobal.check({ servers: { docs: { command: "docs-mcp" } } }), true);
   assert.equal(checkPutGlobal.check({ servers: { docs: {} } }), false);
   assert.equal(checkPutGlobal.check({ servers: { docs: { enabled: false } } }), false);
@@ -2274,7 +2271,6 @@ test("global vs project MCP schemas, partial model cost, DeltaOpSchema, and pars
     false,
   );
 
-  // UpsertProviderModelRequestSchema.cost uses typed PartialModelCostSchema + nullable.
   const checkPartialCost = compile(PartialModelCostSchema);
   const checkUpsertModel = compile(UpsertProviderModelRequestSchema);
   assert.equal(checkPartialCost.check({ output: 12.5 }), true);
@@ -2294,11 +2290,9 @@ test("global vs project MCP schemas, partial model cost, DeltaOpSchema, and pars
   assert.equal(checkUpsertModel.check({ cost: null }), true);
   assert.equal(checkUpsertModel.check({ cost: { unknown: 1 } }), false);
 
-  // parseOptionalWithSchema generic helper.
   assert.deepEqual(parseOptionalWithSchema(OkResponseSchema, { ok: true }), { ok: true });
   assert.equal(parseOptionalWithSchema(OkResponseSchema, { ok: false }), undefined);
 
-  // DeltaOpSchema validates all 7 op shapes and rejects unsafe/malformed ops.
   const checkOp = compile(DeltaOpSchema);
   const checkPatch = compile(ConversationPatchEventSchema);
   assert.equal(checkOp.check(["r", { a: [1, "x", null, true] }]), true);
@@ -2324,7 +2318,6 @@ test("global vs project MCP schemas, partial model cost, DeltaOpSchema, and pars
 });
 
 test("shared query schemas, validateTaskReadOptions, mcp-codec, and provider-codec helpers behave accurately", () => {
-  // Query schemas.
   const checkEntriesQuery = compile(EntriesQuerySchema);
   assert.equal(
     checkEntriesQuery.check({ order: "descending", limit: 500, minEntryId: 1, cursor: "" }),
@@ -2366,7 +2359,6 @@ test("shared query schemas, validateTaskReadOptions, mcp-codec, and provider-cod
   assert.equal(checkWindowQuery.check({ from: 1, min: 10, max: 50 }), true);
   assert.equal(checkWindowQuery.check({ from: 0 }), false);
 
-  // validateTaskReadOptions.
   assert.equal(validateTaskReadOptions({}), undefined);
   assert.equal(validateTaskReadOptions({ filter: "" }), undefined);
   const matcher = validateTaskReadOptions({ filter: "/warn-\\d+/i", contextLines: 5 });
@@ -2391,7 +2383,6 @@ test("shared query schemas, validateTaskReadOptions, mcp-codec, and provider-cod
     /Invalid filter regular expression/,
   );
 
-  // mcp-codec helpers.
   assert.equal(MCP_SERVER_NAME_RE.test("my-mcp_1"), true);
   assert.equal(MCP_SERVER_NAME_RE.test("bad name"), false);
   assert.equal(DEFAULT_MCP_EXPOSURE, "codemode");
@@ -2451,7 +2442,6 @@ test("shared query schemas, validateTaskReadOptions, mcp-codec, and provider-cod
   );
   assert.equal(mcpConnectionFieldsMatch({ enabled: false }, { enabled: false }), false);
 
-  // provider-codec helpers.
   assert.equal(validateProviderBaseUrl("   "), "Base URL is required");
   assert.equal(
     validateProviderBaseUrl(" https://x.test "),
@@ -2538,7 +2528,6 @@ test("EeveeClient exposes domain sub-clients with flat method parity and termina
   assert.equal(client.listSkills, client.skills().list);
   assert.equal(client.getMcpState, client.mcp().getState);
 
-  // Destructured methods retain transport binding.
   const { health } = client.settings;
   const { listProjects } = client.projects;
   const { listEntries } = client.conversations;
@@ -2548,7 +2537,6 @@ test("EeveeClient exposes domain sub-clients with flat method parity and termina
   assert.deepEqual(await listEntries("demo", "router"), { entries: [] });
   assert.deepEqual(await listProviders(), { providers: [] });
 
-  // streamDecodedSse terminates on terminal event even if trailing frames exist.
   const boardEvents: BoardStreamEvent[] = [];
   for await (const evt of client.projects.streamBoard("demo")) {
     boardEvents.push(evt);

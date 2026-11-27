@@ -1,5 +1,3 @@
-/* ---------------- Right Rail (Workers / Tasks / WorkerView) ---------------- */
-
 .ev-rail-section {
   display: flex;
   flex-direction: column;
@@ -125,8 +123,6 @@
   color: var(--ev-fg-subtle);
 }
 
-/* Worker panel */
-
 .ev-worker-subhead {
   display: flex;
   align-items: center;
@@ -188,8 +184,6 @@
   color: var(--ev-fg-subtle);
   padding: 6px 0;
 }
-
-/* Tasks & log viewer */
 
 .ev-tasks-stack {
   display: flex;

@@ -92,16 +92,13 @@ export function createCodemodeHandle(options: CodemodeHandleOptions = {}): Codem
   const sandbox =
     provided ??
     (mode === "inline"
-      ? // `wasm` is required by the inline sandbox but optional here: on Node the
-        // package's own QuickJS build is the default, overridable through `inlineOptions`.
+      ? // InlineCodemodeSandbox requires wasm; on Node, default to the bundled QuickJS build.
         new InlineCodemodeSandbox({ wasm: loadQuickJSWasm(), ...inlineOptions })
       : new CodemodeSandbox(sandboxOptions));
   const extension = createCodemodeExtension({ ...toolOptions, sandbox });
   return {
     extension,
     sandbox,
-    // A caller-supplied sandbox keeps its owner: closing the handle must not
-    // close what the caller may still use or close itself.
     close: async () => {
       if (owned) await sandbox.close();
     },

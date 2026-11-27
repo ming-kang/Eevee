@@ -156,8 +156,6 @@ test("spanAt, parseLabel, and geometry helpers validate spans and compute parent
   ]);
   assert.throws(() => splitSpan(leafSpan(0)), RangeError);
 
-  // Pair (4+2, 6+2) -> parent 4+4 covers 4..7; with totalLeaves=41 (latest leaf 40):
-  // age = 41 - 7 = 34, childSize = 2 -> due = 17.
   assert.equal(mergeDue({ start: 4, size: 4 }, 41), 17);
 
   assert.equal(covers([{ start: 0, size: 2 }, leafSpan(2)], 3), true);
@@ -224,7 +222,6 @@ test("fold keeps older merged lines intact and merges only the most due built si
     leafSpan(11),
   ];
 
-  // Everything fits under budget.max: no folding occurs.
   const untouched = fold(
     initial,
     16,
@@ -234,9 +231,6 @@ test("fold keeps older merged lines intact and merges only the most due built si
   );
   assert.deepEqual(untouched, initial);
 
-  // Pair (8+1, 9+1) has due = (16 - 9) / 1 = 7; (10+1, 11+1) has due = (16 - 11) / 1 = 5;
-  // (4+2, 6+2) has due = (16 - 7) / 2 = 4.5.
-  // So 8+1 & 9+1 fold first into 8+2, leaving older prefix [0+4, 4+2, 6+2] untouched.
   const foldedOnce = fold(
     initial,
     16,
@@ -247,7 +241,6 @@ test("fold keeps older merged lines intact and merges only the most due built si
   assert.deepEqual(foldedOnce.map(labelOf), ["0+4", "4+2", "6+2", "8+2", "10+1", "11+1"]);
   assert.deepEqual(foldedOnce.slice(0, 3), initial.slice(0, 3));
 
-  // Unbuilt parents are never folded even if due.
   const onlyBuilt10 = fold(
     initial,
     16,
@@ -370,17 +363,14 @@ test("spanText, leafPreview, composeView, and recallBudget preserve prefixes and
   assert.equal(spanText(store, leafSpan(6)), `${PENDING_LINE} user: message-6 content`);
   assert.equal(lineOf(store, { start: 0, size: 2 }), "0+2|m0-1");
 
-  // Starting from previous spans [0+2, 2+1, 3+1], grow through entry 70 (leaves 0..5).
   const previousSpans: Span[] = [{ start: 0, size: 2 }, leafSpan(2), leafSpan(3)];
   const keptPrefixView = composeView(store, 70, previousSpans, { min: 100, max: 200 });
   assert.deepEqual(keptPrefixView.spans.map(labelOf), ["0+2", "2+1", "3+1", "4+1", "5+1"]);
 
-  // Without previous spans, composeView rebuilds and folds from leaves cleanly.
   const rebuiltView = composeView(store, 50, undefined, { min: 1, max: 1 });
   assert.deepEqual(rebuiltView.spans.map(labelOf), ["0+4"]);
   assert.equal(covers(rebuiltView.spans, 4), true);
 
-  // Discontinuous or overshooting previous spans are discarded safely.
   const invalidPrev = composeView(store, 50, [{ start: 0, size: 2 }, leafSpan(3)], {
     min: 100,
     max: 200,

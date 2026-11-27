@@ -243,8 +243,6 @@ test("fast background task settling before Worker turn finishes queues steer in 
       if (last?.role === "toolResult") {
         if (last.toolName === "spawn_worker") return fauxAssistantMessage("spawned fastbg");
         if (last.toolName === "bash") {
-          // Hold the Worker's current answer long enough for the fast bg task to finish
-          // and enqueue its completion steer into InboxDoc BEFORE the Worker's turn ends.
           await new Promise<void>((resolve) => {
             delayedResolve = resolve;
             void waitFor(async () => {
@@ -364,7 +362,6 @@ test("killWorkerTask delivers cancelled-by-user steer notice while stop_worker(c
     const w2 = workers[1];
     assert.ok(w1 !== undefined && w2 !== undefined);
 
-    // Wait for initial runs to go idle while background tasks keep running.
     await waitFor(async () => {
       const l1 = await fixture.project.harness.snapshot(
         LiveDoc,
@@ -379,7 +376,6 @@ test("killWorkerTask delivers cancelled-by-user steer notice while stop_worker(c
       return l1?.run === undefined && l2?.run === undefined;
     }, "both workers idle after starting bg tasks");
 
-    // Kill w1's task using unique prefix "1" -> cancelled by user + steer wake + handoff.
     const killedW1 = await fixture.project.killWorkerTask("w1", "1");
     assert.equal(killedW1.id, "task-1");
     assert.equal(killedW1.status, "cancelled");
@@ -400,7 +396,6 @@ test("killWorkerTask delivers cancelled-by-user steer notice while stop_worker(c
     assert.equal(w1Notes.length, 1);
     assert.ok(JSON.stringify(w1Notes[0]?.model ?? []).includes("cancelled by the user"));
 
-    // Close w2 via stop_worker(close) -> task cancelled with abort, NO wake, NO notification!
     await (await fixture.project.send("close-w2")).wait(BACKGROUND_CONTEXT);
     await new Promise((resolve) => setTimeout(resolve, 100));
 

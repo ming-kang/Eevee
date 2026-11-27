@@ -9,9 +9,7 @@ function readPreference(): ThemePreference {
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     if (saved === "light" || saved === "dark" || saved === "system") return saved;
-  } catch {
-    // Ignore storage access errors.
-  }
+  } catch {}
   return "system";
 }
 
@@ -33,9 +31,7 @@ export function useTheme() {
     setPreferenceState(next);
     try {
       window.localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // Ignore storage access errors.
-    }
+    } catch {}
     const resolved = resolveScheme(next);
     setScheme(resolved);
     applyScheme(resolved);

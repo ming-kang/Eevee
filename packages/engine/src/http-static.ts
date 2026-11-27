@@ -91,9 +91,7 @@ export function createStaticAssetHandler(distDir: string): StaticAssetHandler {
           await sendFile(req, res, candidate, cache);
           return true;
         }
-      } catch {
-        // Fall through to SPA index fallback for HTML navigation requests.
-      }
+      } catch {}
 
       if (acceptsHtml(req) && extname(relPath) === "" && existsSync(indexPath)) {
         await sendFile(req, res, indexPath, "no-cache");

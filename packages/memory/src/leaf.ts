@@ -34,10 +34,6 @@ const KINDS: Record<Exclude<Message["role"], "system">, LeafKind> = {
   toolResult: "tool",
 };
 
-/**
- * Normalize one transcript entry into a memory leaf, omitting head markers, system messages,
- * failed/aborted assistant messages, thinking blocks, and memory lookup calls/results.
- */
 export function leafOf(entry: EntryRecord): LeafDraft | undefined {
   if (entry.head !== undefined) return undefined;
   const messages = (entry.model ?? []).filter(

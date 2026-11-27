@@ -212,7 +212,6 @@ test("Slice 4C E2E: auth, profiles, memory, live stdio MCP propagation, config e
     const mcpScriptPath = join(fixture.rootDir, "mcp-fixture.mjs");
     await writeFile(mcpScriptPath, STDIO_MCP_SCRIPT, "utf8");
 
-    // 1. Auth & Models inspection + global settings
     const authStatusRes = await fixture.runCli(["auth", "status", "--json"]);
     assert.equal(authStatusRes.code, 0, authStatusRes.stderr);
     const providers = parseWithSchema(
@@ -251,7 +250,6 @@ test("Slice 4C E2E: auth, profiles, memory, live stdio MCP propagation, config e
     assert.equal(savedSettings.maxActiveWorkers, 4);
     assert.equal(savedSettings.models?.dreamer?.modelId, "dreamer-model");
 
-    // 2. Create project and run Turn 1 (long prompt > 160 tokens so Dreamer calls dreamer-model)
     const createRes = await fixture.runCli([
       "project",
       "create",
@@ -289,7 +287,6 @@ test("Slice 4C E2E: auth, profiles, memory, live stdio MCP propagation, config e
     assert.ok(systemPromptOf(req1).includes("Initial memory constraint A."));
     assert.equal(toolNamesOf(req1).includes("mcp__echomcp__echo_tag"), false);
 
-    // 3. Update project memory & model profiles via CLI; verify immediate effect on next Router request
     const memSetRes = await fixture.runCli([
       "project",
       "memory",
@@ -360,7 +357,6 @@ test("Slice 4C E2E: auth, profiles, memory, live stdio MCP propagation, config e
     assert.ok(turn2Sys.includes("Smart profile for complex work"));
     assert.ok(turn2Sys.includes("Prefer smart profile for multi-step work."));
 
-    // 4. Add real stdio MCP server while project is ALREADY OPEN -> Router sees & calls new tool
     const mcpAddRes = await fixture.runCli([
       "mcp",
       "add",
@@ -393,7 +389,6 @@ test("Slice 4C E2E: auth, profiles, memory, live stdio MCP propagation, config e
       return entries.entries.some((e) => JSON.stringify(e).includes("STDIO_MCP_OK:pineapple-4c"));
     }, "turn 3 MCP tool call completion");
 
-    // Existing Worker w1 (spawned BEFORE echomcp was added) also sees and calls echomcp
     const workerMcpTurn = await fixture.runCli([
       "send",
       projectId,
@@ -408,7 +403,6 @@ test("Slice 4C E2E: auth, profiles, memory, live stdio MCP propagation, config e
       return entries.entries.some((e) => JSON.stringify(e).includes("STDIO_MCP_OK:worker-mcp-4c"));
     }, "existing worker w1 MCP tool call completion");
 
-    // 5. Usage includes Dreamer spend (mock/dreamer-model with non-zero cost)
     let usageJson: ProjectUsageResponse | undefined;
     await waitFor(async () => {
       const usageRes = await fixture.runCli(["project", "usage", projectId, "--json"]);
@@ -419,7 +413,6 @@ test("Slice 4C E2E: auth, profiles, memory, live stdio MCP propagation, config e
     assert.ok((usageJson?.usage.models["mock/test-model"]?.totalTokens ?? 0) > 0);
     assert.ok((usageJson?.usage.models["mock/dreamer-model"]?.cost.total ?? 0) > 0);
 
-    // 6. Export config -> import into a fresh Engine with a fresh temp EEVEE_HOME
     const exportPath = join(fixture.rootDir, "exported-bundle.json");
     const exportRes = await fixture.runCli(["config", "export", "--file", exportPath]);
     assert.equal(exportRes.code, 0, exportRes.stderr);
@@ -451,9 +444,7 @@ test("Slice 4C E2E: auth, profiles, memory, live stdio MCP propagation, config e
               secondClient = candidate;
               break;
             }
-          } catch {
-            // waiting
-          }
+          } catch {}
         }
         await new Promise((resolve) => setTimeout(resolve, 30));
       }
@@ -474,7 +465,6 @@ test("Slice 4C E2E: auth, profiles, memory, live stdio MCP propagation, config e
       await stopChildProcess(secondEngine).catch(() => undefined);
     }
 
-    // 7. Update project metadata and remove project -> projects/<id>/ gone, workspace intact
     const updateRes = await fixture.runCli([
       "project",
       "update",

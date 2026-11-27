@@ -121,7 +121,6 @@ test("Slice 4B E2E: ask_user -> answer -> watch w1 -> bg task -> direct send -> 
   });
 
   try {
-    // 1. Create project
     const createRes = await fixture.runCli([
       "project",
       "create",
@@ -138,7 +137,6 @@ test("Slice 4B E2E: ask_user -> answer -> watch w1 -> bg task -> direct send -> 
     const created = parseWithSchema(CreateProjectResponseSchema, JSON.parse(createRes.stdout));
     const projectId = created.project.id;
 
-    // 2. Router calls ask_user -> eevee board shows unanswered q1
     const sendRouter = await fixture.runCli([
       "send",
       projectId,
@@ -160,7 +158,6 @@ test("Slice 4B E2E: ask_user -> answer -> watch w1 -> bg task -> direct send -> 
     assert.ok(boardHuman.stdout.includes("Unanswered questions:"));
     assert.ok(boardHuman.stdout.includes("q1: Target environment?; Region?"));
 
-    // 3. eevee answer q1 -> Router resumes and spawns Worker w1
     const answerRes = await fixture.runCli([
       "answer",
       projectId,
@@ -180,11 +177,9 @@ test("Slice 4B E2E: ask_user -> answer -> watch w1 -> bg task -> direct send -> 
       return w1?.tasks.some((t) => t.id === "task-1" && t.status === "running") ?? false;
     }, "worker w1 to start background task-1");
 
-    // 4. eevee watch <project> w1 observes Worker w1
     const watchW1 = fixture.spawnCli(["watch", projectId, "w1"]);
     await watchW1.waitForStdout((out) => out.includes("Monitor task-1 started."), 15_000);
 
-    // 5. Direct message to w1 via eevee send --worker w1
     const sendW1 = await fixture.runCli([
       "send",
       projectId,
@@ -198,7 +193,6 @@ test("Slice 4B E2E: ask_user -> answer -> watch w1 -> bg task -> direct send -> 
 
     await watchW1.waitForStdout((out) => out.includes("Starting slow check..."), 15_000);
 
-    // 6. Interrupt w1 mid-turn via eevee interrupt <project> w1; background task-1 must stay running!
     const interruptRes = await fixture.runCli(["interrupt", projectId, "w1", "--json"]);
     assert.equal(interruptRes.code, 0, interruptRes.stderr);
     parseWithSchema(OkResponseSchema, JSON.parse(interruptRes.stdout));
@@ -210,7 +204,6 @@ test("Slice 4B E2E: ask_user -> answer -> watch w1 -> bg task -> direct send -> 
       return task1?.status === "running" && w1?.status === "running";
     }, "task-1 to remain running after interrupt");
 
-    // 7. Resume via eevee retry <project> w1
     const retryRes = await fixture.runCli(["retry", projectId, "w1", "--json"]);
     assert.equal(retryRes.code, 0, retryRes.stderr);
     parseWithSchema(SendMessageResponseSchema, JSON.parse(retryRes.stdout));
@@ -218,7 +211,6 @@ test("Slice 4B E2E: ask_user -> answer -> watch w1 -> bg task -> direct send -> 
     await watchW1.waitForStdout((out) => out.includes("Slow check resumed and completed!"), 15_000);
     await watchW1.stop();
 
-    // 8. Read background task output (including incremental --since-bytes)
     let firstRead = parseWithSchema(
       ReadWorkerTaskResponseSchema,
       JSON.parse(
@@ -292,7 +284,6 @@ test("Slice 4B E2E: ask_user -> answer -> watch w1 -> bg task -> direct send -> 
     assert.equal(humanTaskRead.code, 0, humanTaskRead.stderr);
     assert.ok(humanTaskRead.stdout.includes("Worker w1 task task-1 [running]"));
 
-    // 8b. List tasks via eevee task list (project-wide and worker-scoped) and read with --filter --context
     const projectListJson = await fixture.runCli([
       "task",
       "list",
@@ -372,7 +363,6 @@ test("Slice 4B E2E: ask_user -> answer -> watch w1 -> bg task -> direct send -> 
     assert.ok(filteredHuman.stdout.includes("Matches: 1 of 1 line(s)"));
     assert.ok(filteredHuman.stdout.includes("2: line-2"));
 
-    // 9. Watch task-1 via eevee task watch, kill it via eevee task kill, and verify user-kill steer settles cleanly
     const watchTask = fixture.spawnCli(["task", "watch", projectId, "w1", "task-1"]);
     await watchTask.waitForStdout(
       (out) => out.includes("Worker w1 task task-1 [running]") && out.includes("line-"),
@@ -517,7 +507,6 @@ test("Slice 4B E2E: watch reconnect with lastEventId delivers only missed entrie
     const projectId = parseWithSchema(CreateProjectResponseSchema, JSON.parse(createRes.stdout))
       .project.id;
 
-    // Turn 1 while watching via EeveeClient; record eventId when Alpha completes, then disconnect.
     const ac1 = new AbortController();
     let savedEventId: string | undefined;
     const firstStreamLoop = (async () => {
@@ -541,7 +530,6 @@ test("Slice 4B E2E: watch reconnect with lastEventId delivers only missed entrie
     const lastSeenId = Number(savedEventId);
     assert.ok(Number.isSafeInteger(lastSeenId) && lastSeenId >= 1);
 
-    // Run Turn 2 while disconnected.
     const send2 = await fixture.runCli(["send", projectId, "Second turn", "--json"]);
     assert.equal(send2.code, 0, send2.stderr);
     await waitFor(async () => {
@@ -551,7 +539,6 @@ test("Slice 4B E2E: watch reconnect with lastEventId delivers only missed entrie
       );
     }, "turn 2 to commit while disconnected");
 
-    // Reconnect via EeveeClient with lastEventId -> ONLY missed entries (> lastSeenId) arrive.
     const ac2 = new AbortController();
     let resumedSnapshotEntries: number[] = [];
     let resumedSnapshotBefore: number | undefined;
@@ -584,13 +571,11 @@ test("Slice 4B E2E: watch reconnect with lastEventId delivers only missed entrie
     assert.equal(resumedText.includes("First turn"), false);
     assert.ok(resumedText.includes("Beta response complete."));
 
-    // Run Turn 3 while reconnected stream is active.
     const send3 = await fixture.runCli(["send", projectId, "Third turn", "--json"]);
     assert.equal(send3.code, 0, send3.stderr);
     await resumedLoop;
     assert.ok(thirdTurnEventId !== undefined && Number(thirdTurnEventId) > lastSeenId);
 
-    // Reconnect via CLI `eevee watch --last-event-id <savedEventId> --json` and verify zero duplicates.
     const cliWatchResumed = fixture.spawnCli([
       "watch",
       projectId,
@@ -619,7 +604,6 @@ test("Slice 4B E2E: watch reconnect with lastEventId delivers only missed entrie
     assert.ok(cliResumedDump.includes("Beta response complete."));
     assert.ok(cliResumedDump.includes("Gamma response complete."));
 
-    // Paginate full history via client.listEntries
     const ascIds: number[] = [];
     let cursor: string | undefined;
     do {

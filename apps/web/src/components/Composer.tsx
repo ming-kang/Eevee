@@ -133,9 +133,7 @@ export function Composer({
         const key = draftStorageKey(draftKey);
         if (next) window.localStorage.setItem(key, next);
         else window.localStorage.removeItem(key);
-      } catch {
-        // Ignore storage errors.
-      }
+      } catch {}
     },
     [draftKey],
   );
@@ -255,9 +253,7 @@ export function Composer({
       } else {
         try {
           restoreFailedDraftToStorage(window.localStorage, submittedDraftKey, submittedText);
-        } catch {
-          // Ignore storage errors.
-        }
+        } catch {}
       }
     } finally {
       if (mountedRef.current) {

@@ -63,7 +63,6 @@ test("HTTP server supports web ticket login, HttpOnly cookie auth, CSRF protecti
     });
 
     try {
-      // Static assets & SPA fallback work without auth, while path traversal and JSON 404 are safe.
       const indexRes = await fetch(`${foreground.url}/`);
       assert.equal(indexRes.status, 200);
       assert.match(indexRes.headers.get("content-type") ?? "", /text\/html/);
@@ -88,11 +87,9 @@ test("HTTP server supports web ticket login, HttpOnly cookie auth, CSRF protecti
       });
       assert.equal(api404Res.status, 404);
 
-      // Unauthenticated browser sees authenticated: false on GET /auth/session.
       const anonSession = await (await fetch(`${foreground.url}/auth/session`)).json();
       assert.deepEqual(anonSession, { authenticated: false });
 
-      // Cross-origin POST /auth/session is blocked by CSRF guard.
       const crossOriginLogin = await fetch(`${foreground.url}/auth/session`, {
         method: "POST",
         headers: {
@@ -103,7 +100,6 @@ test("HTTP server supports web ticket login, HttpOnly cookie auth, CSRF protecti
       });
       assert.equal(crossOriginLogin.status, 403);
 
-      // Bearer client mints a one-time web ticket; browser redeems it for an HttpOnly cookie.
       const { ticket } = await bearerClient.createWebTicket();
       const loginRes = await fetch(`${foreground.url}/auth/session`, {
         method: "POST",
@@ -120,7 +116,6 @@ test("HTTP server supports web ticket login, HttpOnly cookie auth, CSRF protecti
       assert.match(setCookie, /SameSite=Lax/i);
       const cookiePair = setCookie.split(";")[0] ?? "";
 
-      // Ticket is single-use.
       const replayRes = await fetch(`${foreground.url}/auth/session`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Origin: foreground.url },
@@ -128,7 +123,6 @@ test("HTTP server supports web ticket login, HttpOnly cookie auth, CSRF protecti
       });
       assert.equal(replayRes.status, 401);
 
-      // Cookie authenticates GET and same-origin POST, but rejects cross-origin POST.
       const authedSession = await (
         await fetch(`${foreground.url}/auth/session`, { headers: { Cookie: cookiePair } })
       ).json();
@@ -173,7 +167,6 @@ test("HTTP server supports web ticket login, HttpOnly cookie auth, CSRF protecti
       });
       assert.equal(sameSitePost.status, 403);
 
-      // Logout revokes the cookie session.
       const logoutRes = await fetch(`${foreground.url}/auth/logout`, {
         method: "POST",
         headers: { Cookie: cookiePair, Origin: foreground.url },

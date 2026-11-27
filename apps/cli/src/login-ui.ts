@@ -318,7 +318,6 @@ export async function runMcpOAuthLogin(
           }
         }
       } catch {
-        // Abort or closed readline stops manual prompt when loopback completes or cancels.
       } finally {
         rl.close();
       }

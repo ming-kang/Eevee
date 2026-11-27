@@ -1,5 +1,3 @@
-/* ---------------- Providers & Models Management ---------------- */
-
 .ev-provider-workspace {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);

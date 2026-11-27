@@ -438,7 +438,6 @@ test("multi-path roots are served to clients and updateRoots broadcasts list_cha
 test("McpServerLog rotates files, caps ring buffers, and McpHub captures stdio stderr and notifications/message", async () => {
   const dir = await mkdtemp(join(tmpdir(), "eevee-mcp-logs-"));
   try {
-    // Unit test rotation and ring bounds
     const unitLogPath = join(dir, "unit.log");
     const unitLog = new McpServerLog({
       logPath: unitLogPath,
@@ -458,7 +457,6 @@ test("McpServerLog rotates files, caps ring buffers, and McpHub captures stdio s
     const rotatedText = await readFile(`${unitLogPath}.1`, "utf8");
     assert.ok(rotatedText.includes("[s1]"));
 
-    // Real stdio server emitting stderr & notifications/message
     const script = [
       'const readline = require("node:readline");',
       'process.stderr.write("stdio boot diagnostic\\n");',
@@ -568,7 +566,6 @@ test("roles config validation, extension role metadata, and degraded refresh tra
     });
     assert.equal(hub.rolesForExtension("eevee.mcp.missing"), undefined);
 
-    // Trigger degraded state when tools/list fails on live refresh, then recover
     srv.failToolsList = true;
     srv.pushToolsChanged();
     await waitFor(() => hub.status()[0]?.status === "degraded", "degraded status");
@@ -791,7 +788,6 @@ test("McpServerConnection epoch isolation ignores stale connect failures and clo
     const epochAfterConnect = conn.currentEpoch;
     assert.equal(epochAfterConnect, 1);
 
-    // Reconnect supersedes epoch 1 with epoch 2 even while attempt 1 is suspended
     const reconnectPromise = conn.reconnect();
     assert.equal(conn.currentEpoch, 2);
     releaseHangingInit();
@@ -804,7 +800,6 @@ test("McpServerConnection epoch isolation ignores stale connect failures and clo
     assert.equal(srv.closeCount, 1);
     assert.ok(stateChanges >= 2);
 
-    // Closing increments epoch and keeps status permanently "closed"
     const closePromise = conn.close();
     assert.equal(conn.status, "closed");
     assert.equal(conn.currentEpoch, 3);
@@ -859,7 +854,6 @@ test("McpHub caches unchanged server extensions across sibling state transitions
   const unbind = hub.bindRegistry(spyRegistry);
 
   try {
-    // Initial bind installs hub extension + alpha + beta once.
     assert.deepEqual(installedNames, [
       "eevee.mcp",
       mcpServerExtensionName("alpha"),
@@ -880,7 +874,6 @@ test("McpHub caches unchanged server extensions across sibling state transitions
       "alpha connected",
     );
 
-    // Alpha transitioning idle -> connecting -> connected must not reinstall or rebuild beta or eevee.mcp.
     assert.equal(hub.extension(), initialHubExt);
     assert.equal(
       hub.serverExtensions().find((ext) => ext.name === mcpServerExtensionName("beta")),
@@ -889,7 +882,6 @@ test("McpHub caches unchanged server extensions across sibling state transitions
     assert.deepEqual(installedNames, [mcpServerExtensionName("alpha")]);
     installedNames.length = 0;
 
-    // Alpha dynamic tool refresh must only reinstall alpha.
     const alphaExtBefore = hub
       .serverExtensions()
       .find((ext) => ext.name === mcpServerExtensionName("alpha"));
@@ -921,7 +913,6 @@ test("McpHub caches unchanged server extensions across sibling state transitions
     assert.deepEqual(installedNames, [mcpServerExtensionName("alpha")]);
     installedNames.length = 0;
 
-    // Removing beta via reload uninstalls only beta and leaves cached alpha untouched.
     await hub.reload([alphaEntry]);
     assert.deepEqual(uninstalledNames, [mcpServerExtensionName("beta")]);
     assert.deepEqual(installedNames, []);

@@ -79,17 +79,14 @@ export type RunningCommand = {
   readonly killReason?: TaskKillReason;
   readonly done: Promise<CommandOutcome>;
   output(): CommandOutput;
-  /** Listen to live chunks; earlier chunks are not replayed. Returns a detach. */
+  /** Live chunks only; earlier output is not replayed. */
   onOutput(listener: (chunk: string) => void): () => void;
   kill(reason: TaskKillReason): void;
   detachCancel(): void;
 };
 
-/**
- * Start a command detached from any invocation: the process dies only on `kill()`,
- * so a background command survives the tool call and host turns that started it.
- */
 export function startCommand(env: ExecutionEnv, options: StartCommandOptions): RunningCommand {
+  // Detached from caller context so background commands survive tool calls and host turns until kill().
   const { context, cancel } = withCancel(BACKGROUND_CONTEXT);
   const shell: TaskShell = options.shell ?? "bash";
   let killed = false;
@@ -107,9 +104,7 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
     for (const listener of [...listeners]) {
       try {
         listener(chunk);
-      } catch {
-        // A listener must not break the command's own output callback.
-      }
+      } catch {}
     }
     if (retainedBytes > RETAINED_OUTPUT_BYTES) {
       const buffer = Buffer.from(chunks.join(""), "utf8");
@@ -446,7 +441,6 @@ export class TaskManager {
     return active;
   }
 
-  /** Detach the live command, keeping a bounded tail in the memory log unless `retain` is false. */
   delete(conversationId: ConversationId, taskId: string, retain = true): void {
     const key = this.#key(conversationId, taskId);
     const entry = this.#entries.get(key);
@@ -497,10 +491,6 @@ export class TaskManager {
     };
   }
 
-  /**
-   * Stream everything the command produced since byte 0 to the task's log file,
-   * then keep appending live chunks until `finishLog()`.
-   */
   async openLog(conversationId: ConversationId, taskId: string, running: RunningCommand) {
     const key = this.#key(conversationId, taskId);
     if (this.#entries.get(key)?.sink !== undefined) return;
@@ -647,9 +637,7 @@ export class TaskManager {
       if (record.logPath !== undefined && needsDiskFallback(output, options)) {
         try {
           return await readOutputFileSlice(record.logPath, options);
-        } catch {
-          // Fall through to the retained in-memory slice if reading the disk log fails.
-        }
+        } catch {}
       }
       return sliceRetainedOutput(
         Buffer.from(output.text, "utf8"),
@@ -661,9 +649,7 @@ export class TaskManager {
     if (record.logPath !== undefined) {
       try {
         return await readOutputFileSlice(record.logPath, options);
-      } catch {
-        // Fall through to retained memory log when the disk file is missing or unreadable.
-      }
+      } catch {}
     }
     const log = entry?.memoryLog;
     if (log !== undefined) {

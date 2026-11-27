@@ -302,8 +302,6 @@ test("resolvePowerShell prefers pwsh over Windows PowerShell and builds args pro
 test("waitForChildProcess drains trailing output from detached grandchild without hanging", async () => {
   await withTempDir(async (dir) => {
     const pidFile = join(dir, "grandchild.pid");
-    // Spawn a child that launches a detached grandchild keeping stdout open for 15s,
-    // writes a trailing line 25ms after child exits, and then stays quiet.
     const grandchildCode = [
       "setTimeout(() => process.stdout.write('trailing-output\\n'), 25);",
       "setTimeout(() => {}, 15000);",

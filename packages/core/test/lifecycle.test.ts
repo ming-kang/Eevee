@@ -253,7 +253,6 @@ test("extended bidirectional scenario: message_router, message_worker, reuse wit
     assert.equal(tickets[1]?.status, "done");
     assert.equal(tickets[1]?.note, "all done");
 
-    // In round 1, Worker's last tool call was message_router -> NO duplicate handoff for "waiting for wavelength".
     const notices = await noticeEntries(fixture.project.root);
     assert.equal(
       notices.some((entry) => entryText(entry).includes("waiting for wavelength")),
@@ -467,7 +466,6 @@ test("model error reports worker_failed once across restarts while interrupt sta
     await fixture.project.root.waitForIdle(BACKGROUND_CONTEXT);
     await fixture.project.close();
 
-    // Reopen on the same storage: pump runs again and MUST NOT duplicate the failure notice.
     const faux2 = fauxProvider({ models: [{ id: MODEL_ID }] });
     const models2 = createModels();
     models2.setProvider(faux2.provider);
@@ -541,7 +539,6 @@ test("aborting Router preserves queued Worker notices (onAbort keep) for the nex
     const first = await fixture.project.send("spawn-keep-worker");
     await first.wait(BACKGROUND_CONTEXT);
 
-    // Start a Router run that hangs so the Worker's handoff queues in Router's inbox.
     void fixture.project.send("pause-router-now");
     await waitFor(() => routerPaused, "router paused mid-run");
 
@@ -554,7 +551,6 @@ test("aborting Router preserves queued Worker notices (onAbort keep) for the nex
       "keeper handoff queued while router paused",
     );
 
-    // User aborts Router; queued Worker handoff MUST survive due to onAbort: "keep".
     await fixture.project.root.abort(BACKGROUND_CONTEXT);
 
     const after = await fixture.project.send("after-abort-prompt");
@@ -724,7 +720,6 @@ test("stop_worker close kills background tasks, prevents waking, and cancels the
       return live?.run === undefined;
     }, "sleeper run ended while bg task running");
 
-    // First: stop_worker interrupt keeps background task running and sends no worker_failed notice.
     const interruptSub = await fixture.project.send("interrupt-sleeper");
     await interruptSub.wait(BACKGROUND_CONTEXT);
     const tasksAfterInterrupt = await listConversationTasks(
@@ -736,7 +731,6 @@ test("stop_worker close kills background tasks, prevents waking, and cancels the
     assert.equal((await fixture.project.workers())[0]?.status, "running");
     assert.equal((await noticeEntries(fixture.project.root)).length, 0);
 
-    // Second: stop_worker close kills background task, cancels open ticket with note, and closes worker.
     const closeSub = await fixture.project.send("close-sleeper");
     await closeSub.wait(BACKGROUND_CONTEXT);
 
@@ -756,7 +750,6 @@ test("stop_worker close kills background tasks, prevents waking, and cancels the
     assert.equal(tasksAfterClose[0]?.status, "cancelled");
     assert.equal(tasksAfterClose[0]?.cancelReason, "abort");
 
-    // Closed worker stays idle/unwoken (no new assistant message after close).
     await new Promise((resolve) => setTimeout(resolve, 100));
     const workerConv = await fixture.project.harness.conversation(
       worker.conversationId,
@@ -786,19 +779,15 @@ test("Ticket and Worker tool error paths and queued message_worker behavior", as
           return fauxAssistantMessage(
             [
               fauxToolCall("spawn_worker", { name: "queuedOne", prompt: "initial" }),
-              // Queued worker accepts message_worker passively without starting:
               fauxToolCall("message_worker", { workerId: "w1", message: "extra queued note" }),
-              // Worker already has open ticket t1 -> newTicket must fail:
               fauxToolCall("message_worker", {
                 workerId: "w1",
                 message: "nope",
                 newTicket: { title: "Conflict" },
               }),
-              // Unknown worker / unknown ticket:
               fauxToolCall("message_worker", { workerId: "w99", message: "missing" }),
               fauxToolCall("close_ticket", { ticketId: "t99", status: "done" }),
               fauxToolCall("stop_worker", { workerId: "w99", action: "close" }),
-              // Close ticket + worker, then try double-closing & messaging closed worker:
               fauxToolCall("close_ticket", {
                 ticketId: "t1",
                 status: "done",
@@ -828,27 +817,17 @@ test("Ticket and Worker tool error paths and queued message_worker behavior", as
       .filter((msg): msg is Extract<Message, { role: "toolResult" }> => msg?.role === "toolResult");
 
     assert.equal(toolResults.length, 10);
-    // 0: spawn_worker ok
     assert.equal(toolResults[0]?.isError, false);
-    // 1: message_worker to queued worker ok
     assert.equal(toolResults[1]?.isError, false);
     assert.ok(contentText(toolResults[1]?.content ?? []).includes("queued"));
-    // 2: message_worker with newTicket while t1 open -> error
     assert.equal(toolResults[2]?.isError, true);
     assert.ok(contentText(toolResults[2]?.content ?? []).includes("close_ticket"));
-    // 3: unknown worker -> error
     assert.equal(toolResults[3]?.isError, true);
-    // 4: unknown ticket -> error
     assert.equal(toolResults[4]?.isError, true);
-    // 5: stop unknown worker -> error
     assert.equal(toolResults[5]?.isError, true);
-    // 6: close_ticket(t1, done, closeWorker: true) -> ok
     assert.equal(toolResults[6]?.isError, false);
-    // 7: close already-closed t1 -> error
     assert.equal(toolResults[7]?.isError, true);
-    // 8: message closed w1 -> error
     assert.equal(toolResults[8]?.isError, true);
-    // 9: stop already-closed w1 -> error
     assert.equal(toolResults[9]?.isError, true);
 
     const workers = await fixture.project.workers();

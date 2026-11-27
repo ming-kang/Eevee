@@ -239,7 +239,6 @@ test("reopening Storage restores the exact summary forest across 64-slot buckets
     assert.ok(reopened.node({ start: 0, size: 64 }));
     assert.ok((reopened.usage()["test/dreamer-1"]?.totalTokens ?? 0) > 0);
 
-    // Re-ingesting leaves rebuilds search index without rebuilding persisted tree nodes.
     let summarizeCalls = 0;
     const dreamer = new Dreamer({
       store: reopened,
@@ -360,8 +359,6 @@ test("Dreamer prioritizes pending merges by mergeDue so urgent ancestors build f
     }
     const store = await MemoryStore.open(harness, conv.id, BACKGROUND_CONTEXT);
     const pad = "summary detail padding ".repeat(20);
-    // Pre-seed leaves 0..19 and size-2 merges 0+2..10+2 so pending merges span different sizes:
-    // 0+4 (due=8.5), 12+2 (due=7.0), 4+4 (due=6.5), 14+2 (due=5.0), 8+4 (due=4.5), 16+2 (due=3.0), 18+2 (due=1.0).
     for (let i = 0; i < 20; i++) {
       await store.putNode(leafSpan(i), `L${i} ${pad}`, BACKGROUND_CONTEXT);
     }
@@ -387,8 +384,6 @@ test("Dreamer prioritizes pending merges by mergeDue so urgent ancestors build f
     await dreamer.idle();
     await dreamer.close();
 
-    // Expected order strictly follows mergeDue(parent, 20):
-    // 0+4 (8.5) -> 12+2 (7.0) -> 4+4 (6.5) -> 14+2 (5.0) -> 8+4 (4.5) -> 0+8 (3.25) -> 16+2 (3.0) -> ...
     assert.deepEqual(mergeOrder.slice(0, 7), [
       "(M[0+2]+M[2+2])",
       "(L12+L13)",
@@ -418,7 +413,6 @@ test("Dreamer supplies the two immediately preceding leaves as clean <context> e
     await writeUserEntry(conv, `leaf-4 target at power-of-two boundary ${"beta ".repeat(220)}`);
 
     const store = await MemoryStore.open(harness, conv.id, BACKGROUND_CONTEXT);
-    // Pre-build 0+1, 1+1, 2+1, and 0+4, leaving leaf 3 unbuilt to exercise clean preview fallback.
     await store.putNode(leafSpan(0), "built-0", BACKGROUND_CONTEXT);
     await store.putNode(leafSpan(1), "built-1", BACKGROUND_CONTEXT);
     await store.putNode(leafSpan(2), "built-2", BACKGROUND_CONTEXT);
@@ -447,9 +441,7 @@ test("Dreamer supplies the two immediately preceding leaves as clean <context> e
     );
     assert.ok(leaf3Task);
     assert.ok(leaf4Task);
-    // Leaf 3 receives leaves 1 and 2 (built summaries).
     assert.deepEqual(leaf3Task.context, ["built-1", "built-2"]);
-    // Leaf 4 (at boundary 4) receives leaves 2 and 3, NOT coarse 0+4.
     assert.equal(leaf4Task.context.length, 2);
     assert.equal(leaf4Task.context[0], "built-2");
     assert.equal(leaf4Task.context[1]?.includes("coarse-0-to-3"), false);

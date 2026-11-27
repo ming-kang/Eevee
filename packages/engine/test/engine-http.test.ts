@@ -242,7 +242,6 @@ test("HTTP server validates request bodies/queries and maps 404/409 errors to Pr
       const auth = { Authorization: `Bearer ${foreground.token}` };
       const client = new EeveeClient({ baseUrl: foreground.url, token: foreground.token });
 
-      // Malformed JSON -> 400 Problem
       const badJsonRes = await fetch(`${foreground.url}/projects`, {
         method: "POST",
         headers: { ...auth, "Content-Type": "application/json" },
@@ -251,7 +250,6 @@ test("HTTP server validates request bodies/queries and maps 404/409 errors to Pr
       assert.equal(badJsonRes.status, 400);
       parseWithSchema(ProblemSchema, await badJsonRes.json());
 
-      // Invalid schema -> 400 Problem
       const badSchemaRes = await fetch(`${foreground.url}/projects`, {
         method: "POST",
         headers: { ...auth, "Content-Type": "application/json" },
@@ -260,7 +258,6 @@ test("HTTP server validates request bodies/queries and maps 404/409 errors to Pr
       assert.equal(badSchemaRes.status, 400);
       parseWithSchema(ProblemSchema, await badSchemaRes.json());
 
-      // Oversized > 2 MiB body -> 413 Problem
       const hugeRes = await fetch(`${foreground.url}/projects`, {
         method: "POST",
         headers: { ...auth, "Content-Type": "application/json" },
@@ -269,7 +266,6 @@ test("HTTP server validates request bodies/queries and maps 404/409 errors to Pr
       assert.equal(hugeRes.status, 413);
       assert.equal(parseWithSchema(ProblemSchema, await hugeRes.json()).code, "payload_too_large");
 
-      // Unknown project -> 404 Problem (including SSE routes BEFORE headers)
       await assert.rejects(
         client.getProject("missing"),
         (error: unknown) => error instanceof EeveeApiError && error.status === 404,
@@ -288,12 +284,10 @@ test("HTTP server validates request bodies/queries and maps 404/409 errors to Pr
       assert.equal(convStreamMissing.status, 404);
       parseWithSchema(ProblemSchema, await convStreamMissing.json());
 
-      // Create real project
       const created = await client.createProject({ workspaces: [workspace], title: "App" });
       parseWithSchema(CreateProjectResponseSchema, created);
       const projectId = created.project.id;
 
-      // Invalid query params on conversation stream -> 400 Problem
       const badQueryRes = await fetch(
         `${foreground.url}/projects/${projectId}/conversations/router/stream?from=0`,
         { headers: auth },
@@ -308,7 +302,6 @@ test("HTTP server validates request bodies/queries and maps 404/409 errors to Pr
       assert.equal(badMinMaxRes.status, 400);
       parseWithSchema(ProblemSchema, await badMinMaxRes.json());
 
-      // Unknown worker -> 404 Problem on messages and stream
       await assert.rejects(
         client.sendMessage(projectId, "w99", { text: "hi" }),
         (error: unknown) =>
@@ -323,7 +316,6 @@ test("HTTP server validates request bodies/queries and maps 404/409 errors to Pr
       assert.equal(workerStreamMissing.status, 404);
       parseWithSchema(ProblemSchema, await workerStreamMissing.json());
 
-      // Busy conversation with whenBusy="reject" -> 409 Problem
       const firstSend = await client.sendMessage(projectId, "router", { text: "start slow run" });
       parseWithSchema(SendMessageResponseSchema, firstSend);
       await firstRunStarted;
@@ -340,7 +332,6 @@ test("HTTP server validates request bodies/queries and maps 404/409 errors to Pr
       const handle = await foreground.engine.openProject(projectId);
       await handle.root.waitForIdle(BACKGROUND_CONTEXT);
 
-      // Closed worker -> 409 Problem
       const closeBrain: FauxResponseFactory = (ctx) => {
         const last = lastMessage(ctx);
         if (last?.role === "user") {
@@ -431,7 +422,6 @@ test("HTTP endpoints satisfy protocol contracts, stream Board and Conversation S
     let projectId: string;
     let lastEntryIdFromStream: number | undefined;
 
-    // First Engine lifetime: create project, stream conversation + board, run router + worker
     const first = await startForegroundEngine({
       dataDir: home,
       port: 0,
@@ -458,7 +448,6 @@ test("HTTP endpoints satisfy protocol contracts, stream Board and Conversation S
       parseWithSchema(CreateProjectResponseSchema, created);
       projectId = created.project.id;
 
-      // Duplicate project title gets unique slug
       const dup = await client.createProject({ workspaces: [ws1], title: "My App" });
       assert.notEqual(dup.project.id, projectId);
 
@@ -470,7 +459,6 @@ test("HTTP endpoints satisfy protocol contracts, stream Board and Conversation S
       parseWithSchema(GetProjectResponseSchema, fetched);
       assert.equal(fetched.project.memory, "Prefer concise output");
 
-      // Start Board SSE + Conversation SSE
       const boardAbort = new AbortController();
       const convAbort = new AbortController();
       const boardEvents: BoardStreamEvent[] = [];
@@ -521,7 +509,6 @@ test("HTTP endpoints satisfy protocol contracts, stream Board and Conversation S
       convAbort.abort();
       await Promise.all([boardLoop, convLoop]);
 
-      // Verify server.close() cleanly terminates an open SSE stream with reason="closed"
       const closingEvents: ConversationStreamEvent[] = [];
       const closingStream = (async () => {
         for await (const evt of client.streamConversation(projectId, "router")) {
@@ -540,7 +527,6 @@ test("HTTP endpoints satisfy protocol contracts, stream Board and Conversation S
       await first.close();
     }
 
-    // Reopen Engine on same dataDir -> SQLite persists projects, kv, and conversation entries
     const store = EngineStore.open(join(home, "engine.sqlite"));
     const customSchema = obj({ enabled: bool() });
     assert.equal(store.hasKv("custom"), false);
@@ -551,7 +537,7 @@ test("HTTP endpoints satisfy protocol contracts, stream Board and Conversation S
     assert.equal(store.hasKv("custom"), false);
     assert.equal(store.getKvParsed("custom", customSchema), undefined);
     store.close();
-    store.close(); // idempotent close
+    store.close();
 
     const reopened = await startForegroundEngine({
       dataDir: home,
@@ -568,7 +554,6 @@ test("HTTP endpoints satisfy protocol contracts, stream Board and Conversation S
       const listed = await client.listProjects();
       assert.equal(listed.projects.length, 2);
 
-      // Verify Last-Event-ID resume skips already-seen entries
       assert.ok(lastEntryIdFromStream !== undefined);
       const resumedAbort = new AbortController();
       const resumedEvents: ConversationStreamEvent[] = [];
@@ -716,7 +701,6 @@ test("HTTP maps StoreValidationError to 400 while surfacing genuine SQLite failu
     try {
       const client = new EeveeClient({ baseUrl: server.url, token: "store-err-token" });
 
-      // Domain validation errors in store -> 400 invalid_request
       await assert.rejects(
         client.createProject({ workspaces: ["   "], title: "Valid" }),
         (err: unknown) =>
@@ -734,7 +718,6 @@ test("HTTP maps StoreValidationError to 400 while surfacing genuine SQLite failu
           err.problem.code === "invalid_request",
       );
 
-      // Genuine SQLite failure (store closed unexpectedly) -> 500 internal_error, NOT masked as 400
       engine.store.close();
       await assert.rejects(
         client.createProject({ workspaces: [dir], title: "After DB Close" }),
@@ -829,7 +812,6 @@ test("GET /projects/:projectId/tasks aggregates, sorts deterministically, and pr
         return board.workers.length === 2 && board.workers.every((w) => w.status === "idle");
       }, "both workers w1 and w2 idle");
 
-      // Finished tasks on w1 and w2
       await client.sendMessage(projectId, "w1", { text: "run-finished-1" });
       await waitFor(async () => {
         const res = await client.listWorkerTasks(projectId, "w1", { status: "finished" });
@@ -842,7 +824,6 @@ test("GET /projects/:projectId/tasks aggregates, sorts deterministically, and pr
         return res.tasks.length >= 1;
       }, "w2 finished task-1");
 
-      // Active tasks on both w1 and w2
       await client.sendMessage(projectId, "w1", { text: "run-active" });
       await client.sendMessage(projectId, "w2", { text: "run-active" });
       await waitFor(async () => {
@@ -861,7 +842,6 @@ test("GET /projects/:projectId/tasks aggregates, sorts deterministically, and pr
       const finishedOnly = await client.listProjectTasks(projectId, { status: "finished" });
       assert.equal(finishedOnly.tasks.length, 2);
 
-      // Verify deterministic sort order (startedAt asc, then workerId, then id) within each bucket
       const sortedCheck = [...finishedOnly.tasks].sort((a, b) => {
         if (a.startedAt !== b.startedAt) return a.startedAt - b.startedAt;
         if (a.workerId !== b.workerId) return a.workerId < b.workerId ? -1 : 1;
@@ -869,20 +849,17 @@ test("GET /projects/:projectId/tasks aggregates, sorts deterministically, and pr
       });
       assert.deepEqual(finishedOnly.tasks, sortedCheck);
 
-      // status="all" with limit=1 preserves ALL active tasks AND returns only last 1 finished task
       const limitedAll = await client.listProjectTasks(projectId, { status: "all", limit: 1 });
       assert.equal(limitedAll.tasks.length, 3);
       assert.deepEqual(limitedAll.tasks.slice(0, 2), activeOnly.tasks);
       assert.deepEqual(limitedAll.tasks.slice(2), finishedOnly.tasks.slice(-1));
 
-      // status="active" with limit=1 bounds active tasks to 1
       const limitedActive = await client.listProjectTasks(projectId, {
         status: "active",
         limit: 1,
       });
       assert.equal(limitedActive.tasks.length, 1);
 
-      // Query validation & missing project checks
       await assert.rejects(
         client.listProjectTasks(projectId, { limit: 0 }),
         (err: unknown) => err instanceof EeveeApiError && err.status === 400,

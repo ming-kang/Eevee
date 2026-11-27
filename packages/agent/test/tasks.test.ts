@@ -1543,7 +1543,6 @@ test("adoptCommand cleans up stale TaskManager attachments on commit retries, fa
           createTask: async (_task: unknown, input: { taskId: string }) => {
             createdIds.push(input.taskId);
             if (attempt === 1) {
-              // Simulate optimistic retry after manager.attach ran in attempt 1.
               throw new Error("simulated_conflict");
             }
             return 42 as TaskId;
@@ -1580,7 +1579,6 @@ test("adoptCommand cleans up stale TaskManager attachments on commit retries, fa
   manager.delete(convId, "task-2", false);
   assert.equal(manager.activeCount(convId), 0);
 
-  // Permanent commit failure cleans up and calls detachCancel().
   const failApi = {
     conversationId: convId,
     now: () => 1000,
@@ -1612,7 +1610,6 @@ test("adoptCommand cleans up stale TaskManager attachments on commit retries, fa
   assert.equal(manager.activeCount(convId), 0);
   assert.equal(detachCount, 1);
 
-  // skipIfSettled across retry cleans up attempt 1's attachment and skips creating task 2.
   attempt = 0;
   let createCallsOnAttempt2 = 0;
   const settleOnRetryApi = {
@@ -1955,7 +1952,6 @@ test("killConversationTask handles missing live handles with and without abortTa
   assert.equal(resultWithAbort.status, "cancelled");
   assert.equal(resultWithAbort.record?.cancelReason, "user");
 
-  // Without abortTask (ToolExecutionApi style) when !hadLive, it marks cancelled directly.
   const toolRecord: BackgroundTaskRecord = {
     id: "task-2",
     durableTaskId: 88,
@@ -2034,7 +2030,6 @@ test("compaction reminder hook clears conversation state on ResetEntry and bound
     "same compaction should not remind twice",
   );
 
-  // Reset clears the remembered compaction for c1, so a later compaction with the same id or new id reminds again.
   entriesByConv.set(c1, [
     ...(entriesByConv.get(c1) ?? []),
     { id: 11 as EntryId, conversationId: c1, kind: "pi.reset" },
@@ -2059,7 +2054,6 @@ test("compaction reminder hook clears conversation state on ResetEntry and bound
     "clearing on ResetEntry allows reminding again after reset",
   );
 
-  // Exceed MAX_REMINDED_CONVERSATIONS so c1 is evicted as oldest, then verify c1 reminds again.
   for (let i = 2; i <= MAX_REMINDED_CONVERSATIONS + 5; i += 1) {
     const cid = i as ConversationId;
     tasksByConv.set(cid, [{ id: "task-1", command: "sleep 60", status: "running", startedAt: 10 }]);

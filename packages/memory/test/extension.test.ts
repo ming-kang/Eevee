@@ -147,7 +147,6 @@ test("compaction replaces old turns with a <memory> forest view and supports zoo
         parameters: obj({ query: str() }),
         async execute(args, api, context) {
           nestedResults.push(await api.executeTool("zoom", { id: 0, n: 4 }, context));
-          // Omit `n` to verify default n = 1 for single-message zoom.
           nestedResults.push(await api.executeTool("zoom", { id: 0 }, context));
           nestedResults.push(
             await api.executeTool("search", { query: args.query, limit: 1 }, context),
@@ -446,7 +445,6 @@ test("sequential compactions reuse previous <memory> prefix from CompactionEntry
     await conv.waitForIdle(BACKGROUND_CONTEXT);
     recording = false;
 
-    // beforeCompact must be read-only with respect to memory documents.
     const memoryDocWrites = compactionPublications.flatMap((pub) =>
       pub.changes.filter(
         (change) =>

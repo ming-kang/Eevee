@@ -163,7 +163,6 @@ test("filter supports case-insensitive substrings, /regex/flags, and rejects inv
   assert.equal(regexGlobal.matchedLines, 2);
   assert.equal(regexGlobal.totalMatchedLines, 2);
 
-  // Path strings with slashes should stay substring searches instead of failing as regex flags.
   const pathSub = sliceOutputText(sample, { filter: "/usr/bin/node" });
   assert.equal(pathSub.matchedLines, 1);
   assert.equal(pathSub.text, "4: debug: /usr/bin/node started");
@@ -201,13 +200,11 @@ test("contextLines validates 0..5, requires filter, merges overlaps, and uses --
     /Invalid contextLines/,
   );
 
-  // contextLines = 0 never inserts "--" separators
   const zeroCtx = sliceOutputText(lines, { filter: "hit", contextLines: 0 });
   assert.equal(zeroCtx.text, "2: hit A\n4: hit B\n9: hit C");
   assert.equal(zeroCtx.matchedLines, 3);
   assert.equal(zeroCtx.totalMatchedLines, 3);
 
-  // contextLines = 1 merges hit A (1..3) and hit B (3..5), separates hit C (8..10) with "--"
   const oneCtx = sliceOutputText(lines, { filter: "hit", contextLines: 1 });
   assert.equal(
     oneCtx.text,

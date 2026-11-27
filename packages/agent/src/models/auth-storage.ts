@@ -37,10 +37,6 @@ function validateCredential(providerId: string, value: unknown): Credential {
   throw new Error(`Invalid auth.json credential for provider "${providerId}"`);
 }
 
-/**
- * Pi-format `auth.json` credential store. A corrupted file fails every read, so a later write cannot
- * silently drop the other providers; writes are serialized cross-process and atomic.
- */
 export class AuthStorage implements CredentialStore {
   readonly filePath: string;
   readonly #env?: Readonly<Record<string, string | undefined>>;

@@ -1241,7 +1241,6 @@ test("McpHub.reconnect reconnects failed or connected servers, skips disabled, a
     await assert.rejects(hub.reconnect("missing"), /Unknown MCP server "missing"/);
     await assert.rejects(hub.reconnect("disabled"), /MCP server "disabled" is disabled/);
 
-    // Recover flaky server via targeted reconnect
     flaky.failInitialize = false;
     const afterFlaky = await hub.reconnect("flaky");
     const flakySnap = afterFlaky.find((s) => s.name === "flaky");
@@ -1256,7 +1255,6 @@ test("McpHub.reconnect reconnects failed or connected servers, skips disabled, a
         ?.tools?.some((t) => t.name === "mcp__flaky__recovered"),
     );
 
-    // Failing targeted reconnect leaves status = "failed" cleanly without throwing
     alpha.setTools([tool("alpha_v2", "Alpha v2")]);
     alpha.failInitialize = true;
     const failedSnap = (await hub.reconnect("alpha")).find((s) => s.name === "alpha");
@@ -1264,7 +1262,6 @@ test("McpHub.reconnect reconnects failed or connected servers, skips disabled, a
     assert.equal(failedSnap?.toolCount, 0);
     assert.match(failedSnap?.error ?? "", /initialize failed/);
 
-    // Reconnect all enabled servers concurrently (without touching disabled)
     alpha.failInitialize = false;
     const allSnaps = await hub.reconnect();
     assert.equal(allSnaps.find((s) => s.name === "alpha")?.status, "connected");

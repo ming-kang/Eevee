@@ -345,7 +345,6 @@ test("subscribeWorkerTaskStream with head mode catches up [endByte, live.totalBy
     bytes: 256,
   });
 
-  // Push a live chunk after subscribing but before start() to verify bufferedChunks replay ordering.
   const bufferedLiveChunk = "LIVE_BUFFERED_1\n";
   currentText += bufferedLiveChunk;
   for (const listener of listeners) listener(bufferedLiveChunk);
@@ -359,7 +358,6 @@ test("subscribeWorkerTaskStream with head mode catches up [endByte, live.totalBy
     });
   });
 
-  // Push an active live chunk after start() and a final tail chunk drained on terminal transition.
   const activeLiveChunk = "LIVE_AFTER_START\n";
   currentText += activeLiveChunk;
   for (const listener of listeners) listener(activeLiveChunk);

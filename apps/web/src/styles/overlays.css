@@ -1,5 +1,3 @@
-/* ---------------- Dialogs, Palette, Overlays, Login, Toasts ---------------- */
-
 .ev-editor-dialog,
 .ev-add-provider-dialog,
 .ev-probe-dialog,
@@ -119,8 +117,6 @@
   border-radius: 8px;
 }
 
-/* Command Palette */
-
 .ev-palette-backdrop {
   align-items: flex-start !important;
   padding-top: 12vh !important;
@@ -197,8 +193,6 @@
   color: var(--ev-fg-subtle);
 }
 
-/* Control Overlay, Login, Toasts */
-
 .ev-control-overlay {
   position: fixed;
   inset: 0;
@@ -250,8 +244,6 @@
 .ev-login-card {
   width: min(420px, 100%);
 }
-
-/* Floating transcript overlays (Find bar, Outline rail, Skill autocomplete) */
 
 .ev-find-anchor {
   position: absolute;

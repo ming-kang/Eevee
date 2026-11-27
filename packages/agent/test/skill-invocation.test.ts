@@ -139,7 +139,6 @@ test("expandSkillReferences handles leading prefixes, multiple skills, prose, co
     const skills = await discoverSkills({ userHomeDir: null, workspaces: [dir] });
     const policy: SkillPolicyMap = { blocked: "disabled" };
 
-    // Leading single skill with args
     const leading = await expandSkillReferences("/skill:pdf extract page 1", skills, { policy });
     assert.equal(
       leading.text,
@@ -149,14 +148,12 @@ test("expandSkillReferences handles leading prefixes, multiple skills, prose, co
     assert.deepEqual(leading.blocked, []);
     assert.deepEqual(leading.errors, []);
 
-    // Leading skill with no args
     const solo = await expandSkillReferences("/skill:pdf", skills, { policy });
     assert.equal(
       solo.text,
       `<skill name="pdf" location="${pdfPath}">\nReferences are relative to ${pdfBaseDir}.\n\n# PDF\nRun scripts/parse.py\n</skill>`,
     );
 
-    // Multi-skill contiguous leading prefix + longest name match ("pdf-extract" beats "pdf")
     const multiLead = await expandSkillReferences(
       "/skill:pdf-extract /skill:manual inspect doc",
       skills,
@@ -171,7 +168,6 @@ test("expandSkillReferences handles leading prefixes, multiple skills, prose, co
     assert.ok(multiLead.text.endsWith("</skill>\n\ninspect doc"));
     assert.equal(multiLead.text.includes("/skill:"), false);
 
-    // Embedded in prose: full prose preserved intact below <skill> blocks
     const prose = await expandSkillReferences(
       "Please run /skill:pdf and then /skill:manual carefully.",
       skills,
@@ -185,7 +181,6 @@ test("expandSkillReferences handles leading prefixes, multiple skills, prose, co
       prose.text.endsWith("</skill>\n\nPlease run /skill:pdf and then /skill:manual carefully."),
     );
 
-    // Non-contiguous leading + middle stays intact
     const mixedProse = await expandSkillReferences(
       "/skill:pdf and then /skill:manual finish",
       skills,
@@ -193,7 +188,6 @@ test("expandSkillReferences handles leading prefixes, multiple skills, prose, co
     );
     assert.ok(mixedProse.text.endsWith("</skill>\n\n/skill:pdf and then /skill:manual finish"));
 
-    // Skips inline code spans and fenced code blocks (backtick & tilde)
     const codeOnly = await expandSkillReferences(
       [
         "Literal `/skill:pdf` in inline code.",
@@ -211,7 +205,6 @@ test("expandSkillReferences handles leading prefixes, multiple skills, prose, co
     assert.deepEqual(codeOnly.invoked, []);
     assert.equal(codeOnly.text.includes("<skill "), false);
 
-    // Expands outside code even when code spans are present
     const codePlusReal = await expandSkillReferences(
       "Ignore `/skill:manual` and run /skill:pdf on it.",
       skills,
@@ -222,7 +215,6 @@ test("expandSkillReferences handles leading prefixes, multiple skills, prose, co
       ["pdf"],
     );
 
-    // Boundaries: rejects paths/unknown suffixes, accepts punctuation and CJK
     const nonBoundary = await expandSkillReferences(
       "Look at src/skill:pdf ./skill:pdf https://x.dev/skill:pdf /skill:pdf-other /skill:pdf2 /skill:pdf/sub",
       skills,
@@ -238,14 +230,12 @@ test("expandSkillReferences handles leading prefixes, multiple skills, prose, co
       ["pdf"],
     );
 
-    // Deduplicates repeated invocation in one message
     const repeated = await expandSkillReferences("/skill:pdf and /skill:pdf again", skills, {
       policy,
     });
     assert.equal(repeated.invoked.length, 1);
     assert.equal(repeated.text.split('<skill name="pdf"').length - 1, 1);
 
-    // Disabled skill is blocked and not expanded
     const disabledOnly = await expandSkillReferences("/skill:blocked run now", skills, { policy });
     assert.deepEqual(disabledOnly.invoked, []);
     assert.deepEqual(disabledOnly.blocked, [
@@ -253,7 +243,6 @@ test("expandSkillReferences handles leading prefixes, multiple skills, prose, co
     ]);
     assert.equal(disabledOnly.text, "/skill:blocked run now");
 
-    // Mix of expanded + blocked keeps /skill:blocked in trailing text
     const mixedBlocked = await expandSkillReferences("/skill:pdf /skill:blocked run", skills, {
       policy,
     });
@@ -266,7 +255,6 @@ test("expandSkillReferences handles leading prefixes, multiple skills, prose, co
     ]);
     assert.ok(mixedBlocked.text.endsWith("</skill>\n\n/skill:blocked run"));
 
-    // Read errors are recorded without throwing
     const missingSkill: SkillInfo = {
       name: "ghost",
       description: "Missing on disk",

@@ -286,10 +286,8 @@ test("full optics paper scenario: ask_user, background simulation, inspect_worke
     assert.equal(pendingQuestions[0]?.id, "q1");
     assert.equal(pendingQuestions[0]?.answeredAt, undefined);
 
-    // Non-blocking ask_user let Router finish its turn cleanly before user answers.
     await p.root.waitForIdle(BACKGROUND_CONTEXT);
 
-    // User answers q1 -> wakes Router -> launches w2 -> finishes simulation -> w1 writes paper.md -> closes all.
     const answered = await p.answerQuestion("q1", ["1550nm", "SiN"]);
     assert.deepEqual(answered.answers, ["1550nm", "SiN"]);
     assert.ok(answered.answeredAt !== undefined);
@@ -319,7 +317,6 @@ test("full optics paper scenario: ask_user, background simulation, inspect_worke
     );
     assert.ok(boardSnapshots.length >= 2, "subscribeBoard should receive live updates");
 
-    // Verify inspect_worker calls returned real task output and transcript without errors.
     const rootEntries = await entries(project.root);
     const inspectResults = rootEntries
       .map((entry) => entry.model?.[0])
@@ -420,14 +417,12 @@ test("user direct observation and intervention: watch, direct send, interrupt, a
     });
     observedViews.push(obs.value);
 
-    // Wait for w1's background bash task to be running and its run to finish.
     await waitFor(async () => {
       const tasks = await listConversationTasks(p.harness, w1.conversationId, BACKGROUND_CONTEXT);
       const live = await p.harness.snapshot(LiveDoc, w1.conversationId, BACKGROUND_CONTEXT);
       return tasks[0]?.status === "running" && live?.run === undefined;
     }, "w1 background task running");
 
-    // User sends direct message to w1, then interrupts it mid-run (background task must survive!).
     void p.send("w1", "direct-user-nudge");
     await waitFor(() => pauseDirectRun, "direct message run paused");
     await p.interrupt("w1");
@@ -445,8 +440,6 @@ test("user direct observation and intervention: watch, direct send, interrupt, a
     const entryPage = await p.listEntries("w1", { order: "ascending" }, 2);
     assert.ok(entryPage.items.length >= 1);
 
-    // Now user kills the background task directly: status becomes cancelled with cancelReason "user",
-    // Worker receives the unified steer notice to wrap up cleanly, and then becomes idle.
     const killed = await p.killWorkerTask("w1", "task-1");
     assert.equal(killed.status, "cancelled");
     assert.equal(killed.cancelReason, "user");
@@ -537,7 +530,6 @@ test("updating projectMemory appends only one incremental pi.system entry on the
     const workerConv = await project.harness.conversation(w1.conversationId, BACKGROUND_CONTEXT);
     assert.ok(workerConv);
 
-    // Check initial prompt sections on Router and Worker.
     const routerFirstSys = capturedRouterContexts[0]?.messages[0] as SystemMessage;
     assert.ok(routerFirstSys.sections?.project?.includes("Delta Test"));
     assert.ok(routerFirstSys.sections?.["model-profiles"]?.includes("fast: faux-1"));
@@ -550,7 +542,6 @@ test("updating projectMemory appends only one incremental pi.system entry on the
     const routerSysBefore = (await entries(project.root)).filter((e) => SystemEntry.is(e)).length;
     const workerSysBefore = (await entries(workerConv)).filter((e) => SystemEntry.is(e)).length;
 
-    // Modify projectMemory and run one more turn on Router and Worker.
     projectMemory = "Updated convention: report wavelength in nanometers.";
 
     const t2 = await project.send("router-turn-2");
@@ -644,7 +635,6 @@ test("Router compaction replaces history with <memory> forest view and usage() i
     assert.ok(summaryText.includes("<memory>\n"), `Expected <memory> view:\n${summaryText}`);
     assert.ok(summaryText.includes("\n</memory>"));
 
-    // Usage totals include both pi.usage (Router) and MemoryMetaDoc.usage (Dreamer).
     const totalUsage = await project.usage();
     assert.ok(totalUsage.models[`${faux.provider.id}/${MODEL_ID}`] !== undefined);
     assert.ok((totalUsage.models["dreamer-provider/dreamer-mini"]?.totalTokens ?? 0) >= 150);
@@ -710,7 +700,6 @@ test("reopening Storage preserves Workers, Tickets, and unanswered Questions and
     assert.equal(beforeBoard.questions[0]?.answeredAt, undefined);
     await p1.close();
 
-    // Reopen on the same Storage with maxActiveWorkers: 1 so the queued Worker starts automatically!
     const faux2 = fauxProvider({ models: [{ id: MODEL_ID }] });
     const models2 = createModels();
     models2.setProvider(faux2.provider);
@@ -744,7 +733,6 @@ test("reopening Storage preserves Workers, Tickets, and unanswered Questions and
       };
       faux2.setResponses(responses(brain2));
 
-      // Queued worker automatically starts via ProjectPump and hands off.
       await waitFor(
         async () =>
           (await entries(p2.root)).some((e) =>
@@ -753,7 +741,6 @@ test("reopening Storage preserves Workers, Tickets, and unanswered Questions and
         "queued worker start and handoff after reopen",
       );
 
-      // Unanswered question q1 survived reopen and can still be answered.
       const questionsAfter = await p2.questions();
       assert.equal(questionsAfter.length, 1);
       assert.equal(questionsAfter[0]?.id, "q1");

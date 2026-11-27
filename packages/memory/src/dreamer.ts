@@ -83,11 +83,6 @@ function isHigherPriorityMerge(a: Span, aDue: number, b: Span, bDue: number): bo
   return a.size < b.size;
 }
 
-/**
- * Silent background builder for one conversation's summary forest. Subscribes to `observeCommits`
- * when a harness is supplied, ingests new entries into leaves, and prebuilds missing tree nodes
- * bottom-up outside the durable task graph—prioritizing pending merges by `mergeDue`.
- */
 export class Dreamer {
   readonly #deps: DreamerDeps;
   readonly #merges: Span[];

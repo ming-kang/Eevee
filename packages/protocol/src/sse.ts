@@ -144,8 +144,6 @@ export async function* parseSseStream(
     await reader.cancel().catch(() => undefined);
     try {
       reader.releaseLock();
-    } catch {
-      // Lock may already be released by stream termination.
-    }
+    } catch {}
   }
 }

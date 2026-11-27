@@ -300,8 +300,6 @@ test("McpOAuthCredentialStore persists keyed credentials with 0600 mode, summari
       assert.equal(info.mode & 0o777, 0o600);
     }
 
-    // Holding server A's refresh lock rejects concurrent A refresh with McpRefreshLockBusyError
-    // while allowing server B's refresh lock to proceed immediately.
     let releaseA!: () => void;
     const gateA = new Promise<void>((resolve) => {
       releaseA = resolve;
@@ -349,7 +347,6 @@ test("McpOAuthCredentialStore.withRefreshLock serializes concurrent in-process r
     assert.deepEqual(await Promise.all([first, second]), [1, 2]);
     assert.deepEqual(order, ["first:start", "first:end", "second:start", "second:end"]);
 
-    // Non-reentrant timeout throws McpRefreshLockBusyError while allowing subsequent refreshes after release.
     const shortTimeoutStore = new McpOAuthCredentialStore(dir, { refreshLockTimeoutMs: 40 });
     const shortServer = shortTimeoutStore.forServer("srv", url);
     let releaseSlow!: () => void;
@@ -368,7 +365,6 @@ test("McpOAuthCredentialStore.withRefreshLock serializes concurrent in-process r
     assert.equal(await slow, "slow-done");
     assert.equal(await shortServer.withRefreshLock(async () => "recovered"), "recovered");
 
-    // TimeoutError thrown by the callback itself is NOT mapped to McpRefreshLockBusyError.
     await assert.rejects(
       shortServer.withRefreshLock(async () => {
         throw DOMException ? new DOMException("callback timeout", "TimeoutError") : new Error("x");
@@ -418,7 +414,6 @@ test("McpHub transitions to auth_required on 401 and connects after interactive 
     const parsedAuth = new URL(authUrl);
     assert.equal(parsedAuth.searchParams.get("code_challenge_method"), "S256");
 
-    // Simulate user completing browser flow which redirects to the local loopback server.
     const browserRes = await fetch(authUrl, { redirect: "follow" });
     assert.equal(browserRes.status, 200);
     await session.done;
@@ -455,7 +450,6 @@ test("startMcpOAuthSignIn supports manual redirect URL submission, cancellation,
   const store = new McpOAuthCredentialStore(dir);
 
   try {
-    // Manual redirect flow (no loopback HTTP server)
     const session = startMcpOAuthSignIn({
       name: "manual",
       serverUrl: mock.mcpUrl,
@@ -500,7 +494,6 @@ test("startMcpOAuthSignIn supports manual redirect URL submission, cancellation,
         /has ended/.test(err.message),
     );
 
-    // Simulate near-expiry token and verify createEeveeMcpAuthProvider refreshes via refresh_token
     const serverStore = store.forServer("manual", mock.mcpUrl);
     const saved = await serverStore.load();
     assert.ok(saved?.tokens?.refresh_token);
@@ -519,7 +512,6 @@ test("startMcpOAuthSignIn supports manual redirect URL submission, cancellation,
     assert.equal(mock.tokenRequests.includes("refresh_token"), true);
     await provider.settled();
 
-    // Cancellation flow
     await store.remove("manual", mock.mcpUrl);
     const cancelledEvents: McpOAuthSignInEvent[] = [];
     const cancelled = startMcpOAuthSignIn({

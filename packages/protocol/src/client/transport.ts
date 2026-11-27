@@ -191,9 +191,7 @@ export class HttpTransport {
         const parsed: unknown = JSON.parse(text);
         const checked = validateWithSchema(ProblemSchema, parsed);
         if (checked.ok) return new EeveeApiError(response.status, checked.value);
-      } catch {
-        // Fall through to generic Problem wrapper for non-JSON errors.
-      }
+      } catch {}
     }
     const fallbackMessage = response.statusText || `HTTP ${response.status}`;
     return new EeveeApiError(response.status, {

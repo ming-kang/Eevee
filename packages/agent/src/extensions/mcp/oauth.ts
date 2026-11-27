@@ -304,16 +304,12 @@ export function startMcpOAuthSignIn(options: StartMcpOAuthSignInOptions): McpOAu
     if (options.onEvent !== undefined) {
       try {
         options.onEvent(event);
-      } catch {
-        // Isolate observer failures from the sign-in flow.
-      }
+      } catch {}
     }
     for (const subscriber of [...subscribers]) {
       try {
         subscriber(event);
-      } catch {
-        // Isolate subscriber failures from the sign-in flow.
-      }
+      } catch {}
     }
   };
 

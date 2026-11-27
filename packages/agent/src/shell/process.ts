@@ -76,9 +76,7 @@ export function killProcessTree(pid: number, options: KillProcessTreeOptions = {
         windowsHide: true,
       });
       child.once("error", () => {});
-    } catch {
-      // Ignore spawn failures or processes that already exited.
-    }
+    } catch {}
     return;
   }
 

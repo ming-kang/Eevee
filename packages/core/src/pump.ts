@@ -141,7 +141,6 @@ export class ProjectPump {
           throw error;
         }
       }
-      // If no start made progress in this scan, exit until the next commit triggers a pass.
       const after = await readBoard(this.#harness, this.#context);
       if (
         after === undefined ||

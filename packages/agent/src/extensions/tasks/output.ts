@@ -416,10 +416,6 @@ function createFilterScanner(plan: Extract<SlicePlan, { readonly kind: "filter" 
   return { pushChunk, finish };
 }
 
-/**
- * Slice `retained`, which covers bytes `[fromByte, fromByte + retained.length)` of a stream
- * `totalBytes` long, to the requested window on codepoint boundaries.
- */
 export function sliceRetainedOutput(
   retained: Uint8Array,
   fromByte: number,
@@ -450,7 +446,6 @@ export function sliceOutputText(text: string, options: OutputReadOptions = {}): 
   return sliceRetainedOutput(bytes, 0, bytes.length, options);
 }
 
-/** The last `maxBytes` of `text` on a codepoint boundary, and its byte offset within `text`. */
 export function utf8Tail(text: string, maxBytes: number): { text: string; fromByte: number } {
   const bytes = Buffer.from(text, "utf8");
   if (bytes.length <= maxBytes) return { text, fromByte: 0 };

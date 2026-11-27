@@ -84,9 +84,7 @@ export class BufferedSessionStream<TFrame> {
     for (const subscriber of [...this.#subscribers]) {
       try {
         subscriber(frame);
-      } catch {
-        // Isolate stream subscriber failures.
-      }
+      } catch {}
     }
   }
 

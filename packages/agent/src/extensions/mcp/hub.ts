@@ -440,9 +440,7 @@ export class McpHub implements McpResourceHost {
     for (const listener of [...this.listeners]) {
       try {
         listener();
-      } catch {
-        // Listener failures must not turn a background server notification into an unhandled error.
-      }
+      } catch {}
     }
   }
 }

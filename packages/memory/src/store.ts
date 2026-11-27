@@ -116,11 +116,6 @@ export function accumulateUsage(
   }
 }
 
-/**
- * Conversation-scoped summary forest store. Immutable summary nodes and Dreamer usage live in
- * conversation documents (`fork: "initial"`); leaves are rebuilt in memory from the transcript.
- * Writes commit before updating memory so memory never runs ahead of durable state.
- */
 export class MemoryStore {
   readonly conversationId: ConversationId;
   readonly #harness: Pick<Harness, "snapshot" | "commit">;
@@ -205,7 +200,6 @@ export class MemoryStore {
     return structuredClone(this.#usage);
   }
 
-  /** Write-once node commit; records Dreamer model usage in the same transaction when supplied. */
   async putNode(span: Span, text: string, context: Context, usage?: NodeUsage): Promise<void> {
     const label = labelOf(span);
     if (this.#nodes.has(label)) return;
