@@ -8,11 +8,13 @@ import {
 } from "react";
 import {
   type AttachmentValidationIssue,
+  createPastedTextAttachment,
   type DraftAttachment,
   getDraftAttachments,
   readFilesAsDraftAttachments,
   restoreFailedAttachments,
   setDraftAttachments,
+  shouldConvertPasteToAttachment,
 } from "../../lib/attachments.ts";
 import {
   draftStorageKey,
@@ -123,20 +125,46 @@ export function useComposerDraft(draftKey: string, disabled: boolean) {
   const handlePaste = useCallback(
     (event: ClipboardEvent<HTMLTextAreaElement>) => {
       const items = event.clipboardData?.items;
-      if (!items) return;
-      const pastedFiles: File[] = [];
-      for (const item of Array.from(items)) {
-        if (item.kind === "file") {
-          const file = item.getAsFile();
-          if (file) pastedFiles.push(file);
+      if (items) {
+        const pastedFiles: File[] = [];
+        for (const item of Array.from(items)) {
+          if (item.kind === "file") {
+            const file = item.getAsFile();
+            if (file) pastedFiles.push(file);
+          }
+        }
+        if (pastedFiles.length > 0) {
+          event.preventDefault();
+          void appendFiles(pastedFiles);
+          return;
         }
       }
-      if (pastedFiles.length > 0) {
-        event.preventDefault();
-        void appendFiles(pastedFiles);
+      if (disabled) return;
+      const plain = event.clipboardData?.getData("text/plain") ?? "";
+      if (!shouldConvertPasteToAttachment(plain)) return;
+      const { attachment, issue } = createPastedTextAttachment(plain, attachmentsRef.current);
+      if (issue) {
+        reportAttachmentIssues([issue]);
+        return;
       }
+      if (!attachment) return;
+      event.preventDefault();
+      updateAttachments([...attachmentsRef.current, attachment]);
+      showToast(t("composer.attachment.pastedToFile", { name: attachment.name }));
     },
-    [appendFiles],
+    [appendFiles, disabled, reportAttachmentIssues, updateAttachments, t],
+  );
+
+  const expandAttachmentToText = useCallback(
+    (id: string) => {
+      const target = attachmentsRef.current.find((a) => a.id === id);
+      if (!target || target.pastedText === undefined) return;
+      const current = textRef.current;
+      const sep = current.length > 0 && !current.endsWith("\n") ? "\n" : "";
+      updateText(`${current}${sep}${target.pastedText}`);
+      updateAttachments(attachmentsRef.current.filter((a) => a.id !== id));
+    },
+    [updateText, updateAttachments],
   );
 
   const handleDragEnter = useCallback((event: DragEvent<HTMLFormElement>) => {
@@ -210,6 +238,7 @@ export function useComposerDraft(draftKey: string, disabled: boolean) {
     updateText,
     updateAttachments,
     appendFiles,
+    expandAttachmentToText,
     handlePaste,
     handleDragEnter,
     handleDragOver,

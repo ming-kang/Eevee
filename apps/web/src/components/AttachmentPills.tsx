@@ -1,4 +1,4 @@
-import { CloseIcon, DescriptionIcon } from "@earendil-works/elanor-icons-react";
+import { CloseIcon, DescriptionIcon, ExpandContentIcon } from "@earendil-works/elanor-icons-react";
 import type { DraftAttachment } from "../lib/attachments.ts";
 import { formatBytes } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
@@ -7,10 +7,12 @@ import { EvTooltip } from "./EvTooltip.tsx";
 export function AttachmentPills({
   attachments,
   onPreview,
+  onExpandToText,
   onRemove,
 }: {
   readonly attachments: readonly DraftAttachment[];
   readonly onPreview?: (attachment: DraftAttachment) => void;
+  readonly onExpandToText?: (id: string) => void;
   readonly onRemove?: (id: string) => void;
 }) {
   const { t } = useI18n();
@@ -39,6 +41,18 @@ export function AttachmentPills({
               </EvTooltip>
               <span className="ev-attachment-size ev-num">{formatBytes(item.size)}</span>
             </div>
+          )}
+          {item.pastedText !== undefined && onExpandToText && (
+            <EvTooltip content={t("composer.attachment.expandToText")} side="top">
+              <button
+                type="button"
+                className="ev-attachment-action"
+                aria-label={t("composer.attachment.expandToText")}
+                onClick={() => onExpandToText(item.id)}
+              >
+                <ExpandContentIcon width={13} height={13} />
+              </button>
+            </EvTooltip>
           )}
           {onRemove && (
             <button

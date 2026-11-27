@@ -86,8 +86,21 @@ export function Composer({
   const [lightboxImage, setLightboxImage] = useState<LightboxImage | undefined>(undefined);
 
   const formRef = useRef<HTMLFormElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [bodyHeight, setBodyHeight] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const h = entries[0]?.contentRect.height;
+      if (typeof h === "number" && h > 0) setBodyHeight(Math.ceil(h));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const autocomplete = useComposerAutocomplete({
     projectId,
@@ -260,44 +273,79 @@ export function Composer({
           onSelectMention={autocomplete.selectMention}
         />
 
+        {busy && (
+          <div className="ev-composer-busy-banner">
+            <span className="ev-dot" data-stage="working" />
+            <span className="ev-truncate ev-composer-busy-text">{t("composer.busyBanner")}</span>
+            <SegmentedControl.Root
+              density="compact"
+              className="ev-composer-busy-seg"
+              value={[whenBusy]}
+              onValueChange={(values) => {
+                const v = values[0];
+                if (v === "followUp" || v === "steer") setWhenBusy(v);
+              }}
+            >
+              <EvTooltip content={t("composer.mode.followUpHint")} side="top">
+                <SegmentedControl.Item value="followUp">
+                  {t("composer.mode.followUp")}
+                </SegmentedControl.Item>
+              </EvTooltip>
+              <EvTooltip content={t("composer.mode.steerHint")} side="top">
+                <SegmentedControl.Item value="steer">
+                  {t("composer.mode.steer")}
+                </SegmentedControl.Item>
+              </EvTooltip>
+            </SegmentedControl.Root>
+          </div>
+        )}
+
         {error && <div className="ev-error-banner">{error}</div>}
 
-        <AttachmentPills
-          attachments={draft.attachments}
-          onPreview={(att) =>
-            att.previewUrl
-              ? setLightboxImage({
-                  src: att.previewUrl,
-                  alt: att.name,
-                  caption: `${att.name} (${formatBytes(att.size)})`,
-                })
-              : undefined
-          }
-          onRemove={(id) =>
-            draft.updateAttachments(draft.attachments.filter((item) => item.id !== id))
-          }
-        />
+        <div
+          className="ev-composer-body-shell"
+          style={bodyHeight !== undefined ? { minHeight: bodyHeight } : undefined}
+        >
+          <div ref={bodyRef} className="ev-composer-body-inner">
+            <AttachmentPills
+              attachments={draft.attachments}
+              onPreview={(att) =>
+                att.previewUrl
+                  ? setLightboxImage({
+                      src: att.previewUrl,
+                      alt: att.name,
+                      caption: `${att.name} (${formatBytes(att.size)})`,
+                    })
+                  : undefined
+              }
+              onExpandToText={draft.expandAttachmentToText}
+              onRemove={(id) =>
+                draft.updateAttachments(draft.attachments.filter((item) => item.id !== id))
+              }
+            />
 
-        <textarea
-          ref={textareaRef}
-          className="ev-composer-textarea"
-          rows={2}
-          value={draft.text}
-          disabled={disabled}
-          placeholder={placeholder}
-          onChange={(event) => {
-            const nextValue = event.target.value;
-            const pos = event.target.selectionStart;
-            draft.updateText(nextValue);
-            if (typeof pos === "number") setCursorOffset(pos);
-          }}
-          onPaste={draft.handlePaste}
-          onClick={syncCursor}
-          onKeyUp={syncCursor}
-          onSelect={syncCursor}
-          onFocus={syncCursor}
-          onKeyDown={handleKeyDown}
-        />
+            <textarea
+              ref={textareaRef}
+              className="ev-composer-textarea"
+              rows={2}
+              value={draft.text}
+              disabled={disabled}
+              placeholder={placeholder}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                const pos = event.target.selectionStart;
+                draft.updateText(nextValue);
+                if (typeof pos === "number") setCursorOffset(pos);
+              }}
+              onPaste={draft.handlePaste}
+              onClick={syncCursor}
+              onKeyUp={syncCursor}
+              onSelect={syncCursor}
+              onFocus={syncCursor}
+              onKeyDown={handleKeyDown}
+            />
+          </div>
+        </div>
 
         <input
           ref={fileInputRef}
@@ -325,32 +373,11 @@ export function Composer({
               </IconButton>
             </EvTooltip>
 
-            {busy && (
-              <SegmentedControl.Root
-                density="compact"
-                value={[whenBusy]}
-                onValueChange={(values) => {
-                  const v = values[0];
-                  if (v === "followUp" || v === "steer") setWhenBusy(v);
-                }}
-              >
-                <EvTooltip content={t("composer.mode.followUpHint")} side="top">
-                  <SegmentedControl.Item value="followUp">
-                    {t("composer.mode.followUp")}
-                  </SegmentedControl.Item>
-                </EvTooltip>
-                <EvTooltip content={t("composer.mode.steerHint")} side="top">
-                  <SegmentedControl.Item value="steer">
-                    {t("composer.mode.steer")}
-                  </SegmentedControl.Item>
-                </EvTooltip>
-              </SegmentedControl.Root>
-            )}
-
             {isRouterComposer && (
               <ModelChoiceMenu
                 value={globalSettings?.models?.router}
                 models={availableModels}
+                modelSlots={globalSettings?.models}
                 placeholder={modelLabel ?? t("modelMenu.choose")}
                 placement="up"
                 variant="inline"

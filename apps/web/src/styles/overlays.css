@@ -856,13 +856,63 @@
   padding: 5px;
 }
 
+.ev-provider-icon {
+  flex: none;
+  color: var(--ev-fg-muted);
+}
+
 .ev-model-menu-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 9px 4px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--ev-fg-subtle);
+}
+
+.ev-model-detail-card {
+  position: fixed;
+  z-index: 60;
+  padding: 12px 13px;
+  border-radius: 12px;
+  border: var(--ev-hairline) solid var(--ev-border);
+  background: var(--ev-surface);
+  box-shadow: var(--ev-shadow-prominent);
+  pointer-events: none;
+  animation: ev-fade var(--ev-dur-fast) var(--ev-ease-out);
+}
+
+.ev-model-detail-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: var(--ev-hairline) solid var(--ev-separator);
+}
+
+.ev-model-detail-titles {
+  min-width: 0;
+  flex: 1;
+}
+
+.ev-model-detail-name {
+  font-size: 0.875rem;
+  font-weight: 560;
+  color: var(--ev-fg);
+}
+
+.ev-model-detail-id {
+  font-size: 0.72rem;
+  color: var(--ev-fg-subtle);
+}
+
+.ev-model-detail-kv {
+  font-size: 0.78rem;
+  gap: 4px 10px;
 }
 
 .ev-model-menu-row {

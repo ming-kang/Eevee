@@ -7,6 +7,7 @@ import { copyToClipboard } from "../../lib/markdown-utils.ts";
 import { showToast } from "../../lib/toasts.ts";
 import type { AssistantMeta } from "../../lib/transcript.ts";
 import { EvTooltip } from "../EvTooltip.tsx";
+import { ProviderIcon } from "../ProviderIcon.tsx";
 
 function computeCacheHitPct(meta: AssistantMeta): number | undefined {
   const read = meta.cacheRead ?? 0;
@@ -69,7 +70,12 @@ export function AssistantFooter({
       {hasDetailPopover && meta && (
         <Popover.Root>
           <Popover.Trigger className="ev-msg-meta-trigger">
-            {modelLabel && <span className="ev-msg-meta-model ev-mono">{modelLabel}</span>}
+            {modelLabel && (
+              <span className="ev-msg-meta-model ev-mono">
+                <ProviderIcon provider={meta.provider} size={12} />
+                <span>{modelLabel}</span>
+              </span>
+            )}
             {hasUsageTokens && (
               <span className="ev-msg-meta-item ev-mono ev-num">
                 {meta.input !== undefined ? `↑${formatTokens(meta.input)}` : ""}

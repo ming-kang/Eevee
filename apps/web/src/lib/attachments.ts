@@ -4,6 +4,8 @@ import {
   type MessageAttachment,
 } from "@eevee/protocol";
 
+export const LONG_PASTE_CHAR_THRESHOLD = 2_000;
+
 export type DraftAttachment = {
   readonly id: string;
   readonly name: string;
@@ -11,7 +13,54 @@ export type DraftAttachment = {
   readonly size: number;
   readonly data: string;
   readonly previewUrl?: string;
+  readonly pastedText?: string;
 };
+
+function utf8ToBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+export function shouldConvertPasteToAttachment(text: string): boolean {
+  return text.length >= LONG_PASTE_CHAR_THRESHOLD;
+}
+
+export function createPastedTextAttachment(
+  text: string,
+  existingAttachments: readonly DraftAttachment[],
+): { readonly attachment?: DraftAttachment; readonly issue?: AttachmentValidationIssue } {
+  if (existingAttachments.length >= MAX_MESSAGE_ATTACHMENTS) {
+    return { issue: { kind: "too_many", max: MAX_MESSAGE_ATTACHMENTS } };
+  }
+  const bytes = new TextEncoder().encode(text);
+  const existingNames = new Set(existingAttachments.map((a) => a.name));
+  let index = 1;
+  let name = "pasted-text.txt";
+  while (existingNames.has(name)) {
+    index += 1;
+    name = `pasted-text-${index}.txt`;
+  }
+  if (bytes.byteLength > MAX_ATTACHMENT_BYTES) {
+    return {
+      issue: { kind: "too_large", name, maxBytes: MAX_ATTACHMENT_BYTES },
+    };
+  }
+  return {
+    attachment: {
+      id: `att-${nextAttachmentId++}`,
+      name,
+      mimeType: "text/plain",
+      size: bytes.byteLength,
+      data: utf8ToBase64(text),
+      pastedText: text,
+    },
+  };
+}
 
 export type AttachmentValidationIssue =
   | { readonly kind: "too_many"; readonly max: number }
