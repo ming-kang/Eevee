@@ -16,6 +16,7 @@ import {
   type UserMessage,
 } from "@earendil-works/pi-ai";
 import {
+  type CommitPublication,
   CompactionEntry,
   type Conversation,
   type ConversationId,
@@ -36,6 +37,8 @@ import {
   type EntryPager,
   MEMORY_EXTENSION,
   type MemoryBinding,
+  MemoryBucketDoc,
+  MemoryMetaDoc,
   MemoryStore,
   type RecallBudget,
   type Summarize,
@@ -69,7 +72,7 @@ function entryText(entry: EntryRecord): string {
 }
 
 function memoryLines(summary: string): string[] {
-  const match = /<memory>\n([\s\S]*?)\n<\/memory>/.exec(summary);
+  const match = /(?:^|\n)<memory>\n([\s\S]*?)\n<\/memory>(?:\n|$)/.exec(summary);
   assert.ok(match, `Expected <memory> block in summary:\n${summary}`);
   return (match[1] ?? "").split("\n").filter(Boolean);
 }
@@ -132,7 +135,7 @@ async function createMemoryHarness(options: {
   return { harness, faux, memoryExt };
 }
 
-test("compaction replaces old turns with a <memory> forest view and supports zoom drill-down and search", async () => {
+test("compaction replaces old turns with a <memory> forest view and supports zoom(id, n?) drill-down and search", async () => {
   const bindings = new Map<ConversationId, MemoryBinding>();
   const nestedResults: NestedToolExecutionResult[] = [];
   const probeExt = defineExtension({
@@ -144,7 +147,8 @@ test("compaction replaces old turns with a <memory> forest view and supports zoo
         parameters: obj({ query: str() }),
         async execute(args, api, context) {
           nestedResults.push(await api.executeTool("zoom", { id: 0, n: 4 }, context));
-          nestedResults.push(await api.executeTool("zoom", { id: 0, n: 1 }, context));
+          // Omit `n` to verify default n = 1 for single-message zoom.
+          nestedResults.push(await api.executeTool("zoom", { id: 0 }, context));
           nestedResults.push(
             await api.executeTool("search", { query: args.query, limit: 1 }, context),
           );
@@ -218,7 +222,7 @@ test("compaction replaces old turns with a <memory> forest view and supports zoo
 
     await dreamer.sync();
     await dreamer.idle();
-    assert.ok(store.node({ level: 2, index: 0 }), "4-leaf node 0+4 must be built");
+    assert.ok(store.node({ start: 0, size: 4 }), "4-leaf node 0+4 must be built");
 
     const compactTask = await conv.compact(undefined, BACKGROUND_CONTEXT);
     const settled = await harness.waitForTask(compactTask, BACKGROUND_CONTEXT);
@@ -234,15 +238,13 @@ test("compaction replaces old turns with a <memory> forest view and supports zoo
 
     const leafCountBeforeLookups = store.leafCount();
 
-    // Now drive model calls for zoom drill-down (0+4 -> 0+2 -> 0+1), invalid zoom,
-    // search with pagination, and nested structuredOutput verification.
     faux.setResponses([
       capture(
         fauxAssistantMessage(
           [
             fauxToolCall("zoom", { id: 0, n: 4 }),
             fauxToolCall("zoom", { id: 0, n: 2 }),
-            fauxToolCall("zoom", { id: 0, n: 1 }),
+            fauxToolCall("zoom", { id: 0 }),
             fauxToolCall("zoom", { id: 1, n: 2 }),
             fauxToolCall("search", { query: "orion-42 alpha", limit: 1 }),
             fauxToolCall("search", { query: "ORION-42", limit: 2 }),
@@ -266,18 +268,17 @@ test("compaction replaces old turns with a <memory> forest view and supports zoo
     await dreamer.sync();
     await dreamer.idle();
 
-    // Post-compaction generation sees <memory> forest view and the memory prompt guide section.
     const postCompactCall = calls[4];
     assert.ok(postCompactCall);
     const sysMessage = postCompactCall.messages[0] as SystemMessage;
     assert.equal(sysMessage.role, "system");
     assert.ok(sysMessage.sections?.memory?.includes("zoom(id, n)"));
+    assert.ok(sysMessage.sections?.memory?.includes("zoom(id)"));
     assert.ok(
       postCompactCall.messages.some(
         (m) => m.role === "user" && contentText(m.content).includes("<memory>"),
       ),
     );
-    // Original Turn 0 verbatim text should no longer sit directly in the compacted context.
     assert.equal(
       postCompactCall.messages.some(
         (m) =>
@@ -287,7 +288,6 @@ test("compaction replaces old turns with a <memory> forest view and supports zoo
       false,
     );
 
-    // Inspect tool results delivered back to the model in round 2.
     const afterToolsCall = calls[5];
     assert.ok(afterToolsCall);
     const toolResults = afterToolsCall.messages.filter(
@@ -321,7 +321,6 @@ test("compaction replaces old turns with a <memory> forest view and supports zoo
       `Expected pagination hint in:\n${resultTexts[5]?.text}`,
     );
 
-    // Inspect nested structuredOutput results validated by pi-durable against structuredOutputSchema.
     assert.equal(nestedResults.length, 3);
     const [branchProbe, leafProbe, searchProbe] = nestedResults;
     assert.ok(branchProbe && leafProbe && searchProbe);
@@ -337,8 +336,15 @@ test("compaction replaces old turns with a <memory> forest view and supports zoo
     assert.equal(branchStructured.children.length, 2);
 
     assert.equal(leafProbe.isError, false);
-    const leafStructured = leafProbe.structuredOutput as { kind: string; text: string };
+    const leafStructured = leafProbe.structuredOutput as {
+      kind: string;
+      id: number;
+      n: number;
+      text: string;
+    };
     assert.equal(leafStructured.kind, "leaf");
+    assert.equal(leafStructured.id, 0);
+    assert.equal(leafStructured.n, 1);
     assert.equal(leafStructured.text, "Turn 0: establish ORION-42 for alpha pipeline.");
 
     assert.equal(searchProbe.isError, false);
@@ -351,8 +357,6 @@ test("compaction replaces old turns with a <memory> forest view and supports zoo
     assert.equal(searchStructured.hits.length, 1);
     assert.equal(typeof searchStructured.nextBefore, "number");
 
-    // Memory lookup calls & results themselves are not added as leaves (only the user question,
-    // probe_memory call/result, and final assistant reply are added).
     const addedLeaves = [];
     for (let i = leafCountBeforeLookups; i < store.leafCount(); i++) {
       addedLeaves.push(store.leaf(i));
@@ -370,7 +374,7 @@ test("compaction replaces old turns with a <memory> forest view and supports zoo
   }
 });
 
-test("sequential compactions keep the older <memory> prefix verbatim", async () => {
+test("sequential compactions reuse previous <memory> prefix from CompactionEntry without writing extra memory docs", async () => {
   const bindings = new Map<ConversationId, MemoryBinding>();
   const { harness, faux, memoryExt } = await createMemoryHarness({
     bindings,
@@ -382,6 +386,15 @@ test("sequential compactions keep the older <memory> prefix verbatim", async () 
         backgroundTokens: 0,
       },
     },
+  });
+
+  const compactionPublications: CommitPublication[] = [];
+  let recording = false;
+  const obs = harness.observeCommits({
+    advance: (pub) => {
+      if (recording) compactionPublications.push(pub);
+    },
+    end: () => {},
   });
 
   let dreamer: Dreamer | undefined;
@@ -412,6 +425,7 @@ test("sequential compactions keep the older <memory> prefix verbatim", async () 
       store,
       budget: () => budget,
       sync: (ctx) => dreamer?.sync(ctx) ?? Promise.resolve(),
+      opening: async () => "Current opening context for router.",
     });
 
     const pad = "context detail token padding ".repeat(5);
@@ -426,9 +440,24 @@ test("sequential compactions keep the older <memory> prefix verbatim", async () 
     await dreamer.sync();
     await dreamer.idle();
 
+    recording = true;
     const c1 = await conv.compact(undefined, BACKGROUND_CONTEXT);
     await harness.waitForTask(c1, BACKGROUND_CONTEXT);
     await conv.waitForIdle(BACKGROUND_CONTEXT);
+    recording = false;
+
+    // beforeCompact must be read-only with respect to memory documents.
+    const memoryDocWrites = compactionPublications.flatMap((pub) =>
+      pub.changes.filter(
+        (change) =>
+          change.type === "document" &&
+          change.kind === "change" &&
+          (change.record.kind === MemoryMetaDoc.definition.kind ||
+            change.record.kind === MemoryBucketDoc.definition.kind ||
+            change.record.kind.startsWith("eevee.memory")),
+      ),
+    );
+    assert.equal(memoryDocWrites.length, 0, "beforeCompact must not write any memory documents");
 
     for (let i = 7; i < 10; i++) {
       await submitAndWait(conv, `User turn ${i}: ${pad}`);
@@ -442,19 +471,24 @@ test("sequential compactions keep the older <memory> prefix verbatim", async () 
 
     const summaries = await compactionEntries(conv);
     assert.equal(summaries.length, 2);
-    const lines1 = memoryLines(entryText(summaries[0] as EntryRecord));
-    const lines2 = memoryLines(entryText(summaries[1] as EntryRecord));
+    const text1 = entryText(summaries[0] as EntryRecord);
+    const text2 = entryText(summaries[1] as EntryRecord);
+    assert.ok(text1.includes("Current opening context for router."));
+    assert.ok(text2.includes("Current opening context for router."));
+
+    const lines1 = memoryLines(text1);
+    const lines2 = memoryLines(text2);
 
     assert.ok(lines1.length >= 2, `Expected multiple lines in view 1, got:\n${lines1.join("\n")}`);
     assert.ok(lines2.length >= 2, `Expected multiple lines in view 2, got:\n${lines2.join("\n")}`);
     assert.notDeepEqual(lines2, lines1, "Second compaction should cover additional turns");
-    // The oldest already-folded prefix lines from compaction #1 must remain verbatim at the head of compaction #2.
     assert.deepEqual(
       lines2.slice(0, 2),
       lines1.slice(0, 2),
       `Expected prefix lines to stay verbatim.\nView 1:\n${lines1.join("\n")}\nView 2:\n${lines2.join("\n")}`,
     );
   } finally {
+    obs.detach();
     await dreamer?.close();
     await harness.close(BACKGROUND_CONTEXT);
   }
@@ -508,11 +542,9 @@ test("unattached conversations hide memory prompt, fail memory tools, and fall b
     await submitAndWait(unattached, "Try calling memory tools without a binding.");
     await submitAndWait(unattached, "Second turn before compaction.");
 
-    // System prompt must not include memory guide section for unattached conversations.
     const firstSys = calls[0]?.messages[0] as SystemMessage;
     assert.equal(firstSys.sections?.memory, undefined);
 
-    // Both zoom and search return isError: true.
     const results = (calls[1]?.messages ?? []).filter(
       (message): message is ToolResultMessage => message.role === "toolResult",
     );
@@ -570,7 +602,6 @@ test("memory compaction falls back to native compaction when forest view exceeds
       BACKGROUND_CONTEXT,
     );
     const store = await MemoryStore.open(harness, conv.id, BACKGROUND_CONTEXT);
-    // Deliberately tiny view budget with no Dreamer merges so view.tokens > view.max * 2.
     bindings.set(conv.id, {
       store,
       budget: () => ({ compaction: null, view: { min: 2, max: 4 } }),

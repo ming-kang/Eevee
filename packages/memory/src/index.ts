@@ -1,6 +1,5 @@
 import type { Context } from "@earendil-works/chord/context";
 import {
-  CompactionEntry,
   CompactionTask,
   type ConversationId,
   type DocumentReader,
@@ -14,10 +13,16 @@ import {
 import { arr, int, lit, num, obj, opt, str, union } from "@earendil-works/pi-schema";
 import { ENTRY_PAGE, ingestEntries } from "./dreamer.ts";
 import { MEMORY_TOOLS, SEARCH_TOOL, ZOOM_TOOL } from "./leaf.ts";
-import { lineOf, nodeText, PENDING_LINE } from "./lines.ts";
-import { childrenOf, endOf, nodeAt, spanOf, startOf } from "./shape.ts";
+import { endOf, spanAt, splitSpan } from "./span.ts";
 import type { MemoryStore } from "./store.ts";
-import { composeView, type RecallBudget } from "./view.ts";
+import {
+  composeView,
+  lineOf,
+  PENDING_LINE,
+  parseMemorySpans,
+  type RecallBudget,
+  spanText,
+} from "./view.ts";
 
 export {
   Dreamer,
@@ -39,40 +44,26 @@ export {
   ZOOM_TOOL,
 } from "./leaf.ts";
 export {
-  LINE_TOKENS,
-  lineOf,
-  type MemoryNodeReader,
-  nodeText,
-  PENDING_LINE,
-  textsBefore,
-} from "./lines.ts";
-export {
-  type Budget,
-  childrenOf,
-  coverBackward,
+  canMerge,
   covers,
   endOf,
-  type ForestNodeRef,
-  fold,
-  keyOf,
+  isLeftHalf,
   labelOf,
-  leafRef,
-  type NodeRef,
-  nodeAt,
+  leafSpan,
+  mergeDue,
   parentOf,
-  siblingOf,
-  spanOf,
-  startOf,
-} from "./shape.ts";
+  parseLabel,
+  partnerOf,
+  type Span,
+  spanAt,
+  splitSpan,
+} from "./span.ts";
 export {
-  MAX_STORED_VIEWS,
   MemoryBucketDoc,
   type MemoryBucketState,
   MemoryMetaDoc,
   type MemoryMetaState,
   MemoryStore,
-  MemoryViewsDoc,
-  type MemoryViewsState,
   type NodeUsage,
   type SearchHit,
 } from "./store.ts";
@@ -86,11 +77,20 @@ export {
 } from "./summarizer.ts";
 export { clipMiddle, estimateTokens, fitTokens, oneLine } from "./text.ts";
 export {
+  type Budget,
   composeView,
+  fold,
+  LINE_TOKENS,
+  leafPreview,
+  lineOf,
+  type MemoryNodeReader,
   type MemoryView,
   type MemoryViewStore,
+  PENDING_LINE,
+  parseMemorySpans,
   type RecallBudget,
   recallBudget,
+  spanText,
 } from "./view.ts";
 
 export const MEMORY_EXTENSION = "eevee.memory";
@@ -114,7 +114,7 @@ const GUIDE = `Your memory of this conversation is a binary tree of one-line sum
 
   id+n|text   the n messages from message id on, summarized
 
-- ${ZOOM_TOOL}(id, n) opens line id+n into the two lines it was made from; ${ZOOM_TOOL}(id, 1) gives message id whole.
+- ${ZOOM_TOOL}(id, n) opens line id+n into the two lines it was made from; ${ZOOM_TOOL}(id) (or ${ZOOM_TOOL}(id, 1)) gives message id whole.
 - ${SEARCH_TOOL}(query) finds messages holding every word, newest first; zoom into a hit to read it.
 
 Before you act on, guess at or ask about something from the past, look it up: search for exact names, paths, numbers and errors, and zoom to follow a line. The newest mention of a thing is the truth. Summaries keep little of tool output, so say in your replies what you learned that will matter later.`;
@@ -162,10 +162,15 @@ export function createMemoryExtension(options: MemoryExtensionOptions): Extensio
   const zoom = defineTool({
     name: MEMORY_TOOLS.zoom,
     description:
-      "Open line id+n of your memory into the two lines it was made from; with n = 1, read message id whole.",
+      "Open line id+n of your memory into the two lines it was made from; omit n (or pass n = 1) to read message id whole.",
     parameters: obj({
       id: int({ minimum: 0, description: "The line's first message" }),
-      n: int({ minimum: 1, description: "How many messages the line covers, a power of two" }),
+      n: opt(
+        int({
+          minimum: 1,
+          description: "How many messages the line covers, a power of two (default 1)",
+        }),
+      ),
     }),
     structuredOutputSchema: ZOOM_OUTPUT_SCHEMA,
     replay: "safe",
@@ -175,34 +180,35 @@ export function createMemoryExtension(options: MemoryExtensionOptions): Extensio
         return errorResult("Memory is not attached to this conversation.");
       }
       await binding.sync?.(context);
-      const node = nodeAt(args.id, args.n);
-      if (node === undefined) {
+      const size = args.n ?? 1;
+      const span = spanAt(args.id, size);
+      if (span === undefined) {
         return errorResult(
-          `${args.id}+${args.n} is not a line: n is a power of two and id a multiple of n.`,
+          `${args.id}+${size} is not a line: n is a power of two and id a multiple of n.`,
         );
       }
       const count = binding.store.leafCount();
       if (count === 0) {
         return errorResult("No messages are in memory yet.");
       }
-      if (endOf(node) > count) {
+      if (endOf(span) > count) {
         return errorResult(
-          `Messages ${args.id} to ${endOf(node) - 1} are not all in memory yet; the newest is ${count - 1}.`,
+          `Messages ${span.start} to ${endOf(span) - 1} are not all in memory yet; the newest is ${count - 1}.`,
         );
       }
-      if (node.level === 0) {
-        const leaf = binding.store.leaf(node.index);
-        if (leaf === undefined) return errorResult(`Message ${args.id} is not in memory.`);
+      if (span.size === 1) {
+        const leaf = binding.store.leaf(span.start);
+        if (leaf === undefined) return errorResult(`Message ${span.start} is not in memory.`);
         return {
           output: [
             {
               type: "text",
-              text: `${args.id}+1|${leaf.kind} · ${formatTime(leaf.at)}\n${leaf.text}`,
+              text: `${span.start}+1|${leaf.kind} · ${formatTime(leaf.at)}\n${leaf.text}`,
             },
           ],
           structuredOutput: {
             kind: "leaf",
-            id: args.id,
+            id: span.start,
             n: 1,
             leafKind: leaf.kind,
             at: leaf.at,
@@ -210,11 +216,11 @@ export function createMemoryExtension(options: MemoryExtensionOptions): Extensio
           },
         };
       }
-      const children = childrenOf(node).map((child) => {
-        const text = nodeText(binding.store, child) ?? PENDING_LINE;
+      const children = splitSpan(span).map((child) => {
+        const text = spanText(binding.store, child) ?? PENDING_LINE;
         return {
-          id: startOf(child),
-          n: spanOf(child),
+          id: child.start,
+          n: child.size,
           line: lineOf(binding.store, child),
           text,
         };
@@ -223,8 +229,8 @@ export function createMemoryExtension(options: MemoryExtensionOptions): Extensio
         output: [{ type: "text", text: children.map((child) => child.line).join("\n") }],
         structuredOutput: {
           kind: "branch",
-          id: args.id,
-          n: args.n,
+          id: span.start,
+          n: span.size,
           children,
         },
       };
@@ -309,12 +315,10 @@ export function createMemoryExtension(options: MemoryExtensionOptions): Extensio
               ),
             context,
           );
-          const head = compaction.entries[0];
-          const previous = head !== undefined && CompactionEntry.is(head) ? head.head : undefined;
+          const previous = parseMemorySpans(compaction.entries[0]);
           const budget = binding.budget().view;
           const view = composeView(binding.store, compaction.firstKept, previous, budget);
-          if (view.nodes.length === 0 || view.tokens > budget.max * OVERFLOW) return undefined;
-          await binding.store.saveView(compaction.firstKept, view.nodes, context);
+          if (view.spans.length === 0 || view.tokens > budget.max * OVERFLOW) return undefined;
           const opening = await binding.opening?.(api, context);
           const body = `<memory>\n${view.lines.join("\n")}\n</memory>`;
           return {

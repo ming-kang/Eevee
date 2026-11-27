@@ -8,11 +8,11 @@ import type {
   Page,
 } from "@earendil-works/pi-durable";
 import { leafOf, proseOf, sourceOf } from "./leaf.ts";
-import { LINE_TOKENS, textsBefore } from "./lines.ts";
-import { childrenOf, keyOf, labelOf, leafRef, type NodeRef, parentOf, siblingOf } from "./shape.ts";
+import { labelOf, leafSpan, mergeDue, parentOf, partnerOf, type Span, splitSpan } from "./span.ts";
 import type { MemoryStore, NodeUsage } from "./store.ts";
 import type { Summarize, SummaryTask } from "./summarizer.ts";
 import { clipMiddle, estimateTokens, fitTokens, oneLine } from "./text.ts";
+import { LINE_TOKENS, leafPreview } from "./view.ts";
 
 export type EntryPager = (
   minEntryId: EntryId | undefined,
@@ -22,7 +22,7 @@ export type EntryPager = (
 
 export type DreamerErrorInfo = {
   readonly phase: "ingest" | "summarize" | "store";
-  readonly node?: NodeRef;
+  readonly span?: Span;
 };
 
 export type DreamerDeps = {
@@ -68,19 +68,30 @@ export async function ingestEntries(
   } while (cursor !== undefined);
 }
 
+type NodePlan =
+  | { readonly kind: "drop" }
+  | { readonly kind: "free"; readonly text: string }
+  | { readonly kind: "model" };
+
 type WorkItem =
-  | { readonly kind: "free"; readonly node: NodeRef; readonly text: string }
-  | { readonly kind: "model"; readonly node: NodeRef };
+  | { readonly kind: "free"; readonly span: Span; readonly text: string }
+  | { readonly kind: "model"; readonly span: Span };
+
+function isHigherPriorityMerge(a: Span, aDue: number, b: Span, bDue: number): boolean {
+  if (aDue !== bDue) return aDue > bDue;
+  if (a.start !== b.start) return a.start < b.start;
+  return a.size < b.size;
+}
 
 /**
- * Silent background builder for one conversation's summary tree. Subscribes to `observeCommits`
- * when a harness is supplied, ingests new entries into leaves, and builds missing tree nodes
- * bottom-up outside the durable task graph.
+ * Silent background builder for one conversation's summary forest. Subscribes to `observeCommits`
+ * when a harness is supplied, ingests new entries into leaves, and prebuilds missing tree nodes
+ * bottom-up outside the durable task graph—prioritizing pending merges by `mergeDue`.
  */
 export class Dreamer {
   readonly #deps: DreamerDeps;
-  readonly #merges: NodeRef[];
-  readonly #leaves: NodeRef[];
+  readonly #merges: Span[];
+  readonly #leaves: Span[];
   readonly #queued = new Set<string>();
   readonly #inFlight = new Set<string>();
   readonly #needsModel = new Set<string>();
@@ -96,9 +107,9 @@ export class Dreamer {
   constructor(deps: DreamerDeps) {
     this.#deps = deps;
     this.#merges = deps.store.pendingMerges();
-    this.#leaves = deps.store.pendingLeaves().map(leafRef);
-    for (const node of [...this.#merges, ...this.#leaves]) {
-      this.#queued.add(keyOf(node));
+    this.#leaves = deps.store.pendingLeaves().map(leafSpan);
+    for (const span of [...this.#merges, ...this.#leaves]) {
+      this.#queued.add(labelOf(span));
     }
     this.#nextLeaf = deps.store.leafCount();
     this.#observation = deps.harness?.observeCommits({
@@ -151,49 +162,49 @@ export class Dreamer {
     return this.#deps.now?.() ?? Date.now();
   }
 
-  #enqueue(node: NodeRef, front = false): void {
-    const key = keyOf(node);
-    if (this.#queued.has(key) || this.#inFlight.has(key)) return;
-    if (this.#deps.store.node(node) !== undefined) return;
-    this.#queued.add(key);
-    const queue = node.level === 0 ? this.#leaves : this.#merges;
-    if (front) queue.unshift(node);
-    else queue.push(node);
+  #enqueue(span: Span, front = false): void {
+    const label = labelOf(span);
+    if (this.#queued.has(label) || this.#inFlight.has(label)) return;
+    if (this.#deps.store.node(span) !== undefined) return;
+    this.#queued.add(label);
+    const queue = span.size === 1 ? this.#leaves : this.#merges;
+    if (front) queue.unshift(span);
+    else queue.push(span);
   }
 
   #pump(): void {
     if (this.#closed) return;
     const count = this.#deps.store.leafCount();
     while (this.#nextLeaf < count) {
-      this.#enqueue(leafRef(this.#nextLeaf++));
+      this.#enqueue(leafSpan(this.#nextLeaf++));
     }
     const summarize = this.#deps.summarizer();
     const limit = this.#deps.concurrency ?? CONCURRENCY;
     while (this.#running.size < limit) {
       const next = this.#take(summarize !== undefined);
       if (next === undefined) break;
-      const key = keyOf(next.node);
-      this.#inFlight.add(key);
+      const label = labelOf(next.span);
+      this.#inFlight.add(label);
       if (next.kind === "free") {
         this.#track(
-          key,
-          this.#settle(next.node, next.text).catch((error) =>
-            this.#defer(next.node, error, "store"),
+          label,
+          this.#settle(next.span, next.text).catch((error) =>
+            this.#defer(next.span, error, "store"),
           ),
         );
       } else if (summarize !== undefined) {
-        this.#track(key, this.#build(next.node, summarize));
+        this.#track(label, this.#build(next.span, summarize));
       } else {
-        this.#inFlight.delete(key);
+        this.#inFlight.delete(label);
         break;
       }
     }
     this.#scheduleRetry();
   }
 
-  #track(key: string, work: Promise<void>): void {
+  #track(label: string, work: Promise<void>): void {
     const run = work.finally(() => {
-      this.#inFlight.delete(key);
+      this.#inFlight.delete(label);
       this.#running.delete(run);
       this.#pump();
     });
@@ -201,78 +212,151 @@ export class Dreamer {
   }
 
   #take(withModel: boolean): WorkItem | undefined {
-    const { store } = this.#deps;
     const now = this.#now();
-    for (const queue of [this.#merges, this.#leaves]) {
-      let at = 0;
-      while (at < queue.length) {
-        const node = queue[at] as NodeRef;
-        const key = keyOf(node);
-        if (store.node(node) !== undefined || this.#inFlight.has(key)) {
-          queue.splice(at, 1);
-          this.#queued.delete(key);
-          continue;
-        }
-        if ((this.#retries.get(key)?.at ?? 0) > now) {
-          at++;
-          continue;
-        }
-        if (!this.#needsModel.has(key)) {
-          const free = this.#freeText(node);
-          if (free === undefined) {
-            queue.splice(at, 1);
-            this.#queued.delete(key);
-            continue;
-          }
-          if (free !== null) {
-            queue.splice(at, 1);
-            this.#queued.delete(key);
-            return { kind: "free", node, text: free };
-          }
-          this.#needsModel.add(key);
-        }
+    return this.#takeMerge(withModel, now) ?? this.#takeLeaf(withModel, now);
+  }
+
+  #takeMerge(withModel: boolean, now: number): WorkItem | undefined {
+    const { store } = this.#deps;
+    const totalLeaves = store.leafCount();
+    let best: { at: number; due: number; item: WorkItem } | undefined;
+    let at = 0;
+    while (at < this.#merges.length) {
+      const span = this.#merges[at] as Span;
+      const label = labelOf(span);
+      if (store.node(span) !== undefined || this.#inFlight.has(label)) {
+        this.#merges.splice(at, 1);
+        this.#queued.delete(label);
+        continue;
+      }
+      if ((this.#retries.get(label)?.at ?? 0) > now) {
+        at++;
+        continue;
+      }
+      const plan = this.#needsModel.has(label) ? ({ kind: "model" } as const) : this.#plan(span);
+      if (plan.kind === "drop") {
+        this.#merges.splice(at, 1);
+        this.#queued.delete(label);
+        continue;
+      }
+      if (plan.kind === "model") {
+        this.#needsModel.add(label);
         if (!withModel) {
           at++;
           continue;
         }
-        queue.splice(at, 1);
-        this.#queued.delete(key);
-        return { kind: "model", node };
       }
+      const due = mergeDue(span, totalLeaves);
+      if (best === undefined || isHigherPriorityMerge(span, due, best.item.span, best.due)) {
+        best = {
+          at,
+          due,
+          item:
+            plan.kind === "free"
+              ? { kind: "free", span, text: plan.text }
+              : { kind: "model", span },
+        };
+      }
+      at++;
+    }
+    if (best === undefined) return undefined;
+    this.#merges.splice(best.at, 1);
+    this.#queued.delete(labelOf(best.item.span));
+    return best.item;
+  }
+
+  #takeLeaf(withModel: boolean, now: number): WorkItem | undefined {
+    const { store } = this.#deps;
+    let at = 0;
+    while (at < this.#leaves.length) {
+      const span = this.#leaves[at] as Span;
+      const label = labelOf(span);
+      if (store.node(span) !== undefined || this.#inFlight.has(label)) {
+        this.#leaves.splice(at, 1);
+        this.#queued.delete(label);
+        continue;
+      }
+      if ((this.#retries.get(label)?.at ?? 0) > now) {
+        at++;
+        continue;
+      }
+      const plan = this.#needsModel.has(label) ? ({ kind: "model" } as const) : this.#plan(span);
+      if (plan.kind === "drop") {
+        this.#leaves.splice(at, 1);
+        this.#queued.delete(label);
+        continue;
+      }
+      if (plan.kind === "free") {
+        this.#leaves.splice(at, 1);
+        this.#queued.delete(label);
+        return { kind: "free", span, text: plan.text };
+      }
+      this.#needsModel.add(label);
+      if (!withModel) {
+        at++;
+        continue;
+      }
+      this.#leaves.splice(at, 1);
+      this.#queued.delete(label);
+      return { kind: "model", span };
     }
     return undefined;
   }
 
-  #freeText(node: NodeRef): string | null | undefined {
+  #plan(span: Span): NodePlan {
     const { store } = this.#deps;
-    if (node.level === 0) {
-      const leaf = store.leaf(node.index);
-      if (leaf === undefined) return undefined;
+    if (span.size === 1) {
+      const leaf = store.leaf(span.start);
+      if (leaf === undefined) return { kind: "drop" };
       const line = oneLine(sourceOf(leaf));
-      if (estimateTokens(line) <= LINE_TOKENS) return line;
+      if (estimateTokens(line) <= LINE_TOKENS) return { kind: "free", text: line };
       const prose = oneLine(proseOf(leaf));
-      return estimateTokens(prose) <= LINE_TOKENS ? fitTokens(line, LINE_TOKENS) : null;
+      return estimateTokens(prose) <= LINE_TOKENS
+        ? { kind: "free", text: fitTokens(line, LINE_TOKENS) }
+        : { kind: "model" };
     }
-    const [left, right] = childrenOf(node).map((child) => store.node(child));
-    if (left === undefined || right === undefined) return undefined;
+    const [left, right] = splitSpan(span).map((child) => store.node(child));
+    if (left === undefined || right === undefined) return { kind: "drop" };
     const joined = `${left}\n${right}`;
-    return estimateTokens(oneLine(joined)) <= LINE_TOKENS ? joined : null;
+    return estimateTokens(oneLine(joined)) <= LINE_TOKENS
+      ? { kind: "free", text: joined }
+      : { kind: "model" };
   }
 
-  #task(node: NodeRef): SummaryTask | undefined {
+  #contextBefore(start: number): string[] {
     const { store } = this.#deps;
-    if (node.level === 0) {
-      const leaf = store.leaf(node.index);
-      const context = textsBefore(store, node.index, LEAF_CONTEXT_LINES);
-      return leaf && { input: [clipMiddle(sourceOf(leaf), SOURCE_CHARS)], context };
+    const from = Math.max(0, start - LEAF_CONTEXT_LINES);
+    const context: string[] = [];
+    for (let index = from; index < start; index++) {
+      const built = store.node(leafSpan(index));
+      if (built !== undefined) {
+        context.push(oneLine(built));
+        continue;
+      }
+      const leaf = store.leaf(index);
+      if (leaf !== undefined) context.push(leafPreview(leaf));
     }
-    const [left, right] = childrenOf(node).map((child) => store.node(child));
+    return context;
+  }
+
+  #task(span: Span): SummaryTask | undefined {
+    const { store } = this.#deps;
+    if (span.size === 1) {
+      const leaf = store.leaf(span.start);
+      return (
+        leaf && {
+          input: [clipMiddle(sourceOf(leaf), SOURCE_CHARS)],
+          context: this.#contextBefore(span.start),
+        }
+      );
+    }
+    const [left, right] = splitSpan(span).map((child) => store.node(child));
     if (left === undefined || right === undefined) return undefined;
     return { input: [left, right], context: [] };
   }
 
-  async #build(node: NodeRef, summarize: Summarize): Promise<void> {
-    const task = this.#task(node);
+  async #build(span: Span, summarize: Summarize): Promise<void> {
+    const task = this.#task(span);
     if (task === undefined) return;
     let text: string;
     let usage: NodeUsage | undefined;
@@ -284,44 +368,44 @@ export class Dreamer {
         usage = { modelKey: result.modelKey, usage: result.usage };
       }
     } catch (error) {
-      this.#defer(node, error, "summarize");
+      this.#defer(span, error, "summarize");
       return;
     }
     if (this.#closed) return;
     this.#failing = false;
     try {
-      await this.#settle(node, text, usage);
+      await this.#settle(span, text, usage);
     } catch (error) {
-      this.#defer(node, error, "store");
+      this.#defer(span, error, "store");
     }
   }
 
-  async #settle(node: NodeRef, text: string, usage?: NodeUsage): Promise<void> {
+  async #settle(span: Span, text: string, usage?: NodeUsage): Promise<void> {
     const { store } = this.#deps;
-    await store.putNode(node, text, this.#deps.context, usage);
-    const key = keyOf(node);
-    this.#retries.delete(key);
-    this.#needsModel.delete(key);
-    const parent = parentOf(node);
-    if (store.node(siblingOf(node)) !== undefined && store.node(parent) === undefined) {
+    await store.putNode(span, text, this.#deps.context, usage);
+    const label = labelOf(span);
+    this.#retries.delete(label);
+    this.#needsModel.delete(label);
+    const parent = parentOf(span);
+    if (store.node(partnerOf(span)) !== undefined && store.node(parent) === undefined) {
       this.#enqueue(parent);
     }
   }
 
-  #defer(node: NodeRef, error: unknown, phase: "summarize" | "store"): void {
+  #defer(span: Span, error: unknown, phase: "summarize" | "store"): void {
     if (this.#closed) return;
-    const key = keyOf(node);
-    const count = (this.#retries.get(key)?.count ?? 0) + 1;
+    const label = labelOf(span);
+    const count = (this.#retries.get(label)?.count ?? 0) + 1;
     const baseMs = this.#deps.retryBaseMs ?? RETRY_MS;
     const maxMs = this.#deps.retryMaxMs ?? MAX_RETRY_MS;
     const delay = Math.min(baseMs * 2 ** (count - 1), maxMs);
-    this.#retries.set(key, { count, at: this.#now() + delay });
+    this.#retries.set(label, { count, at: this.#now() + delay });
     // Clear in-flight before re-enqueuing so `#enqueue` accepts it; `#track`'s finally is idempotent.
-    this.#inFlight.delete(key);
-    this.#enqueue(node, true);
+    this.#inFlight.delete(label);
+    this.#enqueue(span, true);
     if (!this.#failing) {
       this.#failing = true;
-      this.#report(error, { phase, node });
+      this.#report(error, { phase, span });
     }
   }
 
@@ -334,7 +418,7 @@ export class Dreamer {
     const detail =
       info.phase === "ingest"
         ? "Dreamer could not read entries."
-        : `Dreamer could not ${info.phase} ${info.node ? labelOf(info.node) : "node"}; it will be tried again.`;
+        : `Dreamer could not ${info.phase} ${info.span ? labelOf(info.span) : "node"}; it will be tried again.`;
     console.error(`${prefix}${detail}`, error);
   }
 

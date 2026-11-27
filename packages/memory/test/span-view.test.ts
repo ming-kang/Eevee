@@ -9,35 +9,36 @@ import type {
 } from "@earendil-works/pi-ai";
 import { CompactionEntry, type EntryId, type EntryRecord } from "@earendil-works/pi-durable";
 import {
-  childrenOf,
+  canMerge,
   clipMiddle,
   composeView,
-  coverBackward,
   covers,
   endOf,
   estimateTokens,
   fitTokens,
   fold,
-  keyOf,
+  isLeftHalf,
   type Leaf,
   labelOf,
   leafOf,
-  leafRef,
+  leafPreview,
+  leafSpan,
   lineOf,
   type MemoryViewStore,
-  type NodeRef,
-  nodeAt,
-  nodeText,
+  mergeDue,
   oneLine,
   PENDING_LINE,
   parentOf,
+  parseLabel,
+  parseMemorySpans,
+  partnerOf,
   proseOf,
   recallBudget,
-  siblingOf,
+  type Span,
   sourceOf,
-  spanOf,
-  startOf,
-  textsBefore,
+  spanAt,
+  spanText,
+  splitSpan,
 } from "../src/index.ts";
 
 function makeEntry(
@@ -104,92 +105,123 @@ function systemMsg(prompt: string): SystemMessage {
   return { role: "system", content: "", sections: { base: prompt }, timestamp: 1 };
 }
 
-function fakeViewStore(options: {
-  leaves: Leaf[];
-  nodes: Map<string, string>;
-  views?: Map<number, NodeRef[]>;
-}): MemoryViewStore {
+function fakeViewStore(options: { leaves: Leaf[]; nodes: Map<string, string> }): MemoryViewStore {
   return {
     leafCount: () => options.leaves.length,
     leaf: (index) => options.leaves[index],
     leavesBefore: (entry) => options.leaves.filter((leaf) => leaf.entry < entry).length,
-    node: (ref) => options.nodes.get(keyOf(ref)),
-    view: (firstKept) => {
-      const found = options.views?.get(firstKept);
-      return found === undefined ? undefined : [...found];
-    },
+    node: (span) => options.nodes.get(labelOf(span)),
   };
 }
 
-test("nodeAt validates addresses and shape helpers convert parent, sibling, children, and labels", () => {
-  assert.deepEqual(nodeAt(0, 1), { level: 0, index: 0 });
-  assert.deepEqual(nodeAt(4, 4), { level: 2, index: 1 });
-  assert.deepEqual(nodeAt(8, 8), { level: 3, index: 1 });
+test("spanAt, parseLabel, and geometry helpers validate spans and compute parent, partner, split, and due", () => {
+  assert.deepEqual(spanAt(0, 1), { start: 0, size: 1 });
+  assert.deepEqual(spanAt(4, 4), { start: 4, size: 4 });
+  assert.deepEqual(spanAt(8, 8), { start: 8, size: 8 });
 
-  assert.equal(nodeAt(-1, 1), undefined);
-  assert.equal(nodeAt(0, 0), undefined);
-  assert.equal(nodeAt(0, 3), undefined);
-  assert.equal(nodeAt(2, 4), undefined);
-  assert.equal(nodeAt(1.5, 1), undefined);
-  assert.equal(nodeAt(0, Number.MAX_SAFE_INTEGER), undefined);
-  assert.equal(nodeAt(Number.MAX_SAFE_INTEGER, 1), undefined);
+  assert.equal(spanAt(-1, 1), undefined);
+  assert.equal(spanAt(0, 0), undefined);
+  assert.equal(spanAt(0, 3), undefined);
+  assert.equal(spanAt(2, 4), undefined);
+  assert.equal(spanAt(1.5, 1), undefined);
+  assert.equal(spanAt(0, Number.MAX_SAFE_INTEGER), undefined);
+  assert.equal(spanAt(Number.MAX_SAFE_INTEGER, 1), undefined);
 
-  const node = { level: 2, index: 1 };
-  assert.equal(spanOf(node), 4);
-  assert.equal(startOf(node), 4);
-  assert.equal(endOf(node), 8);
-  assert.equal(labelOf(node), "4+4");
-  assert.equal(keyOf(node), "2:1");
-  assert.deepEqual(parentOf(node), { level: 3, index: 0 });
-  assert.deepEqual(siblingOf(node), { level: 2, index: 0 });
-  assert.deepEqual(siblingOf({ level: 2, index: 0 }), node);
-  assert.deepEqual(childrenOf(node), [
-    { level: 1, index: 2 },
-    { level: 1, index: 3 },
+  assert.deepEqual(parseLabel("0+1"), { start: 0, size: 1 });
+  assert.deepEqual(parseLabel("4+4"), { start: 4, size: 4 });
+  assert.equal(parseLabel("00+1"), undefined);
+  assert.equal(parseLabel("0+01"), undefined);
+  assert.equal(parseLabel("-1+1"), undefined);
+  assert.equal(parseLabel("2+4"), undefined);
+  assert.equal(parseLabel("0+3"), undefined);
+  assert.equal(parseLabel("9007199254740992+1"), undefined);
+  assert.equal(parseLabel(" 0+1"), undefined);
+
+  const rightHalf: Span = { start: 4, size: 4 };
+  const leftHalf: Span = { start: 0, size: 4 };
+  assert.equal(endOf(rightHalf), 8);
+  assert.equal(labelOf(rightHalf), "4+4");
+  assert.equal(isLeftHalf(leftHalf), true);
+  assert.equal(isLeftHalf(rightHalf), false);
+  assert.deepEqual(parentOf(leftHalf), { start: 0, size: 8 });
+  assert.deepEqual(parentOf(rightHalf), { start: 0, size: 8 });
+  assert.deepEqual(partnerOf(rightHalf), leftHalf);
+  assert.deepEqual(partnerOf(leftHalf), rightHalf);
+  assert.equal(canMerge(leftHalf, rightHalf), true);
+  assert.equal(canMerge(rightHalf, { start: 8, size: 4 }), false);
+  assert.equal(canMerge(leftHalf, { start: 4, size: 2 }), false);
+  assert.deepEqual(splitSpan(rightHalf), [
+    { start: 4, size: 2 },
+    { start: 6, size: 2 },
   ]);
-  assert.throws(() => childrenOf(leafRef(0)), RangeError);
+  assert.throws(() => splitSpan(leafSpan(0)), RangeError);
 
-  assert.equal(
-    covers(
-      [
-        { level: 1, index: 0 },
-        { level: 0, index: 2 },
-      ],
-      3,
-    ),
-    true,
-  );
-  assert.equal(
-    covers(
-      [
-        { level: 1, index: 0 },
-        { level: 0, index: 3 },
-      ],
-      4,
-    ),
-    false,
-  );
-  assert.equal(covers([{ level: 1, index: 0 }], 3), false);
+  // Pair (4+2, 6+2) -> parent 4+4 covers 4..7; with totalLeaves=41 (latest leaf 40):
+  // age = 41 - 7 = 34, childSize = 2 -> due = 17.
+  assert.equal(mergeDue({ start: 4, size: 4 }, 41), 17);
+
+  assert.equal(covers([{ start: 0, size: 2 }, leafSpan(2)], 3), true);
+  assert.equal(covers([{ start: 0, size: 2 }, leafSpan(3)], 4), false);
+  assert.equal(covers([{ start: 0, size: 2 }], 3), false);
+  assert.equal(covers([{ start: 0, size: 0 }], 0), false);
 });
 
-test("coverBackward tiles [0, end) newest first with largest built nodes", () => {
-  const built = new Set(["2:0", "1:2"]);
-  const nodes = [...coverBackward(7, (ref) => built.has(keyOf(ref)))];
-  assert.deepEqual(nodes.map(labelOf), ["6+1", "4+2", "0+4"]);
+test("parseMemorySpans extracts spans from CompactionEntry and rejects non-memory or malformed blocks", () => {
+  const validCompaction = makeEntry(
+    20,
+    CompactionEntry.kind,
+    [
+      userMsg(
+        "The conversation history before this point was compacted into the following summary:\n\n<summary>\n<memory>\n0+4|user: discussed <memory> and </memory> tags inline\n4+2|assistant: confirmed\n6+1|user: next step\n</memory>\n\nOpening notes mentioning </memory> safely.\n</summary>",
+      ),
+    ],
+    15,
+  );
+  assert.deepEqual(parseMemorySpans(validCompaction), [
+    { start: 0, size: 4 },
+    { start: 4, size: 2 },
+    { start: 6, size: 1 },
+  ]);
 
-  const partial = [...coverBackward(7, (ref) => keyOf(ref) === "1:2")];
-  assert.deepEqual(partial.map(labelOf), ["6+1", "4+2", "3+1", "2+1", "1+1", "0+1"]);
+  const nonCompaction = makeEntry(21, "pi.user", [userMsg("<memory>\n0+1|fake\n</memory>")]);
+  assert.equal(parseMemorySpans(nonCompaction), undefined);
+
+  const nativeSummary = makeEntry(
+    22,
+    CompactionEntry.kind,
+    [userMsg("<summary>\n## Goal\nPlain text summary.\n</summary>")],
+    15,
+  );
+  assert.equal(parseMemorySpans(nativeSummary), undefined);
+
+  const malformedLabel = makeEntry(
+    23,
+    CompactionEntry.kind,
+    [userMsg("<summary>\n<memory>\n0+3|bad power of two\n</memory>\n</summary>")],
+    15,
+  );
+  assert.equal(parseMemorySpans(malformedLabel), undefined);
+
+  const missingBar = makeEntry(
+    24,
+    CompactionEntry.kind,
+    [userMsg("<summary>\n<memory>\n0+1 without separator\n</memory>\n</summary>")],
+    15,
+  );
+  assert.equal(parseMemorySpans(missingBar), undefined);
+
+  assert.equal(parseMemorySpans(undefined), undefined);
 });
 
 test("fold keeps older merged lines intact and merges only the most due built sibling pairs", () => {
-  const initial: NodeRef[] = [
-    { level: 2, index: 0 }, // 0+4
-    { level: 1, index: 2 }, // 4+2
-    { level: 1, index: 3 }, // 6+2
-    leafRef(8),
-    leafRef(9),
-    leafRef(10),
-    leafRef(11),
+  const initial: Span[] = [
+    { start: 0, size: 4 },
+    { start: 4, size: 2 },
+    { start: 6, size: 2 },
+    leafSpan(8),
+    leafSpan(9),
+    leafSpan(10),
+    leafSpan(11),
   ];
 
   // Everything fits under budget.max: no folding occurs.
@@ -221,7 +253,7 @@ test("fold keeps older merged lines intact and merges only the most due built si
     16,
     { min: 40, max: 65 },
     () => 10,
-    (node) => keyOf(node) === "1:5",
+    (span) => labelOf(span) === "10+2",
   );
   assert.deepEqual(onlyBuilt10.map(labelOf), ["0+4", "4+2", "6+2", "8+1", "9+1", "10+2"]);
 });
@@ -236,7 +268,6 @@ test("text helpers estimate CJK/ASCII tokens, normalize whitespace, and fit or c
   assert.ok(fitted.endsWith("…"));
   assert.ok(estimateTokens(fitted) <= 8);
 
-  // Tiny limits with no sentence punctuation must not mis-treat -1 + mark.length as a match.
   const tiny = fitTokens("abcdefgh", 1);
   assert.equal(tiny, "…");
 
@@ -312,7 +343,7 @@ test("leafOf skips head markers, system, failed assistants, thinking, and memory
   assert.equal(userLeaf?.text, "See screenshot\n[image]");
 });
 
-test("lines, composeView, and recallBudget preserve prefixes and fall back when previous view is missing", () => {
+test("spanText, leafPreview, composeView, and recallBudget preserve prefixes and fall back cleanly", () => {
   const leaves: Leaf[] = Array.from({ length: 8 }, (_, index) => ({
     index,
     entry: (index + 1) * 10,
@@ -321,34 +352,40 @@ test("lines, composeView, and recallBudget preserve prefixes and fall back when 
     at: 1_700_000_000_000 + index * 1000,
   }));
   const nodes = new Map<string, string>([
-    ["0:0", "m0"],
-    ["0:1", "m1"],
-    ["0:2", "m2"],
-    ["0:3", "m3"],
-    ["0:4", "m4"],
-    ["0:5", "m5"],
-    ["1:0", "m0-1"],
-    ["1:1", "m2-3"],
-    ["2:0", "m0-3"],
+    ["0+1", "m0"],
+    ["1+1", "m1"],
+    ["2+1", "m2"],
+    ["3+1", "m3"],
+    ["4+1", "m4"],
+    ["5+1", "m5"],
+    ["0+2", "m0-1"],
+    ["2+2", "m2-3"],
+    ["0+4", "m0-3"],
   ]);
-  const views = new Map<number, NodeRef[]>([
-    [50, [{ level: 1, index: 0 }, leafRef(2), leafRef(3)]],
-  ]);
-  const store = fakeViewStore({ leaves, nodes, views });
+  const store = fakeViewStore({ leaves, nodes });
 
-  assert.equal(nodeText(store, { level: 1, index: 0 }), "m0-1");
-  assert.ok(nodeText(store, leafRef(6))?.startsWith(PENDING_LINE));
-  assert.equal(lineOf(store, { level: 1, index: 0 }), "0+2|m0-1");
-  assert.deepEqual(textsBefore(store, 6, 3), ["m0-3", "m4", "m5"]);
+  assert.equal(spanText(store, { start: 0, size: 2 }), "m0-1");
+  assert.equal(spanText(store, { start: 4, size: 2 }), undefined);
+  assert.equal(leafPreview(leaves[6] as Leaf), "user: message-6 content");
+  assert.equal(spanText(store, leafSpan(6)), `${PENDING_LINE} user: message-6 content`);
+  assert.equal(lineOf(store, { start: 0, size: 2 }), "0+2|m0-1");
 
-  // Starting from previousFirstKept=50 ([0+2, 2+1, 3+1]), grow through entry 70 (leaves 0..5).
-  const keptPrefixView = composeView(store, 70, 50, { min: 100, max: 200 });
-  assert.deepEqual(keptPrefixView.nodes.map(labelOf), ["0+2", "2+1", "3+1", "4+1", "5+1"]);
+  // Starting from previous spans [0+2, 2+1, 3+1], grow through entry 70 (leaves 0..5).
+  const previousSpans: Span[] = [{ start: 0, size: 2 }, leafSpan(2), leafSpan(3)];
+  const keptPrefixView = composeView(store, 70, previousSpans, { min: 100, max: 200 });
+  assert.deepEqual(keptPrefixView.spans.map(labelOf), ["0+2", "2+1", "3+1", "4+1", "5+1"]);
 
-  // If previous view was pruned/missing, composeView rebuilds from leaves cleanly.
-  const rebuiltView = composeView(store, 50, 999, { min: 1, max: 1 });
-  assert.deepEqual(rebuiltView.nodes.map(labelOf), ["0+4"]);
-  assert.equal(covers(rebuiltView.nodes, 4), true);
+  // Without previous spans, composeView rebuilds and folds from leaves cleanly.
+  const rebuiltView = composeView(store, 50, undefined, { min: 1, max: 1 });
+  assert.deepEqual(rebuiltView.spans.map(labelOf), ["0+4"]);
+  assert.equal(covers(rebuiltView.spans, 4), true);
+
+  // Discontinuous or overshooting previous spans are discarded safely.
+  const invalidPrev = composeView(store, 50, [{ start: 0, size: 2 }, leafSpan(3)], {
+    min: 100,
+    max: 200,
+  });
+  assert.deepEqual(invalidPrev.spans.map(labelOf), ["0+1", "1+1", "2+1", "3+1"]);
 
   const bigBudget = recallBudget(200_000, 80_000);
   assert.deepEqual(bigBudget.compaction, { reserveTokens: 120_000, keepRecentTokens: 20_000 });

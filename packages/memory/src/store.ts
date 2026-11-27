@@ -8,7 +8,15 @@ import {
   type Harness,
 } from "@earendil-works/pi-durable";
 import type { Leaf, LeafDraft } from "./leaf.ts";
-import { keyOf, type NodeRef, parentOf } from "./shape.ts";
+import {
+  isLeftHalf,
+  labelOf,
+  leafSpan,
+  parentOf,
+  parseLabel,
+  partnerOf,
+  type Span,
+} from "./span.ts";
 import { oneLine } from "./text.ts";
 
 export type SearchHit = Leaf & {
@@ -28,12 +36,6 @@ export type MemoryMetaState = {
 export type MemoryBucketState = {
   nodes: Record<string, string>;
 };
-
-export type MemoryViewsState = {
-  views: Record<string, [number, number][]>;
-};
-
-export const MAX_STORED_VIEWS = 8;
 
 const BUCKET_SIZE = 64;
 const SNIPPET_CHARS = 240;
@@ -59,17 +61,8 @@ export const MemoryBucketDoc = defineDocFamily<MemoryBucketState, null>({
   checkpointWhen: (_value, _ops, info) => info.deltasSinceBase >= 32,
 });
 
-export const MemoryViewsDoc = defineDoc<MemoryViewsState>({
-  kind: "eevee.memory-views",
-  version: 1,
-  scope: "conversation",
-  history: "latest",
-  fork: "initial",
-  initial: () => ({ views: {} }),
-  checkpointWhen: (_value, _ops, info) => info.deltasSinceBase >= 20,
-});
-
-const bucketKey = (ref: NodeRef): string => `${ref.level}:${Math.floor(ref.index / BUCKET_SIZE)}`;
+const bucketKey = (span: Span): string =>
+  `${span.size}:${Math.floor(span.start / span.size / BUCKET_SIZE)}`;
 
 function addUsage(total: JsonRepresentation<Usage>, usage: Usage): void {
   total.input += usage.input;
@@ -105,29 +98,8 @@ function accumulateUsage(
   }
 }
 
-function pruneViewsRecord(views: Record<string, [number, number][]>, maxViews: number): void {
-  const keys = Object.keys(views);
-  if (keys.length <= maxViews) return;
-  keys.sort((a, b) => Number(a) - Number(b));
-  const dropCount = keys.length - maxViews;
-  for (let i = 0; i < dropCount; i++) {
-    const key = keys[i];
-    if (key !== undefined) delete views[key];
-  }
-}
-
-function pruneViewsMap(views: Map<number, NodeRef[]>, maxViews: number): void {
-  if (views.size <= maxViews) return;
-  const keys = [...views.keys()].sort((a, b) => a - b);
-  const dropCount = keys.length - maxViews;
-  for (let i = 0; i < dropCount; i++) {
-    const key = keys[i];
-    if (key !== undefined) views.delete(key);
-  }
-}
-
 /**
- * Conversation-scoped summary tree store. Nodes, usage, and recent placed views live in
+ * Conversation-scoped summary forest store. Immutable summary nodes and Dreamer usage live in
  * conversation documents (`fork: "initial"`); leaves are rebuilt in memory from the transcript.
  * Writes commit before updating memory so memory never runs ahead of durable state.
  */
@@ -135,8 +107,6 @@ export class MemoryStore {
   readonly conversationId: ConversationId;
   readonly #harness: Pick<Harness, "snapshot" | "commit">;
   readonly #nodes = new Map<string, string>();
-  readonly #buckets = new Set<string>();
-  readonly #views = new Map<number, NodeRef[]>();
   readonly #usage: Record<string, JsonRepresentation<Usage>> = {};
   readonly #leaves: Leaf[] = [];
   #scanned: number | undefined;
@@ -154,10 +124,7 @@ export class MemoryStore {
     conversationId: ConversationId,
     context: Context,
   ): Promise<MemoryStore> {
-    const [meta, views] = await Promise.all([
-      harness.snapshot(MemoryMetaDoc, conversationId, context),
-      harness.snapshot(MemoryViewsDoc, conversationId, context),
-    ]);
+    const meta = await harness.snapshot(MemoryMetaDoc, conversationId, context);
     const keys = meta?.buckets ?? [];
     const buckets = await Promise.all(
       keys.map((key) => harness.snapshot(MemoryBucketDoc, conversationId, key, context)),
@@ -166,21 +133,11 @@ export class MemoryStore {
     for (const [modelKey, usage] of Object.entries(meta?.usage ?? {})) {
       store.#usage[modelKey] = structuredClone(usage);
     }
-    for (let at = 0; at < keys.length; at++) {
-      const bucket = buckets[at];
-      const key = keys[at];
-      if (bucket === undefined || key === undefined) continue;
-      store.#buckets.add(key);
-      const level = Number(key.slice(0, key.indexOf(":")));
-      for (const [index, text] of Object.entries(bucket.nodes)) {
-        store.#nodes.set(keyOf({ level, index: Number(index) }), text);
+    for (const bucket of buckets) {
+      if (bucket === undefined) continue;
+      for (const [label, text] of Object.entries(bucket.nodes)) {
+        store.#nodes.set(label, text);
       }
-    }
-    for (const [firstKept, nodes] of Object.entries(views?.views ?? {})) {
-      store.#views.set(
-        Number(firstKept),
-        nodes.map(([level, index]) => ({ level, index })),
-      );
     }
     return store;
   }
@@ -222,8 +179,8 @@ export class MemoryStore {
     return low;
   }
 
-  node(ref: NodeRef): string | undefined {
-    return this.#nodes.get(keyOf(ref));
+  node(span: Span): string | undefined {
+    return this.#nodes.get(labelOf(span));
   }
 
   usage(): Record<string, JsonRepresentation<Usage>> {
@@ -231,69 +188,44 @@ export class MemoryStore {
   }
 
   /** Write-once node commit; records Dreamer model usage in the same transaction when supplied. */
-  async putNode(ref: NodeRef, text: string, context: Context, usage?: NodeUsage): Promise<void> {
-    if (this.#nodes.has(keyOf(ref))) return;
-    const key = bucketKey(ref);
-    const slot = String(ref.index);
+  async putNode(span: Span, text: string, context: Context, usage?: NodeUsage): Promise<void> {
+    const label = labelOf(span);
+    if (this.#nodes.has(label)) return;
+    const key = bucketKey(span);
     const storedText = await this.#harness.commit(async (tx) => {
       const bucket = await tx.doc(MemoryBucketDoc, this.conversationId, key, null);
-      if (bucket.nodes[slot] === undefined) bucket.nodes[slot] = text;
+      if (bucket.nodes[label] === undefined) bucket.nodes[label] = text;
       const meta = await tx.doc(MemoryMetaDoc, this.conversationId);
       if (!meta.buckets.includes(key)) meta.buckets.push(key);
       if (usage !== undefined) accumulateUsage(meta.usage, usage.modelKey, usage.usage);
-      return bucket.nodes[slot] as string;
+      return bucket.nodes[label] as string;
     }, context);
-    this.#nodes.set(keyOf(ref), storedText);
-    this.#buckets.add(key);
+    this.#nodes.set(label, storedText);
     if (usage !== undefined) accumulateUsage(this.#usage, usage.modelKey, usage.usage);
   }
 
   pendingLeaves(): number[] {
     const pending: number[] = [];
     for (const leaf of this.#leaves) {
-      if (this.#nodes.get(keyOf({ level: 0, index: leaf.index })) === undefined) {
+      if (!this.#nodes.has(labelOf(leafSpan(leaf.index)))) {
         pending.push(leaf.index);
       }
     }
     return pending;
   }
 
-  pendingMerges(): NodeRef[] {
-    const pending: { parent: NodeRef; order: number; level: number }[] = [];
-    for (const key of this.#nodes.keys()) {
-      const at = key.indexOf(":");
-      const level = Number(key.slice(0, at));
-      const index = Number(key.slice(at + 1));
-      if (index % 2 !== 0) continue;
-      if (!this.#nodes.has(keyOf({ level, index: index + 1 }))) continue;
-      const parent = parentOf({ level, index });
-      if (this.#nodes.has(keyOf(parent))) continue;
-      pending.push({ parent, order: index * 2 ** level, level });
+  pendingMerges(): Span[] {
+    const pending: Span[] = [];
+    for (const label of this.#nodes.keys()) {
+      const span = parseLabel(label);
+      if (span === undefined || !isLeftHalf(span)) continue;
+      if (!this.#nodes.has(labelOf(partnerOf(span)))) continue;
+      const parent = parentOf(span);
+      if (this.#nodes.has(labelOf(parent))) continue;
+      pending.push(parent);
     }
-    pending.sort((a, b) => a.order - b.order || a.level - b.level);
-    return pending.map(({ parent }) => parent);
-  }
-
-  view(firstKept: number): NodeRef[] | undefined {
-    const found = this.#views.get(firstKept);
-    return found === undefined ? undefined : [...found];
-  }
-
-  viewKeys(): number[] {
-    return [...this.#views.keys()].sort((a, b) => a - b);
-  }
-
-  async saveView(firstKept: number, nodes: readonly NodeRef[], context: Context): Promise<void> {
-    await this.#harness.commit(async (tx) => {
-      const doc = await tx.doc(MemoryViewsDoc, this.conversationId);
-      doc.views[String(firstKept)] = nodes.map((node): [number, number] => [
-        node.level,
-        node.index,
-      ]);
-      pruneViewsRecord(doc.views, MAX_STORED_VIEWS);
-    }, context);
-    this.#views.set(firstKept, [...nodes]);
-    pruneViewsMap(this.#views, MAX_STORED_VIEWS);
+    pending.sort((a, b) => a.start - b.start || a.size - b.size);
+    return pending;
   }
 
   search(query: string, limit: number, before?: number): SearchHit[] {

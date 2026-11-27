@@ -1,6 +1,6 @@
 import type { Models, ModelThinkingLevel, Usage } from "@earendil-works/pi-ai";
-import { LINE_TOKENS } from "./lines.ts";
 import { fitTokens, oneLine } from "./text.ts";
+import { LINE_TOKENS } from "./view.ts";
 
 export type SummarizerModelChoice = {
   readonly provider: string;
