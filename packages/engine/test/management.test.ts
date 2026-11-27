@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
@@ -49,6 +50,12 @@ import {
   RefreshModelsResponseSchema,
   StartLoginResponseSchema,
 } from "@eevee/protocol";
+import {
+  KV_SETTINGS,
+  KV_SKILLS_POLICY,
+  readEngineSettings,
+  readGlobalSkillsPolicy,
+} from "../src/engine-config.ts";
 import { EngineStore, startForegroundEngine } from "../src/index.ts";
 
 const MODEL_ID = "faux-1";
@@ -1266,6 +1273,140 @@ test("updateProject workspaces reconfigures an already-open project cwd and AGEN
       assert.equal(seenPrompts[1]?.includes("WS1_ONLY_CONTEXT_MARKER"), false);
     } finally {
       await foreground.close();
+    }
+  });
+});
+
+test("EngineStore PRAGMA user_version migrations are idempotent, upgrade legacy DBs, and surface corrupt JSON/config", async () => {
+  await withTempDir(async (dir) => {
+    const freshDb = join(dir, "fresh.sqlite");
+    const store1 = EngineStore.open(freshDb);
+    const created = store1.createProject({ workspaces: [dir], title: "Fresh" });
+    store1.close();
+
+    const readUserVersion = (dbPath: string): number | undefined => {
+      const db = new DatabaseSync(dbPath);
+      try {
+        return (
+          db.prepare("PRAGMA user_version").get() as { readonly user_version: number } | undefined
+        )?.user_version;
+      } finally {
+        db.close();
+      }
+    };
+
+    assert.equal(readUserVersion(freshDb), 1);
+
+    const store1Reopened = EngineStore.open(freshDb);
+    assert.equal(store1Reopened.getProject(created.id)?.title, "Fresh");
+    store1Reopened.close();
+
+    assert.equal(readUserVersion(freshDb), 1);
+
+    // Pre-versioned DB (user_version = 0) missing newer project columns
+    const legacyMissingColsDb = join(dir, "legacy-missing.sqlite");
+    const rawMissing = new DatabaseSync(legacyMissingColsDb);
+    try {
+      rawMissing.exec(`
+        CREATE TABLE projects (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          workspaces_json TEXT NOT NULL,
+          memory TEXT,
+          models_json TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE kv (
+          key TEXT PRIMARY KEY,
+          value_json TEXT NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+      `);
+      rawMissing
+        .prepare(
+          "INSERT INTO projects (id, title, workspaces_json, memory, models_json, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, 1, 1)",
+        )
+        .run("legacy-1", "Legacy One", JSON.stringify([dir]));
+    } finally {
+      rawMissing.close();
+    }
+
+    const migratedMissing = EngineStore.open(legacyMissingColsDb);
+    try {
+      assert.equal(migratedMissing.getProject("legacy-1")?.title, "Legacy One");
+      assert.equal(migratedMissing.setProjectSkillsPolicy("legacy-1", { foo: "disabled" }), true);
+      assert.deepEqual(migratedMissing.getProjectSkillsPolicy("legacy-1"), { foo: "disabled" });
+    } finally {
+      migratedMissing.close();
+    }
+
+    assert.equal(readUserVersion(legacyMissingColsDb), 1);
+
+    // Pre-versioned DB (user_version = 0) that already had all columns
+    const legacyWithColsDb = join(dir, "legacy-with-cols.sqlite");
+    const rawWithCols = new DatabaseSync(legacyWithColsDb);
+    try {
+      rawWithCols.exec(`
+        CREATE TABLE projects (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          workspaces_json TEXT NOT NULL,
+          memory TEXT,
+          models_json TEXT,
+          tools_json TEXT,
+          skills_policy_json TEXT,
+          mcp_json TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE kv (
+          key TEXT PRIMARY KEY,
+          value_json TEXT NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+      `);
+      rawWithCols
+        .prepare(
+          "INSERT INTO projects (id, title, workspaces_json, memory, models_json, tools_json, skills_policy_json, mcp_json, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, NULL, ?, ?, 1, 1)",
+        )
+        .run(
+          "legacy-2",
+          "Legacy Two",
+          JSON.stringify([dir]),
+          JSON.stringify({ s: "user" }),
+          JSON.stringify({ srv: { command: "cmd" } }),
+        );
+    } finally {
+      rawWithCols.close();
+    }
+
+    const migratedWithCols = EngineStore.open(legacyWithColsDb);
+    try {
+      assert.equal(migratedWithCols.getProject("legacy-2")?.title, "Legacy Two");
+      assert.deepEqual(migratedWithCols.getProjectSkillsPolicy("legacy-2"), { s: "user" });
+      assert.deepEqual(migratedWithCols.getProjectMcpServers("legacy-2"), {
+        srv: { command: "cmd" },
+      });
+    } finally {
+      migratedWithCols.close();
+    }
+
+    assert.equal(readUserVersion(legacyWithColsDb), 1);
+
+    // Corrupt stored JSON / schema-invalid config surfaces errors instead of returning {}
+    const corruptDb = join(dir, "corrupt.sqlite");
+    const setupCorrupt = EngineStore.open(corruptDb);
+    setupCorrupt.setKv(KV_SETTINGS, { maxActiveWorkers: "not-a-number" });
+    setupCorrupt.setKv(KV_SKILLS_POLICY, { broken: "invalid-mode" });
+    setupCorrupt.close();
+
+    const readCorrupt = EngineStore.open(corruptDb);
+    try {
+      assert.throws(() => readEngineSettings(readCorrupt), /Invalid stored kv "settings"/);
+      assert.throws(() => readGlobalSkillsPolicy(readCorrupt), /Invalid stored kv "skills_policy"/);
+    } finally {
+      readCorrupt.close();
     }
   });
 });

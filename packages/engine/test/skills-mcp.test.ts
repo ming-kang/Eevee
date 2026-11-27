@@ -37,7 +37,7 @@ import {
   parseWithSchema,
   SkillsListResponseSchema,
 } from "@eevee/protocol";
-import { KV_MCP_SERVERS } from "../src/engine-config.ts";
+import { getMcpServersRecord, KV_MCP_SERVERS } from "../src/engine-config.ts";
 import { Engine, EngineStore, startForegroundEngine } from "../src/index.ts";
 
 const MODEL_ID = "faux-1";
@@ -1905,6 +1905,66 @@ test("project-scoped MCP OAuth error paths, cross-scope session isolation, and s
       await foreground.close();
       await mock1.close();
       await mock2.close();
+    }
+  });
+});
+
+test("replaceMcpServers rolls back global KV and pruned project overrides when mcpHub.reload fails", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws = join(dir, "ws");
+    await mkdir(ws, { recursive: true });
+
+    const g1 = new FakeMcpServer([mcpTool("t1", "Tool 1")]);
+    const projOnly = new FakeMcpServer([mcpTool("tp", "Project Tool")]);
+
+    const engine = await Engine.open({
+      dataDir: home,
+      userHomeDir: null,
+      createMcpTransport: (entry: McpServerEntry) => {
+        if (entry.name === "g1") return g1.createTransport();
+        if (entry.name === "projonly") return projOnly.createTransport();
+        throw new Error(`Unexpected server ${entry.name}`);
+      },
+    });
+
+    try {
+      await engine.putMcpConfig({
+        servers: { g1: { command: "g1-cmd", exposure: "direct" } },
+      });
+      const project = engine.createProject({ workspaces: [ws], title: "RollbackTest" });
+      await engine.putProjectMcpConfig(project.id, {
+        servers: {
+          g1: { enabled: false },
+          projonly: { command: "proj-cmd", exposure: "direct" },
+        },
+      });
+
+      const originalReload = engine.mcpHub.reload.bind(engine.mcpHub);
+      let failReload = true;
+      engine.mcpHub.reload = async (servers) => {
+        if (failReload) {
+          failReload = false;
+          throw new Error("simulated reload failure");
+        }
+        return originalReload(servers);
+      };
+
+      await assert.rejects(engine.deleteMcpServer("g1"), /simulated reload failure/);
+
+      assert.deepEqual(getMcpServersRecord(engine.store), {
+        g1: { command: "g1-cmd", exposure: "direct" },
+      });
+      assert.deepEqual(engine.store.getProjectMcpServers(project.id), {
+        g1: { enabled: false },
+        projonly: { command: "proj-cmd", exposure: "direct" },
+      });
+      assert.equal(
+        engine.mcpHub.status().some((snap) => snap.name === "g1"),
+        true,
+      );
+    } finally {
+      await engine.close();
     }
   });
 });

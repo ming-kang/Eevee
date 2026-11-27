@@ -48,8 +48,18 @@ export async function runSupervisor(options: RunSupervisorOptions): Promise<void
     finishRun = resolveRun;
   });
 
-  const persist = async () => {
-    await writeSupervisorState(layout.supervisorStateFile, state);
+  let persistChain: Promise<void> = Promise.resolve();
+
+  const persistSnapshot = (snapshot: SupervisorRuntimeState): Promise<void> => {
+    const write = persistChain.then(() =>
+      writeSupervisorState(layout.supervisorStateFile, snapshot),
+    );
+    persistChain = write.catch(() => undefined);
+    return write;
+  };
+
+  const enqueuePersist = (): void => {
+    void persistSnapshot(state).catch((error: unknown) => console.error(error));
   };
 
   const finish = () => {
@@ -59,6 +69,7 @@ export async function runSupervisor(options: RunSupervisorOptions): Promise<void
       if (pollTimer !== undefined) clearInterval(pollTimer);
       process.off("SIGINT", requestStop);
       process.off("SIGTERM", requestStop);
+      await persistChain;
       const enginePid = child?.pid;
       if (enginePid !== undefined) {
         await removeEngineState(layout.stateFile, enginePid).catch(() => undefined);
@@ -75,7 +86,7 @@ export async function runSupervisor(options: RunSupervisorOptions): Promise<void
   const requestStop = () => {
     if (state.stopping) return;
     state = { ...state, stopping: true };
-    void persist().catch((error: unknown) => console.error(error));
+    enqueuePersist();
     if (restartTimer !== undefined) {
       clearTimeout(restartTimer);
       restartTimer = undefined;
@@ -124,7 +135,7 @@ export async function runSupervisor(options: RunSupervisorOptions): Promise<void
     );
     child = spawned;
     state = { ...state, enginePid: spawned.pid };
-    void persist().catch((error: unknown) => console.error(error));
+    enqueuePersist();
     spawned.once("error", (error) => console.error(error));
     spawned.once("close", () => {
       if (child !== spawned) return;
@@ -145,7 +156,7 @@ export async function runSupervisor(options: RunSupervisorOptions): Promise<void
         enginePid: undefined,
         restartCount: state.restartCount + 1,
       };
-      void persist().catch((error: unknown) => console.error(error));
+      enqueuePersist();
       const delay = Math.min(restartDelayMs * 2 ** Math.max(0, state.restartCount - 1), 2_000);
       restartTimer = setTimeout(() => {
         restartTimer = undefined;
@@ -160,7 +171,7 @@ export async function runSupervisor(options: RunSupervisorOptions): Promise<void
       throw new Error(`Supervisor state is owned by process ${previous.pid}`);
     }
     await rm(layout.supervisorStopFile, { force: true });
-    await persist();
+    await persistSnapshot(state);
     pollTimer = setInterval(() => {
       void isSupervisorStopRequested(layout).then((requested) => {
         if (requested) requestStop();

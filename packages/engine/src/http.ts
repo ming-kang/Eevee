@@ -1,11 +1,11 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { CreateWebSessionRequestSchema, SchemaValidationError } from "@eevee/protocol";
+import { CreateWebSessionRequestSchema } from "@eevee/protocol";
 import { verifyBearerToken } from "./auth.ts";
 import { type Engine, EngineError } from "./engine.ts";
 import { toEngineError } from "./engine-error.ts";
 import {
-  matchesPattern,
   parsePathParams,
+  RouteTrie,
   readBody,
   readOptionalJsonBody,
   sendJson,
@@ -65,11 +65,13 @@ export async function startEngineHttpServer(
     },
   });
 
-  const routes = createEngineRoutes(engine, {
-    streams,
-    webAuth,
-    ...(options.onShutdown === undefined ? {} : { onShutdown: options.onShutdown }),
-  });
+  const routeTrie = new RouteTrie(
+    createEngineRoutes(engine, {
+      streams,
+      webAuth,
+      ...(options.onShutdown === undefined ? {} : { onShutdown: options.onShutdown }),
+    }),
+  );
 
   function isAuthenticatedRequest(req: IncomingMessage): "bearer" | "cookie" | undefined {
     if (verifyBearerToken(req.headers.authorization, options.token)) return "bearer";
@@ -158,8 +160,8 @@ export async function startEngineHttpServer(
     try {
       if (await handlePublicAuthRoute(req, res, method, url.pathname)) return;
 
-      const candidates = routes.filter((candidate) => matchesPattern(candidate.pattern, segments));
-      if (candidates.length === 0) {
+      const routeMatch = routeTrie.matchPath(segments);
+      if (routeMatch === undefined) {
         if (staticHandler !== undefined && (method === "GET" || method === "HEAD")) {
           if (await staticHandler.serve(req, res, url.pathname)) return;
         }
@@ -197,9 +199,9 @@ export async function startEngineHttpServer(
         }
       }
 
-      const matched = candidates.find((candidate) => candidate.method === method);
+      const matched = routeMatch.methods.get(method);
       if (matched === undefined) {
-        sendMethodNotAllowed(res, method, candidates.map((c) => c.method).join(", "));
+        sendMethodNotAllowed(res, method, routeMatch.allowHeader);
         return;
       }
       const params = parsePathParams(matched.pattern, segments);
@@ -212,13 +214,6 @@ export async function startEngineHttpServer(
       if (error instanceof EngineError) {
         const extra = error.code === "payload_too_large" ? { Connection: "close" } : undefined;
         sendProblem(res, error.status, error.toProblem(), extra);
-        return;
-      }
-      if (error instanceof SchemaValidationError) {
-        sendProblem(res, 400, {
-          code: "invalid_request",
-          message: error.message,
-        });
         return;
       }
       const mapped = toEngineError(error);

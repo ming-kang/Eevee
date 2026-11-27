@@ -1,8 +1,10 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { errorCode, isEnoent } from "@eevee/agent";
 import { EeveeClient } from "@eevee/protocol";
 import { dataDirLayout, resolveDataDir } from "./data-dir.ts";
+import { readPidStateFile, removePidStateFile, writePidStateFile } from "./state-file.ts";
 
 export type EngineRuntimeState = {
   readonly pid: number;
@@ -20,12 +22,8 @@ export type LocalEngineConnection = {
   readonly client: EeveeClient;
 };
 
-function isEnoent(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
 function isEexist(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "EEXIST";
+  return errorCode(error) === "EEXIST";
 }
 
 export async function readAuthToken(tokenFile: string): Promise<string | undefined> {
@@ -81,20 +79,8 @@ export function verifyBearerToken(header: string | undefined, expected: string):
   return sameDigest && token.length === expected.length;
 }
 
-export async function writeEngineState(
-  stateFile: string,
-  state: EngineRuntimeState,
-): Promise<void> {
-  await mkdir(dirname(stateFile), { recursive: true });
-  const tmpFile = `${stateFile}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
-  const content = `${JSON.stringify(state, null, 2)}\n`;
-  try {
-    await writeFile(tmpFile, content, { encoding: "utf8", mode: 0o600 });
-    await rename(tmpFile, stateFile);
-  } catch (error) {
-    await rm(tmpFile, { force: true }).catch(() => undefined);
-    throw error;
-  }
+export function writeEngineState(stateFile: string, state: EngineRuntimeState): Promise<void> {
+  return writePidStateFile(stateFile, state);
 }
 
 function isEngineRuntimeState(value: unknown): value is EngineRuntimeState {
@@ -117,28 +103,12 @@ function isEngineRuntimeState(value: unknown): value is EngineRuntimeState {
   );
 }
 
-export async function readEngineState(stateFile: string): Promise<EngineRuntimeState | undefined> {
-  let raw: string;
-  try {
-    raw = await readFile(stateFile, "utf8");
-  } catch (error) {
-    if (isEnoent(error)) return undefined;
-    throw error;
-  }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return isEngineRuntimeState(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
+export function readEngineState(stateFile: string): Promise<EngineRuntimeState | undefined> {
+  return readPidStateFile(stateFile, isEngineRuntimeState);
 }
 
-export async function removeEngineState(stateFile: string, expectedPid?: number): Promise<void> {
-  if (expectedPid !== undefined) {
-    const current = await readEngineState(stateFile);
-    if (current === undefined || current.pid !== expectedPid) return;
-  }
-  await rm(stateFile, { force: true });
+export function removeEngineState(stateFile: string, expectedPid?: number): Promise<void> {
+  return removePidStateFile(stateFile, isEngineRuntimeState, expectedPid);
 }
 
 export async function connectLocalEngine(

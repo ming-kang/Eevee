@@ -1,4 +1,5 @@
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Static } from "@earendil-works/pi-schema";
 import {
   AnswerQuestionRequestSchema,
   BuiltinModelMatchRequestSchema,
@@ -57,6 +58,124 @@ async function withDisconnectSignal(
   } finally {
     req.off("close", disconnect);
   }
+}
+
+type ScopedMcpHandlers<TScope> = {
+  readonly getState: (scope: TScope) => unknown;
+  readonly putConfig: (scope: TScope, input: Static<typeof PutMcpConfigRequestSchema>) => unknown;
+  readonly reconnect: (scope: TScope, input: Static<typeof ReconnectMcpRequestSchema>) => unknown;
+  readonly upsertServer: (
+    scope: TScope,
+    serverName: string,
+    input: Static<typeof UpsertMcpServerRequestSchema>,
+  ) => unknown;
+  readonly deleteServer: (scope: TScope, serverName: string) => unknown;
+  readonly getLogs: (scope: TScope, serverName: string) => unknown;
+  readonly startOAuth: (scope: TScope, serverName: string) => unknown;
+  readonly streamOAuth: (
+    req: IncomingMessage,
+    res: ServerResponse,
+    scope: TScope,
+    serverName: string,
+    sessionId: string,
+  ) => void;
+  readonly submitOAuthInput: (
+    scope: TScope,
+    serverName: string,
+    sessionId: string,
+    input: Static<typeof McpOAuthInputRequestSchema>,
+  ) => unknown;
+  readonly cancelOAuth: (scope: TScope, serverName: string, sessionId: string) => unknown;
+  readonly logoutOAuth: (scope: TScope, serverName: string) => unknown;
+};
+
+type ScopedMcpParams = {
+  readonly projectId?: string;
+  readonly serverName: string;
+  readonly sessionId: string;
+};
+
+function createScopedMcpRoutes<Prefix extends "/mcp" | "/projects/:projectId/mcp">(
+  prefix: Prefix,
+  handlers: ScopedMcpHandlers<Prefix extends "/mcp" ? undefined : string>,
+): readonly Route[] {
+  type TScope = Prefix extends "/mcp" ? undefined : string;
+  const scopeOf = (params: { readonly projectId?: string }) =>
+    (prefix === "/mcp" ? undefined : params.projectId) as TScope;
+
+  const mcpRoute = (
+    method: string,
+    suffix: string,
+    handle: (ctx: {
+      readonly req: IncomingMessage;
+      readonly res: ServerResponse;
+      readonly scope: TScope;
+      readonly params: ScopedMcpParams;
+    }) => Promise<void> | void,
+  ): Route =>
+    route(
+      method,
+      `${prefix}${suffix}` as `/projects/:projectId/mcp/servers/:serverName/oauth/login/:sessionId/stream`,
+      ({ req, res, params }) => handle({ req, res, scope: scopeOf(params), params }),
+    );
+
+  return [
+    mcpRoute("GET", "", ({ res, scope }) => {
+      sendJson(res, 200, handlers.getState(scope));
+    }),
+    mcpRoute("PUT", "", async ({ req, res, scope }) => {
+      const input = await readBody(req, PutMcpConfigRequestSchema, "PutMcpConfigRequest");
+      sendJson(res, 200, await handlers.putConfig(scope, input));
+    }),
+    mcpRoute("POST", "/reconnect", async ({ req, res, scope }) => {
+      const input = await readOptionalBody(req, ReconnectMcpRequestSchema, "ReconnectMcpRequest");
+      sendJson(res, 200, await handlers.reconnect(scope, input));
+    }),
+    mcpRoute("PUT", "/servers/:serverName", async ({ req, res, scope, params }) => {
+      const input = await readBody(req, UpsertMcpServerRequestSchema, "UpsertMcpServerRequest");
+      sendJson(res, 200, await handlers.upsertServer(scope, params.serverName, input));
+    }),
+    mcpRoute("DELETE", "/servers/:serverName", async ({ res, scope, params }) => {
+      sendJson(res, 200, await handlers.deleteServer(scope, params.serverName));
+    }),
+    mcpRoute("GET", "/servers/:serverName/logs", ({ res, scope, params }) => {
+      sendJson(res, 200, handlers.getLogs(scope, params.serverName));
+    }),
+    mcpRoute("POST", "/servers/:serverName/oauth/login", async ({ req, res, scope, params }) => {
+      await readOptionalJsonBody(req);
+      sendJson(res, 201, await handlers.startOAuth(scope, params.serverName));
+    }),
+    mcpRoute(
+      "GET",
+      "/servers/:serverName/oauth/login/:sessionId/stream",
+      ({ req, res, scope, params }) => {
+        handlers.streamOAuth(req, res, scope, params.serverName, params.sessionId);
+      },
+    ),
+    mcpRoute(
+      "POST",
+      "/servers/:serverName/oauth/login/:sessionId/input",
+      async ({ req, res, scope, params }) => {
+        const input = await readBody(req, McpOAuthInputRequestSchema, "McpOAuthInputRequest");
+        sendJson(
+          res,
+          200,
+          handlers.submitOAuthInput(scope, params.serverName, params.sessionId, input),
+        );
+      },
+    ),
+    mcpRoute(
+      "POST",
+      "/servers/:serverName/oauth/login/:sessionId/cancel",
+      async ({ req, res, scope, params }) => {
+        await readOptionalJsonBody(req);
+        sendJson(res, 200, handlers.cancelOAuth(scope, params.serverName, params.sessionId));
+      },
+    ),
+    mcpRoute("DELETE", "/servers/:serverName/oauth", async ({ res, scope, params }) => {
+      sendJson(res, 200, await handlers.logoutOAuth(scope, params.serverName));
+    }),
+  ];
 }
 
 export type EngineRoutesOptions = {
@@ -248,59 +367,21 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     }),
   ];
 
-  const mcpRoutes: readonly Route[] = [
-    route("GET", "/mcp", ({ res }) => {
-      sendJson(res, 200, engine.getMcpState());
-    }),
-    route("PUT", "/mcp", async ({ req, res }) => {
-      const input = await readBody(req, PutMcpConfigRequestSchema, "PutMcpConfigRequest");
-      sendJson(res, 200, await engine.putMcpConfig(input));
-    }),
-    route("POST", "/mcp/reconnect", async ({ req, res }) => {
-      const input = await readOptionalBody(req, ReconnectMcpRequestSchema, "ReconnectMcpRequest");
-      sendJson(res, 200, await engine.reconnectMcp(input));
-    }),
-    route("PUT", "/mcp/servers/:serverName", async ({ req, res, params }) => {
-      const input = await readBody(req, UpsertMcpServerRequestSchema, "UpsertMcpServerRequest");
-      sendJson(res, 200, await engine.upsertMcpServer(params.serverName, input));
-    }),
-    route("DELETE", "/mcp/servers/:serverName", async ({ res, params }) => {
-      sendJson(res, 200, await engine.deleteMcpServer(params.serverName));
-    }),
-    route("GET", "/mcp/servers/:serverName/logs", ({ res, params }) => {
-      sendJson(res, 200, engine.getMcpLogs(params.serverName));
-    }),
-    route("POST", "/mcp/servers/:serverName/oauth/login", async ({ req, res, params }) => {
-      await readOptionalJsonBody(req);
-      sendJson(res, 201, await engine.startMcpOAuth(params.serverName));
-    }),
-    route(
-      "GET",
-      "/mcp/servers/:serverName/oauth/login/:sessionId/stream",
-      ({ req, res, params }) => {
-        streams.handleMcpOAuthStream(req, res, params.serverName, params.sessionId);
-      },
-    ),
-    route(
-      "POST",
-      "/mcp/servers/:serverName/oauth/login/:sessionId/input",
-      async ({ req, res, params }) => {
-        const input = await readBody(req, McpOAuthInputRequestSchema, "McpOAuthInputRequest");
-        sendJson(res, 200, engine.submitMcpOAuthInput(params.serverName, params.sessionId, input));
-      },
-    ),
-    route(
-      "POST",
-      "/mcp/servers/:serverName/oauth/login/:sessionId/cancel",
-      async ({ req, res, params }) => {
-        await readOptionalJsonBody(req);
-        sendJson(res, 200, engine.cancelMcpOAuth(params.serverName, params.sessionId));
-      },
-    ),
-    route("DELETE", "/mcp/servers/:serverName/oauth", async ({ res, params }) => {
-      sendJson(res, 200, await engine.logoutMcpOAuth(params.serverName));
-    }),
-  ];
+  const mcpRoutes: readonly Route[] = createScopedMcpRoutes("/mcp", {
+    getState: () => engine.getMcpState(),
+    putConfig: (_, input) => engine.putMcpConfig(input),
+    reconnect: (_, input) => engine.reconnectMcp(input),
+    upsertServer: (_, serverName, input) => engine.upsertMcpServer(serverName, input),
+    deleteServer: (_, serverName) => engine.deleteMcpServer(serverName),
+    getLogs: (_, serverName) => engine.getMcpLogs(serverName),
+    startOAuth: (_, serverName) => engine.startMcpOAuth(serverName),
+    streamOAuth: (req, res, _, serverName, sessionId) =>
+      streams.handleMcpOAuthStream(req, res, serverName, sessionId),
+    submitOAuthInput: (_, serverName, sessionId, input) =>
+      engine.submitMcpOAuthInput(serverName, sessionId, input),
+    cancelOAuth: (_, serverName, sessionId) => engine.cancelMcpOAuth(serverName, sessionId),
+    logoutOAuth: (_, serverName) => engine.logoutMcpOAuth(serverName),
+  });
 
   const settingsRoutes: readonly Route[] = [
     route("GET", "/settings", ({ res }) => {
@@ -358,88 +439,23 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
       const input = await readBody(req, PutSkillsPolicyRequestSchema, "PutSkillsPolicyRequest");
       sendJson(res, 200, await engine.putProjectSkillsPolicy(params.projectId, input));
     }),
-    route("GET", "/projects/:projectId/mcp", ({ res, params }) => {
-      sendJson(res, 200, engine.getProjectMcpState(params.projectId));
+    ...createScopedMcpRoutes("/projects/:projectId/mcp", {
+      getState: (projectId) => engine.getProjectMcpState(projectId),
+      putConfig: (projectId, input) => engine.putProjectMcpConfig(projectId, input),
+      reconnect: (projectId, input) => engine.reconnectProjectMcp(projectId, input),
+      upsertServer: (projectId, serverName, input) =>
+        engine.upsertProjectMcpServer(projectId, serverName, input),
+      deleteServer: (projectId, serverName) => engine.deleteProjectMcpServer(projectId, serverName),
+      getLogs: (projectId, serverName) => engine.getProjectMcpLogs(projectId, serverName),
+      startOAuth: (projectId, serverName) => engine.startProjectMcpOAuth(projectId, serverName),
+      streamOAuth: (req, res, projectId, serverName, sessionId) =>
+        streams.handleProjectMcpOAuthStream(req, res, projectId, serverName, sessionId),
+      submitOAuthInput: (projectId, serverName, sessionId, input) =>
+        engine.submitProjectMcpOAuthInput(projectId, serverName, sessionId, input),
+      cancelOAuth: (projectId, serverName, sessionId) =>
+        engine.cancelProjectMcpOAuth(projectId, serverName, sessionId),
+      logoutOAuth: (projectId, serverName) => engine.logoutProjectMcpOAuth(projectId, serverName),
     }),
-    route("PUT", "/projects/:projectId/mcp", async ({ req, res, params }) => {
-      const input = await readBody(req, PutMcpConfigRequestSchema, "PutMcpConfigRequest");
-      sendJson(res, 200, await engine.putProjectMcpConfig(params.projectId, input));
-    }),
-    route("POST", "/projects/:projectId/mcp/reconnect", async ({ req, res, params }) => {
-      const input = await readOptionalBody(req, ReconnectMcpRequestSchema, "ReconnectMcpRequest");
-      sendJson(res, 200, await engine.reconnectProjectMcp(params.projectId, input));
-    }),
-    route("PUT", "/projects/:projectId/mcp/servers/:serverName", async ({ req, res, params }) => {
-      const input = await readBody(req, UpsertMcpServerRequestSchema, "UpsertMcpServerRequest");
-      sendJson(
-        res,
-        200,
-        await engine.upsertProjectMcpServer(params.projectId, params.serverName, input),
-      );
-    }),
-    route("DELETE", "/projects/:projectId/mcp/servers/:serverName", async ({ res, params }) => {
-      sendJson(res, 200, await engine.deleteProjectMcpServer(params.projectId, params.serverName));
-    }),
-    route("GET", "/projects/:projectId/mcp/servers/:serverName/logs", ({ res, params }) => {
-      sendJson(res, 200, engine.getProjectMcpLogs(params.projectId, params.serverName));
-    }),
-    route(
-      "POST",
-      "/projects/:projectId/mcp/servers/:serverName/oauth/login",
-      async ({ req, res, params }) => {
-        await readOptionalJsonBody(req);
-        sendJson(res, 201, await engine.startProjectMcpOAuth(params.projectId, params.serverName));
-      },
-    ),
-    route(
-      "GET",
-      "/projects/:projectId/mcp/servers/:serverName/oauth/login/:sessionId/stream",
-      ({ req, res, params }) => {
-        streams.handleProjectMcpOAuthStream(
-          req,
-          res,
-          params.projectId,
-          params.serverName,
-          params.sessionId,
-        );
-      },
-    ),
-    route(
-      "POST",
-      "/projects/:projectId/mcp/servers/:serverName/oauth/login/:sessionId/input",
-      async ({ req, res, params }) => {
-        const input = await readBody(req, McpOAuthInputRequestSchema, "McpOAuthInputRequest");
-        sendJson(
-          res,
-          200,
-          engine.submitProjectMcpOAuthInput(
-            params.projectId,
-            params.serverName,
-            params.sessionId,
-            input,
-          ),
-        );
-      },
-    ),
-    route(
-      "POST",
-      "/projects/:projectId/mcp/servers/:serverName/oauth/login/:sessionId/cancel",
-      async ({ req, res, params }) => {
-        await readOptionalJsonBody(req);
-        sendJson(
-          res,
-          200,
-          engine.cancelProjectMcpOAuth(params.projectId, params.serverName, params.sessionId),
-        );
-      },
-    ),
-    route(
-      "DELETE",
-      "/projects/:projectId/mcp/servers/:serverName/oauth",
-      async ({ res, params }) => {
-        sendJson(res, 200, await engine.logoutProjectMcpOAuth(params.projectId, params.serverName));
-      },
-    ),
     route("GET", "/projects/:projectId/board", async ({ res, params }) => {
       sendJson(res, 200, await engine.getBoard(params.projectId));
     }),

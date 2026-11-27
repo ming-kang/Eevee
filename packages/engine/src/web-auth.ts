@@ -29,7 +29,9 @@ export function isSameOriginRequest(req: IncomingMessage, port: number): boolean
   const fetchSite = req.headers["sec-fetch-site"];
   if (typeof fetchSite === "string") {
     const normalized = fetchSite.trim().toLowerCase();
-    if (normalized === "cross-site") return false;
+    if (normalized !== "same-origin" && normalized !== "none") return false;
+  } else if (Array.isArray(fetchSite)) {
+    return false;
   }
   const origin = req.headers.origin;
   if (typeof origin === "string" && origin.trim().length > 0) {

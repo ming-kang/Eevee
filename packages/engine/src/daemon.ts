@@ -1,13 +1,18 @@
 import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdir, open, rm, stat } from "node:fs/promises";
+import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { EeveeClient } from "@eevee/protocol";
 import { readAuthToken, readEngineState, removeEngineState } from "./auth.ts";
 import { type DataDirLayout, dataDirLayout, resolveDataDir } from "./data-dir.ts";
 import { acquireProcessLock, isProcessAlive } from "./process-lock.ts";
 import { DEFAULT_ENGINE_PORT } from "./server.ts";
+import {
+  readPidStateFile,
+  removePidStateFile,
+  writeJsonAtomic,
+  writePidStateFile,
+} from "./state-file.ts";
 
 export type SupervisorRuntimeState = {
   readonly pid: number;
@@ -70,55 +75,21 @@ function isSupervisorState(value: unknown): value is SupervisorRuntimeState {
   );
 }
 
-export async function readSupervisorState(
+export function readSupervisorState(
   stateFile: string,
 ): Promise<SupervisorRuntimeState | undefined> {
-  let raw: string;
-  try {
-    raw = await readFile(stateFile, "utf8");
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
-    throw error;
-  }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return isSupervisorState(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
+  return readPidStateFile(stateFile, isSupervisorState);
 }
 
-async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
-  await mkdir(dirname(filePath), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
-  try {
-    await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-    await rename(tempPath, filePath);
-  } catch (error) {
-    await rm(tempPath, { force: true }).catch(() => undefined);
-    throw error;
-  }
-}
-
-export async function writeSupervisorState(
+export function writeSupervisorState(
   stateFile: string,
   state: SupervisorRuntimeState,
 ): Promise<void> {
-  await writeJsonAtomic(stateFile, state);
+  return writePidStateFile(stateFile, state);
 }
 
-export async function removeSupervisorState(
-  stateFile: string,
-  expectedPid?: number,
-): Promise<void> {
-  if (expectedPid !== undefined) {
-    const current = await readSupervisorState(stateFile);
-    if (current === undefined || current.pid !== expectedPid) return;
-  }
-  await rm(stateFile, { force: true });
+export function removeSupervisorState(stateFile: string, expectedPid?: number): Promise<void> {
+  return removePidStateFile(stateFile, isSupervisorState, expectedPid);
 }
 
 async function pathExists(filePath: string): Promise<boolean> {

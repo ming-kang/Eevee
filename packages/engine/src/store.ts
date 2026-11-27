@@ -1,12 +1,18 @@
 import { mkdirSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type {
-  CreateProjectRequest,
-  ModelSlotsOverride,
-  ProjectSummary,
-  SkillPolicyMap,
-  ToolsSettings,
+import { arr, map, type Schema, type Static, str } from "@earendil-works/pi-schema";
+import {
+  type CreateProjectRequest,
+  McpServerEntryFieldSchema,
+  type ModelSlotsOverride,
+  ModelSlotsOverrideSchema,
+  type ProjectSummary,
+  parseWithSchema,
+  type SkillPolicyMap,
+  SkillPolicyMapSchema,
+  type ToolsSettings,
+  ToolsSettingsSchema,
 } from "@eevee/protocol";
 
 export type UpdateProjectInput = {
@@ -32,6 +38,59 @@ type KvRow = {
   readonly value_json: string;
 };
 
+const ProjectWorkspacesSchema = arr(str({ minLength: 1 }), { minItems: 1 });
+const McpServersMapSchema = map(McpServerEntryFieldSchema);
+
+type Migration = (db: DatabaseSync) => void;
+
+const MIGRATIONS: readonly Migration[] = [
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        workspaces_json TEXT NOT NULL,
+        memory TEXT,
+        models_json TEXT,
+        tools_json TEXT,
+        skills_policy_json TEXT,
+        mcp_json TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS kv (
+        key TEXT PRIMARY KEY,
+        value_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+    const columns = new Set(
+      (db.prepare("PRAGMA table_info(projects)").all() as { readonly name: string }[]).map(
+        (column) => column.name,
+      ),
+    );
+    for (const column of ["tools_json", "skills_policy_json", "mcp_json"]) {
+      if (!columns.has(column)) {
+        db.exec(`ALTER TABLE projects ADD COLUMN ${column} TEXT`);
+      }
+    }
+  },
+];
+
+function parseJsonText(raw: string, label: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch (error) {
+    throw new Error(
+      `Corrupt JSON in ${label}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function parseJsonColumn<S extends Schema>(raw: string, schema: S, label: string): Static<S> {
+  return parseWithSchema(schema, parseJsonText(raw, label), label);
+}
+
 function baseSlug(source: string): string {
   const sanitized = source
     .toLowerCase()
@@ -43,10 +102,23 @@ function baseSlug(source: string): string {
 }
 
 function rowToProject(row: ProjectRow): ProjectSummary {
-  const workspaces = JSON.parse(row.workspaces_json) as string[];
+  const workspaces = parseJsonColumn(
+    row.workspaces_json,
+    ProjectWorkspacesSchema,
+    `project "${row.id}" workspaces_json`,
+  );
   const models =
-    row.models_json === null ? undefined : (JSON.parse(row.models_json) as ModelSlotsOverride);
-  const tools = row.tools_json === null ? undefined : (JSON.parse(row.tools_json) as ToolsSettings);
+    row.models_json === null
+      ? undefined
+      : parseJsonColumn(
+          row.models_json,
+          ModelSlotsOverrideSchema,
+          `project "${row.id}" models_json`,
+        );
+  const tools =
+    row.tools_json === null
+      ? undefined
+      : parseJsonColumn(row.tools_json, ToolsSettingsSchema, `project "${row.id}" tools_json`);
   return {
     id: row.id,
     title: row.title,
@@ -113,40 +185,33 @@ export class EngineStore {
       mkdirSync(dirname(dbPath), { recursive: true });
     }
     const db = new DatabaseSync(dbPath);
-    db.exec(`
-      PRAGMA journal_mode = WAL;
-      PRAGMA busy_timeout = 5000;
-      CREATE TABLE IF NOT EXISTS projects (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        workspaces_json TEXT NOT NULL,
-        memory TEXT,
-        models_json TEXT,
-        tools_json TEXT,
-        skills_policy_json TEXT,
-        mcp_json TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS kv (
-        key TEXT PRIMARY KEY,
-        value_json TEXT NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-    `);
-    const projectColumns = db.prepare("PRAGMA table_info(projects)").all() as {
-      readonly name: string;
-    }[];
-    if (!projectColumns.some((column) => column.name === "tools_json")) {
-      db.exec("ALTER TABLE projects ADD COLUMN tools_json TEXT");
+    try {
+      db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
+      const store = new EngineStore(db);
+      store.#migrate();
+      return store;
+    } catch (error) {
+      db.close();
+      throw error;
     }
-    if (!projectColumns.some((column) => column.name === "skills_policy_json")) {
-      db.exec("ALTER TABLE projects ADD COLUMN skills_policy_json TEXT");
-    }
-    if (!projectColumns.some((column) => column.name === "mcp_json")) {
-      db.exec("ALTER TABLE projects ADD COLUMN mcp_json TEXT");
-    }
-    return new EngineStore(db);
+  }
+
+  #readUserVersion(): number {
+    const row = this.#db.prepare("PRAGMA user_version").get() as
+      | { readonly user_version: number }
+      | undefined;
+    return row?.user_version ?? 0;
+  }
+
+  #migrate(): void {
+    if (this.#readUserVersion() >= MIGRATIONS.length) return;
+    this.transaction(() => {
+      const currentVersion = this.#readUserVersion();
+      for (let version = currentVersion; version < MIGRATIONS.length; version += 1) {
+        MIGRATIONS[version]?.(this.#db);
+        this.#db.exec(`PRAGMA user_version = ${version + 1};`);
+      }
+    });
   }
 
   createProject(input: CreateProjectRequest): ProjectSummary {
@@ -288,7 +353,11 @@ export class EngineStore {
       .prepare("SELECT skills_policy_json FROM projects WHERE id = ?")
       .get(projectId) as { readonly skills_policy_json: string | null } | undefined;
     if (row === undefined || row.skills_policy_json === null) return undefined;
-    return JSON.parse(row.skills_policy_json) as SkillPolicyMap;
+    return parseJsonColumn(
+      row.skills_policy_json,
+      SkillPolicyMapSchema,
+      `project "${projectId}" skills_policy_json`,
+    );
   }
 
   setProjectSkillsPolicy(projectId: string, policy: SkillPolicyMap | null): boolean {
@@ -304,7 +373,11 @@ export class EngineStore {
       | { readonly mcp_json: string | null }
       | undefined;
     if (row === undefined || row.mcp_json === null) return undefined;
-    return JSON.parse(row.mcp_json) as Record<string, Record<string, unknown>>;
+    return parseJsonColumn(
+      row.mcp_json,
+      McpServersMapSchema,
+      `project "${projectId}" mcp_json`,
+    ) as Record<string, Record<string, unknown>>;
   }
 
   setProjectMcpServers(
@@ -324,7 +397,15 @@ export class EngineStore {
       | KvRow
       | undefined;
     if (row === undefined) return undefined;
-    return JSON.parse(row.value_json) as T;
+    return parseJsonText(row.value_json, `stored kv "${key}"`) as T;
+  }
+
+  getKvParsed<S extends Schema>(key: string, schema: S): Static<S> | undefined {
+    const row = this.#db.prepare("SELECT value_json FROM kv WHERE key = ?").get(key) as
+      | KvRow
+      | undefined;
+    if (row === undefined) return undefined;
+    return parseJsonColumn(row.value_json, schema, `stored kv "${key}"`);
   }
 
   setKv(key: string, value: unknown): void {

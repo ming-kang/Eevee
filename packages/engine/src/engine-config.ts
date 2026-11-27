@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { isMcpServerOverride } from "@earendil-works/pi-mcp";
+import { map } from "@earendil-works/pi-schema";
 import {
   isRecord,
   type McpHub,
@@ -21,6 +22,7 @@ import {
   ConfigBundleSchema,
   type EngineSettings,
   EngineSettingsSchema,
+  McpServerEntryFieldSchema,
   type ModelProfilesDocument,
   ModelProfilesDocumentSchema,
   parseWithSchema,
@@ -78,40 +80,30 @@ export function formatModelProfiles(doc: ModelProfilesDocument): string | undefi
   return lines.join("\n");
 }
 
+const McpServersMapSchema = map(McpServerEntryFieldSchema);
+
 export function readEngineSettings(store: EngineStore): EngineSettings {
-  const stored = store.getKv<unknown>(KV_SETTINGS);
-  if (stored === undefined) return {};
-  return parseWithSchema(EngineSettingsSchema, stored, "stored settings");
+  return store.getKvParsed(KV_SETTINGS, EngineSettingsSchema) ?? {};
 }
 
 export function effectiveEngineSettings(store: EngineStore): EngineSettings {
-  const stored = store.getKv<unknown>(KV_SETTINGS);
-  if (stored === undefined) return {};
-  try {
-    return parseWithSchema(EngineSettingsSchema, stored, "stored settings");
-  } catch {
-    return {};
-  }
+  return readEngineSettings(store);
 }
 
 export function readModelProfiles(store: EngineStore): ModelProfilesDocument {
-  const stored = store.getKv<unknown>(KV_MODEL_PROFILES);
-  if (stored === undefined) return { profiles: [] };
-  return parseWithSchema(ModelProfilesDocumentSchema, stored, "stored model_profiles");
+  return store.getKvParsed(KV_MODEL_PROFILES, ModelProfilesDocumentSchema) ?? { profiles: [] };
 }
 
 export function getMcpServersRecord(store: EngineStore): Record<string, Record<string, unknown>> {
-  return store.getKv<Record<string, Record<string, unknown>>>(KV_MCP_SERVERS) ?? {};
+  return (
+    (store.getKvParsed(KV_MCP_SERVERS, McpServersMapSchema) as
+      | Record<string, Record<string, unknown>>
+      | undefined) ?? {}
+  );
 }
 
 export function readGlobalSkillsPolicy(store: EngineStore): SkillPolicyMap {
-  const stored = store.getKv<unknown>(KV_SKILLS_POLICY);
-  if (stored === undefined) return {};
-  try {
-    return parseWithSchema(SkillPolicyMapSchema, stored, "stored skills_policy");
-  } catch {
-    return {};
-  }
+  return store.getKvParsed(KV_SKILLS_POLICY, SkillPolicyMapSchema) ?? {};
 }
 
 export function effectiveSkillsPolicy(store: EngineStore, projectId: string): SkillPolicyMap {
@@ -280,7 +272,7 @@ export async function exportEngineConfig(deps: ExportConfigDeps): Promise<Config
   } catch (error) {
     if (!isEnoent(error)) throw error;
   }
-  const skillsPolicy = deps.store.getKv<SkillPolicyMap>(KV_SKILLS_POLICY);
+  const skillsPolicy = deps.store.getKvParsed(KV_SKILLS_POLICY, SkillPolicyMapSchema);
   return {
     version: 1,
     settings: readEngineSettings(deps.store),

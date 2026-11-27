@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import type { IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { EeveeClient } from "@eevee/protocol";
 import { startForegroundEngine } from "../src/index.ts";
-import { WEB_SESSION_COOKIE, WEB_TICKET_TTL_MS, WebAuthManager } from "../src/web-auth.ts";
+import {
+  isSameOriginRequest,
+  WEB_SESSION_COOKIE,
+  WEB_TICKET_TTL_MS,
+  WebAuthManager,
+} from "../src/web-auth.ts";
 
 async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "eevee-web-auth-"));
@@ -155,6 +161,18 @@ test("HTTP server supports web ticket login, HttpOnly cookie auth, CSRF protecti
       });
       assert.equal(validPost.status, 201);
 
+      const sameSitePost = await fetch(`${foreground.url}/projects`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: cookiePair,
+          Origin: foreground.url,
+          "Sec-Fetch-Site": "same-site",
+        },
+        body: JSON.stringify({ workspaces: [workspace], title: "SameSiteRejected" }),
+      });
+      assert.equal(sameSitePost.status, 403);
+
       // Logout revokes the cookie session.
       const logoutRes = await fetch(`${foreground.url}/auth/logout`, {
         method: "POST",
@@ -170,4 +188,47 @@ test("HTTP server supports web ticket login, HttpOnly cookie auth, CSRF protecti
       await foreground.close();
     }
   });
+});
+
+test("isSameOriginRequest rejects sec-fetch-site same-site/cross-site while allowing same-origin and none", () => {
+  const reqWith = (headers: Record<string, string | string[] | undefined>) =>
+    ({ headers }) as unknown as IncomingMessage;
+
+  assert.equal(
+    isSameOriginRequest(
+      reqWith({ "sec-fetch-site": "same-site", origin: "http://127.0.0.1:4173" }),
+      4173,
+    ),
+    false,
+  );
+  assert.equal(
+    isSameOriginRequest(
+      reqWith({ "sec-fetch-site": "cross-site", origin: "http://127.0.0.1:4173" }),
+      4173,
+    ),
+    false,
+  );
+  assert.equal(
+    isSameOriginRequest(
+      reqWith({ "sec-fetch-site": "same-origin", origin: "http://evil.example" }),
+      4173,
+    ),
+    false,
+  );
+  assert.equal(
+    isSameOriginRequest(
+      reqWith({ "sec-fetch-site": "same-origin", origin: "http://127.0.0.1:4173" }),
+      4173,
+    ),
+    true,
+  );
+  assert.equal(isSameOriginRequest(reqWith({ "sec-fetch-site": "same-origin" }), 4173), true);
+  assert.equal(
+    isSameOriginRequest(
+      reqWith({ "sec-fetch-site": "none", origin: "http://localhost:4173" }),
+      4173,
+    ),
+    true,
+  );
+  assert.equal(isSameOriginRequest(reqWith({ "sec-fetch-site": "none" }), 4173), true);
 });

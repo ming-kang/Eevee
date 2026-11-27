@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 import {
   getDaemonStatus,
   isProcessAlive,
@@ -159,6 +160,86 @@ test("daemon status and stop clean stale supervisor and Engine state", async () 
     assert.deepEqual(await stopDaemon({ dataDir: dir }), { outcome: "already_stopped" });
     assert.equal(await readSupervisorState(join(dir, "supervisor.json")), undefined);
     assert.equal(await readEngineState(join(dir, "engine.json")), undefined);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("concurrent stale-lock recovery selects exactly one valid lock holder without breaking the winner's lock", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "eevee-concurrent-stale-lock-"));
+  const lockFile = join(dir, "engine.lock");
+  try {
+    const stalePid = await deadPid();
+
+    // Zero-timeout concurrent race: exactly one waiter acquires, the other sees holds lock.
+    await writeFile(lockFile, JSON.stringify({ pid: stalePid, token: "dead-1" }), "utf8");
+    const settled = await Promise.allSettled([
+      acquireProcessLock(lockFile),
+      acquireProcessLock(lockFile),
+    ]);
+    const winners = settled.filter((r) => r.status === "fulfilled");
+    const losers = settled.filter((r) => r.status === "rejected");
+    assert.equal(winners.length, 1);
+    assert.equal(losers.length, 1);
+    if (losers[0]?.status === "rejected") {
+      assert.match(String(losers[0].reason), /holds lock/);
+    }
+    const owner = JSON.parse(await readFile(lockFile, "utf8")) as { pid: number; token: string };
+    assert.equal(owner.pid, process.pid);
+    if (winners[0]?.status === "fulfilled") {
+      await winners[0].value.release();
+    }
+
+    // Cross-process concurrent stale-lock recovery with timeout: holders never overlap.
+    await writeFile(lockFile, JSON.stringify({ pid: stalePid, token: "dead-2" }), "utf8");
+    const lockModuleUrl = pathToFileURL(join(import.meta.dirname, "../src/process-lock.ts")).href;
+    const workerScript = `
+      import { acquireProcessLock } from ${JSON.stringify(lockModuleUrl)};
+      const lockFile = process.argv[1];
+      const lock = await acquireProcessLock(lockFile, { timeoutMs: 5000 });
+      const acquiredAt = Date.now();
+      await new Promise((r) => setTimeout(r, 120));
+      const releasedAt = Date.now();
+      await lock.release();
+      console.log(JSON.stringify({ pid: process.pid, acquiredAt, releasedAt }));
+    `;
+    const runChild = () =>
+      new Promise<{ pid: number; acquiredAt: number; releasedAt: number }>((resolve, reject) => {
+        const child = spawn(
+          process.execPath,
+          ["--conditions=eevee-source", "--input-type=module", "-e", workerScript, lockFile],
+          { stdio: ["ignore", "pipe", "pipe"] },
+        );
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk: Buffer) => {
+          stdout += chunk.toString("utf8");
+        });
+        child.stderr.on("data", (chunk: Buffer) => {
+          stderr += chunk.toString("utf8");
+        });
+        child.once("error", reject);
+        child.once("exit", (code) => {
+          if (code !== 0) {
+            reject(new Error(`Child exited ${code}: ${stderr}`));
+            return;
+          }
+          resolve(
+            JSON.parse(stdout.trim()) as { pid: number; acquiredAt: number; releasedAt: number },
+          );
+        });
+      });
+
+    const [a, b] = await Promise.all([runChild(), runChild()]);
+    assert.notEqual(a.pid, b.pid);
+    const [first, second] = a.acquiredAt <= b.acquiredAt ? [a, b] : [b, a];
+    assert.ok(
+      second.acquiredAt >= first.releasedAt - 5,
+      `Lock overlap detected: first=${JSON.stringify(first)}, second=${JSON.stringify(second)}`,
+    );
+
+    const after = await acquireProcessLock(lockFile);
+    await after.release();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

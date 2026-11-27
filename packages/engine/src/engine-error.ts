@@ -1,7 +1,7 @@
 import { ConversationBusy, StorageRequestError } from "@earendil-works/pi-durable";
 import { ModelsConfigError } from "@eevee/agent/models";
 import { ProjectError, type ProjectErrorCode } from "@eevee/core";
-import type { Problem } from "@eevee/protocol";
+import { type Problem, SchemaValidationError } from "@eevee/protocol";
 
 export class EngineError extends Error {
   readonly status: number;
@@ -50,6 +50,9 @@ export function toEngineError(error: unknown): unknown {
   }
   if (error instanceof StorageRequestError) {
     return new EngineError(400, "invalid_query", error.message);
+  }
+  if (error instanceof SchemaValidationError) {
+    return new EngineError(400, "invalid_request", error.message);
   }
   if (error instanceof RangeError) {
     return new EngineError(400, "invalid_request", error.message);

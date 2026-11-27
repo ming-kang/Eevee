@@ -29,6 +29,7 @@ import {
   parseWithSchema,
   SendMessageResponseSchema,
 } from "@eevee/protocol";
+import { RouteTrie, route } from "../src/http-io.ts";
 import {
   connectLocalEngine,
   Engine,
@@ -583,6 +584,75 @@ test("HTTP endpoints satisfy protocol contracts, stream Board and Conversation S
       assert.equal(boardAfterReopen.workers[0]?.status, "idle");
     } finally {
       await reopened.close();
+    }
+  });
+});
+
+test("RouteTrie enforces static-before-param precedence regardless of registration order and preserves 405 Allow headers", async () => {
+  const trie = new RouteTrie([
+    route("GET", "/providers/:providerId", () => {}),
+    route("PATCH", "/providers/:providerId", () => {}),
+    route("DELETE", "/providers/:providerId", () => {}),
+    route("POST", "/providers/:providerId/probe", () => {}),
+    route("GET", "/providers/catalog", () => {}),
+    route("POST", "/providers/probe", () => {}),
+  ]);
+
+  const catalogMatch = trie.matchPath(["providers", "catalog"]);
+  assert.ok(catalogMatch !== undefined);
+  assert.equal(catalogMatch.allowHeader, "GET");
+  assert.deepEqual(catalogMatch.methods.get("GET")?.pattern, ["providers", "catalog"]);
+  assert.equal(catalogMatch.methods.get("POST"), undefined);
+
+  const probeMatch = trie.matchPath(["providers", "probe"]);
+  assert.ok(probeMatch !== undefined);
+  assert.equal(probeMatch.allowHeader, "POST");
+  assert.deepEqual(probeMatch.methods.get("POST")?.pattern, ["providers", "probe"]);
+  assert.equal(probeMatch.methods.get("GET"), undefined);
+
+  const customMatch = trie.matchPath(["providers", "custom"]);
+  assert.ok(customMatch !== undefined);
+  assert.equal(customMatch.allowHeader, "GET, PATCH, DELETE");
+  assert.deepEqual(customMatch.methods.get("GET")?.pattern, ["providers", ":providerId"]);
+
+  const nestedBacktrack = trie.matchPath(["providers", "catalog", "probe"]);
+  assert.ok(nestedBacktrack !== undefined);
+  assert.equal(nestedBacktrack.allowHeader, "POST");
+  assert.deepEqual(nestedBacktrack.methods.get("POST")?.pattern, [
+    "providers",
+    ":providerId",
+    "probe",
+  ]);
+
+  assert.equal(trie.matchPath(["providers", "catalog", "unknown"]), undefined);
+
+  await withTempDir(async (dir) => {
+    const engine = await Engine.open({ dataDir: dir });
+    const server = await startEngineHttpServer(engine, {
+      port: 0,
+      token: "trie-http-token",
+      webDistDir: false,
+    });
+    try {
+      const headers = { Authorization: "Bearer trie-http-token" };
+      const catalog405 = await fetch(`${server.url}/providers/catalog`, {
+        method: "POST",
+        headers,
+      });
+      assert.equal(catalog405.status, 405);
+      assert.equal(catalog405.headers.get("allow"), "GET");
+      parseWithSchema(ProblemSchema, await catalog405.json());
+
+      const probe405 = await fetch(`${server.url}/providers/probe`, {
+        method: "GET",
+        headers,
+      });
+      assert.equal(probe405.status, 405);
+      assert.equal(probe405.headers.get("allow"), "POST");
+      parseWithSchema(ProblemSchema, await probe405.json());
+    } finally {
+      await server.close();
+      await engine.close();
     }
   });
 });

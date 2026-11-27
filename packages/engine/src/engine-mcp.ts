@@ -156,12 +156,47 @@ async function replaceMcpServers(
   if (parsed.errors.length > 0) {
     throw new EngineError(400, "invalid_mcp_config", parsed.errors.join("; "));
   }
-  const previousGlobal = getMcpServersRecord(deps.store);
   const nextGlobal = normalizeMcpServerMap(parsed.servers);
-  const removedHttp = findRemovedHttpMcpServers(previousGlobal, nextGlobal);
-  const cancellations = collectGlobalMcpOAuthCancellations(deps.store, removedHttp);
-  deps.store.setKv(KV_MCP_SERVERS, nextGlobal);
-  pruneOrphanProjectMcpOverrides(deps.store, nextGlobal);
+  const { hadPreviousGlobal, previousGlobal, previousProjects, removedHttp, cancellations } =
+    deps.store.transaction(() => {
+      const hadGlobal = deps.store.getKv<unknown>(KV_MCP_SERVERS) !== undefined;
+      const prevGlobal = getMcpServersRecord(deps.store);
+      const prevProjects = deps.store.listProjects().map((project) => ({
+        id: project.id,
+        servers: deps.store.getProjectMcpServers(project.id),
+      }));
+      const removed = findRemovedHttpMcpServers(prevGlobal, nextGlobal);
+      const scopes = collectGlobalMcpOAuthCancellations(deps.store, removed);
+      deps.store.setKv(KV_MCP_SERVERS, nextGlobal);
+      pruneOrphanProjectMcpOverrides(deps.store, nextGlobal);
+      return {
+        hadPreviousGlobal: hadGlobal,
+        previousGlobal: prevGlobal,
+        previousProjects: prevProjects,
+        removedHttp: removed,
+        cancellations: scopes,
+      };
+    });
+
+  try {
+    await deps.mcpHub.reload(parsed.servers);
+  } catch (error) {
+    deps.store.transaction(() => {
+      if (hadPreviousGlobal) {
+        deps.store.setKv(KV_MCP_SERVERS, previousGlobal);
+      } else {
+        deps.store.deleteKv(KV_MCP_SERVERS);
+      }
+      for (const project of previousProjects) {
+        const current = deps.store.getProjectMcpServers(project.id);
+        if (JSON.stringify(current) !== JSON.stringify(project.servers)) {
+          deps.store.setProjectMcpServers(project.id, project.servers ?? null);
+        }
+      }
+    });
+    throw error;
+  }
+
   await cleanupRemovedMcpOAuth({
     store: deps.store,
     oauthStore: deps.oauthStore,
@@ -169,7 +204,6 @@ async function replaceMcpServers(
     removed: removedHttp,
     cancellations,
   });
-  await deps.mcpHub.reload(parsed.servers);
   await deps.syncProjects();
   return getMcpState(deps);
 }

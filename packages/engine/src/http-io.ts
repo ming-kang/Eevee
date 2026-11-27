@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ConversationWindow, EntryId } from "@earendil-works/pi-durable";
-import type { Schema, Static } from "@earendil-works/pi-schema";
+import { bool, int, obj, opt, type Schema, type Static, str } from "@earendil-works/pi-schema";
 import { TASK_FILTER_MAX_CONTEXT_LINES, validateOutputReadOptions } from "@eevee/agent";
 import type {
   ListWorkerTasksOptions as CoreListWorkerTasksOptions,
@@ -9,14 +9,13 @@ import type {
 import {
   type ConversationRef,
   ConversationRefSchema,
+  formatValidationErrors,
   type Problem,
   ProjectIdSchema,
   parseWithSchema,
   type QuestionId,
   QuestionIdSchema,
-  type ScanOrder,
   ScanOrderSchema,
-  type TaskListStatusFilter,
   TaskListStatusFilterSchema,
   type TaskReadMode,
   TaskReadModeSchema,
@@ -150,6 +149,51 @@ export async function readOptionalBody<S extends Schema>(
   return parseWithSchema(schema, await readOptionalJsonBody(req), label);
 }
 
+type QueryCoercer = (raw: string, key: string) => unknown;
+
+function queryInt(raw: string, key: string): number {
+  if (!/^-?(?:0|[1-9][0-9]*)$/.test(raw)) {
+    throw new EngineError(400, "invalid_query", `Query parameter ${key} must be an integer`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    throw new EngineError(400, "invalid_query", `Query parameter ${key} must be a safe integer`);
+  }
+  return value;
+}
+
+function queryBool(raw: string, key: string): boolean {
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  throw new EngineError(400, "invalid_query", `Query parameter ${key} must be true or false`);
+}
+
+const queryString: QueryCoercer = (raw) => raw;
+const queryOptionalNonEmptyString: QueryCoercer = (raw) => (raw.length > 0 ? raw : undefined);
+
+function parseQueryWithSchema<S extends Schema>(
+  url: URL,
+  schema: S,
+  fields: Readonly<Record<keyof Static<S> & string, QueryCoercer>>,
+): Static<S> {
+  const candidate: Record<string, unknown> = {};
+  for (const [key, parseField] of Object.entries(fields) as [string, QueryCoercer][]) {
+    const raw = url.searchParams.get(key);
+    if (raw === null) continue;
+    const parsed = parseField(raw, key);
+    if (parsed !== undefined) candidate[key] = parsed;
+  }
+  const checked = validateWithSchema(schema, candidate);
+  if (!checked.ok) {
+    throw new EngineError(
+      400,
+      "invalid_query",
+      `Invalid query parameters: ${formatValidationErrors(checked.errors)}`,
+    );
+  }
+  return checked.value;
+}
+
 function parsePositiveInt(raw: string, label: string): number {
   if (!/^[1-9][0-9]*$/.test(raw)) {
     throw new EngineError(400, "invalid_query", `${label} must be a positive integer`);
@@ -161,62 +205,22 @@ function parsePositiveInt(raw: string, label: string): number {
   return value;
 }
 
-function parseNonNegativeInt(raw: string, label: string): number {
-  if (!/^(?:0|[1-9][0-9]*)$/.test(raw)) {
-    throw new EngineError(400, "invalid_query", `${label} must be a non-negative integer`);
-  }
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new EngineError(400, "invalid_query", `${label} must be a non-negative safe integer`);
-  }
-  return value;
-}
+const EntriesQuerySchema = obj({
+  order: opt(ScanOrderSchema),
+  limit: opt(int({ minimum: 1, maximum: 500 })),
+  minEntryId: opt(int({ minimum: 1 })),
+  maxEntryId: opt(int({ minimum: 1 })),
+  cursor: opt(str()),
+});
 
 export function parseEntriesQuery(url: URL): ListEntriesParams {
-  const orderParam = url.searchParams.get("order");
-  let order: ScanOrder | undefined;
-  if (orderParam !== null) {
-    const checked = validateWithSchema(ScanOrderSchema, orderParam);
-    if (!checked.ok) {
-      throw new EngineError(
-        400,
-        "invalid_query",
-        `Query parameter order must be ascending or descending`,
-      );
-    }
-    order = checked.value;
-  }
-
-  const limitParam = url.searchParams.get("limit");
-  let limit: number | undefined;
-  if (limitParam !== null) {
-    limit = parsePositiveInt(limitParam, "Query parameter limit");
-    if (limit > 500) {
-      throw new EngineError(400, "invalid_query", "Query parameter limit must be <= 500");
-    }
-  }
-
-  const minEntryIdParam = url.searchParams.get("minEntryId");
-  const minEntryId =
-    minEntryIdParam === null
-      ? undefined
-      : parsePositiveInt(minEntryIdParam, "Query parameter minEntryId");
-
-  const maxEntryIdParam = url.searchParams.get("maxEntryId");
-  const maxEntryId =
-    maxEntryIdParam === null
-      ? undefined
-      : parsePositiveInt(maxEntryIdParam, "Query parameter maxEntryId");
-
-  const cursorParam = url.searchParams.get("cursor");
-
-  return {
-    ...(order === undefined ? {} : { order }),
-    ...(limit === undefined ? {} : { limit }),
-    ...(minEntryId === undefined ? {} : { minEntryId }),
-    ...(maxEntryId === undefined ? {} : { maxEntryId }),
-    ...(cursorParam === null ? {} : { cursor: cursorParam }),
-  };
+  return parseQueryWithSchema(url, EntriesQuerySchema, {
+    order: queryString,
+    limit: queryInt,
+    minEntryId: queryInt,
+    maxEntryId: queryInt,
+    cursor: queryString,
+  });
 }
 
 export type StreamWorkerTaskQuery = {
@@ -225,97 +229,40 @@ export type StreamWorkerTaskQuery = {
   readonly sinceBytes?: number;
 };
 
+const ListWorkerTasksQuerySchema = obj({
+  status: opt(TaskListStatusFilterSchema),
+  limit: opt(int({ minimum: 1, maximum: 100 })),
+});
+
 export function parseListWorkerTasksQuery(url: URL): CoreListWorkerTasksOptions {
-  const statusParam = url.searchParams.get("status");
-  let status: TaskListStatusFilter | undefined;
-  if (statusParam !== null) {
-    const checked = validateWithSchema(TaskListStatusFilterSchema, statusParam);
-    if (!checked.ok) {
-      throw new EngineError(
-        400,
-        "invalid_query",
-        "Query parameter status must be all, active, or finished",
-      );
-    }
-    status = checked.value;
-  }
-
-  const limitParam = url.searchParams.get("limit");
-  let limit: number | undefined;
-  if (limitParam !== null) {
-    limit = parsePositiveInt(limitParam, "Query parameter limit");
-    if (limit > 100) {
-      throw new EngineError(400, "invalid_query", "Query parameter limit must be <= 100");
-    }
-  }
-
-  return {
-    ...(status === undefined ? {} : { status }),
-    ...(limit === undefined ? {} : { limit }),
-  };
+  return parseQueryWithSchema(url, ListWorkerTasksQuerySchema, {
+    status: queryString,
+    limit: queryInt,
+  });
 }
 
-export function parseReadWorkerTaskQuery(url: URL): OutputReadOptions {
-  const modeParam = url.searchParams.get("mode");
-  let mode: TaskReadMode | undefined;
-  if (modeParam !== null) {
-    const checked = validateWithSchema(TaskReadModeSchema, modeParam);
-    if (!checked.ok) {
-      throw new EngineError(400, "invalid_query", "Query parameter mode must be head or tail");
-    }
-    mode = checked.value;
-  }
+const TASK_STREAM_QUERY_PROPERTIES = {
+  mode: opt(TaskReadModeSchema),
+  bytes: opt(int({ minimum: 1 })),
+  sinceBytes: opt(int({ minimum: 0 })),
+} as const;
 
-  const bytesParam = url.searchParams.get("bytes");
-  const bytes =
-    bytesParam === null ? undefined : parsePositiveInt(bytesParam, "Query parameter bytes");
+const TASK_STREAM_QUERY_COERCERS = {
+  mode: queryString,
+  bytes: queryInt,
+  sinceBytes: queryInt,
+} as const;
 
-  const sinceBytesParam = url.searchParams.get("sinceBytes");
-  const sinceBytes =
-    sinceBytesParam === null
-      ? undefined
-      : parseNonNegativeInt(sinceBytesParam, "Query parameter sinceBytes");
+const StreamWorkerTaskQuerySchema = obj(TASK_STREAM_QUERY_PROPERTIES);
 
-  const endByteParam = url.searchParams.get("endByte");
-  const endByte =
-    endByteParam === null
-      ? undefined
-      : parseNonNegativeInt(endByteParam, "Query parameter endByte");
+const ReadWorkerTaskQuerySchema = obj({
+  ...TASK_STREAM_QUERY_PROPERTIES,
+  endByte: opt(int({ minimum: 0 })),
+  filter: opt(str({ minLength: 1 })),
+  contextLines: opt(int({ minimum: 0, maximum: TASK_FILTER_MAX_CONTEXT_LINES })),
+});
 
-  const filterParam = url.searchParams.get("filter");
-  let filter: string | undefined;
-  if (filterParam !== null) {
-    if (filterParam.length === 0) {
-      throw new EngineError(400, "invalid_query", "Query parameter filter must not be empty");
-    }
-    filter = filterParam;
-  }
-
-  const contextLinesParam = url.searchParams.get("contextLines");
-  let contextLines: number | undefined;
-  if (contextLinesParam !== null) {
-    contextLines = parseNonNegativeInt(contextLinesParam, "Query parameter contextLines");
-    if (contextLines > TASK_FILTER_MAX_CONTEXT_LINES) {
-      throw new EngineError(
-        400,
-        "invalid_query",
-        `Query parameter contextLines must be <= ${TASK_FILTER_MAX_CONTEXT_LINES}`,
-      );
-    }
-    if (filter === undefined) {
-      throw new EngineError(400, "invalid_query", "Query parameter contextLines requires filter");
-    }
-  }
-
-  const options: OutputReadOptions = {
-    ...(mode === undefined ? {} : { mode }),
-    ...(bytes === undefined ? {} : { bytes }),
-    ...(sinceBytes === undefined ? {} : { sinceBytes }),
-    ...(endByte === undefined ? {} : { endByte }),
-    ...(filter === undefined ? {} : { filter }),
-    ...(contextLines === undefined ? {} : { contextLines }),
-  };
-
+function validateTaskOutputOptions<T extends OutputReadOptions>(options: T): T {
   try {
     validateOutputReadOptions(options);
   } catch (error) {
@@ -325,94 +272,76 @@ export function parseReadWorkerTaskQuery(url: URL): OutputReadOptions {
       error instanceof Error ? error.message : String(error),
     );
   }
-
   return options;
 }
 
-export function parseStreamWorkerTaskQuery(url: URL): StreamWorkerTaskQuery {
-  const modeParam = url.searchParams.get("mode");
-  let mode: TaskReadMode | undefined;
-  if (modeParam !== null) {
-    const checked = validateWithSchema(TaskReadModeSchema, modeParam);
-    if (!checked.ok) {
-      throw new EngineError(400, "invalid_query", "Query parameter mode must be head or tail");
-    }
-    mode = checked.value;
-  }
-
-  const bytesParam = url.searchParams.get("bytes");
-  const bytes =
-    bytesParam === null ? undefined : parsePositiveInt(bytesParam, "Query parameter bytes");
-
-  const sinceBytesParam = url.searchParams.get("sinceBytes");
-  const sinceBytes =
-    sinceBytesParam === null
-      ? undefined
-      : parseNonNegativeInt(sinceBytesParam, "Query parameter sinceBytes");
-
-  return {
-    ...(mode === undefined ? {} : { mode }),
-    ...(bytes === undefined ? {} : { bytes }),
-    ...(sinceBytes === undefined ? {} : { sinceBytes }),
-  };
+export function parseReadWorkerTaskQuery(url: URL): OutputReadOptions {
+  return validateTaskOutputOptions(
+    parseQueryWithSchema(url, ReadWorkerTaskQuerySchema, {
+      ...TASK_STREAM_QUERY_COERCERS,
+      endByte: queryInt,
+      filter: queryString,
+      contextLines: queryInt,
+    }),
+  );
 }
+
+export function parseStreamWorkerTaskQuery(url: URL): StreamWorkerTaskQuery {
+  return validateTaskOutputOptions(
+    parseQueryWithSchema(url, StreamWorkerTaskQuerySchema, TASK_STREAM_QUERY_COERCERS),
+  );
+}
+
+const ModelsQuerySchema = obj({
+  provider: opt(str({ minLength: 1 })),
+  available: opt(bool()),
+});
 
 export function parseModelsQuery(url: URL): {
   readonly provider?: string;
   readonly available?: boolean;
 } {
-  const providerParam = url.searchParams.get("provider");
-  const availableParam = url.searchParams.get("available");
-  let available: boolean | undefined;
-  if (availableParam !== null) {
-    if (availableParam === "true") available = true;
-    else if (availableParam === "false") available = false;
-    else {
-      throw new EngineError(
-        400,
-        "invalid_query",
-        "Query parameter available must be true or false",
-      );
-    }
-  }
-  return {
-    ...(providerParam !== null && providerParam.length > 0 ? { provider: providerParam } : {}),
-    ...(available === undefined ? {} : { available }),
-  };
+  return parseQueryWithSchema(url, ModelsQuerySchema, {
+    provider: queryOptionalNonEmptyString,
+    available: queryBool,
+  });
 }
 
+const WindowQuerySchema = obj({
+  from: opt(int({ minimum: 1 })),
+  min: opt(int({ minimum: 1 })),
+  max: opt(int({ minimum: 1 })),
+});
+
 export function parseWindowParams(url: URL, req: IncomingMessage): ConversationWindow | undefined {
-  const fromParam = url.searchParams.get("from");
-  const minParam = url.searchParams.get("min");
-  const maxParam = url.searchParams.get("max");
+  const query = parseQueryWithSchema(url, WindowQuerySchema, {
+    from: queryInt,
+    min: queryInt,
+    max: queryInt,
+  });
   const lastEventIdRaw = req.headers["last-event-id"];
   const lastEventId = typeof lastEventIdRaw === "string" ? lastEventIdRaw.trim() : undefined;
 
-  let from: EntryId | undefined;
-  if (fromParam !== null) {
-    from = parsePositiveInt(fromParam, "Query parameter from") as EntryId;
-  } else if (lastEventId !== undefined && lastEventId.length > 0) {
+  let from = query.from as EntryId | undefined;
+  if (from === undefined && lastEventId !== undefined && lastEventId.length > 0) {
     const parsedId = parsePositiveInt(lastEventId, "Header Last-Event-ID");
     from = (parsedId + 1) as EntryId;
   }
 
-  const min = minParam !== null ? parsePositiveInt(minParam, "Query parameter min") : undefined;
-  const max = maxParam !== null ? parsePositiveInt(maxParam, "Query parameter max") : undefined;
-
-  const effectiveMin = min ?? 50;
-  if (max !== undefined && max < effectiveMin) {
+  const effectiveMin = query.min ?? 50;
+  if (query.max !== undefined && query.max < effectiveMin) {
     throw new EngineError(
       400,
       "invalid_query",
-      `Query parameter max (${max}) must be >= min (${effectiveMin})`,
+      `Query parameter max (${query.max}) must be >= min (${effectiveMin})`,
     );
   }
 
-  if (from === undefined && min === undefined && max === undefined) return undefined;
+  if (from === undefined && query.min === undefined && query.max === undefined) return undefined;
   return {
     ...(from === undefined ? {} : { from }),
-    ...(min === undefined ? {} : { min }),
-    ...(max === undefined ? {} : { max }),
+    ...(query.min === undefined ? {} : { min: query.min }),
+    ...(query.max === undefined ? {} : { max: query.max }),
   };
 }
 
@@ -478,11 +407,86 @@ export function route<Path extends string>(
   };
 }
 
-export function matchesPattern(pattern: readonly string[], segments: readonly string[]): boolean {
-  return (
-    pattern.length === segments.length &&
-    pattern.every((part, index) => part.startsWith(":") || part === segments[index])
-  );
+type TrieNode = {
+  readonly children: Map<string, TrieNode>;
+  paramChild?: { readonly name: string; readonly node: TrieNode };
+  readonly routes: Map<string, Route>;
+};
+
+export type RouteTrieMatch = {
+  readonly methods: ReadonlyMap<string, Route>;
+  readonly allowHeader: string;
+};
+
+function createTrieNode(): TrieNode {
+  return { children: new Map(), routes: new Map() };
+}
+
+export class RouteTrie {
+  readonly #root: TrieNode = createTrieNode();
+
+  constructor(routes: readonly Route[] = []) {
+    for (const entry of routes) {
+      this.add(entry);
+    }
+  }
+
+  add(entry: Route): void {
+    let node = this.#root;
+    for (const part of entry.pattern) {
+      if (part.startsWith(":")) {
+        const name = part.slice(1);
+        if (node.paramChild === undefined) {
+          node.paramChild = { name, node: createTrieNode() };
+        } else if (node.paramChild.name !== name) {
+          throw new Error(
+            `Conflicting param names ":${node.paramChild.name}" and ":${name}" at same route position`,
+          );
+        }
+        node = node.paramChild.node;
+      } else {
+        let child = node.children.get(part);
+        if (child === undefined) {
+          child = createTrieNode();
+          node.children.set(part, child);
+        }
+        node = child;
+      }
+    }
+    if (node.routes.has(entry.method)) {
+      throw new Error(`Duplicate route: ${entry.method} /${entry.pattern.join("/")}`);
+    }
+    node.routes.set(entry.method, entry);
+  }
+
+  matchPath(segments: readonly string[]): RouteTrieMatch | undefined {
+    const node = this.#matchNode(this.#root, segments, 0);
+    if (node === undefined || node.routes.size === 0) return undefined;
+    return {
+      methods: node.routes,
+      allowHeader: [...node.routes.keys()].join(", "),
+    };
+  }
+
+  #matchNode(node: TrieNode, segments: readonly string[], index: number): TrieNode | undefined {
+    if (index === segments.length) {
+      return node.routes.size > 0 ? node : undefined;
+    }
+    const segment = segments[index];
+    if (segment === undefined) return undefined;
+
+    const staticChild = node.children.get(segment);
+    if (staticChild !== undefined) {
+      const matched = this.#matchNode(staticChild, segments, index + 1);
+      if (matched !== undefined) return matched;
+    }
+
+    if (node.paramChild !== undefined) {
+      return this.#matchNode(node.paramChild.node, segments, index + 1);
+    }
+
+    return undefined;
+  }
 }
 
 export function parsePathParams(
