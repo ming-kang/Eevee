@@ -1,6 +1,13 @@
 import { DownloadIcon, UploadIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Field, Heading, Input, Separator, TextArea } from "@earendil-works/elanor-react";
-import type { ConfigBundle, EngineSettings, ModelChoice, ToolsSettings } from "@eevee/protocol";
+import {
+  ConfigBundleSchema,
+  type EngineSettings,
+  type ModelChoice,
+  parseWithSchema,
+  THINKING_LEVELS,
+  type ToolsSettings,
+} from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api.ts";
 import { resolveToolsSettings, ToolsSettingsEditor } from "./ToolsSettingsEditor.tsx";
@@ -20,13 +27,15 @@ function parseChoice(raw: string): ModelChoice | undefined {
   const provider = trimmed.slice(0, slash);
   const rest = trimmed.slice(slash + 1);
   const colon = rest.lastIndexOf(":");
-  const thinkingLevels = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-  if (colon > 0 && thinkingLevels.has(rest.slice(colon + 1))) {
-    return {
-      provider,
-      modelId: rest.slice(0, colon),
-      thinkingLevel: rest.slice(colon + 1) as NonNullable<ModelChoice["thinkingLevel"]>,
-    };
+  if (colon > 0) {
+    const thinkingLevel = THINKING_LEVELS.find((level) => level === rest.slice(colon + 1));
+    if (thinkingLevel !== undefined) {
+      return {
+        provider,
+        modelId: rest.slice(0, colon),
+        thinkingLevel,
+      };
+    }
   }
   return { provider, modelId: rest };
 }
@@ -123,7 +132,7 @@ export function ConfigTab() {
     setError(undefined);
     setNotice(undefined);
     try {
-      const parsed = JSON.parse(bundleJson) as ConfigBundle;
+      const parsed = parseWithSchema(ConfigBundleSchema, JSON.parse(bundleJson), "ConfigBundle");
       await api.importConfig(parsed);
       await load();
       setNotice("配置导入成功并已热生效。");

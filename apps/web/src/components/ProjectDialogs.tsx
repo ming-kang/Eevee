@@ -8,7 +8,7 @@ import {
   TextArea,
 } from "@earendil-works/elanor-react";
 import type { ProjectSummary, ToolsSettings } from "@eevee/protocol";
-import { type FormEvent, useEffect, useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { api } from "../lib/api.ts";
 import { showToast } from "../lib/toasts.ts";
 import { McpTab } from "./settings/McpTab.tsx";
@@ -21,6 +21,22 @@ import {
 
 type EditProjectTab = "general" | "tools" | "skills" | "mcp";
 
+type ProjectDraft = {
+  readonly title: string;
+  readonly workspaces: string;
+  readonly tools: ToolsSettings | undefined;
+  readonly inlineBudget: string;
+  readonly dirty: boolean;
+};
+
+const EMPTY_DRAFT: ProjectDraft = {
+  title: "",
+  workspaces: "",
+  tools: undefined,
+  inlineBudget: "",
+  dirty: false,
+};
+
 export function EditProjectModal({
   project,
   onClose,
@@ -32,12 +48,8 @@ export function EditProjectModal({
 }) {
   const formId = useId();
   const [activeTab, setActiveTab] = useState<EditProjectTab>("general");
-  const [title, setTitle] = useState("");
-  const [workspacesText, setWorkspacesText] = useState("");
-  const [tools, setTools] = useState<ToolsSettings | undefined>(undefined);
+  const [draft, setDraft] = useState<ProjectDraft>(EMPTY_DRAFT);
   const [inheritedTools, setInheritedTools] = useState<ToolsSettings | undefined>(undefined);
-  const [inlineBudget, setInlineBudget] = useState("");
-  const [fieldsDirty, setFieldsDirty] = useState(false);
   const [globalStatus, setGlobalStatus] = useState<"loading" | "ready" | "error">("loading");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -46,11 +58,13 @@ export function EditProjectModal({
     if (!project) return;
     let active = true;
     setActiveTab("general");
-    setTitle(project.title);
-    setWorkspacesText(project.workspaces.join("\n"));
-    setTools(project.tools);
-    setInlineBudget(String(project.tools?.codemode?.inlineBudget ?? ""));
-    setFieldsDirty(false);
+    setDraft({
+      title: project.title,
+      workspaces: project.workspaces.join("\n"),
+      tools: project.tools,
+      inlineBudget: String(project.tools?.codemode?.inlineBudget ?? ""),
+      dirty: false,
+    });
     setInheritedTools(undefined);
     setGlobalStatus("loading");
     setError(undefined);
@@ -71,10 +85,13 @@ export function EditProjectModal({
     };
   }, [project]);
 
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
+  const patchDraft = (patch: Partial<Omit<ProjectDraft, "dirty">>) => {
+    setDraft((prev) => ({ ...prev, ...patch, dirty: true }));
+  };
+
+  const saveDraft = async () => {
     if (!project) return;
-    const workspaces = workspacesText
+    const workspaces = draft.workspaces
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
@@ -86,13 +103,13 @@ export function EditProjectModal({
     setSaving(true);
     setError(undefined);
     try {
-      const nextTools = resolveToolsSettings(tools, inlineBudget, "project");
+      const nextTools = resolveToolsSettings(draft.tools, draft.inlineBudget, "project");
       const res = await api.updateProject(project.id, {
-        title: title.trim() || project.title,
+        title: draft.title.trim() || project.title,
         workspaces,
         tools: nextTools ?? null,
       });
-      setFieldsDirty(false);
+      setDraft((prev) => ({ ...prev, dirty: false }));
       onUpdated(res.project);
       showToast("项目配置已更新");
       onClose();
@@ -103,7 +120,7 @@ export function EditProjectModal({
     }
   };
 
-  const hasToolOverrides = hasToolsOverrides(tools) || inlineBudget.trim().length > 0;
+  const hasToolOverrides = hasToolsOverrides(draft.tools) || draft.inlineBudget.trim().length > 0;
   const isFieldsTab = activeTab === "general" || activeTab === "tools";
 
   return (
@@ -141,67 +158,57 @@ export function EditProjectModal({
             <Modal.Body className="ev-project-edit-body">
               {error && <div className="ev-error-banner">{error}</div>}
 
-              <form
-                id={formId}
-                hidden={!isFieldsTab}
-                onSubmit={(e) => void handleSubmit(e)}
-                className="ev-form-stack"
-              >
-                {activeTab === "general" && (
-                  <>
-                    <Field.Root>
-                      <Field.Label>名称</Field.Label>
-                      <Input
-                        type="text"
-                        value={title}
-                        onValueChange={(next) => {
-                          setTitle(next);
-                          setFieldsDirty(true);
-                        }}
+              {isFieldsTab && (
+                <form
+                  id={formId}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void saveDraft();
+                  }}
+                  className="ev-form-stack"
+                >
+                  {activeTab === "general" ? (
+                    <>
+                      <Field.Root>
+                        <Field.Label>名称</Field.Label>
+                        <Input
+                          type="text"
+                          value={draft.title}
+                          onValueChange={(title) => patchDraft({ title })}
+                        />
+                      </Field.Root>
+                      <Field.Root>
+                        <Field.Label>工作目录（每行一个绝对路径）</Field.Label>
+                        <TextArea
+                          monospace
+                          rows={5}
+                          value={draft.workspaces}
+                          onValueChange={(workspaces) => patchDraft({ workspaces })}
+                        />
+                      </Field.Root>
+                    </>
+                  ) : (
+                    <div className="ev-form-stack">
+                      {globalStatus !== "ready" && (
+                        <div className="ev-tool-group-hint">
+                          {globalStatus === "loading"
+                            ? "正在读取全局设置…"
+                            : "全局设置不可用，工具覆盖暂不可编辑。"}
+                        </div>
+                      )}
+                      <ToolsSettingsEditor
+                        variant="project"
+                        value={draft.tools}
+                        onChange={(tools) => patchDraft({ tools })}
+                        inheritedTools={inheritedTools}
+                        inlineBudget={draft.inlineBudget}
+                        onInlineBudgetChange={(inlineBudget) => patchDraft({ inlineBudget })}
+                        disabled={globalStatus !== "ready"}
                       />
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>工作目录（每行一个绝对路径）</Field.Label>
-                      <TextArea
-                        monospace
-                        rows={5}
-                        value={workspacesText}
-                        onValueChange={(next) => {
-                          setWorkspacesText(next);
-                          setFieldsDirty(true);
-                        }}
-                      />
-                    </Field.Root>
-                  </>
-                )}
-
-                {activeTab === "tools" && (
-                  <div className="ev-form-stack">
-                    {globalStatus !== "ready" && (
-                      <div className="ev-tool-group-hint">
-                        {globalStatus === "loading"
-                          ? "正在读取全局设置…"
-                          : "全局设置不可用，工具覆盖暂不可编辑。"}
-                      </div>
-                    )}
-                    <ToolsSettingsEditor
-                      variant="project"
-                      value={tools}
-                      onChange={(next) => {
-                        setTools(next);
-                        setFieldsDirty(true);
-                      }}
-                      inheritedTools={inheritedTools}
-                      inlineBudget={inlineBudget}
-                      onInlineBudgetChange={(next) => {
-                        setInlineBudget(next);
-                        setFieldsDirty(true);
-                      }}
-                      disabled={globalStatus !== "ready"}
-                    />
-                  </div>
-                )}
-              </form>
+                    </div>
+                  )}
+                </form>
+              )}
 
               {project && activeTab === "skills" && <SkillsTab projectId={project.id} compact />}
               {project && activeTab === "mcp" && <McpTab projectId={project.id} compact />}
@@ -224,12 +231,17 @@ export function EditProjectModal({
               ) : (
                 <>
                   <span className="ev-project-edit-note">
-                    {fieldsDirty
+                    {draft.dirty
                       ? "基本/工具标签页有未保存修改"
                       : "Skills 与项目级 MCP 修改即时生效"}
                   </span>
-                  {fieldsDirty && (
-                    <Button type="submit" form={formId} hierarchy="secondary" pending={saving}>
+                  {draft.dirty && (
+                    <Button
+                      type="button"
+                      hierarchy="secondary"
+                      pending={saving}
+                      onClick={() => void saveDraft()}
+                    >
                       保存基本/工具修改
                     </Button>
                   )}

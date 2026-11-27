@@ -70,6 +70,7 @@ export function SkillsTab({
   readonly projectId?: string;
   readonly compact?: boolean;
 }) {
+  const client = useMemo(() => api.skills(projectId), [projectId]);
   const [data, setData] = useState<SkillsListResponse | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [pendingSkill, setPendingSkill] = useState<string | undefined>(undefined);
@@ -77,6 +78,8 @@ export function SkillsTab({
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
   const abortRef = useRef<AbortController | undefined>(undefined);
+  const activeClientRef = useRef(client);
+  activeClientRef.current = client;
 
   const load = useCallback(async () => {
     abortRef.current?.abort();
@@ -85,22 +88,20 @@ export function SkillsTab({
     setLoading(true);
     setError(undefined);
     try {
-      const res = projectId
-        ? await api.listProjectSkills(projectId, controller.signal)
-        : await api.listSkills(controller.signal);
-      if (!controller.signal.aborted) {
+      const res = await client.list(controller.signal);
+      if (!controller.signal.aborted && activeClientRef.current === client) {
         setData(res);
       }
     } catch (err) {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && activeClientRef.current === client) {
         setError(err instanceof Error ? err.message : String(err));
       }
     } finally {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && activeClientRef.current === client) {
         setLoading(false);
       }
     }
-  }, [projectId]);
+  }, [client]);
 
   useEffect(() => {
     void load();
@@ -135,33 +136,28 @@ export function SkillsTab({
     );
   }, [skills, query]);
 
-  const handleGlobalChange = async (skill: SkillEntry, nextMode: SkillTriggerMode) => {
+  const handlePolicyChange = async (skill: SkillEntry, choice: ProjectSkillChoice) => {
     if (!data || pendingSkill) return;
     setPendingSkill(skill.name);
     setError(undefined);
     try {
-      const policy = buildGlobalPolicy(data.globalPolicy, skill, nextMode);
-      const updated = await api.putSkillsPolicy({ policy });
-      setData(updated);
+      const policy = projectId
+        ? buildProjectPolicy(data.projectPolicy, skill.name, choice)
+        : choice === "inherit"
+          ? data.globalPolicy
+          : buildGlobalPolicy(data.globalPolicy, skill, choice);
+      const updated = await client.putPolicy({ policy });
+      if (activeClientRef.current === client) {
+        setData(updated);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (activeClientRef.current === client) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
-      setPendingSkill(undefined);
-    }
-  };
-
-  const handleProjectChange = async (skill: SkillEntry, choice: ProjectSkillChoice) => {
-    if (!data || !projectId || pendingSkill) return;
-    setPendingSkill(skill.name);
-    setError(undefined);
-    try {
-      const policy = buildProjectPolicy(data.projectPolicy, skill.name, choice);
-      const updated = await api.putProjectSkillsPolicy(projectId, { policy });
-      setData(updated);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setPendingSkill(undefined);
+      if (activeClientRef.current === client) {
+        setPendingSkill(undefined);
+      }
     }
   };
 
@@ -170,13 +166,19 @@ export function SkillsTab({
     setResetting(true);
     setError(undefined);
     try {
-      const updated = await api.putProjectSkillsPolicy(projectId, { policy: null });
-      setData(updated);
-      showToast("已重置项目 Skills 触发策略覆写");
+      const updated = await client.putPolicy({ policy: null });
+      if (activeClientRef.current === client) {
+        setData(updated);
+        showToast("已重置项目 Skills 触发策略覆写");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (activeClientRef.current === client) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
-      setResetting(false);
+      if (activeClientRef.current === client) {
+        setResetting(false);
+      }
     }
   };
 
@@ -345,56 +347,40 @@ export function SkillsTab({
                   </div>
 
                   <div className="ev-skill-control">
-                    {projectId ? (
-                      <>
-                        <SegmentedControl.Root
-                          density="compact"
-                          disabled={busy}
-                          value={[projectChoice]}
-                          onValueChange={(vals) => {
-                            const next = vals[0];
-                            if (
-                              next === "inherit" ||
-                              next === "model" ||
-                              next === "user" ||
-                              next === "disabled"
-                            ) {
-                              void handleProjectChange(skill, next);
-                            }
-                          }}
+                    <SegmentedControl.Root
+                      density="compact"
+                      disabled={busy}
+                      value={[projectId ? projectChoice : skill.effectiveMode]}
+                      onValueChange={(vals) => {
+                        const next = vals[0];
+                        if (
+                          next === "inherit" ||
+                          next === "model" ||
+                          next === "user" ||
+                          next === "disabled"
+                        ) {
+                          void handlePolicyChange(skill, next);
+                        }
+                      }}
+                    >
+                      {projectId && (
+                        <SegmentedControl.Item
+                          value="inherit"
+                          title={`继承上级策略：${modeLabel(inheritedMode)}`}
                         >
-                          <SegmentedControl.Item
-                            value="inherit"
-                            title={`继承上级策略：${modeLabel(inheritedMode)}`}
-                          >
-                            继承
-                          </SegmentedControl.Item>
-                          <SegmentedControl.Item value="model">模型可触发</SegmentedControl.Item>
-                          <SegmentedControl.Item value="user">仅用户触发</SegmentedControl.Item>
-                          <SegmentedControl.Item value="disabled">禁用</SegmentedControl.Item>
-                        </SegmentedControl.Root>
-                        <span className="ev-inline-muted">
-                          {skill.projectOverride === undefined
-                            ? `当前继承：${modeLabel(inheritedMode)}`
-                            : `上级策略：${modeLabel(inheritedMode)}`}
-                        </span>
-                      </>
-                    ) : (
-                      <SegmentedControl.Root
-                        density="compact"
-                        disabled={busy}
-                        value={[skill.effectiveMode]}
-                        onValueChange={(vals) => {
-                          const next = vals[0];
-                          if (next === "model" || next === "user" || next === "disabled") {
-                            void handleGlobalChange(skill, next);
-                          }
-                        }}
-                      >
-                        <SegmentedControl.Item value="model">模型可触发</SegmentedControl.Item>
-                        <SegmentedControl.Item value="user">仅用户触发</SegmentedControl.Item>
-                        <SegmentedControl.Item value="disabled">禁用</SegmentedControl.Item>
-                      </SegmentedControl.Root>
+                          继承
+                        </SegmentedControl.Item>
+                      )}
+                      <SegmentedControl.Item value="model">模型可触发</SegmentedControl.Item>
+                      <SegmentedControl.Item value="user">仅用户触发</SegmentedControl.Item>
+                      <SegmentedControl.Item value="disabled">禁用</SegmentedControl.Item>
+                    </SegmentedControl.Root>
+                    {projectId && (
+                      <span className="ev-inline-muted">
+                        {skill.projectOverride === undefined
+                          ? `当前继承：${modeLabel(inheritedMode)}`
+                          : `上级策略：${modeLabel(inheritedMode)}`}
+                      </span>
                     )}
                   </div>
                 </div>
