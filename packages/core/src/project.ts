@@ -1,25 +1,24 @@
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
-import {
-  type Conversation,
-  type ConversationId,
-  type ConversationView,
-  type ConversationWatch,
-  type ConversationWindow,
-  type Cursor,
-  type EntryQuery,
-  type EntryRecord,
-  type Extension,
-  type Harness,
-  type HarnessSettings,
-  type Observation,
-  type Observer,
-  type Page,
-  type Report,
-  type Storage,
-  type Submission,
-  type UsageState,
-  UserEntry,
+import type {
+  Conversation,
+  ConversationId,
+  ConversationView,
+  ConversationWatch,
+  ConversationWindow,
+  Cursor,
+  EntryQuery,
+  EntryRecord,
+  Extension,
+  Harness,
+  HarnessSettings,
+  Observation,
+  Observer,
+  Page,
+  Report,
+  Storage,
+  Submission,
+  UsageState,
 } from "@earendil-works/pi-durable";
 import type {
   BackgroundTaskRecord,
@@ -50,6 +49,7 @@ import { DEFAULT_ROUTER_CONTEXT_TOKENS, ProjectRuntime } from "./project-runtime
 import type { ModelSlots, ToolPolicy } from "./roles.ts";
 import { type BoardView, readBoardView } from "./views.ts";
 import {
+  buildWorkerMessageSubmission,
   commitWorkerSubmission,
   killWorkerTask,
   type ListWorkerTasksOptions,
@@ -218,19 +218,11 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
       );
     }
     return commitWorkerSubmission(harness, target, BACKGROUND_CONTEXT, ({ queued }) =>
-      queued
-        ? {
-            type: "write",
-            entry: {
-              kind: UserEntry.kind,
-              model: [{ role: "user", content: text, timestamp: Date.now() }],
-            },
-          }
-        : {
-            type: "input",
-            content: text,
-            whenBusy: options?.whenBusy ?? "followUp",
-          },
+      buildWorkerMessageSubmission({
+        queued,
+        text,
+        ...(options?.whenBusy === undefined ? {} : { whenBusy: options.whenBusy }),
+      }),
     );
   }) as ProjectSend;
 

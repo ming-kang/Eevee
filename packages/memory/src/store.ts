@@ -64,7 +64,10 @@ export const MemoryBucketDoc = defineDocFamily<MemoryBucketState, null>({
 const bucketKey = (span: Span): string =>
   `${span.size}:${Math.floor(span.start / span.size / BUCKET_SIZE)}`;
 
-function addUsage(total: JsonRepresentation<Usage>, usage: Usage): void {
+export function addUsage(
+  total: JsonRepresentation<Usage>,
+  usage: Usage | JsonRepresentation<Usage>,
+): void {
   total.input += usage.input;
   total.output += usage.output;
   total.cacheRead += usage.cacheRead;
@@ -83,16 +86,31 @@ function addUsage(total: JsonRepresentation<Usage>, usage: Usage): void {
   total.cost.total += usage.cost.total;
 }
 
-function accumulateUsage(
+export function accumulateUsage(
   totals: Record<string, JsonRepresentation<Usage>>,
   modelKey: string,
-  usage: Usage,
+  usage: Usage | JsonRepresentation<Usage>,
 ): void {
   const existing = Object.hasOwn(totals, modelKey) ? totals[modelKey] : undefined;
   if (existing === undefined) {
-    totals[modelKey] = copyJson(usage, {
+    const copy = copyJson(usage, {
       omitUndefinedProperties: true,
     }) as JsonRepresentation<Usage>;
+    try {
+      Object.defineProperty(totals, modelKey, {
+        value: copy,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    } catch (error) {
+      // Chord Draft proxies reject defineProperty while their set trap safely isolates reserved keys.
+      if (error instanceof TypeError && Object.isExtensible(totals)) {
+        totals[modelKey] = copy;
+      } else {
+        throw error;
+      }
+    }
   } else {
     addUsage(existing, usage);
   }

@@ -116,15 +116,28 @@ export async function reconfigureRoles(
   policy: ToolPolicy | undefined,
   context: Context,
 ): Promise<void> {
-  await configureRoleConversation(harness, root, "router", snapshot, policy, context);
-  const workers = await readWorkers(harness, context);
-  for (const worker of workers) {
-    if (worker.closedAt !== undefined) continue;
-    const conversation = await harness.conversation(worker.conversationId, context);
-    if (conversation !== undefined) {
-      await configureRoleConversation(harness, conversation, "worker", snapshot, policy, context);
-    }
-  }
+  await Promise.all([
+    configureRoleConversation(harness, root, "router", snapshot, policy, context),
+    readWorkers(harness, context).then((workers) =>
+      Promise.all(
+        workers
+          .filter((worker) => worker.closedAt === undefined)
+          .map(async (worker) => {
+            const conversation = await harness.conversation(worker.conversationId, context);
+            if (conversation !== undefined) {
+              await configureRoleConversation(
+                harness,
+                conversation,
+                "worker",
+                snapshot,
+                policy,
+                context,
+              );
+            }
+          }),
+      ),
+    ),
+  ]);
 }
 
 export function resolveRouterMemoryBudget(options: {

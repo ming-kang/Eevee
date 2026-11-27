@@ -1,23 +1,23 @@
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
-import type {
-  Conversation,
-  DocumentReader,
-  Harness,
-  Submission,
-  SubmissionDraft,
-  TaskId,
+import {
+  type Conversation,
+  type DocumentReader,
+  type Harness,
+  type InputSubmissionDraft,
+  type Submission,
+  type SubmissionDraft,
+  UserEntry,
 } from "@earendil-works/pi-durable";
 import {
   type BackgroundTaskRecord,
-  getConversationTask,
   isTaskActiveStatus,
   isTaskTerminalStatus,
+  killConversationTask,
   listConversationTasks,
   type OutputReadOptions,
   type OutputSlice,
   resolveTaskId,
   type TaskManager,
-  TaskRecordDoc,
 } from "@eevee/agent";
 import {
   ProjectBoardDoc,
@@ -60,6 +60,34 @@ export async function resolveTargetConversation(
     throw new ProjectError("worker_not_found", `Worker ${target} has no conversation`);
   }
   return conversation;
+}
+
+export function buildWorkerMessageSubmission(input: {
+  readonly queued: boolean;
+  readonly text: string;
+  readonly whenBusy?: "steer" | "followUp" | "reject";
+  readonly onAbort?: InputSubmissionDraft["onAbort"];
+  readonly requestId?: string;
+  readonly timestamp?: number;
+}): SubmissionDraft {
+  const request = input.requestId === undefined ? {} : { requestId: input.requestId };
+  if (input.queued) {
+    return {
+      ...request,
+      type: "write",
+      entry: {
+        kind: UserEntry.kind,
+        model: [{ role: "user", content: input.text, timestamp: input.timestamp ?? Date.now() }],
+      },
+    };
+  }
+  return {
+    ...request,
+    type: "input",
+    content: input.text,
+    whenBusy: input.whenBusy ?? "followUp",
+    ...(input.onAbort === undefined ? {} : { onAbort: input.onAbort }),
+  };
 }
 
 export async function commitWorkerSubmission(
@@ -187,34 +215,21 @@ export async function killWorkerTask(
       `Task ${record.id} on worker ${workerId} is not running (${record.status})`,
     );
   }
-
-  await harness.commit(async (tx) => {
-    const doc = await tx.doc(TaskRecordDoc, worker.conversationId, record.id, null);
-    if (doc.status === "queued" || doc.status === "running") {
-      doc.status = "stopping";
-    }
-  }, context);
-
-  const hadLive = taskManager.kill(worker.conversationId, record.id, "user");
-  if (hadLive) {
-    if (record.durableTaskId !== undefined) {
-      await harness.waitForTask(record.durableTaskId as TaskId, context);
-    }
-  } else if (record.durableTaskId !== undefined) {
-    await harness.abortTask(record.durableTaskId as TaskId, context);
-    await harness.waitForTask(record.durableTaskId as TaskId, context);
-  } else {
-    await harness.commit(async (tx) => {
-      const doc = await tx.doc(TaskRecordDoc, worker.conversationId, record.id, null);
-      if (isTaskActiveStatus(doc.status)) {
-        doc.status = "cancelled";
-        doc.cancelReason = "user";
-        doc.endedAt = Date.now();
-      }
-    }, context);
-  }
-
-  const updated = await getConversationTask(harness, worker.conversationId, record.id, context);
+  const { record: updated } = await killConversationTask(
+    taskManager,
+    worker.conversationId,
+    record,
+    "user",
+    {
+      commit: (change, ctx) => harness.commit(change, ctx),
+      snapshot: (token, conversationId, key, ctx) =>
+        harness.snapshot(token, conversationId, key, ctx),
+      waitForTask: (id, ctx) => harness.waitForTask(id, ctx),
+      abortTask: (id, ctx) => harness.abortTask(id, ctx),
+      now: () => Date.now(),
+    },
+    context,
+  );
   if (updated === undefined) {
     throw new Error(`Task ${record.id} on worker ${workerId} disappeared after kill`);
   }

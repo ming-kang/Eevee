@@ -39,6 +39,7 @@ import {
 } from "../roles.ts";
 import { resolveWorkerStatus } from "../status.ts";
 import { formatBoardOverview, readBoardView } from "../views.ts";
+import { buildWorkerMessageSubmission } from "../worker-ops.ts";
 import { createAskUserTool } from "./ask-user.ts";
 import { createInspectWorkerTool } from "./inspect-worker.ts";
 
@@ -283,25 +284,17 @@ export function createRouterExtension(deps: RouterExtensionDeps) {
           }
 
           const queued = board.pendingStarts.some((start) => start.workerId === workerId);
-          const requestId = `eevee.message-worker:${api.taskId}`;
-          if (queued) {
-            await conversation.submit(tx, {
-              type: "write",
-              requestId,
-              entry: {
-                kind: UserEntry.kind,
-                model: [{ role: "user", content: args.message, timestamp: api.now() }],
-              },
-            });
-          } else {
-            await conversation.submit(tx, {
-              type: "input",
-              content: args.message,
+          await conversation.submit(
+            tx,
+            buildWorkerMessageSubmission({
+              queued,
+              text: args.message,
               whenBusy: args.mode ?? "followUp",
               onAbort: "keep",
-              requestId,
-            });
-          }
+              requestId: `eevee.message-worker:${api.taskId}`,
+              timestamp: api.now(),
+            }),
+          );
 
           if (parsedModel !== undefined || args.thinkingLevel !== undefined) {
             const nextThinking = args.thinkingLevel ?? worker.model?.thinkingLevel;

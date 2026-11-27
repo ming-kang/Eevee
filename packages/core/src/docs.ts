@@ -7,6 +7,7 @@ import {
   defineDoc,
   defineDocFamily,
   type TaskId,
+  type Tx,
 } from "@earendil-works/pi-durable";
 import type { ModelChoice } from "@eevee/agent";
 
@@ -228,4 +229,18 @@ export async function findWorkerByConversation(
 ): Promise<WorkerDocState | undefined> {
   const workers = await readWorkers(reader, context);
   return workers.find((worker) => worker.conversationId === conversationId);
+}
+
+export async function findWorkerByConversationInTx(
+  tx: Tx,
+  conversationId: ConversationId,
+): Promise<WorkerDocState | undefined> {
+  const board = await tx.doc(ProjectBoardDoc);
+  for (const workerId of board.workerOrder) {
+    const candidate = await tx.doc(WorkerDoc, workerId, null);
+    if (candidate.conversationId === conversationId) {
+      return { ...candidate };
+    }
+  }
+  return undefined;
 }

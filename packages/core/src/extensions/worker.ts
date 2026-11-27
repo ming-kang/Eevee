@@ -19,7 +19,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { lit, obj, opt, str } from "@earendil-works/pi-schema";
 import { isTaskActiveStatus, TaskRecordDoc, TasksBoardDoc, withToolPromptMeta } from "@eevee/agent";
-import { NOTICE_ENTRY_KIND, ProjectBoardDoc, WorkerDoc, type WorkerDocState } from "../docs.ts";
+import { findWorkerByConversationInTx, NOTICE_ENTRY_KIND, type WorkerDocState } from "../docs.ts";
 import { DEFAULT_WORKER_INSTRUCTIONS, WORKER_EXTENSION, WORKER_PREAMBLE } from "../roles.ts";
 
 export const HANDOFF_TASK_NAME = "eevee.worker-handoff";
@@ -124,15 +124,7 @@ export function createWorkerHandoffTask() {
             return terminal;
           }
 
-          const board = await tx.doc(ProjectBoardDoc);
-          let worker: WorkerDocState | undefined;
-          for (const workerId of board.workerOrder) {
-            const candidate = await tx.doc(WorkerDoc, workerId, null);
-            if (candidate.conversationId === runtime.conversationId) {
-              worker = { ...candidate };
-              break;
-            }
-          }
+          const worker = await findWorkerByConversationInTx(tx, runtime.conversationId);
           if (worker === undefined || worker.closedAt !== undefined) return terminal;
           if (routerAlreadyMessaged) return terminal;
 
@@ -199,15 +191,7 @@ export function createWorkerExtension(deps: WorkerExtensionDeps = {}) {
         const router = await api.conversation(ROOT_CONVERSATION_ID, context);
         if (router === undefined) return errorResult("The Router conversation is unavailable.");
         const delivered = await api.commit(async (tx): Promise<MessageRouterCommit> => {
-          const board = await tx.doc(ProjectBoardDoc);
-          let worker: WorkerDocState | undefined;
-          for (const workerId of board.workerOrder) {
-            const candidate = await tx.doc(WorkerDoc, workerId, null);
-            if (candidate.conversationId === api.conversationId) {
-              worker = { ...candidate };
-              break;
-            }
-          }
+          const worker = await findWorkerByConversationInTx(tx, api.conversationId);
           if (worker === undefined) {
             return { error: "This conversation is not registered as a Worker." };
           }

@@ -59,6 +59,8 @@ export {
   splitSpan,
 } from "./span.ts";
 export {
+  accumulateUsage,
+  addUsage,
   MemoryBucketDoc,
   type MemoryBucketState,
   MemoryMetaDoc,

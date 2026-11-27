@@ -16,7 +16,7 @@ import {
   TaskRecordDoc,
   TasksBoardDoc,
 } from "@eevee/agent";
-import { MemoryMetaDoc } from "@eevee/memory";
+import { accumulateUsage, addUsage, MemoryMetaDoc } from "@eevee/memory";
 import {
   CompactionUsageDoc,
   ProjectBoardDoc,
@@ -123,41 +123,14 @@ export function formatBoardOverview(view: BoardView): string {
   return lines.join("\n");
 }
 
-export function addUsage(total: JsonRepresentation<Usage>, usage: JsonRepresentation<Usage>): void {
-  total.input += usage.input;
-  total.output += usage.output;
-  total.cacheRead += usage.cacheRead;
-  total.cacheWrite += usage.cacheWrite;
-  total.totalTokens += usage.totalTokens;
-  if (usage.cacheWrite1h !== undefined) {
-    total.cacheWrite1h = (total.cacheWrite1h ?? 0) + usage.cacheWrite1h;
-  }
-  if (usage.reasoning !== undefined) {
-    total.reasoning = (total.reasoning ?? 0) + usage.reasoning;
-  }
-  total.cost.input += usage.cost.input;
-  total.cost.output += usage.cost.output;
-  total.cost.cacheRead += usage.cost.cacheRead;
-  total.cost.cacheWrite += usage.cost.cacheWrite;
-  total.cost.total += usage.cost.total;
-}
+export { addUsage };
 
 function mergeModelUsage(
   models: Record<string, JsonRepresentation<Usage>>,
   extra: Readonly<Record<string, JsonRepresentation<Usage>>>,
 ): void {
   for (const [modelKey, usage] of Object.entries(extra)) {
-    const existing = Object.hasOwn(models, modelKey) ? models[modelKey] : undefined;
-    if (existing !== undefined) {
-      addUsage(existing, usage);
-    } else {
-      Object.defineProperty(models, modelKey, {
-        value: structuredClone(usage),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
-    }
+    accumulateUsage(models, modelKey, usage);
   }
 }
 

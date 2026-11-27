@@ -159,11 +159,17 @@ export class ProjectPump {
     const board = await readBoard(this.#harness, this.#context);
     if (board === undefined || board.workerOrder.length === 0) return;
     const workers = await readWorkers(this.#harness, this.#context, board);
+    const snapshots = await Promise.all(
+      workers
+        .filter((worker) => worker.closedAt === undefined)
+        .map(async (worker) => ({
+          worker,
+          live: await this.#harness.snapshot(LiveDoc, worker.conversationId, this.#context),
+        })),
+    );
     const due: { worker: WorkerDocState; failure: RunFailure }[] = [];
 
-    for (const worker of workers) {
-      if (worker.closedAt !== undefined) continue;
-      const live = await this.#harness.snapshot(LiveDoc, worker.conversationId, this.#context);
+    for (const { worker, live } of snapshots) {
       if (live?.run !== undefined || live?.runFailure === undefined) continue;
       const failure = live.runFailure;
       if (DELIBERATE_FAILURE_REASONS.has(failure.reason)) continue;
@@ -221,10 +227,13 @@ export class ProjectPump {
   }
 
   async #activeRunCount(workers: ReadonlyMap<WorkerId, WorkerDocState>): Promise<number> {
+    const snapshots = await Promise.all(
+      [...workers.values()]
+        .filter((worker) => worker.closedAt === undefined)
+        .map((worker) => this.#harness.snapshot(LiveDoc, worker.conversationId, this.#context)),
+    );
     let active = 0;
-    for (const worker of workers.values()) {
-      if (worker.closedAt !== undefined) continue;
-      const live = await this.#harness.snapshot(LiveDoc, worker.conversationId, this.#context);
+    for (const live of snapshots) {
       if (live?.run !== undefined) active += 1;
     }
     return active;

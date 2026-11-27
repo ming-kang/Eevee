@@ -1,5 +1,4 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { copyJson, type JsonRepresentation } from "@earendil-works/chord/json";
 import type { Usage } from "@earendil-works/pi-ai";
 import {
   type Extension,
@@ -21,14 +20,13 @@ import {
   createToolSearchExtension,
   type TaskManager,
 } from "@eevee/agent";
-import { createMemoryExtension, type MemoryBinding } from "@eevee/memory";
+import { accumulateUsage, createMemoryExtension, type MemoryBinding } from "@eevee/memory";
 import { CompactionUsageDoc } from "./docs.ts";
 import { createRouterExtension } from "./extensions/router.ts";
 import { createWorkerExtension } from "./extensions/worker.ts";
 import type { OpenProjectDeps } from "./project.ts";
 import type { ModelSlots, ToolPolicy } from "./roles.ts";
 import { SerialPass } from "./serial-pass.ts";
-import { addUsage } from "./views.ts";
 
 export type CompactionUsageTracker = {
   record(event: CachedCompactionEvent): void;
@@ -71,21 +69,7 @@ export function createCompactionUsageTracker(
         await getHarness().commit(async (tx) => {
           const doc = await tx.doc(CompactionUsageDoc);
           for (const item of batch) {
-            const existing = Object.hasOwn(doc.models, item.modelKey)
-              ? doc.models[item.modelKey]
-              : undefined;
-            if (existing === undefined) {
-              doc.models[item.modelKey] = copyJson(item.usage, {
-                omitUndefinedProperties: true,
-              }) as JsonRepresentation<Usage>;
-            } else {
-              addUsage(
-                existing,
-                copyJson(item.usage, {
-                  omitUndefinedProperties: true,
-                }) as JsonRepresentation<Usage>,
-              );
-            }
+            accumulateUsage(doc.models, item.modelKey, item.usage);
           }
         }, BACKGROUND_CONTEXT);
       }

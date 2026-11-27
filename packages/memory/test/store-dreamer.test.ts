@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { JsonRepresentation } from "@earendil-works/chord/json";
 import {
   createModels,
   fauxAssistantMessage,
@@ -17,6 +18,8 @@ import {
   UsageDoc,
 } from "@earendil-works/pi-durable";
 import {
+  accumulateUsage,
+  addUsage,
   createSummarizer,
   Dreamer,
   type DreamerErrorInfo,
@@ -563,6 +566,114 @@ test("Dreamer observes commits silently, skips TaskGraph, and retries summarizat
     } finally {
       await dreamer.close();
     }
+  } finally {
+    await harness.close(BACKGROUND_CONTEXT);
+  }
+});
+
+test("accumulateUsage and addUsage aggregate Usage and JsonRepresentation<Usage> safely with prototype keys", async () => {
+  const totals: Record<string, JsonRepresentation<Usage>> = {};
+  const usageWithUndefined: Usage = {
+    input: 10,
+    output: 5,
+    cacheRead: 2,
+    cacheWrite: 1,
+    cacheWrite1h: undefined,
+    reasoning: undefined,
+    totalTokens: 18,
+    cost: {
+      input: 0.1,
+      output: 0.2,
+      cacheRead: 0.01,
+      cacheWrite: 0.02,
+      total: 0.33,
+    },
+  };
+  const jsonUsage: JsonRepresentation<Usage> = {
+    input: 20,
+    output: 10,
+    cacheRead: 3,
+    cacheWrite: 4,
+    cacheWrite1h: 2,
+    reasoning: 7,
+    totalTokens: 37,
+    cost: {
+      input: 0.4,
+      output: 0.5,
+      cacheRead: 0.03,
+      cacheWrite: 0.04,
+      total: 0.97,
+    },
+  };
+
+  accumulateUsage(totals, "__proto__", usageWithUndefined);
+  accumulateUsage(totals, "__proto__", jsonUsage);
+  accumulateUsage(totals, "constructor", jsonUsage);
+  accumulateUsage(totals, "constructor", usageWithUndefined);
+  accumulateUsage(totals, "prototype", usageWithUndefined);
+
+  assert.equal(Object.getPrototypeOf(totals), Object.prototype);
+  assert.equal(({} as Record<string, unknown>).input, undefined);
+  assert.equal(Object.hasOwn(totals, "__proto__"), true);
+  assert.equal(Object.hasOwn(totals, "constructor"), true);
+  assert.equal(Object.hasOwn(totals, "prototype"), true);
+  const protoUsage = Object.getOwnPropertyDescriptor(totals, "__proto__")?.value as
+    | JsonRepresentation<Usage>
+    | undefined;
+  assert.ok(protoUsage !== undefined);
+  assert.equal(Object.hasOwn(protoUsage, "reasoning"), true);
+
+  assert.equal(protoUsage.input, 30);
+  assert.equal(protoUsage.output, 15);
+  assert.equal(protoUsage.cacheRead, 5);
+  assert.equal(protoUsage.cacheWrite, 5);
+  assert.equal(protoUsage.totalTokens, 55);
+  assert.equal(protoUsage.cacheWrite1h, 2);
+  assert.equal(protoUsage.reasoning, 7);
+  assert.ok(Math.abs(protoUsage.cost.total - 1.3) < 1e-12);
+
+  const constructorUsage = Object.getOwnPropertyDescriptor(totals, "constructor")?.value as
+    | JsonRepresentation<Usage>
+    | undefined;
+  assert.equal(constructorUsage?.input, 30);
+  assert.equal(constructorUsage?.reasoning, 7);
+  assert.equal(totals.prototype?.input, 10);
+  assert.equal(Object.hasOwn(totals.prototype ?? {}, "cacheWrite1h"), false);
+
+  addUsage(totals.prototype as JsonRepresentation<Usage>, jsonUsage);
+  assert.equal(totals.prototype?.input, 30);
+  assert.equal(totals.prototype?.cacheWrite1h, 2);
+  assert.equal(totals.prototype?.reasoning, 7);
+  assert.equal(usageWithUndefined.input, 10);
+  assert.equal(jsonUsage.input, 20);
+
+  const storage = new MemoryStorage();
+  const { harness } = await openHarness(storage);
+  try {
+    const conv = await harness.createConversation(
+      { ownership: { kind: "ownerless" } },
+      BACKGROUND_CONTEXT,
+    );
+    await harness.commit(async (tx) => {
+      const meta = await tx.doc(MemoryMetaDoc, conv.id);
+      accumulateUsage(meta.usage, "__proto__", usageWithUndefined);
+      accumulateUsage(meta.usage, "__proto__", jsonUsage);
+      accumulateUsage(meta.usage, "constructor", jsonUsage);
+    }, BACKGROUND_CONTEXT);
+
+    const meta = await harness.snapshot(MemoryMetaDoc, conv.id, BACKGROUND_CONTEXT);
+    assert.ok(meta !== undefined);
+    assert.equal(Object.hasOwn(meta.usage, "__proto__"), true);
+    assert.equal(Object.hasOwn(meta.usage, "constructor"), true);
+    const metaProto = Object.getOwnPropertyDescriptor(meta.usage, "__proto__")?.value as
+      | JsonRepresentation<Usage>
+      | undefined;
+    assert.equal(metaProto?.input, 30);
+    assert.equal(metaProto?.reasoning, 7);
+    const metaConstructor = Object.getOwnPropertyDescriptor(meta.usage, "constructor")?.value as
+      | JsonRepresentation<Usage>
+      | undefined;
+    assert.equal(metaConstructor?.input, 20);
   } finally {
     await harness.close(BACKGROUND_CONTEXT);
   }
