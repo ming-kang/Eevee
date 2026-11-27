@@ -21,6 +21,7 @@ export {
 export type {
   ActivityCount,
   ActivityKind,
+  AssistantMeta,
   ContextUsage,
   DiffLine,
   DispatchAction,

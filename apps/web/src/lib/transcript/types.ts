@@ -43,6 +43,18 @@ export type EditSummary = {
   }[];
 };
 
+export type AssistantMeta = {
+  readonly provider?: string;
+  readonly model?: string;
+  readonly input?: number;
+  readonly output?: number;
+  readonly cacheRead?: number;
+  readonly cacheWrite?: number;
+  readonly totalTokens?: number;
+  readonly costTotal?: number;
+  readonly durationMs?: number;
+};
+
 export type NoticeInfo =
   | { readonly kind: "notice"; readonly data: NoticeData }
   | { readonly kind: "task_notification"; readonly data: TaskNotificationData }
@@ -127,6 +139,7 @@ export type DisplayItem =
       readonly streaming?: boolean;
       readonly error?: string;
       readonly at?: number;
+      readonly meta?: AssistantMeta;
     }
   | {
       readonly kind: "compaction";

@@ -8,6 +8,7 @@ import type { DisplayItem } from "../lib/transcript.ts";
 import { AttachmentLightbox, type LightboxImage } from "./AttachmentLightbox.tsx";
 import { EvTooltip } from "./EvTooltip.tsx";
 import { Markdown } from "./Markdown.tsx";
+import { AssistantFooter } from "./transcript/AssistantFooter.tsx";
 import { DisclosureLine } from "./transcript/DisclosureLine.tsx";
 import { noticeMetaLabel } from "./transcript/noticeMeta.ts";
 import { WorkedGroupView } from "./transcript/WorkedGroupView.tsx";
@@ -444,21 +445,32 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
         />
       );
 
-    case "assistant":
+    case "assistant": {
+      const headingPrefix = item.key.replace(/[^a-zA-Z0-9_-]/g, "-");
       return (
         <div
           ref={setRootRef}
           className={`ev-msg-assistant${wrapClass ? ` ${wrapClass}` : ""}`}
           data-item-key={item.key}
         >
-          {item.text && <Markdown text={item.text} streaming={item.streaming === true} />}
+          {item.text && (
+            <Markdown
+              text={item.text}
+              streaming={item.streaming === true}
+              headingPrefix={headingPrefix}
+            />
+          )}
           {item.error && (
             <div className="ev-error-banner">
               {t("transcript.responseError", { error: item.error })}
             </div>
           )}
+          {!item.streaming && item.text.length > 0 && (
+            <AssistantFooter markdown={item.text} meta={item.meta} />
+          )}
         </div>
       );
+    }
   }
 }
 
