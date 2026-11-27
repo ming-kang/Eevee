@@ -28,10 +28,13 @@ import {
   isActiveTaskStatus,
   type KillWorkerTaskResponse,
   type ListEntriesResponse,
+  type ListProjectFilesResponse,
   type ListProjectTasksResponse,
   ListWorkerTasksQuerySchema,
   type ListWorkerTasksResponse,
   type OkResponse,
+  type ProjectFilesQuery,
+  ProjectFilesQuerySchema,
   type ProjectMemoryResponse,
   type ProjectSummary,
   type ProjectTaskItemPayload,
@@ -60,6 +63,7 @@ import { expandMessageSkills, type SkillsDeps } from "./engine-skills.ts";
 import { subscribeWorkerTaskStream, type WorkerTaskStream } from "./engine-task-stream.ts";
 import type { ProjectPool } from "./project-pool.ts";
 import type { EngineStore } from "./store.ts";
+import { buildUserMessageContent, searchWorkspaceFiles } from "./workspace-files.ts";
 
 export type ListEntriesParams = {
   readonly order?: ScanOrder;
@@ -89,6 +93,7 @@ export type ProjectsHandle = {
   getMemory(projectId: string): ProjectMemoryResponse;
   putMemory(projectId: string, input: PutProjectMemoryRequest): ProjectMemoryResponse;
   getUsage(projectId: string): Promise<ProjectUsageResponse>;
+  listFiles(projectId: string, params?: ProjectFilesQuery): Promise<ListProjectFilesResponse>;
   getBoard(projectId: string): Promise<BoardView>;
   sendMessage(
     projectId: string,
@@ -262,16 +267,35 @@ export async function getProjectUsage(
   }));
 }
 
+export async function listProjectFiles(
+  deps: ProjectOpsDeps,
+  projectId: string,
+  params: ProjectFilesQuery = {},
+): Promise<ListProjectFilesResponse> {
+  const project = deps.requireProject(projectId);
+  const validated = parseQueryParams(ProjectFilesQuerySchema, params);
+  const files = await searchWorkspaceFiles(project.workspaces, validated.q ?? "", validated.limit);
+  return { files };
+}
+
 export async function sendMessage(
   deps: ProjectOpsDeps,
   projectId: string,
   ref: ConversationRef,
   input: SendMessageRequest,
 ): Promise<SendMessageResponse> {
-  const expandedText = await expandMessageSkills(deps.skills, projectId, input.text);
+  const project = deps.requireProject(projectId);
+  const rawText = input.text ?? "";
+  const expandedText =
+    rawText.length > 0 ? await expandMessageSkills(deps.skills, projectId, rawText) : "";
+  const content = await buildUserMessageContent({
+    text: expandedText,
+    ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
+    workspaces: project.workspaces,
+  });
   const options = input.whenBusy === undefined ? undefined : { whenBusy: input.whenBusy };
   return inProject(deps, projectId, async (handle) =>
-    submissionResponse(await handle.send(conversationTarget(ref), expandedText, options)),
+    submissionResponse(await handle.send(conversationTarget(ref), content, options)),
   );
 }
 
@@ -467,6 +491,9 @@ export function createProjectsHandle(deps: ProjectOpsDeps): ProjectsHandle {
       putProjectMemory(deps, projectId, input),
     ),
     getUsage: guardAsync(deps.assertOpen, (projectId) => getProjectUsage(deps, projectId)),
+    listFiles: guardAsync(deps.assertOpen, (projectId, params) =>
+      listProjectFiles(deps, projectId, params),
+    ),
     getBoard: guardAsync(deps.assertOpen, (projectId) => getBoard(deps, projectId)),
     sendMessage: guardAsync(deps.assertOpen, (projectId, ref, input) =>
       sendMessage(deps, projectId, ref, input),

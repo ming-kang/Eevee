@@ -19,6 +19,7 @@ import type {
   Storage,
   Submission,
   UsageState,
+  UserInput,
 } from "@earendil-works/pi-durable";
 import type {
   BackgroundTaskRecord,
@@ -69,6 +70,7 @@ export type {
   EntryRecord,
   Page,
   ScanOrder,
+  UserInput,
 } from "@earendil-works/pi-durable";
 export type {
   BackgroundTaskRecord,
@@ -112,8 +114,8 @@ export type ProjectSendOptions = {
 };
 
 export type ProjectSend = {
-  (text: string, options?: ProjectSendOptions): Promise<Submission>;
-  (target: ProjectTarget, text: string, options?: ProjectSendOptions): Promise<Submission>;
+  (content: UserInput, options?: ProjectSendOptions): Promise<Submission>;
+  (target: ProjectTarget, content: UserInput, options?: ProjectSendOptions): Promise<Submission>;
 };
 
 export type ProjectMemoryHandle = {
@@ -199,19 +201,19 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
   const { harness, root, memory } = await runtime.start(storage);
 
   const send = (async (
-    first: string,
-    second?: string | ProjectSendOptions,
+    first: ProjectTarget | UserInput,
+    second?: UserInput | ProjectSendOptions,
     third?: ProjectSendOptions,
   ) => {
-    const targeted = typeof second === "string";
+    const targeted = typeof second === "string" || Array.isArray(second);
     const target = (targeted ? first : "router") as ProjectTarget;
-    const text = targeted ? (second as string) : first;
+    const content = (targeted ? second : first) as UserInput;
     const options = targeted ? third : (second as ProjectSendOptions | undefined);
     if (target === "router") {
       return root.submit(
         {
           type: "input",
-          content: text,
+          content,
           whenBusy: options?.whenBusy ?? "followUp",
         },
         BACKGROUND_CONTEXT,
@@ -220,7 +222,7 @@ export async function openProject(storage: Storage, deps: OpenProjectDeps): Prom
     return commitWorkerSubmission(harness, target, BACKGROUND_CONTEXT, ({ queued }) =>
       buildWorkerMessageSubmission({
         queued,
-        text,
+        content,
         ...(options?.whenBusy === undefined ? {} : { whenBusy: options.whenBusy }),
       }),
     );

@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { CreateWebSessionRequestSchema } from "@eevee/protocol";
 import { verifyBearerToken } from "./auth.ts";
+import { createDirectoryPicker, type DirectoryPicker } from "./directory-picker.ts";
 import { type Engine, EngineError } from "./engine.ts";
 import { toEngineError } from "./engine-error.ts";
 import {
@@ -27,6 +28,7 @@ export type EngineHttpServerOptions = {
   readonly token: string;
   readonly webDistDir?: string | false;
   readonly onShutdown?: () => void;
+  readonly directoryPicker?: DirectoryPicker;
 };
 
 export type EngineHttpServer = {
@@ -51,6 +53,7 @@ export async function startEngineHttpServer(
   let boundPort = requestedPort;
 
   const webAuth = new WebAuthManager();
+  const directoryPicker = options.directoryPicker ?? createDirectoryPicker();
   const resolvedWebDist =
     options.webDistDir === false ? undefined : (options.webDistDir ?? resolveDefaultWebDistDir());
   const staticHandler: StaticAssetHandler | undefined =
@@ -69,6 +72,7 @@ export async function startEngineHttpServer(
     createEngineRoutes(engine, {
       streams,
       webAuth,
+      directoryPicker,
       ...(options.onShutdown === undefined ? {} : { onShutdown: options.onShutdown }),
     }),
   );

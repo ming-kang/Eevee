@@ -12,6 +12,9 @@ import {
   CreateWebTicketResponseSchema,
   type EngineSettings,
   EngineSettingsSchema,
+  type PickDirectoryRequest,
+  type PickDirectoryResponse,
+  PickDirectoryResponseSchema,
   type WebSessionResponse,
   WebSessionResponseSchema,
 } from "../schemas/settings.ts";
@@ -64,6 +67,13 @@ export function createSettingsClient(transport: HttpTransport) {
 
     importConfig(input: ConfigBundle, signal?: AbortSignal): Promise<ConfigBundle> {
       return transport.post("/config/import", ConfigBundleSchema, input, signal);
+    },
+
+    pickDirectory(
+      input?: PickDirectoryRequest,
+      signal?: AbortSignal,
+    ): Promise<PickDirectoryResponse> {
+      return transport.post("/fs/pick-directory", PickDirectoryResponseSchema, input ?? {}, signal);
     },
   };
 }

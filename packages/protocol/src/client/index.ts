@@ -28,6 +28,7 @@ export {
   type AllBoardsStreamEvent,
   type BoardStreamEvent,
   createProjectsClient,
+  type ListProjectFilesOptions,
   type ListWorkerTasksOptions,
   type ProjectsClient,
   type ReadWorkerTaskOptions,

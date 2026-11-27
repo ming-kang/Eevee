@@ -12,6 +12,8 @@ import {
   ListWorkerTasksQuerySchema,
   ModelsQuerySchema,
   type Problem,
+  type ProjectFilesQuery,
+  ProjectFilesQuerySchema,
   ProjectIdSchema,
   parseWithSchema,
   type QuestionId,
@@ -28,6 +30,7 @@ import { EngineError, type ListEntriesParams } from "./engine.ts";
 import { parseQueryParams } from "./engine-error.ts";
 
 const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
+export const MAX_MESSAGE_BODY_BYTES = 24 * 1024 * 1024;
 
 export function sendJson(
   res: ServerResponse,
@@ -63,17 +66,16 @@ export function sendMethodNotAllowed(res: ServerResponse, method: string, allow:
   );
 }
 
-async function readRawBodyText(req: IncomingMessage): Promise<string> {
+async function readRawBodyText(
+  req: IncomingMessage,
+  maxBytes = MAX_JSON_BODY_BYTES,
+): Promise<string> {
   const contentLengthHeader = req.headers["content-length"];
   if (contentLengthHeader !== undefined) {
     const contentLength = Number(contentLengthHeader);
-    if (Number.isFinite(contentLength) && contentLength > MAX_JSON_BODY_BYTES) {
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
       req.resume();
-      throw new EngineError(
-        413,
-        "payload_too_large",
-        `Request body exceeds ${MAX_JSON_BODY_BYTES} bytes`,
-      );
+      throw new EngineError(413, "payload_too_large", `Request body exceeds ${maxBytes} bytes`);
     }
   }
 
@@ -84,7 +86,7 @@ async function readRawBodyText(req: IncomingMessage): Promise<string> {
   for await (const chunk of req) {
     const buffer = typeof chunk === "string" ? Buffer.from(chunk, "utf8") : (chunk as Buffer);
     totalBytes += buffer.length;
-    if (totalBytes > MAX_JSON_BODY_BYTES) {
+    if (totalBytes > maxBytes) {
       chunks.length = 0;
       tooLarge = true;
       continue;
@@ -93,18 +95,14 @@ async function readRawBodyText(req: IncomingMessage): Promise<string> {
   }
 
   if (tooLarge) {
-    throw new EngineError(
-      413,
-      "payload_too_large",
-      `Request body exceeds ${MAX_JSON_BODY_BYTES} bytes`,
-    );
+    throw new EngineError(413, "payload_too_large", `Request body exceeds ${maxBytes} bytes`);
   }
 
   return Buffer.concat(chunks).toString("utf8").trim();
 }
 
-async function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  const text = await readRawBodyText(req);
+async function readJsonBody(req: IncomingMessage, maxBytes?: number): Promise<unknown> {
+  const text = await readRawBodyText(req, maxBytes);
   if (text.length === 0) {
     throw new EngineError(400, "invalid_json", "Request body must not be empty");
   }
@@ -139,8 +137,9 @@ export async function readBody<S extends Schema>(
   req: IncomingMessage,
   schema: S,
   label: string,
+  maxBytes?: number,
 ): Promise<Static<S>> {
-  return parseWithSchema(schema, await readJsonBody(req), label);
+  return parseWithSchema(schema, await readJsonBody(req, maxBytes), label);
 }
 
 export async function readOptionalBody<S extends Schema>(
@@ -261,6 +260,13 @@ export function parseModelsQuery(url: URL): {
   return parseQueryWithSchema(url, ModelsQuerySchema, {
     provider: queryOptionalNonEmptyString,
     available: queryBool,
+  });
+}
+
+export function parseProjectFilesQuery(url: URL): ProjectFilesQuery {
+  return parseQueryWithSchema(url, ProjectFilesQuerySchema, {
+    q: queryString,
+    limit: queryInt,
   });
 }
 

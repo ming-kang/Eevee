@@ -11,6 +11,7 @@ import {
   McpOAuthInputRequestSchema,
   type McpStateResponse,
   ModelProfilesDocumentSchema,
+  PickDirectoryRequestSchema,
   ProbeProviderRequestSchema,
   type ProjectMcpStateResponse,
   PutGlobalMcpConfigRequestSchema,
@@ -30,12 +31,15 @@ import {
   UpsertProviderRequestSchema,
 } from "@eevee/protocol";
 import { ENGINE_PROTOCOL_VERSION, ENGINE_VERSION } from "./constants.ts";
+import type { DirectoryPicker } from "./directory-picker.ts";
 import type { Engine, ScopedMcpHandle } from "./engine.ts";
 import {
+  MAX_MESSAGE_BODY_BYTES,
   type PathParamsFor,
   parseEntriesQuery,
   parseListWorkerTasksQuery,
   parseModelsQuery,
+  parseProjectFilesQuery,
   parseReadWorkerTaskQuery,
   parseStreamWorkerTaskQuery,
   parseWindowParams,
@@ -166,6 +170,7 @@ export type EngineRoutesOptions = {
   readonly onShutdown?: () => void;
   readonly streams: SseStreamHandlers;
   readonly webAuth: WebAuthManager;
+  readonly directoryPicker: DirectoryPicker;
 };
 
 export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions): readonly Route[] {
@@ -188,6 +193,16 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     route("POST", "/auth/web-ticket", async ({ req, res }) => {
       await readOptionalJsonBody(req);
       sendJson(res, 201, options.webAuth.issueTicket());
+    }),
+    route("POST", "/fs/pick-directory", async ({ req, res }) => {
+      await withDisconnectSignal(req, async (signal) => {
+        const input = await readOptionalBody(
+          req,
+          PickDirectoryRequestSchema,
+          "PickDirectoryRequest",
+        );
+        sendJson(res, 200, await options.directoryPicker.pick(input, signal));
+      });
     }),
   ];
 
@@ -412,6 +427,10 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     route("GET", "/projects/:projectId/usage", async ({ res, params }) => {
       sendJson(res, 200, await projects.getUsage(params.projectId));
     }),
+    route("GET", "/projects/:projectId/files", async ({ res, url, params }) => {
+      const query = parseProjectFilesQuery(url);
+      sendJson(res, 200, await projects.listFiles(params.projectId, query));
+    }),
     route("GET", "/projects/:projectId/tasks", async ({ res, url, params }) => {
       const query = parseListWorkerTasksQuery(url);
       sendJson(res, 200, await projects.listProjectTasks(params.projectId, query));
@@ -447,7 +466,12 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
       "POST",
       "/projects/:projectId/conversations/:ref/messages",
       async ({ req, res, params }) => {
-        const input = await readBody(req, SendMessageRequestSchema, "SendMessageRequest");
+        const input = await readBody(
+          req,
+          SendMessageRequestSchema,
+          "SendMessageRequest",
+          MAX_MESSAGE_BODY_BYTES,
+        );
         sendJson(res, 202, await projects.sendMessage(params.projectId, params.ref, input));
       },
     ),

@@ -10,7 +10,9 @@ import {
   opt,
   type Static,
   str,
+  union,
 } from "@earendil-works/pi-schema";
+import { MAX_MESSAGE_ATTACHMENTS } from "../file-parts.ts";
 import {
   BackgroundTaskStatusSchema,
   ModelChoiceSchema,
@@ -116,10 +118,60 @@ export const ProjectUsageResponseSchema = obj({
 });
 export type ProjectUsageResponse = Static<typeof ProjectUsageResponseSchema>;
 
-export const SendMessageRequestSchema = obj({
-  text: str({ minLength: 1 }),
-  whenBusy: opt(WhenBusySchema),
+export const InlineMessageAttachmentSchema = obj({
+  kind: lit("inline"),
+  name: opt(str({ minLength: 1 })),
+  mimeType: str({ minLength: 1 }),
+  data: str({ minLength: 1 }),
 });
+export type InlineMessageAttachment = Static<typeof InlineMessageAttachmentSchema>;
+
+export const WorkspaceMessageAttachmentSchema = obj({
+  kind: lit("workspace"),
+  workspace: int({ minimum: 0 }),
+  path: str({ minLength: 1 }),
+  name: opt(str({ minLength: 1 })),
+  mimeType: opt(str({ minLength: 1 })),
+});
+export type WorkspaceMessageAttachment = Static<typeof WorkspaceMessageAttachmentSchema>;
+
+export const MessageAttachmentSchema = union([
+  InlineMessageAttachmentSchema,
+  WorkspaceMessageAttachmentSchema,
+]);
+export type MessageAttachment = Static<typeof MessageAttachmentSchema>;
+
+export const WorkspaceFileSchema = obj({
+  workspace: int({ minimum: 0 }),
+  path: str({ minLength: 1 }),
+  name: str({ minLength: 1 }),
+  dir: str(),
+  label: str({ minLength: 1 }),
+  mimeType: str({ minLength: 1 }),
+  size: int({ minimum: 0 }),
+});
+export type WorkspaceFile = Static<typeof WorkspaceFileSchema>;
+
+export const ListProjectFilesResponseSchema = obj({
+  files: arr(WorkspaceFileSchema),
+});
+export type ListProjectFilesResponse = Static<typeof ListProjectFilesResponseSchema>;
+
+export const SendMessageRequestSchema = union([
+  obj({
+    text: str({ minLength: 1 }),
+    whenBusy: opt(WhenBusySchema),
+    attachments: opt(arr(MessageAttachmentSchema, { maxItems: MAX_MESSAGE_ATTACHMENTS })),
+  }),
+  obj({
+    text: opt(str()),
+    whenBusy: opt(WhenBusySchema),
+    attachments: arr(MessageAttachmentSchema, {
+      minItems: 1,
+      maxItems: MAX_MESSAGE_ATTACHMENTS,
+    }),
+  }),
+]);
 export type SendMessageRequest = Static<typeof SendMessageRequestSchema>;
 
 export const SendMessageResponseSchema = obj({

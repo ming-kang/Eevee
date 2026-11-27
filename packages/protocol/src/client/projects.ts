@@ -25,6 +25,8 @@ import {
   GetProjectResponseSchema,
   type KillWorkerTaskResponse,
   KillWorkerTaskResponseSchema,
+  type ListProjectFilesResponse,
+  ListProjectFilesResponseSchema,
   type ListProjectsResponse,
   ListProjectsResponseSchema,
   type ListProjectTasksResponse,
@@ -82,6 +84,12 @@ export type ReadWorkerTaskOptions = {
 
 export type ListWorkerTasksOptions = {
   readonly status?: TaskListStatusFilter;
+  readonly limit?: number;
+  readonly signal?: AbortSignal;
+};
+
+export type ListProjectFilesOptions = {
+  readonly q?: string;
   readonly limit?: number;
   readonly signal?: AbortSignal;
 };
@@ -191,6 +199,18 @@ export function createProjectsClient(transport: HttpTransport) {
         AnswerQuestionResponseSchema,
         input,
         signal,
+      );
+    },
+
+    listProjectFiles(
+      projectId: string,
+      opts?: ListProjectFilesOptions,
+    ): Promise<ListProjectFilesResponse> {
+      const query = buildQuery({ q: opts?.q, limit: opts?.limit });
+      return transport.get(
+        `/projects/${encodeURIComponent(projectId)}/files${query}`,
+        ListProjectFilesResponseSchema,
+        opts?.signal,
       );
     },
 

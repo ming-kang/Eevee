@@ -46,3 +46,9 @@ export const WindowQuerySchema = obj({
   max: opt(int({ minimum: 1 })),
 });
 export type WindowQuery = Static<typeof WindowQuerySchema>;
+
+export const ProjectFilesQuerySchema = obj({
+  q: opt(str()),
+  limit: opt(int({ minimum: 1, maximum: 100 })),
+});
+export type ProjectFilesQuery = Static<typeof ProjectFilesQuerySchema>;

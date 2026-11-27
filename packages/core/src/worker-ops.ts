@@ -7,6 +7,7 @@ import {
   type Submission,
   type SubmissionDraft,
   UserEntry,
+  type UserInput,
 } from "@earendil-works/pi-durable";
 import {
   type BackgroundTaskRecord,
@@ -62,14 +63,19 @@ export async function resolveTargetConversation(
   return conversation;
 }
 
-export function buildWorkerMessageSubmission(input: {
+export type WorkerMessageSubmissionInput = {
   readonly queued: boolean;
-  readonly text: string;
   readonly whenBusy?: "steer" | "followUp" | "reject";
   readonly onAbort?: InputSubmissionDraft["onAbort"];
   readonly requestId?: string;
   readonly timestamp?: number;
-}): SubmissionDraft {
+} & (
+  | { readonly text: string; readonly content?: never }
+  | { readonly content: UserInput; readonly text?: never }
+);
+
+export function buildWorkerMessageSubmission(input: WorkerMessageSubmissionInput): SubmissionDraft {
+  const content: UserInput = input.content ?? input.text;
   const request = input.requestId === undefined ? {} : { requestId: input.requestId };
   if (input.queued) {
     return {
@@ -77,14 +83,14 @@ export function buildWorkerMessageSubmission(input: {
       type: "write",
       entry: {
         kind: UserEntry.kind,
-        model: [{ role: "user", content: input.text, timestamp: input.timestamp ?? Date.now() }],
+        model: [{ role: "user", content, timestamp: input.timestamp ?? Date.now() }],
       },
     };
   }
   return {
     ...request,
     type: "input",
-    content: input.text,
+    content,
     whenBusy: input.whenBusy ?? "followUp",
     ...(input.onAbort === undefined ? {} : { onAbort: input.onAbort }),
   };

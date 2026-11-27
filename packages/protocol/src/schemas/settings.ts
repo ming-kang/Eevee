@@ -1,4 +1,15 @@
-import { bool, int, lit, map, num, obj, opt, type Static, str } from "@earendil-works/pi-schema";
+import {
+  bool,
+  int,
+  lit,
+  map,
+  nullable,
+  num,
+  obj,
+  opt,
+  type Static,
+  str,
+} from "@earendil-works/pi-schema";
 import { ModelSlotsOverrideSchema, ToolsSettingsSchema } from "./common.ts";
 import { McpServerConfigSchema } from "./mcp.ts";
 import { ModelProfilesDocumentSchema } from "./providers.ts";
@@ -38,3 +49,15 @@ export const CreateWebTicketResponseSchema = obj({
   expiresAt: num(),
 });
 export type CreateWebTicketResponse = Static<typeof CreateWebTicketResponseSchema>;
+
+export const PickDirectoryRequestSchema = obj({
+  initialPath: opt(str({ minLength: 1 })),
+  title: opt(str({ minLength: 1 })),
+});
+export type PickDirectoryRequest = Static<typeof PickDirectoryRequestSchema>;
+
+export const PickDirectoryResponseSchema = obj({
+  path: nullable(str({ minLength: 1 })),
+  cancelled: bool(),
+});
+export type PickDirectoryResponse = Static<typeof PickDirectoryResponseSchema>;

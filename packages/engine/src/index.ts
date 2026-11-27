@@ -37,6 +37,13 @@ export {
   SUPERVISOR_STATE_FILE,
 } from "./data-dir.ts";
 export {
+  createDirectoryPicker,
+  type DirectoryPicker,
+  type DirectoryPickerOptions,
+  type PickerCommandResult,
+  type PickerCommandRunner,
+} from "./directory-picker.ts";
+export {
   Engine,
   EngineError,
   type EngineMcpAccessor,
@@ -78,3 +85,12 @@ export {
   type UpdateProjectInput,
 } from "./store.ts";
 export { type RunSupervisorOptions, runSupervisor } from "./supervisor.ts";
+export {
+  buildUserMessageContent,
+  mimeForPath,
+  type ResolvedFileMention,
+  readWorkspaceFile,
+  resolveFileMentions,
+  resolveInsideWorkspace,
+  searchWorkspaceFiles,
+} from "./workspace-files.ts";
