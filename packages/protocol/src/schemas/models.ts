@@ -50,23 +50,33 @@ export const CompatFieldInfoSchema = obj({
 });
 export type CompatFieldInfo = Static<typeof CompatFieldInfoSchema>;
 
-export const ModelCostTierSchema = obj({
+const MODEL_COST_RATE_FIELDS = {
   input: num(),
   output: num(),
   cacheRead: num(),
   cacheWrite: num(),
+} as const;
+
+export const ModelCostTierSchema = obj({
+  ...MODEL_COST_RATE_FIELDS,
   inputTokensAbove: num(),
 });
 export type ModelCostTier = Static<typeof ModelCostTierSchema>;
 
 export const ModelCostSchema = obj({
-  input: num(),
-  output: num(),
-  cacheRead: num(),
-  cacheWrite: num(),
+  ...MODEL_COST_RATE_FIELDS,
   tiers: opt(arr(ModelCostTierSchema)),
 });
 export type ModelCostPayload = Static<typeof ModelCostSchema>;
+
+export const PartialModelCostSchema = obj({
+  input: opt(MODEL_COST_RATE_FIELDS.input),
+  output: opt(MODEL_COST_RATE_FIELDS.output),
+  cacheRead: opt(MODEL_COST_RATE_FIELDS.cacheRead),
+  cacheWrite: opt(MODEL_COST_RATE_FIELDS.cacheWrite),
+  tiers: opt(arr(ModelCostTierSchema)),
+});
+export type PartialModelCostPayload = Static<typeof PartialModelCostSchema>;
 
 export const ModelInfoSchema = obj({
   provider: str({ minLength: 1 }),

@@ -61,283 +61,290 @@ export type LoginStreamEvent =
   | { readonly type: "complete"; readonly complete: LoginCompleteEvent }
   | { readonly type: "error"; readonly error: LoginErrorEvent };
 
-export class ProvidersClient {
-  readonly #transport: HttpTransport;
+export function createProvidersClient(transport: HttpTransport) {
+  return {
+    listProviders(signal?: AbortSignal): Promise<ListProvidersResponse> {
+      return transport.get("/providers", ListProvidersResponseSchema, signal);
+    },
 
-  constructor(transport: HttpTransport) {
-    this.#transport = transport;
-  }
+    getProviderCatalog(signal?: AbortSignal): Promise<ProviderCatalogResponse> {
+      return transport.get("/providers/catalog", ProviderCatalogResponseSchema, signal);
+    },
 
-  listProviders(signal?: AbortSignal): Promise<ListProvidersResponse> {
-    return this.#transport.get("/providers", ListProvidersResponseSchema, signal);
-  }
+    getProviderDetail(providerId: string, signal?: AbortSignal): Promise<ProviderDetailResponse> {
+      return transport.get(
+        `/providers/${encodeURIComponent(providerId)}`,
+        ProviderDetailResponseSchema,
+        signal,
+      );
+    },
 
-  getProviderCatalog(signal?: AbortSignal): Promise<ProviderCatalogResponse> {
-    return this.#transport.get("/providers/catalog", ProviderCatalogResponseSchema, signal);
-  }
+    createProvider(
+      input: UpsertProviderRequest,
+      signal?: AbortSignal,
+    ): Promise<ProviderDetailResponse> {
+      return transport.post("/providers", ProviderDetailResponseSchema, input, signal);
+    },
 
-  getProviderDetail(providerId: string, signal?: AbortSignal): Promise<ProviderDetailResponse> {
-    return this.#transport.get(
-      `/providers/${encodeURIComponent(providerId)}`,
-      ProviderDetailResponseSchema,
-      signal,
-    );
-  }
+    updateProvider(
+      providerId: string,
+      input: UpsertProviderRequest,
+      signal?: AbortSignal,
+    ): Promise<ProviderDetailResponse> {
+      return transport.patch(
+        `/providers/${encodeURIComponent(providerId)}`,
+        ProviderDetailResponseSchema,
+        input,
+        signal,
+      );
+    },
 
-  createProvider(
-    input: UpsertProviderRequest,
-    signal?: AbortSignal,
-  ): Promise<ProviderDetailResponse> {
-    return this.#transport.post("/providers", ProviderDetailResponseSchema, input, signal);
-  }
+    deleteProvider(providerId: string, signal?: AbortSignal): Promise<OkResponse> {
+      return transport.del(
+        `/providers/${encodeURIComponent(providerId)}`,
+        OkResponseSchema,
+        signal,
+      );
+    },
 
-  updateProvider(
-    providerId: string,
-    input: UpsertProviderRequest,
-    signal?: AbortSignal,
-  ): Promise<ProviderDetailResponse> {
-    return this.#transport.patch(
-      `/providers/${encodeURIComponent(providerId)}`,
-      ProviderDetailResponseSchema,
-      input,
-      signal,
-    );
-  }
+    createProviderModel(
+      providerId: string,
+      input: UpsertProviderModelRequest,
+      signal?: AbortSignal,
+    ): Promise<ProviderDetailResponse> {
+      return transport.post(
+        `/providers/${encodeURIComponent(providerId)}/models`,
+        ProviderDetailResponseSchema,
+        input,
+        signal,
+      );
+    },
 
-  deleteProvider(providerId: string, signal?: AbortSignal): Promise<OkResponse> {
-    return this.#transport.del(
-      `/providers/${encodeURIComponent(providerId)}`,
-      OkResponseSchema,
-      signal,
-    );
-  }
+    updateProviderModel(
+      providerId: string,
+      modelId: string,
+      input: UpsertProviderModelRequest,
+      signal?: AbortSignal,
+    ): Promise<ProviderDetailResponse> {
+      return transport.patch(
+        `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`,
+        ProviderDetailResponseSchema,
+        input,
+        signal,
+      );
+    },
 
-  createProviderModel(
-    providerId: string,
-    input: UpsertProviderModelRequest,
-    signal?: AbortSignal,
-  ): Promise<ProviderDetailResponse> {
-    return this.#transport.post(
-      `/providers/${encodeURIComponent(providerId)}/models`,
-      ProviderDetailResponseSchema,
-      input,
-      signal,
-    );
-  }
+    deleteProviderModel(
+      providerId: string,
+      modelId: string,
+      signal?: AbortSignal,
+    ): Promise<ProviderDetailResponse> {
+      return transport.del(
+        `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`,
+        ProviderDetailResponseSchema,
+        signal,
+      );
+    },
 
-  updateProviderModel(
-    providerId: string,
-    modelId: string,
-    input: UpsertProviderModelRequest,
-    signal?: AbortSignal,
-  ): Promise<ProviderDetailResponse> {
-    return this.#transport.patch(
-      `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`,
-      ProviderDetailResponseSchema,
-      input,
-      signal,
-    );
-  }
+    probeDraftProvider(
+      input: ProbeProviderRequest,
+      signal?: AbortSignal,
+    ): Promise<ProbeProviderResponse> {
+      return transport.post("/providers/probe", ProbeProviderResponseSchema, input, signal);
+    },
 
-  deleteProviderModel(
-    providerId: string,
-    modelId: string,
-    signal?: AbortSignal,
-  ): Promise<ProviderDetailResponse> {
-    return this.#transport.del(
-      `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`,
-      ProviderDetailResponseSchema,
-      signal,
-    );
-  }
+    probeProvider(
+      providerId: string,
+      input: ProbeProviderRequest = {},
+      signal?: AbortSignal,
+    ): Promise<ProbeProviderResponse> {
+      return transport.post(
+        `/providers/${encodeURIComponent(providerId)}/probe`,
+        ProbeProviderResponseSchema,
+        input,
+        signal,
+      );
+    },
 
-  probeDraftProvider(
-    input: ProbeProviderRequest,
-    signal?: AbortSignal,
-  ): Promise<ProbeProviderResponse> {
-    return this.#transport.post("/providers/probe", ProbeProviderResponseSchema, input, signal);
-  }
+    importProviderModels(
+      providerId: string,
+      input: ImportProviderModelsRequest,
+      signal?: AbortSignal,
+    ): Promise<ImportProviderModelsResponse> {
+      return transport.post(
+        `/providers/${encodeURIComponent(providerId)}/models/import`,
+        ImportProviderModelsResponseSchema,
+        input,
+        signal,
+      );
+    },
 
-  probeProvider(
-    providerId: string,
-    input: ProbeProviderRequest = {},
-    signal?: AbortSignal,
-  ): Promise<ProbeProviderResponse> {
-    return this.#transport.post(
-      `/providers/${encodeURIComponent(providerId)}/probe`,
-      ProbeProviderResponseSchema,
-      input,
-      signal,
-    );
-  }
+    matchBuiltinModel(
+      providerId: string,
+      modelId: string,
+      input: BuiltinModelMatchRequest = {},
+      signal?: AbortSignal,
+    ): Promise<BuiltinModelMatchResponse> {
+      return transport.post(
+        `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}/builtin-match`,
+        BuiltinModelMatchResponseSchema,
+        input,
+        signal,
+      );
+    },
 
-  importProviderModels(
-    providerId: string,
-    input: ImportProviderModelsRequest,
-    signal?: AbortSignal,
-  ): Promise<ImportProviderModelsResponse> {
-    return this.#transport.post(
-      `/providers/${encodeURIComponent(providerId)}/models/import`,
-      ImportProviderModelsResponseSchema,
-      input,
-      signal,
-    );
-  }
+    testProviderModel(
+      providerId: string,
+      modelId: string,
+      input: SmokeTestModelRequest = {},
+      signal?: AbortSignal,
+    ): Promise<SmokeTestModelResponse> {
+      return transport.post(
+        `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}/test`,
+        SmokeTestModelResponseSchema,
+        input,
+        signal,
+      );
+    },
 
-  matchBuiltinModel(
-    providerId: string,
-    modelId: string,
-    input: BuiltinModelMatchRequest = {},
-    signal?: AbortSignal,
-  ): Promise<BuiltinModelMatchResponse> {
-    return this.#transport.post(
-      `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}/builtin-match`,
-      BuiltinModelMatchResponseSchema,
-      input,
-      signal,
-    );
-  }
+    setProviderApiKey(
+      providerId: string,
+      input: SetApiKeyRequest,
+      signal?: AbortSignal,
+    ): Promise<OkResponse> {
+      return transport.put(
+        `/providers/${encodeURIComponent(providerId)}/auth/api-key`,
+        OkResponseSchema,
+        input,
+        signal,
+      );
+    },
 
-  testProviderModel(
-    providerId: string,
-    modelId: string,
-    input: SmokeTestModelRequest = {},
-    signal?: AbortSignal,
-  ): Promise<SmokeTestModelResponse> {
-    return this.#transport.post(
-      `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}/test`,
-      SmokeTestModelResponseSchema,
-      input,
-      signal,
-    );
-  }
+    logoutProvider(providerId: string, signal?: AbortSignal): Promise<OkResponse> {
+      return transport.del(
+        `/providers/${encodeURIComponent(providerId)}/auth`,
+        OkResponseSchema,
+        signal,
+      );
+    },
 
-  setProviderApiKey(
-    providerId: string,
-    input: SetApiKeyRequest,
-    signal?: AbortSignal,
-  ): Promise<OkResponse> {
-    return this.#transport.put(
-      `/providers/${encodeURIComponent(providerId)}/auth/api-key`,
-      OkResponseSchema,
-      input,
-      signal,
-    );
-  }
+    startProviderLogin(
+      providerId: string,
+      input: StartLoginRequest,
+      signal?: AbortSignal,
+    ): Promise<StartLoginResponse> {
+      return transport.post(
+        `/providers/${encodeURIComponent(providerId)}/auth/login`,
+        StartLoginResponseSchema,
+        input,
+        signal,
+      );
+    },
 
-  logoutProvider(providerId: string, signal?: AbortSignal): Promise<OkResponse> {
-    return this.#transport.del(
-      `/providers/${encodeURIComponent(providerId)}/auth`,
-      OkResponseSchema,
-      signal,
-    );
-  }
+    streamLoginSession(
+      providerId: string,
+      sessionId: string,
+      opts?: StreamLoginOptions,
+    ): AsyncGenerator<LoginStreamEvent> {
+      const path = `/providers/${encodeURIComponent(providerId)}/auth/login/${encodeURIComponent(sessionId)}/stream`;
+      return transport.streamDecodedSse<LoginStreamEvent>(
+        path,
+        {
+          signal: opts?.signal,
+          isTerminal: (event) => event.type === "complete" || event.type === "error",
+        },
+        (sse) => {
+          if (sse.event === "auth") {
+            const event = transport.decodeSseEvent(
+              sse,
+              LoginAuthEventSchema,
+              "login auth SSE payload",
+            );
+            return { type: "auth", event };
+          }
+          if (sse.event === "prompt") {
+            const prompt = transport.decodeSseEvent(
+              sse,
+              LoginPromptEventSchema,
+              "login prompt SSE payload",
+            );
+            return { type: "prompt", prompt };
+          }
+          if (sse.event === "complete") {
+            const complete = transport.decodeSseEvent(
+              sse,
+              LoginCompleteEventSchema,
+              "login complete SSE payload",
+            );
+            return { type: "complete", complete };
+          }
+          if (sse.event === "error") {
+            const error = transport.decodeSseEvent(
+              sse,
+              LoginErrorEventSchema,
+              "login error SSE payload",
+            );
+            return { type: "error", error };
+          }
+          return undefined;
+        },
+      );
+    },
 
-  startProviderLogin(
-    providerId: string,
-    input: StartLoginRequest,
-    signal?: AbortSignal,
-  ): Promise<StartLoginResponse> {
-    return this.#transport.post(
-      `/providers/${encodeURIComponent(providerId)}/auth/login`,
-      StartLoginResponseSchema,
-      input,
-      signal,
-    );
-  }
+    submitLoginInput(
+      providerId: string,
+      sessionId: string,
+      input: LoginInputRequest,
+      signal?: AbortSignal,
+    ): Promise<OkResponse> {
+      return transport.post(
+        `/providers/${encodeURIComponent(providerId)}/auth/login/${encodeURIComponent(sessionId)}/input`,
+        OkResponseSchema,
+        input,
+        signal,
+      );
+    },
 
-  async *streamLoginSession(
-    providerId: string,
-    sessionId: string,
-    opts?: StreamLoginOptions,
-  ): AsyncGenerator<LoginStreamEvent> {
-    const path = `/providers/${encodeURIComponent(providerId)}/auth/login/${encodeURIComponent(sessionId)}/stream`;
-    for await (const sse of this.#transport.streamSse(path, opts?.signal)) {
-      if (sse.event === "auth") {
-        const event = this.#transport.decodeSseEvent(
-          sse,
-          LoginAuthEventSchema,
-          "login auth SSE payload",
-        );
-        yield { type: "auth", event };
-      } else if (sse.event === "prompt") {
-        const prompt = this.#transport.decodeSseEvent(
-          sse,
-          LoginPromptEventSchema,
-          "login prompt SSE payload",
-        );
-        yield { type: "prompt", prompt };
-      } else if (sse.event === "complete") {
-        const complete = this.#transport.decodeSseEvent(
-          sse,
-          LoginCompleteEventSchema,
-          "login complete SSE payload",
-        );
-        yield { type: "complete", complete };
-        return;
-      } else if (sse.event === "error") {
-        const error = this.#transport.decodeSseEvent(
-          sse,
-          LoginErrorEventSchema,
-          "login error SSE payload",
-        );
-        yield { type: "error", error };
-        return;
-      }
-    }
-  }
+    cancelLoginSession(
+      providerId: string,
+      sessionId: string,
+      signal?: AbortSignal,
+    ): Promise<OkResponse> {
+      return transport.post(
+        `/providers/${encodeURIComponent(providerId)}/auth/login/${encodeURIComponent(sessionId)}/cancel`,
+        OkResponseSchema,
+        undefined,
+        signal,
+      );
+    },
 
-  submitLoginInput(
-    providerId: string,
-    sessionId: string,
-    input: LoginInputRequest,
-    signal?: AbortSignal,
-  ): Promise<OkResponse> {
-    return this.#transport.post(
-      `/providers/${encodeURIComponent(providerId)}/auth/login/${encodeURIComponent(sessionId)}/input`,
-      OkResponseSchema,
-      input,
-      signal,
-    );
-  }
+    listModels(opts?: ListModelsOptions): Promise<ListModelsResponse> {
+      const query = buildQuery({ provider: opts?.provider, available: opts?.available });
+      return transport.get(`/models${query}`, ListModelsResponseSchema, opts?.signal);
+    },
 
-  cancelLoginSession(
-    providerId: string,
-    sessionId: string,
-    signal?: AbortSignal,
-  ): Promise<OkResponse> {
-    return this.#transport.post(
-      `/providers/${encodeURIComponent(providerId)}/auth/login/${encodeURIComponent(sessionId)}/cancel`,
-      OkResponseSchema,
-      undefined,
-      signal,
-    );
-  }
+    refreshModels(
+      input: RefreshModelsRequest = {},
+      signal?: AbortSignal,
+    ): Promise<RefreshModelsResponse> {
+      return transport.post("/models/refresh", RefreshModelsResponseSchema, input, signal);
+    },
 
-  listModels(opts?: ListModelsOptions): Promise<ListModelsResponse> {
-    const query = buildQuery({ provider: opts?.provider, available: opts?.available });
-    return this.#transport.get(`/models${query}`, ListModelsResponseSchema, opts?.signal);
-  }
+    reloadModels(signal?: AbortSignal): Promise<ReloadModelsResponse> {
+      return transport.post("/models/reload", ReloadModelsResponseSchema, undefined, signal);
+    },
 
-  refreshModels(
-    input: RefreshModelsRequest = {},
-    signal?: AbortSignal,
-  ): Promise<RefreshModelsResponse> {
-    return this.#transport.post("/models/refresh", RefreshModelsResponseSchema, input, signal);
-  }
+    getModelProfiles(signal?: AbortSignal): Promise<ModelProfilesDocument> {
+      return transport.get("/models/profiles", ModelProfilesDocumentSchema, signal);
+    },
 
-  reloadModels(signal?: AbortSignal): Promise<ReloadModelsResponse> {
-    return this.#transport.post("/models/reload", ReloadModelsResponseSchema, undefined, signal);
-  }
-
-  getModelProfiles(signal?: AbortSignal): Promise<ModelProfilesDocument> {
-    return this.#transport.get("/models/profiles", ModelProfilesDocumentSchema, signal);
-  }
-
-  putModelProfiles(
-    input: ModelProfilesDocument,
-    signal?: AbortSignal,
-  ): Promise<ModelProfilesDocument> {
-    return this.#transport.put("/models/profiles", ModelProfilesDocumentSchema, input, signal);
-  }
+    putModelProfiles(
+      input: ModelProfilesDocument,
+      signal?: AbortSignal,
+    ): Promise<ModelProfilesDocument> {
+      return transport.put("/models/profiles", ModelProfilesDocumentSchema, input, signal);
+    },
+  };
 }
+
+export type ProvidersClient = ReturnType<typeof createProvidersClient>;

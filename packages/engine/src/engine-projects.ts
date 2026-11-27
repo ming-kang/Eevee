@@ -7,7 +7,6 @@ import type {
   EntryQuery,
   Submission,
 } from "@earendil-works/pi-durable";
-import { validateOutputReadOptions } from "@eevee/agent";
 import type {
   BoardView,
   ListWorkerTasksOptions as CoreListWorkerTasksOptions,
@@ -41,6 +40,7 @@ import type {
   UpdateProjectRequest,
   WorkerId,
 } from "@eevee/protocol";
+import { validateTaskReadOptions as validateProtocolTaskReadOptions } from "@eevee/protocol";
 import { decodeCursor, encodeCursor } from "./cursor.ts";
 import { type DataDirLayout, projectPaths } from "./data-dir.ts";
 import type { EngineKnobs } from "./engine-config.ts";
@@ -300,7 +300,7 @@ export async function listWorkerTasks(
 function validateTaskReadOptions(options?: OutputReadOptions): void {
   if (options === undefined) return;
   try {
-    validateOutputReadOptions(options);
+    validateProtocolTaskReadOptions(options);
   } catch (error) {
     throw new EngineError(
       400,

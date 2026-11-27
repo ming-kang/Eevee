@@ -7,6 +7,7 @@ import {
   obj,
   oneOf,
   opt,
+  type Schema,
   type Static,
   str,
   union,
@@ -258,27 +259,30 @@ export const TaskNotificationDataSchema = obj(
 );
 export type TaskNotificationData = Static<typeof TaskNotificationDataSchema>;
 
-export function parseLiveDocPayload(raw: unknown): LiveDocPayload | undefined {
-  const result = validateWithSchema(LiveDocPayloadSchema, raw);
+export function parseOptionalWithSchema<S extends Schema>(
+  schema: S,
+  raw: unknown,
+): Static<S> | undefined {
+  const result = validateWithSchema(schema, raw);
   return result.ok ? result.value : undefined;
+}
+
+export function parseLiveDocPayload(raw: unknown): LiveDocPayload | undefined {
+  return parseOptionalWithSchema(LiveDocPayloadSchema, raw);
 }
 
 export function parseInboxDocPayload(raw: unknown): InboxDocPayload | undefined {
-  const result = validateWithSchema(InboxDocPayloadSchema, raw);
-  return result.ok ? result.value : undefined;
+  return parseOptionalWithSchema(InboxDocPayloadSchema, raw);
 }
 
 export function parseAgentDocPayload(raw: unknown): AgentDocPayload | undefined {
-  const result = validateWithSchema(AgentDocPayloadSchema, raw);
-  return result.ok ? result.value : undefined;
+  return parseOptionalWithSchema(AgentDocPayloadSchema, raw);
 }
 
 export function parseNoticeData(raw: unknown): NoticeData | undefined {
-  const result = validateWithSchema(NoticeDataSchema, raw);
-  return result.ok ? result.value : undefined;
+  return parseOptionalWithSchema(NoticeDataSchema, raw);
 }
 
 export function parseTaskNotificationData(raw: unknown): TaskNotificationData | undefined {
-  const result = validateWithSchema(TaskNotificationDataSchema, raw);
-  return result.ok ? result.value : undefined;
+  return parseOptionalWithSchema(TaskNotificationDataSchema, raw);
 }

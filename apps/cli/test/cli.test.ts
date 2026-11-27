@@ -1926,7 +1926,9 @@ test("skills and MCP CLI commands dispatch expected API requests and handle OAut
       writeHttpJson(res, 200, {
         globalServers: { docs: { url: "https://docs.example/mcp" } },
         projectServers: projectMcpServers,
-        effectiveServers: { docs: body.config },
+        effectiveServers: {
+          docs: { url: "https://docs.example/mcp", ...(projectMcpServers.docs ?? {}) },
+        },
         status: [{ name: "docs", status: "connected", enabled: true, toolCount: 1 }],
       });
       return;

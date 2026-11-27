@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ConversationWindow, EntryId } from "@earendil-works/pi-durable";
-import { bool, int, obj, opt, type Schema, type Static, str } from "@earendil-works/pi-schema";
-import { TASK_FILTER_MAX_CONTEXT_LINES, validateOutputReadOptions } from "@eevee/agent";
+import type { Schema, Static } from "@earendil-works/pi-schema";
 import type {
   ListWorkerTasksOptions as CoreListWorkerTasksOptions,
   OutputReadOptions,
@@ -9,17 +8,21 @@ import type {
 import {
   type ConversationRef,
   ConversationRefSchema,
+  EntriesQuerySchema,
   formatValidationErrors,
+  ListWorkerTasksQuerySchema,
+  ModelsQuerySchema,
   type Problem,
   ProjectIdSchema,
   parseWithSchema,
   type QuestionId,
   QuestionIdSchema,
-  ScanOrderSchema,
-  TaskListStatusFilterSchema,
-  type TaskReadMode,
-  TaskReadModeSchema,
+  ReadWorkerTaskQuerySchema,
+  type StreamWorkerTaskQuery,
+  StreamWorkerTaskQuerySchema,
+  validateTaskReadOptions,
   validateWithSchema,
+  WindowQuerySchema,
   type WorkerId,
   WorkerIdSchema,
 } from "@eevee/protocol";
@@ -205,13 +208,7 @@ function parsePositiveInt(raw: string, label: string): number {
   return value;
 }
 
-const EntriesQuerySchema = obj({
-  order: opt(ScanOrderSchema),
-  limit: opt(int({ minimum: 1, maximum: 500 })),
-  minEntryId: opt(int({ minimum: 1 })),
-  maxEntryId: opt(int({ minimum: 1 })),
-  cursor: opt(str()),
-});
+export type { StreamWorkerTaskQuery };
 
 export function parseEntriesQuery(url: URL): ListEntriesParams {
   return parseQueryWithSchema(url, EntriesQuerySchema, {
@@ -223,17 +220,6 @@ export function parseEntriesQuery(url: URL): ListEntriesParams {
   });
 }
 
-export type StreamWorkerTaskQuery = {
-  readonly mode?: TaskReadMode;
-  readonly bytes?: number;
-  readonly sinceBytes?: number;
-};
-
-const ListWorkerTasksQuerySchema = obj({
-  status: opt(TaskListStatusFilterSchema),
-  limit: opt(int({ minimum: 1, maximum: 100 })),
-});
-
 export function parseListWorkerTasksQuery(url: URL): CoreListWorkerTasksOptions {
   return parseQueryWithSchema(url, ListWorkerTasksQuerySchema, {
     status: queryString,
@@ -241,30 +227,15 @@ export function parseListWorkerTasksQuery(url: URL): CoreListWorkerTasksOptions 
   });
 }
 
-const TASK_STREAM_QUERY_PROPERTIES = {
-  mode: opt(TaskReadModeSchema),
-  bytes: opt(int({ minimum: 1 })),
-  sinceBytes: opt(int({ minimum: 0 })),
-} as const;
-
 const TASK_STREAM_QUERY_COERCERS = {
   mode: queryString,
   bytes: queryInt,
   sinceBytes: queryInt,
 } as const;
 
-const StreamWorkerTaskQuerySchema = obj(TASK_STREAM_QUERY_PROPERTIES);
-
-const ReadWorkerTaskQuerySchema = obj({
-  ...TASK_STREAM_QUERY_PROPERTIES,
-  endByte: opt(int({ minimum: 0 })),
-  filter: opt(str({ minLength: 1 })),
-  contextLines: opt(int({ minimum: 0, maximum: TASK_FILTER_MAX_CONTEXT_LINES })),
-});
-
 function validateTaskOutputOptions<T extends OutputReadOptions>(options: T): T {
   try {
-    validateOutputReadOptions(options);
+    validateTaskReadOptions(options);
   } catch (error) {
     throw new EngineError(
       400,
@@ -292,11 +263,6 @@ export function parseStreamWorkerTaskQuery(url: URL): StreamWorkerTaskQuery {
   );
 }
 
-const ModelsQuerySchema = obj({
-  provider: opt(str({ minLength: 1 })),
-  available: opt(bool()),
-});
-
 export function parseModelsQuery(url: URL): {
   readonly provider?: string;
   readonly available?: boolean;
@@ -306,12 +272,6 @@ export function parseModelsQuery(url: URL): {
     available: queryBool,
   });
 }
-
-const WindowQuerySchema = obj({
-  from: opt(int({ minimum: 1 })),
-  min: opt(int({ minimum: 1 })),
-  max: opt(int({ minimum: 1 })),
-});
 
 export function parseWindowParams(url: URL, req: IncomingMessage): ConversationWindow | undefined {
   const query = parseQueryWithSchema(url, WindowQuerySchema, {

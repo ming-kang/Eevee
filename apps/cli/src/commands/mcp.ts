@@ -2,8 +2,11 @@ import { connectLocalEngine } from "@eevee/engine";
 import {
   type EeveeClient,
   type McpLogsResponse,
+  McpServerConfigSchema,
+  McpServerEntryInputSchema,
   type McpStateResponse,
   type ProjectMcpStateResponse,
+  PutGlobalMcpConfigRequestSchema,
   PutMcpConfigRequestSchema,
   parseWithSchema,
 } from "@eevee/protocol";
@@ -102,7 +105,10 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
         isRecord(parsed) && "servers" in parsed
           ? parsed
           : { servers: isRecord(parsed) && "mcpServers" in parsed ? parsed.mcpServers : parsed };
-      const body = parseWithSchema(PutMcpConfigRequestSchema, candidate, "PutMcpConfigRequest");
+      const body =
+        projectId === undefined
+          ? parseWithSchema(PutGlobalMcpConfigRequestSchema, candidate, "PutGlobalMcpConfigRequest")
+          : parseWithSchema(PutMcpConfigRequestSchema, candidate, "PutMcpConfigRequest");
       await runEngineCommand(
         env,
         options,
@@ -136,10 +142,8 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
     .option("--no-worker", "Disable MCP tools for Workers")
     .option("--replace", "Replace an existing server or override wholesale instead of merging")
     .action((rawName: string, options: McpAddOptions) => {
-      const { incoming, isPartialOverride } = parseMcpAddIncoming(
-        options,
-        parseProjectIdFlag(options.project),
-      );
+      const projectId = parseProjectIdFlag(options.project);
+      const { incoming, isPartialOverride } = parseMcpAddIncoming(options, projectId);
       return runScoped(
         rawName,
         options,
@@ -149,10 +153,14 @@ export function registerMcpCommands(program: Command, env: NodeJS.ProcessEnv): v
             ? ("projectServers" in state ? state.projectServers : state.servers)[name]
             : undefined;
           const existing = isRecord(found) ? found : undefined;
-          const config = mergeMcpAddConfig(existing, incoming, {
+          const merged = mergeMcpAddConfig(existing, incoming, {
             isPartialOverride,
             switchTransport: shouldSwitchMcpTransport(existing, options),
           });
+          const config =
+            projectId === undefined
+              ? parseWithSchema(McpServerConfigSchema, merged, "McpServerConfig")
+              : parseWithSchema(McpServerEntryInputSchema, merged, "McpServerEntryInput");
           return mcp.upsertServer(name, { config });
         },
         (s) => formatScopedMcpState(s),

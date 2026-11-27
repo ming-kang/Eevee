@@ -168,7 +168,7 @@ export function Composer({
     setSkillsError(undefined);
 
     const request = projectId
-      ? api.listProjectSkills(projectId, controller.signal)
+      ? api.skills(projectId).list(controller.signal)
       : api.listSkills(controller.signal);
 
     void request

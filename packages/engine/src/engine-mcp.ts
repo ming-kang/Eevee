@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { map } from "@earendil-works/pi-schema";
 import {
   type McpHub,
   type McpOAuthCredentialStore,
@@ -10,16 +11,23 @@ import {
   synthesizeOfflineMcpSnapshots,
   validateMcpServerEntry,
 } from "@eevee/agent";
-import type {
-  McpLogsResponse,
-  McpServerSnapshotPayload,
-  McpStateResponse,
-  ProjectMcpStateResponse,
-  ProjectSummary,
-  PutMcpConfigRequest,
-  ReconnectMcpRequest,
-  ReconnectMcpResponse,
-  UpsertMcpServerRequest,
+import {
+  type McpLogsResponse,
+  type McpServerConfigPayload,
+  McpServerConfigSchema,
+  type McpServerEntryInput,
+  McpServerEntryInputSchema,
+  type McpServerSnapshotPayload,
+  type McpStateResponse,
+  type ProjectMcpStateResponse,
+  type ProjectSummary,
+  type PutGlobalMcpConfigRequest,
+  type PutMcpConfigRequest,
+  parseWithSchema,
+  type ReconnectMcpRequest,
+  type ReconnectMcpResponse,
+  type UpsertGlobalMcpServerRequest,
+  type UpsertMcpServerRequest,
 } from "@eevee/protocol";
 import { type DataDirLayout, projectPaths } from "./data-dir.ts";
 import {
@@ -83,10 +91,13 @@ function toSnapshotPayload(
   };
 }
 
+const McpServerConfigMapSchema = map(McpServerConfigSchema);
+const McpServerEntryMapSchema = map(McpServerEntryInputSchema);
+
 function projectScopeOf(
   name: string,
-  globalServers: Record<string, Record<string, unknown>>,
-  projectServers: Record<string, Record<string, unknown>>,
+  globalServers: Readonly<Record<string, unknown>>,
+  projectServers: Readonly<Record<string, unknown>>,
 ): "global" | "project" | "override" {
   if (Object.hasOwn(projectServers, name)) {
     return Object.hasOwn(globalServers, name) ? "override" : "project";
@@ -95,13 +106,13 @@ function projectScopeOf(
 }
 
 export function resolveEffectiveProjectMcp(
-  globalServers: Record<string, Record<string, unknown>>,
-  projectServers: Record<string, Record<string, unknown>>,
+  globalServers: Readonly<Record<string, unknown>>,
+  projectServers: Readonly<Record<string, unknown>>,
   strict = false,
 ): {
   readonly entries: McpServerEntry[];
-  readonly effectiveServers: Record<string, Record<string, unknown>>;
-  readonly normalizedProjectServers: Record<string, Record<string, unknown>>;
+  readonly effectiveServers: Record<string, McpServerConfigPayload>;
+  readonly normalizedProjectServers: Record<string, McpServerEntryInput>;
 } {
   const resolved = resolveEffectiveMcpServers(globalServers, projectServers);
   if (strict && resolved.errors.length > 0) {
@@ -109,8 +120,16 @@ export function resolveEffectiveProjectMcp(
   }
   return {
     entries: resolved.entries,
-    effectiveServers: resolved.effectiveServers,
-    normalizedProjectServers: resolved.normalizedProjectServers,
+    effectiveServers: parseWithSchema(
+      McpServerConfigMapSchema,
+      resolved.effectiveServers,
+      "effective MCP servers",
+    ),
+    normalizedProjectServers: parseWithSchema(
+      McpServerEntryMapSchema,
+      resolved.normalizedProjectServers,
+      "normalized project MCP servers",
+    ),
   };
 }
 
@@ -210,7 +229,7 @@ async function replaceMcpServers(
 
 export async function putMcpConfig(
   deps: McpDeps,
-  input: PutMcpConfigRequest,
+  input: PutGlobalMcpConfigRequest,
 ): Promise<McpStateResponse> {
   return replaceMcpServers(deps, input.servers);
 }
@@ -218,7 +237,7 @@ export async function putMcpConfig(
 export async function upsertMcpServer(
   deps: McpDeps,
   name: string,
-  input: UpsertMcpServerRequest,
+  input: UpsertGlobalMcpServerRequest,
 ): Promise<McpStateResponse> {
   const validated = validateMcpServerEntry(name, input.config);
   if (typeof validated === "string") {
@@ -283,7 +302,7 @@ export function getProjectMcpState(deps: McpDeps, projectId: string): ProjectMcp
 async function replaceProjectMcpServers(
   deps: McpDeps,
   projectId: string,
-  projectServers: Record<string, Record<string, unknown>>,
+  projectServers: Readonly<Record<string, unknown>>,
 ): Promise<ProjectMcpStateResponse> {
   deps.requireProject(projectId);
   const globalServers = getMcpServersRecord(deps.store);
@@ -329,11 +348,7 @@ export async function putProjectMcpConfig(
   projectId: string,
   input: PutMcpConfigRequest,
 ): Promise<ProjectMcpStateResponse> {
-  return replaceProjectMcpServers(
-    deps,
-    projectId,
-    input.servers as Record<string, Record<string, unknown>>,
-  );
+  return replaceProjectMcpServers(deps, projectId, input.servers);
 }
 
 export async function upsertProjectMcpServer(

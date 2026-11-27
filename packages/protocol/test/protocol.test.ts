@@ -23,21 +23,30 @@ import {
   ConversationViewPayloadSchema,
   CreateProjectRequestSchema,
   CreateProjectResponseSchema,
+  DEFAULT_MCP_EXPOSURE,
   DeleteProjectResponseSchema,
+  DeltaOpSchema,
+  describeProviderConnectionNote,
+  describeProviderConnectionUrl,
   EeveeApiError,
   EeveeClient,
   EngineSettingsSchema,
+  EntriesQuerySchema,
   GetProjectResponseSchema,
   HealthResponseSchema,
   ImportProviderModelsRequestSchema,
   ImportProviderModelsResponseSchema,
   InboxDocPayloadSchema,
   isActiveTaskStatus,
+  isMcpHttpConfig,
+  isMcpOverrideEntry,
+  isMcpStdioConfig,
   KillWorkerTaskResponseSchema,
   ListEntriesResponseSchema,
   ListModelsResponseSchema,
   ListProjectsResponseSchema,
   ListProvidersResponseSchema,
+  ListWorkerTasksQuerySchema,
   ListWorkerTasksResponseSchema,
   LiveDocPayloadSchema,
   LoginAuthEventSchema,
@@ -47,6 +56,7 @@ import {
   LoginPromptEventSchema,
   type LoginStreamEvent,
   MCP_EXPOSURES,
+  MCP_SERVER_NAME_RE,
   McpExposureSchema,
   McpHttpServerConfigSchema,
   McpLogsResponseSchema,
@@ -70,9 +80,13 @@ import {
   ModelProfilesDocumentSchema,
   ModelSlotsOverrideSchema,
   ModelsConfigDiagnosticSchema,
+  ModelsQuerySchema,
+  mcpConnectionFieldsMatch,
   NoticeDataSchema,
+  normalizeMcpExposure,
   OkResponseSchema,
   OutputSliceSchema,
+  PartialModelCostSchema,
   PROTOCOL_VERSION,
   ProbeProviderRequestSchema,
   ProbeProviderResponseSchema,
@@ -86,6 +100,7 @@ import {
   ProviderCatalogResponseSchema,
   ProviderDetailResponseSchema,
   ProviderSummarySchema,
+  PutGlobalMcpConfigRequestSchema,
   PutMcpConfigRequestSchema,
   PutProjectMemoryRequestSchema,
   PutSkillsPolicyRequestSchema,
@@ -93,11 +108,14 @@ import {
   parseInboxDocPayload,
   parseLiveDocPayload,
   parseNoticeData,
+  parseOptionalWithSchema,
   parseSseStream,
   parseTaskNotificationData,
   parseWithSchema,
+  providerBaseUrlPlaceholder,
   QuestionIdSchema,
   QuestionRecordSchema,
+  ReadWorkerTaskQuerySchema,
   ReadWorkerTaskResponseSchema,
   ReconnectMcpRequestSchema,
   ReconnectMcpResponseSchema,
@@ -123,6 +141,7 @@ import {
   StartLoginResponseSchema,
   StartMcpOAuthResponseSchema,
   StreamEndEventSchema,
+  StreamWorkerTaskQuerySchema,
   SubmissionStatusSchema,
   TASK_FILTER_MAX_CONTEXT_LINES,
   TaskCancelReasonSchema,
@@ -143,12 +162,16 @@ import {
   TicketStatusSchema,
   ToolsSettingsSchema,
   UpdateProjectRequestSchema,
+  UpsertGlobalMcpServerRequestSchema,
   UpsertMcpServerRequestSchema,
   UpsertProviderModelRequestSchema,
   UpsertProviderRequestSchema,
   UsageMetricsSchema,
   UsageStateSchema,
+  validateProviderBaseUrl,
+  validateTaskReadOptions,
   WhenBusySchema,
+  WindowQuerySchema,
   WORKER_DEFAULT_DISABLED_TOOLS,
   WORKER_TOGGLEABLE_TOOLS,
   WorkerBoardItemSchema,
@@ -1050,7 +1073,7 @@ test("protocol 4C schemas and EeveeClient methods validate providers, auth, mode
     toolCount: 2,
   };
   const mcpState = {
-    servers: { docs: { command: "docs-mcp", exposure: "direct" } },
+    servers: { docs: { command: "docs-mcp", exposure: "direct" as const } },
     status: [mcpSnapshot],
   };
   assert.equal(compile(McpServerSnapshotSchema).check(mcpSnapshot), true);
@@ -1662,8 +1685,8 @@ test("protocol 4B schemas and EeveeClient methods validate Skills, MCP OAuth/log
 
   assert.deepEqual(await client.listSkills(), skillsList);
   assert.deepEqual(await client.putSkillsPolicy({ policy: { pdf: "disabled" } }), skillsList);
-  assert.deepEqual(await client.listProjectSkills("demo"), skillsList);
-  assert.deepEqual(await client.putProjectSkillsPolicy("demo", { policy: null }), skillsList);
+  assert.deepEqual(await client.skills("demo").list(), skillsList);
+  assert.deepEqual(await client.skills("demo").putPolicy({ policy: null }), skillsList);
   assert.deepEqual(await client.getMcpLogs("remote"), logsResp);
   assert.deepEqual(await client.startMcpOAuth("remote"), { sessionId: "oa-1", server: "remote" });
 
@@ -1684,20 +1707,20 @@ test("protocol 4B schemas and EeveeClient methods validate Skills, MCP OAuth/log
   );
   assert.deepEqual(await client.cancelMcpOAuth("remote", "oa-1"), { ok: true });
   assert.deepEqual(await client.logoutMcpOAuth("remote"), { ok: true });
-  assert.deepEqual(await client.getProjectMcpState("demo"), projectMcpState);
+  assert.deepEqual(await client.mcp("demo").getState(), projectMcpState);
   assert.deepEqual(
-    await client.putProjectMcpConfig("demo", { servers: { local: { command: "local-mcp" } } }),
+    await client.mcp("demo").putConfig({ servers: { local: { command: "local-mcp" } } }),
     projectMcpState,
   );
   assert.deepEqual(
-    await client.upsertProjectMcpServer("demo", "local", { config: { command: "local-mcp" } }),
+    await client.mcp("demo").upsertServer("local", { config: { command: "local-mcp" } }),
     projectMcpState,
   );
-  assert.deepEqual(await client.deleteProjectMcpServer("demo", "local"), projectMcpState);
-  assert.deepEqual(await client.reconnectProjectMcp("demo", { server: "local" }), {
+  assert.deepEqual(await client.mcp("demo").deleteServer("local"), projectMcpState);
+  assert.deepEqual(await client.mcp("demo").reconnect({ server: "local" }), {
     status: [extendedSnapshot],
   });
-  assert.deepEqual(await client.getProjectMcpLogs("demo", "local"), {
+  assert.deepEqual(await client.mcp("demo").getLogs("local"), {
     server: "local",
     lines: ["local-log"],
   });
@@ -1776,13 +1799,13 @@ test("EeveeClient project-scoped MCP OAuth methods hit expected routes, bodies, 
     },
   });
 
-  assert.deepEqual(await client.startProjectMcpOAuth("proj-1", "srv one"), {
+  assert.deepEqual(await client.mcp("proj-1").startOAuth("srv one"), {
     sessionId: "poa-1",
     server: "srv one",
   });
 
   const events = [];
-  for await (const evt of client.streamProjectMcpOAuth("proj-1", "srv one", "poa-1")) {
+  for await (const evt of client.mcp("proj-1").streamOAuth("srv one", "poa-1")) {
     events.push(evt);
   }
   assert.deepEqual(
@@ -1792,13 +1815,13 @@ test("EeveeClient project-scoped MCP OAuth methods hit expected routes, bodies, 
 
   streamMode = "error";
   const errEvents = [];
-  for await (const evt of client.streamProjectMcpOAuth("proj-1", "srv one", "poa-1")) {
+  for await (const evt of client.mcp("proj-1").streamOAuth("srv one", "poa-1")) {
     errEvents.push(evt);
   }
   assert.deepEqual(errEvents, [{ type: "error", code: "login_cancelled", message: "Cancelled" }]);
 
   assert.deepEqual(
-    await client.submitProjectMcpOAuthInput("proj-1", "srv one", "poa-1", {
+    await client.mcp("proj-1").submitOAuthInput("srv one", "poa-1", {
       redirectUrl: "http://127.0.0.1:4321/callback?code=abc",
     }),
     { ok: true },
@@ -1807,8 +1830,8 @@ test("EeveeClient project-scoped MCP OAuth methods hit expected routes, bodies, 
     calls.at(-1)?.body,
     JSON.stringify({ redirectUrl: "http://127.0.0.1:4321/callback?code=abc" }),
   );
-  assert.deepEqual(await client.cancelProjectMcpOAuth("proj-1", "srv one", "poa-1"), { ok: true });
-  assert.deepEqual(await client.logoutProjectMcpOAuth("proj-1", "srv one"), { ok: true });
+  assert.deepEqual(await client.mcp("proj-1").cancelOAuth("srv one", "poa-1"), { ok: true });
+  assert.deepEqual(await client.mcp("proj-1").logoutOAuth("srv one"), { ok: true });
 
   assert.deepEqual(
     calls.map((c) => `${c.method} ${c.pathname}`),
@@ -1826,7 +1849,7 @@ test("EeveeClient project-scoped MCP OAuth methods hit expected routes, bodies, 
 test("EeveeClient scoped mcp() and skills() sub-clients dispatch global and project routes", async () => {
   const calls: { method: string; pathname: string; body?: string }[] = [];
   const globalMcpState = {
-    servers: { docs: { command: "docs-mcp", exposure: "direct" } },
+    servers: { docs: { command: "docs-mcp", exposure: "direct" as const } },
     status: [{ name: "docs", status: "connected" as const, enabled: true, toolCount: 1 }],
   };
   const projectMcpState = {
@@ -2192,4 +2215,338 @@ test("conversation doc and notice parsers, task helpers, and tightened MCP schem
     compile(UpsertMcpServerRequestSchema).check({ config: { command: "x", url: "https://y" } }),
     false,
   );
+});
+
+test("global vs project MCP schemas, partial model cost, DeltaOpSchema, and parseOptionalWithSchema enforce exact wire shapes", () => {
+  const checkPutGlobal = compile(PutGlobalMcpConfigRequestSchema);
+  const checkUpsertGlobal = compile(UpsertGlobalMcpServerRequestSchema);
+  const checkPutProject = compile(PutMcpConfigRequestSchema);
+  const checkUpsertProject = compile(UpsertMcpServerRequestSchema);
+  const checkGlobalState = compile(McpStateResponseSchema);
+  const checkProjectState = compile(ProjectMcpStateResponseSchema);
+  const checkBundle = compile(ConfigBundleSchema);
+
+  // Global MCP schemas reject empty {} and partial overrides, while project schemas accept overrides.
+  assert.equal(checkPutGlobal.check({ servers: { docs: { command: "docs-mcp" } } }), true);
+  assert.equal(checkPutGlobal.check({ servers: { docs: {} } }), false);
+  assert.equal(checkPutGlobal.check({ servers: { docs: { enabled: false } } }), false);
+  assert.equal(checkUpsertGlobal.check({ config: { url: "https://docs.example/mcp" } }), true);
+  assert.equal(checkUpsertGlobal.check({ config: {} }), false);
+  assert.equal(checkUpsertGlobal.check({ config: { exposure: "direct" } }), false);
+
+  assert.equal(checkPutProject.check({ servers: { docs: {} } }), true);
+  assert.equal(checkPutProject.check({ servers: { docs: { enabled: false } } }), true);
+  assert.equal(checkUpsertProject.check({ config: {} }), true);
+  assert.equal(checkUpsertProject.check({ config: { roles: { router: false } } }), true);
+
+  assert.equal(checkGlobalState.check({ servers: { docs: {} }, status: [] }), false);
+  assert.equal(
+    checkProjectState.check({
+      globalServers: { docs: {} },
+      projectServers: {},
+      effectiveServers: { docs: { command: "docs-mcp" } },
+      status: [],
+    }),
+    false,
+  );
+  assert.equal(
+    checkProjectState.check({
+      globalServers: { docs: { command: "docs-mcp" } },
+      projectServers: { docs: { enabled: false } },
+      effectiveServers: { docs: {} },
+      status: [],
+    }),
+    false,
+  );
+  assert.equal(
+    checkBundle.check({
+      version: 1,
+      settings: {},
+      modelProfiles: { profiles: [] },
+      mcpServers: { docs: {} },
+    }),
+    false,
+  );
+
+  // UpsertProviderModelRequestSchema.cost uses typed PartialModelCostSchema + nullable.
+  const checkPartialCost = compile(PartialModelCostSchema);
+  const checkUpsertModel = compile(UpsertProviderModelRequestSchema);
+  assert.equal(checkPartialCost.check({ output: 12.5 }), true);
+  assert.equal(
+    checkPartialCost.check({
+      input: 1,
+      output: 2,
+      cacheRead: 0.5,
+      cacheWrite: 1.5,
+      tiers: [{ input: 2, output: 4, cacheRead: 1, cacheWrite: 2, inputTokensAbove: 200_000 }],
+    }),
+    true,
+  );
+  assert.equal(checkPartialCost.check({ input: "1" }), false);
+  assert.equal(checkPartialCost.check({ extra: 1 }), false);
+  assert.equal(checkUpsertModel.check({ cost: { output: 5 } }), true);
+  assert.equal(checkUpsertModel.check({ cost: null }), true);
+  assert.equal(checkUpsertModel.check({ cost: { unknown: 1 } }), false);
+
+  // parseOptionalWithSchema generic helper.
+  assert.deepEqual(parseOptionalWithSchema(OkResponseSchema, { ok: true }), { ok: true });
+  assert.equal(parseOptionalWithSchema(OkResponseSchema, { ok: false }), undefined);
+
+  // DeltaOpSchema validates all 7 op shapes and rejects unsafe/malformed ops.
+  const checkOp = compile(DeltaOpSchema);
+  const checkPatch = compile(ConversationPatchEventSchema);
+  assert.equal(checkOp.check(["r", { a: [1, "x", null, true] }]), true);
+  assert.equal(checkOp.check(["s", ["docs", "pi.live", 0], { ok: true }]), true);
+  assert.equal(checkOp.check(["d", ["docs", "pi.live"]]), true);
+  assert.equal(checkOp.check(["a", ["docs", "text"], "hello"]), true);
+  assert.equal(checkOp.check(["t", ["docs", "text"], 3]), true);
+  assert.equal(checkOp.check(["p", [], 0, 1, [{ id: 1 }]]), true);
+  assert.equal(checkOp.check(["m", ["entries"], [1, 0]]), true);
+
+  assert.equal(checkOp.check(["s", [], "root"]), false);
+  assert.equal(checkOp.check(["d", []]), false);
+  assert.equal(checkOp.check(["a", ["__proto__", "x"], "bad"]), false);
+  assert.equal(checkOp.check(["s", ["constructor", "x"], 1]), false);
+  assert.equal(checkOp.check(["s", ["prototype"], 1]), false);
+  assert.equal(checkOp.check(["s", [-1], 1]), false);
+  assert.equal(checkOp.check(["a", ["k"], 123]), false);
+  assert.equal(checkOp.check(["t", ["k"], -1]), false);
+  assert.equal(checkOp.check(["p", ["k"], -1, 0, []]), false);
+  assert.equal(checkOp.check(["m", ["k"], [0, 0]]), false);
+  assert.equal(checkOp.check(["z", ["k"]]), false);
+  assert.equal(checkPatch.check({ ops: [["s", ["__proto__"], true]], retired: false }), false);
+});
+
+test("shared query schemas, validateTaskReadOptions, mcp-codec, and provider-codec helpers behave accurately", () => {
+  // Query schemas.
+  const checkEntriesQuery = compile(EntriesQuerySchema);
+  assert.equal(
+    checkEntriesQuery.check({ order: "descending", limit: 500, minEntryId: 1, cursor: "" }),
+    true,
+  );
+  assert.equal(checkEntriesQuery.check({ limit: 0 }), false);
+  assert.equal(checkEntriesQuery.check({ limit: 501 }), false);
+  assert.equal(checkEntriesQuery.check({ minEntryId: 0 }), false);
+
+  const checkListTasksQuery = compile(ListWorkerTasksQuerySchema);
+  assert.equal(checkListTasksQuery.check({ status: "active", limit: 100 }), true);
+  assert.equal(checkListTasksQuery.check({ limit: 101 }), false);
+
+  const checkStreamTaskQuery = compile(StreamWorkerTaskQuerySchema);
+  assert.equal(checkStreamTaskQuery.check({ mode: "tail", bytes: 1, sinceBytes: 0 }), true);
+  assert.equal(checkStreamTaskQuery.check({ bytes: 0 }), false);
+  assert.equal(checkStreamTaskQuery.check({ sinceBytes: -1 }), false);
+
+  const checkReadTaskQuery = compile(ReadWorkerTaskQuerySchema);
+  assert.equal(
+    checkReadTaskQuery.check({
+      mode: "head",
+      bytes: 256,
+      sinceBytes: 0,
+      endByte: 1024,
+      filter: "err",
+      contextLines: 5,
+    }),
+    true,
+  );
+  assert.equal(checkReadTaskQuery.check({ filter: "" }), false);
+  assert.equal(checkReadTaskQuery.check({ contextLines: 6 }), false);
+
+  const checkModelsQuery = compile(ModelsQuerySchema);
+  assert.equal(checkModelsQuery.check({ provider: "openai", available: true }), true);
+  assert.equal(checkModelsQuery.check({ provider: "" }), false);
+
+  const checkWindowQuery = compile(WindowQuerySchema);
+  assert.equal(checkWindowQuery.check({ from: 1, min: 10, max: 50 }), true);
+  assert.equal(checkWindowQuery.check({ from: 0 }), false);
+
+  // validateTaskReadOptions.
+  assert.equal(validateTaskReadOptions({}), undefined);
+  assert.equal(validateTaskReadOptions({ filter: "" }), undefined);
+  const matcher = validateTaskReadOptions({ filter: "/warn-\\d+/i", contextLines: 5 });
+  assert.equal(matcher?.("WARN-7"), true);
+  assert.equal(matcher?.("ok"), false);
+  assert.throws(() => validateTaskReadOptions({ contextLines: 1 }), /contextLines requires filter/);
+  assert.throws(() => validateTaskReadOptions({ contextLines: 0 }), /contextLines requires filter/);
+  assert.throws(
+    () => validateTaskReadOptions({ filter: "ok", contextLines: -1 }),
+    /Invalid contextLines/,
+  );
+  assert.throws(
+    () => validateTaskReadOptions({ filter: "ok", contextLines: 6 }),
+    /Invalid contextLines/,
+  );
+  assert.throws(
+    () => validateTaskReadOptions({ filter: "ok", contextLines: 1.5 }),
+    /Invalid contextLines/,
+  );
+  assert.throws(
+    () => validateTaskReadOptions({ filter: "/[unclosed/" }),
+    /Invalid filter regular expression/,
+  );
+
+  // mcp-codec helpers.
+  assert.equal(MCP_SERVER_NAME_RE.test("my-mcp_1"), true);
+  assert.equal(MCP_SERVER_NAME_RE.test("bad name"), false);
+  assert.equal(DEFAULT_MCP_EXPOSURE, "codemode");
+  assert.equal(normalizeMcpExposure("codemode-deferred"), "codemode");
+  assert.equal(normalizeMcpExposure("direct"), "direct");
+  assert.equal(normalizeMcpExposure("bogus"), "codemode");
+  assert.equal(isMcpOverrideEntry(undefined), false);
+  assert.equal(isMcpOverrideEntry({}), true);
+  assert.equal(isMcpOverrideEntry({ enabled: false }), true);
+  assert.equal(isMcpOverrideEntry({ command: "npx" }), false);
+  assert.equal(isMcpHttpConfig({ url: "https://x.test/mcp" }), true);
+  assert.equal(isMcpHttpConfig({ type: "streamable-http", url: "https://x.test/mcp" }), true);
+  assert.equal(isMcpHttpConfig({ command: "npx" }), false);
+  assert.equal(isMcpStdioConfig({ command: "npx" }), true);
+  assert.equal(isMcpStdioConfig({ type: "stdio", command: "npx" }), true);
+  assert.equal(isMcpStdioConfig({ url: "https://x.test/mcp" }), false);
+
+  assert.equal(
+    mcpConnectionFieldsMatch(
+      {
+        command: "npx",
+        args: ["-y", "srv"],
+        env: { B: "2", A: "1" },
+        enabled: false,
+        description: "Changed desc",
+        timeout: 99,
+        exposure: "hidden",
+        toolExposure: { ping: "direct" },
+        roles: { router: false, worker: false },
+      },
+      {
+        command: "npx",
+        args: ["-y", "srv"],
+        env: { A: "1", B: "2" },
+        enabled: true,
+        description: "Orig desc",
+        timeout: 10,
+        exposure: "codemode",
+        roles: { router: true, worker: true },
+      },
+    ),
+    true,
+  );
+  assert.equal(
+    mcpConnectionFieldsMatch(
+      { type: "http", url: "https://x.test/mcp", headers: { X: "1" } },
+      { url: "https://x.test/mcp", headers: { X: "1" } },
+    ),
+    false,
+  );
+  assert.equal(
+    mcpConnectionFieldsMatch(
+      { url: "https://x.test/mcp", oauth: { clientId: "a" } },
+      { url: "https://x.test/mcp", oauth: { clientId: "b" } },
+    ),
+    false,
+  );
+  assert.equal(mcpConnectionFieldsMatch({ enabled: false }, { enabled: false }), false);
+
+  // provider-codec helpers.
+  assert.equal(validateProviderBaseUrl("   "), "Base URL is required");
+  assert.equal(
+    validateProviderBaseUrl(" https://x.test "),
+    "Base URL must not have leading or trailing whitespace",
+  );
+  assert.equal(validateProviderBaseUrl("not-url"), "Base URL must be an absolute URL");
+  assert.equal(validateProviderBaseUrl("file:///tmp/x"), "Base URL must use http or https");
+  assert.equal(
+    validateProviderBaseUrl("https://u:p@x.test/v1"),
+    "Base URL must not contain credentials",
+  );
+  assert.equal(
+    validateProviderBaseUrl("https://x.test/v1?a=1"),
+    "Base URL must not contain a query string or fragment",
+  );
+  assert.equal(validateProviderBaseUrl("https://x.test/v1"), undefined);
+
+  assert.equal(providerBaseUrlPlaceholder("anthropic-messages"), "https://api.anthropic.com");
+  assert.equal(
+    providerBaseUrlPlaceholder("azure-openai-responses"),
+    "https://RESOURCE.openai.azure.com/openai/v1",
+  );
+  assert.equal(providerBaseUrlPlaceholder(undefined), "https://api.example.com/v1");
+
+  assert.equal(
+    describeProviderConnectionUrl("https://api.anthropic.com", "anthropic-messages"),
+    "https://api.anthropic.com/v1/models",
+  );
+  assert.equal(
+    describeProviderConnectionUrl("https://gateway.test/v1/anthropic/", "anthropic-messages"),
+    "https://gateway.test/v1/anthropic/models",
+  );
+  assert.equal(
+    describeProviderConnectionUrl("https://gateway.test/v1/", "openai-completions"),
+    "https://gateway.test/v1/models",
+  );
+  assert.equal(describeProviderConnectionUrl("bad-url"), undefined);
+  assert.deepEqual(describeProviderConnectionNote("https://x.test/v1/v1", "openai-completions"), {
+    text: "https://x.test/v1/v1/models",
+    warning: true,
+  });
+});
+
+test("EeveeClient exposes domain sub-clients with flat method parity and terminates SSE streams cleanly", async () => {
+  const client = new EeveeClient({
+    baseUrl: "http://127.0.0.1:4173",
+    token: "subclient-tok",
+    fetch: async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/health") {
+        return Response.json({
+          ok: true,
+          protocolVersion: PROTOCOL_VERSION,
+          engineVersion: "0.0.1",
+        });
+      }
+      if (url.pathname === "/projects") {
+        return Response.json({ projects: [] });
+      }
+      if (url.pathname === "/providers") {
+        return Response.json({ providers: [] });
+      }
+      if (url.pathname === "/projects/demo/conversations/router/entries") {
+        return Response.json({ entries: [] });
+      }
+      if (url.pathname === "/projects/demo/board/stream") {
+        return sseResponse([
+          `event: board\ndata: ${JSON.stringify({ workers: [], tickets: [], questions: [] })}\n\n`,
+          `event: end\ndata: ${JSON.stringify({ reason: "closed" })}\n\n`,
+          `event: board\ndata: ${JSON.stringify({ workers: [], tickets: [], questions: [] })}\n\n`,
+        ]);
+      }
+      return Response.json({ code: "not_found", message: "missing" }, { status: 404 });
+    },
+  });
+
+  assert.equal(client instanceof EeveeClient, true);
+  assert.equal(client.health, client.settings.health);
+  assert.equal(client.listProjects, client.projects.listProjects);
+  assert.equal(client.listEntries, client.conversations.listEntries);
+  assert.equal(client.listProviders, client.providers.listProviders);
+  assert.equal(client.listSkills, client.skills().list);
+  assert.equal(client.getMcpState, client.mcp().getState);
+
+  // Destructured methods retain transport binding.
+  const { health } = client.settings;
+  const { listProjects } = client.projects;
+  const { listEntries } = client.conversations;
+  const { listProviders } = client.providers;
+  assert.equal((await health()).ok, true);
+  assert.deepEqual(await listProjects(), { projects: [] });
+  assert.deepEqual(await listEntries("demo", "router"), { entries: [] });
+  assert.deepEqual(await listProviders(), { providers: [] });
+
+  // streamDecodedSse terminates on terminal event even if trailing frames exist.
+  const boardEvents: BoardStreamEvent[] = [];
+  for await (const evt of client.projects.streamBoard("demo")) {
+    boardEvents.push(evt);
+  }
+  assert.deepEqual(boardEvents, [
+    { type: "board", board: { workers: [], tickets: [], questions: [] } },
+    { type: "end", reason: "closed" },
+  ]);
 });

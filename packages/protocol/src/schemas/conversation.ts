@@ -1,17 +1,56 @@
+import type { NonEmptyPath } from "@earendil-works/chord/delta";
+import type { JsonValue } from "@earendil-works/chord/json";
 import {
   arr,
   bool,
   int,
+  lit,
   map,
+  nul,
   num,
   obj,
   opt,
+  recursive,
   type Static,
   str,
+  tuple,
+  union,
   unknown,
+  unsafe,
 } from "@earendil-works/pi-schema";
 
 export * from "./conversation-docs.ts";
+
+export const JsonValueSchema = recursive<JsonValue>("EeveeJsonValue", (json) =>
+  union([nul(), bool(), num(), str(), arr(json), map(json)]),
+);
+
+const SAFE_SEGMENT_PATTERN = "^(?!(?:__proto__|constructor|prototype)$)";
+export const DeltaPathSegmentSchema = union([
+  str({ pattern: SAFE_SEGMENT_PATTERN }),
+  int({ minimum: 0 }),
+]);
+export const DeltaPathSchema = arr(DeltaPathSegmentSchema);
+export const NonEmptyDeltaPathSchema = unsafe<NonEmptyPath>(
+  arr(DeltaPathSegmentSchema, { minItems: 1 }),
+);
+
+export const DeltaOpSchema = union([
+  tuple([lit("r"), JsonValueSchema]),
+  tuple([lit("s"), NonEmptyDeltaPathSchema, JsonValueSchema]),
+  tuple([lit("d"), NonEmptyDeltaPathSchema]),
+  tuple([lit("a"), NonEmptyDeltaPathSchema, str()]),
+  tuple([lit("t"), NonEmptyDeltaPathSchema, int({ minimum: 0 })]),
+  tuple([
+    lit("p"),
+    DeltaPathSchema,
+    int({ minimum: 0 }),
+    int({ minimum: 0 }),
+    arr(JsonValueSchema),
+  ]),
+  tuple([lit("m"), DeltaPathSchema, arr(int({ minimum: 0 }), { uniqueItems: true })]),
+]);
+export type DeltaOp = Static<typeof DeltaOpSchema>;
 
 export const ConversationRecordSchema = obj(
   {
@@ -76,7 +115,7 @@ export type ConversationViewPayload = Static<typeof ConversationViewPayloadSchem
 export const ConversationSnapshotEventSchema = obj({ view: ConversationViewPayloadSchema });
 export type ConversationSnapshotEvent = Static<typeof ConversationSnapshotEventSchema>;
 
-export const ConversationPatchEventSchema = obj({ ops: arr(unknown()), retired: bool() });
+export const ConversationPatchEventSchema = obj({ ops: arr(DeltaOpSchema), retired: bool() });
 export type ConversationPatchEvent = Static<typeof ConversationPatchEventSchema>;
 
 export const ConversationFailedEventSchema = obj({ message: str({ minLength: 1 }) });

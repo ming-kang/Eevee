@@ -21,6 +21,12 @@ export class EeveeApiError extends Error {
 
 export type FetchCredentials = "omit" | "same-origin" | "include";
 
+export type SseRequestOptions<T = unknown> = {
+  readonly signal?: AbortSignal;
+  readonly headers?: Record<string, string>;
+  readonly isTerminal?: (event: T) => boolean;
+};
+
 export type EeveeClientOptions = {
   readonly baseUrl: string;
   readonly token?: string;
@@ -148,6 +154,19 @@ export class HttpTransport {
   ): AsyncGenerator<SseEvent> {
     const response = await this.requestSse(path, signal, extraHeaders);
     yield* parseSseStream(response.body, signal);
+  }
+
+  async *streamDecodedSse<T>(
+    path: string,
+    options: SseRequestOptions<T> | undefined,
+    decode: (frame: SseEvent) => T | undefined,
+  ): AsyncGenerator<T> {
+    for await (const sse of this.streamSse(path, options?.signal, options?.headers)) {
+      const decoded = decode(sse);
+      if (decoded === undefined) continue;
+      yield decoded;
+      if (options?.isTerminal?.(decoded)) return;
+    }
   }
 
   decodeSseEvent<S extends Schema>(sse: SseEvent, schema: S, label: string): Static<S> {

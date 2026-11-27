@@ -11,7 +11,6 @@ import {
   type Static,
   str,
   union,
-  unsafe,
 } from "@earendil-works/pi-schema";
 
 export const McpServerStatusSchema = oneOf([
@@ -128,13 +127,8 @@ export const McpServerEntryInputSchema = union([
 ]);
 export type McpServerEntryInput = Static<typeof McpServerEntryInputSchema>;
 
-// Keep wire containers assignable from existing Record<string, unknown> callers while enforcing McpServerEntryInputSchema at runtime.
-export const McpServerEntryFieldSchema = unsafe<McpServerEntryInput | Record<string, unknown>>(
-  McpServerEntryInputSchema,
-);
-
 export const McpStateResponseSchema = obj({
-  servers: map(McpServerEntryFieldSchema),
+  servers: map(McpServerConfigSchema),
   status: arr(McpServerSnapshotSchema),
 });
 export type McpStateResponse = Static<typeof McpStateResponseSchema>;
@@ -169,20 +163,30 @@ export const McpOAuthEventSchema = union([
 export type McpOAuthEvent = Static<typeof McpOAuthEventSchema>;
 
 export const ProjectMcpStateResponseSchema = obj({
-  globalServers: map(McpServerEntryFieldSchema),
-  projectServers: map(McpServerEntryFieldSchema),
-  effectiveServers: map(McpServerEntryFieldSchema),
+  globalServers: map(McpServerConfigSchema),
+  projectServers: map(McpServerEntryInputSchema),
+  effectiveServers: map(McpServerConfigSchema),
   status: arr(McpServerSnapshotSchema),
 });
 export type ProjectMcpStateResponse = Static<typeof ProjectMcpStateResponseSchema>;
 
+export const PutGlobalMcpConfigRequestSchema = obj({
+  servers: map(McpServerConfigSchema),
+});
+export type PutGlobalMcpConfigRequest = Static<typeof PutGlobalMcpConfigRequestSchema>;
+
+export const UpsertGlobalMcpServerRequestSchema = obj({
+  config: McpServerConfigSchema,
+});
+export type UpsertGlobalMcpServerRequest = Static<typeof UpsertGlobalMcpServerRequestSchema>;
+
 export const PutMcpConfigRequestSchema = obj({
-  servers: map(McpServerEntryFieldSchema),
+  servers: map(McpServerEntryInputSchema),
 });
 export type PutMcpConfigRequest = Static<typeof PutMcpConfigRequestSchema>;
 
 export const UpsertMcpServerRequestSchema = obj({
-  config: McpServerEntryFieldSchema,
+  config: McpServerEntryInputSchema,
 });
 export type UpsertMcpServerRequest = Static<typeof UpsertMcpServerRequestSchema>;
 

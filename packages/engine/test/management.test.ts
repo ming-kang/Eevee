@@ -764,6 +764,24 @@ test("shared McpHub propagates live MCP reloads to multiple open projects and su
       assert.equal(observedToolsByProject[0]?.includes("mcp__alpha__ping"), false);
       assert.equal(observedToolsByProject[1]?.includes("mcp__alpha__ping"), false);
 
+      // Global /mcp PUT and upsert reject empty {} and partial overrides with 400
+      for (const [path, body] of [
+        ["/mcp", { servers: { bad: {} } }],
+        ["/mcp", { servers: { bad: { enabled: false } } }],
+        ["/mcp/servers/bad", { config: {} }],
+        ["/mcp/servers/bad", { config: { enabled: false } }],
+      ] as const) {
+        const res = await fetch(`${foreground.url}${path}`, {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${foreground.token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+        assert.equal(res.status, 400, `expected 400 for PUT ${path}`);
+      }
+
       // Invalid namespace collision rejected with 400 BEFORE mutating kv
       await assert.rejects(
         client.putMcpConfig({

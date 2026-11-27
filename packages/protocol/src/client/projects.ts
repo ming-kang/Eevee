@@ -94,227 +94,233 @@ export type TaskStreamEvent =
       readonly message?: string;
     };
 
-export class ProjectsClient {
-  readonly #transport: HttpTransport;
+export function createProjectsClient(transport: HttpTransport) {
+  return {
+    createProject(
+      input: CreateProjectRequest,
+      signal?: AbortSignal,
+    ): Promise<CreateProjectResponse> {
+      return transport.post("/projects", CreateProjectResponseSchema, input, signal);
+    },
 
-  constructor(transport: HttpTransport) {
-    this.#transport = transport;
-  }
+    listProjects(signal?: AbortSignal): Promise<ListProjectsResponse> {
+      return transport.get("/projects", ListProjectsResponseSchema, signal);
+    },
 
-  createProject(input: CreateProjectRequest, signal?: AbortSignal): Promise<CreateProjectResponse> {
-    return this.#transport.post("/projects", CreateProjectResponseSchema, input, signal);
-  }
+    getProject(id: string, signal?: AbortSignal): Promise<GetProjectResponse> {
+      return transport.get(`/projects/${encodeURIComponent(id)}`, GetProjectResponseSchema, signal);
+    },
 
-  listProjects(signal?: AbortSignal): Promise<ListProjectsResponse> {
-    return this.#transport.get("/projects", ListProjectsResponseSchema, signal);
-  }
+    updateProject(
+      id: string,
+      input: UpdateProjectRequest,
+      signal?: AbortSignal,
+    ): Promise<GetProjectResponse> {
+      return transport.patch(
+        `/projects/${encodeURIComponent(id)}`,
+        GetProjectResponseSchema,
+        input,
+        signal,
+      );
+    },
 
-  getProject(id: string, signal?: AbortSignal): Promise<GetProjectResponse> {
-    return this.#transport.get(
-      `/projects/${encodeURIComponent(id)}`,
-      GetProjectResponseSchema,
-      signal,
-    );
-  }
+    deleteProject(id: string, signal?: AbortSignal): Promise<DeleteProjectResponse> {
+      return transport.del(
+        `/projects/${encodeURIComponent(id)}`,
+        DeleteProjectResponseSchema,
+        signal,
+      );
+    },
 
-  updateProject(
-    id: string,
-    input: UpdateProjectRequest,
-    signal?: AbortSignal,
-  ): Promise<GetProjectResponse> {
-    return this.#transport.patch(
-      `/projects/${encodeURIComponent(id)}`,
-      GetProjectResponseSchema,
-      input,
-      signal,
-    );
-  }
+    getProjectMemory(id: string, signal?: AbortSignal): Promise<ProjectMemoryResponse> {
+      return transport.get(
+        `/projects/${encodeURIComponent(id)}/memory`,
+        ProjectMemoryResponseSchema,
+        signal,
+      );
+    },
 
-  deleteProject(id: string, signal?: AbortSignal): Promise<DeleteProjectResponse> {
-    return this.#transport.del(
-      `/projects/${encodeURIComponent(id)}`,
-      DeleteProjectResponseSchema,
-      signal,
-    );
-  }
+    putProjectMemory(
+      id: string,
+      input: PutProjectMemoryRequest,
+      signal?: AbortSignal,
+    ): Promise<ProjectMemoryResponse> {
+      return transport.put(
+        `/projects/${encodeURIComponent(id)}/memory`,
+        ProjectMemoryResponseSchema,
+        input,
+        signal,
+      );
+    },
 
-  getProjectMemory(id: string, signal?: AbortSignal): Promise<ProjectMemoryResponse> {
-    return this.#transport.get(
-      `/projects/${encodeURIComponent(id)}/memory`,
-      ProjectMemoryResponseSchema,
-      signal,
-    );
-  }
+    getProjectUsage(id: string, signal?: AbortSignal): Promise<ProjectUsageResponse> {
+      return transport.get(
+        `/projects/${encodeURIComponent(id)}/usage`,
+        ProjectUsageResponseSchema,
+        signal,
+      );
+    },
 
-  putProjectMemory(
-    id: string,
-    input: PutProjectMemoryRequest,
-    signal?: AbortSignal,
-  ): Promise<ProjectMemoryResponse> {
-    return this.#transport.put(
-      `/projects/${encodeURIComponent(id)}/memory`,
-      ProjectMemoryResponseSchema,
-      input,
-      signal,
-    );
-  }
+    answerQuestion(
+      projectId: string,
+      questionId: QuestionId,
+      input: AnswerQuestionRequest,
+      signal?: AbortSignal,
+    ): Promise<AnswerQuestionResponse> {
+      return transport.post(
+        `/projects/${encodeURIComponent(projectId)}/questions/${encodeURIComponent(questionId)}/answer`,
+        AnswerQuestionResponseSchema,
+        input,
+        signal,
+      );
+    },
 
-  getProjectUsage(id: string, signal?: AbortSignal): Promise<ProjectUsageResponse> {
-    return this.#transport.get(
-      `/projects/${encodeURIComponent(id)}/usage`,
-      ProjectUsageResponseSchema,
-      signal,
-    );
-  }
+    listWorkerTasks(
+      projectId: string,
+      workerId: WorkerId,
+      opts?: ListWorkerTasksOptions,
+    ): Promise<ListWorkerTasksResponse> {
+      const query = buildQuery({ status: opts?.status, limit: opts?.limit });
+      return transport.get(
+        `/projects/${encodeURIComponent(projectId)}/workers/${encodeURIComponent(workerId)}/tasks${query}`,
+        ListWorkerTasksResponseSchema,
+        opts?.signal,
+      );
+    },
 
-  answerQuestion(
-    projectId: string,
-    questionId: QuestionId,
-    input: AnswerQuestionRequest,
-    signal?: AbortSignal,
-  ): Promise<AnswerQuestionResponse> {
-    return this.#transport.post(
-      `/projects/${encodeURIComponent(projectId)}/questions/${encodeURIComponent(questionId)}/answer`,
-      AnswerQuestionResponseSchema,
-      input,
-      signal,
-    );
-  }
+    readWorkerTask(
+      projectId: string,
+      workerId: WorkerId,
+      taskId: string,
+      opts?: ReadWorkerTaskOptions,
+    ): Promise<ReadWorkerTaskResponse> {
+      const query = buildQuery({
+        mode: opts?.mode,
+        bytes: opts?.bytes,
+        sinceBytes: opts?.sinceBytes,
+        endByte: opts?.endByte,
+        filter: opts?.filter,
+        contextLines: opts?.contextLines,
+      });
+      return transport.get(
+        `/projects/${encodeURIComponent(projectId)}/workers/${encodeURIComponent(workerId)}/tasks/${encodeURIComponent(taskId)}${query}`,
+        ReadWorkerTaskResponseSchema,
+        opts?.signal,
+      );
+    },
 
-  listWorkerTasks(
-    projectId: string,
-    workerId: WorkerId,
-    opts?: ListWorkerTasksOptions,
-  ): Promise<ListWorkerTasksResponse> {
-    const query = buildQuery({ status: opts?.status, limit: opts?.limit });
-    return this.#transport.get(
-      `/projects/${encodeURIComponent(projectId)}/workers/${encodeURIComponent(workerId)}/tasks${query}`,
-      ListWorkerTasksResponseSchema,
-      opts?.signal,
-    );
-  }
+    streamWorkerTask(
+      projectId: string,
+      workerId: WorkerId,
+      taskId: string,
+      opts?: StreamWorkerTaskOptions,
+    ): AsyncGenerator<TaskStreamEvent> {
+      const query = buildQuery({
+        mode: opts?.mode,
+        bytes: opts?.bytes,
+        sinceBytes: opts?.sinceBytes,
+      });
+      const path = `/projects/${encodeURIComponent(projectId)}/workers/${encodeURIComponent(workerId)}/tasks/${encodeURIComponent(taskId)}/stream${query}`;
+      return transport.streamDecodedSse<TaskStreamEvent>(
+        path,
+        { signal: opts?.signal, isTerminal: (event) => event.type === "end" },
+        (sse) => {
+          if (sse.event === "snapshot") {
+            const parsed = transport.decodeSseEvent(
+              sse,
+              TaskStreamSnapshotEventSchema,
+              "task snapshot SSE payload",
+            );
+            return { type: "snapshot", task: parsed.task, output: parsed.output };
+          }
+          if (sse.event === "chunk") {
+            const parsed = transport.decodeSseEvent(
+              sse,
+              TaskStreamChunkEventSchema,
+              "task chunk SSE payload",
+            );
+            return {
+              type: "chunk",
+              text: parsed.text,
+              fromByte: parsed.fromByte,
+              endByte: parsed.endByte,
+              totalBytes: parsed.totalBytes,
+            };
+          }
+          if (sse.event === "status") {
+            const parsed = transport.decodeSseEvent(
+              sse,
+              TaskStreamStatusEventSchema,
+              "task status SSE payload",
+            );
+            return { type: "status", task: parsed.task };
+          }
+          if (sse.event === "end") {
+            const parsed = transport.decodeSseEvent(
+              sse,
+              StreamEndEventSchema,
+              "task end SSE payload",
+            );
+            return {
+              type: "end",
+              reason: parsed.reason,
+              ...(parsed.message === undefined ? {} : { message: parsed.message }),
+            };
+          }
+          return undefined;
+        },
+      );
+    },
 
-  readWorkerTask(
-    projectId: string,
-    workerId: WorkerId,
-    taskId: string,
-    opts?: ReadWorkerTaskOptions,
-  ): Promise<ReadWorkerTaskResponse> {
-    const query = buildQuery({
-      mode: opts?.mode,
-      bytes: opts?.bytes,
-      sinceBytes: opts?.sinceBytes,
-      endByte: opts?.endByte,
-      filter: opts?.filter,
-      contextLines: opts?.contextLines,
-    });
-    return this.#transport.get(
-      `/projects/${encodeURIComponent(projectId)}/workers/${encodeURIComponent(workerId)}/tasks/${encodeURIComponent(taskId)}${query}`,
-      ReadWorkerTaskResponseSchema,
-      opts?.signal,
-    );
-  }
+    killWorkerTask(
+      projectId: string,
+      workerId: WorkerId,
+      taskId: string,
+      signal?: AbortSignal,
+    ): Promise<KillWorkerTaskResponse> {
+      return transport.post(
+        `/projects/${encodeURIComponent(projectId)}/workers/${encodeURIComponent(workerId)}/tasks/${encodeURIComponent(taskId)}/kill`,
+        KillWorkerTaskResponseSchema,
+        undefined,
+        signal,
+      );
+    },
 
-  async *streamWorkerTask(
-    projectId: string,
-    workerId: WorkerId,
-    taskId: string,
-    opts?: StreamWorkerTaskOptions,
-  ): AsyncGenerator<TaskStreamEvent> {
-    const query = buildQuery({
-      mode: opts?.mode,
-      bytes: opts?.bytes,
-      sinceBytes: opts?.sinceBytes,
-    });
-    const path = `/projects/${encodeURIComponent(projectId)}/workers/${encodeURIComponent(workerId)}/tasks/${encodeURIComponent(taskId)}/stream${query}`;
-    for await (const sse of this.#transport.streamSse(path, opts?.signal)) {
-      if (sse.event === "snapshot") {
-        const parsed = this.#transport.decodeSseEvent(
-          sse,
-          TaskStreamSnapshotEventSchema,
-          "task snapshot SSE payload",
-        );
-        yield { type: "snapshot", task: parsed.task, output: parsed.output };
-      } else if (sse.event === "chunk") {
-        const parsed = this.#transport.decodeSseEvent(
-          sse,
-          TaskStreamChunkEventSchema,
-          "task chunk SSE payload",
-        );
-        yield {
-          type: "chunk",
-          text: parsed.text,
-          fromByte: parsed.fromByte,
-          endByte: parsed.endByte,
-          totalBytes: parsed.totalBytes,
-        };
-      } else if (sse.event === "status") {
-        const parsed = this.#transport.decodeSseEvent(
-          sse,
-          TaskStreamStatusEventSchema,
-          "task status SSE payload",
-        );
-        yield { type: "status", task: parsed.task };
-      } else if (sse.event === "end") {
-        const parsed = this.#transport.decodeSseEvent(
-          sse,
-          StreamEndEventSchema,
-          "task end SSE payload",
-        );
-        yield {
-          type: "end",
-          reason: parsed.reason,
-          ...(parsed.message === undefined ? {} : { message: parsed.message }),
-        };
-        return;
-      }
-    }
-  }
+    getBoard(projectId: string, signal?: AbortSignal): Promise<BoardViewPayload> {
+      return transport.get(
+        `/projects/${encodeURIComponent(projectId)}/board`,
+        BoardViewSchema,
+        signal,
+      );
+    },
 
-  killWorkerTask(
-    projectId: string,
-    workerId: WorkerId,
-    taskId: string,
-    signal?: AbortSignal,
-  ): Promise<KillWorkerTaskResponse> {
-    return this.#transport.post(
-      `/projects/${encodeURIComponent(projectId)}/workers/${encodeURIComponent(workerId)}/tasks/${encodeURIComponent(taskId)}/kill`,
-      KillWorkerTaskResponseSchema,
-      undefined,
-      signal,
-    );
-  }
-
-  getBoard(projectId: string, signal?: AbortSignal): Promise<BoardViewPayload> {
-    return this.#transport.get(
-      `/projects/${encodeURIComponent(projectId)}/board`,
-      BoardViewSchema,
-      signal,
-    );
-  }
-
-  async *streamBoard(
-    projectId: string,
-    opts?: StreamBoardOptions,
-  ): AsyncGenerator<BoardStreamEvent> {
-    const path = `/projects/${encodeURIComponent(projectId)}/board/stream`;
-    for await (const sse of this.#transport.streamSse(path, opts?.signal)) {
-      if (sse.event === "board") {
-        const board = this.#transport.decodeSseEvent(sse, BoardViewSchema, "board SSE payload");
-        yield { type: "board", board };
-      } else if (sse.event === "end") {
-        const end = this.#transport.decodeSseEvent(
-          sse,
-          StreamEndEventSchema,
-          "board end SSE payload",
-        );
-        yield {
-          type: "end",
-          reason: end.reason,
-          ...(end.message === undefined ? {} : { message: end.message }),
-        };
-        return;
-      }
-    }
-  }
+    streamBoard(projectId: string, opts?: StreamBoardOptions): AsyncGenerator<BoardStreamEvent> {
+      const path = `/projects/${encodeURIComponent(projectId)}/board/stream`;
+      return transport.streamDecodedSse<BoardStreamEvent>(
+        path,
+        { signal: opts?.signal, isTerminal: (event) => event.type === "end" },
+        (sse) => {
+          if (sse.event === "board") {
+            const board = transport.decodeSseEvent(sse, BoardViewSchema, "board SSE payload");
+            return { type: "board", board };
+          }
+          if (sse.event === "end") {
+            const end = transport.decodeSseEvent(
+              sse,
+              StreamEndEventSchema,
+              "board end SSE payload",
+            );
+            return {
+              type: "end",
+              reason: end.reason,
+              ...(end.message === undefined ? {} : { message: end.message }),
+            };
+          }
+          return undefined;
+        },
+      );
+    },
+  };
 }
+
+export type ProjectsClient = ReturnType<typeof createProjectsClient>;

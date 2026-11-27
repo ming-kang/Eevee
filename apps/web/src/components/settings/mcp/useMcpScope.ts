@@ -1,4 +1,12 @@
-import type { McpLogsResponse, McpServerSnapshotPayload } from "@eevee/protocol";
+import {
+  type McpLogsResponse,
+  type McpServerSnapshotPayload,
+  PutGlobalMcpConfigRequestSchema,
+  PutMcpConfigRequestSchema,
+  parseWithSchema,
+  UpsertGlobalMcpServerRequestSchema,
+  UpsertMcpServerRequestSchema,
+} from "@eevee/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../lib/api.ts";
 import { type NormalizedMcpState, normalizeMcpState } from "./scope-helpers.ts";
@@ -61,12 +69,17 @@ export function useMcpScope(projectId?: string): UseMcpScopeResult {
 
   const upsertServer = useCallback(
     async (serverName: string, config: Record<string, unknown>) => {
-      const next = await client.upsertServer(serverName, { config });
+      const input = parseWithSchema(
+        projectId === undefined ? UpsertGlobalMcpServerRequestSchema : UpsertMcpServerRequestSchema,
+        { config },
+        "MCP server config",
+      );
+      const next = await client.upsertServer(serverName, input);
       if (activeClientRef.current === client) {
         setState(normalizeMcpState(next));
       }
     },
-    [client],
+    [client, projectId],
   );
 
   const deleteServer = useCallback(
@@ -81,12 +94,17 @@ export function useMcpScope(projectId?: string): UseMcpScopeResult {
 
   const putConfig = useCallback(
     async (servers: Record<string, Record<string, unknown>>) => {
-      const next = await client.putConfig({ servers });
+      const input = parseWithSchema(
+        projectId === undefined ? PutGlobalMcpConfigRequestSchema : PutMcpConfigRequestSchema,
+        { servers },
+        "MCP config",
+      );
+      const next = await client.putConfig(input);
       if (activeClientRef.current === client) {
         setState(normalizeMcpState(next));
       }
     },
-    [client],
+    [client, projectId],
   );
 
   const reconnect = useCallback(

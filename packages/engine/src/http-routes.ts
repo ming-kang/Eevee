@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Static } from "@earendil-works/pi-schema";
+import type { Schema, Static } from "@earendil-works/pi-schema";
 import {
   AnswerQuestionRequestSchema,
   BuiltinModelMatchRequestSchema,
@@ -11,6 +11,7 @@ import {
   McpOAuthInputRequestSchema,
   ModelProfilesDocumentSchema,
   ProbeProviderRequestSchema,
+  PutGlobalMcpConfigRequestSchema,
   PutMcpConfigRequestSchema,
   PutProjectMemoryRequestSchema,
   PutSkillsPolicyRequestSchema,
@@ -21,6 +22,7 @@ import {
   SmokeTestModelRequestSchema,
   StartLoginRequestSchema,
   UpdateProjectRequestSchema,
+  UpsertGlobalMcpServerRequestSchema,
   UpsertMcpServerRequestSchema,
   UpsertProviderModelRequestSchema,
   UpsertProviderRequestSchema,
@@ -60,15 +62,19 @@ async function withDisconnectSignal(
   }
 }
 
-type ScopedMcpHandlers<TScope> = {
+type ScopedMcpHandlers<
+  TScope,
+  TPutInput extends Static<typeof PutMcpConfigRequestSchema> = Static<
+    typeof PutMcpConfigRequestSchema
+  >,
+  TUpsertInput extends Static<typeof UpsertMcpServerRequestSchema> = Static<
+    typeof UpsertMcpServerRequestSchema
+  >,
+> = {
   readonly getState: (scope: TScope) => unknown;
-  readonly putConfig: (scope: TScope, input: Static<typeof PutMcpConfigRequestSchema>) => unknown;
+  readonly putConfig: (scope: TScope, input: TPutInput) => unknown;
   readonly reconnect: (scope: TScope, input: Static<typeof ReconnectMcpRequestSchema>) => unknown;
-  readonly upsertServer: (
-    scope: TScope,
-    serverName: string,
-    input: Static<typeof UpsertMcpServerRequestSchema>,
-  ) => unknown;
+  readonly upsertServer: (scope: TScope, serverName: string, input: TUpsertInput) => unknown;
   readonly deleteServer: (scope: TScope, serverName: string) => unknown;
   readonly getLogs: (scope: TScope, serverName: string) => unknown;
   readonly startOAuth: (scope: TScope, serverName: string) => unknown;
@@ -95,9 +101,19 @@ type ScopedMcpParams = {
   readonly sessionId: string;
 };
 
-function createScopedMcpRoutes<Prefix extends "/mcp" | "/projects/:projectId/mcp">(
+function createScopedMcpRoutes<
+  Prefix extends "/mcp" | "/projects/:projectId/mcp",
+  TPutInput extends Static<typeof PutMcpConfigRequestSchema>,
+  TUpsertInput extends Static<typeof UpsertMcpServerRequestSchema>,
+>(
   prefix: Prefix,
-  handlers: ScopedMcpHandlers<Prefix extends "/mcp" ? undefined : string>,
+  schemas: {
+    readonly putConfig: Schema<TPutInput>;
+    readonly putConfigLabel: string;
+    readonly upsertServer: Schema<TUpsertInput>;
+    readonly upsertServerLabel: string;
+  },
+  handlers: ScopedMcpHandlers<Prefix extends "/mcp" ? undefined : string, TPutInput, TUpsertInput>,
 ): readonly Route[] {
   type TScope = Prefix extends "/mcp" ? undefined : string;
   const scopeOf = (params: { readonly projectId?: string }) =>
@@ -124,7 +140,7 @@ function createScopedMcpRoutes<Prefix extends "/mcp" | "/projects/:projectId/mcp
       sendJson(res, 200, handlers.getState(scope));
     }),
     mcpRoute("PUT", "", async ({ req, res, scope }) => {
-      const input = await readBody(req, PutMcpConfigRequestSchema, "PutMcpConfigRequest");
+      const input = await readBody(req, schemas.putConfig, schemas.putConfigLabel);
       sendJson(res, 200, await handlers.putConfig(scope, input));
     }),
     mcpRoute("POST", "/reconnect", async ({ req, res, scope }) => {
@@ -132,7 +148,7 @@ function createScopedMcpRoutes<Prefix extends "/mcp" | "/projects/:projectId/mcp
       sendJson(res, 200, await handlers.reconnect(scope, input));
     }),
     mcpRoute("PUT", "/servers/:serverName", async ({ req, res, scope, params }) => {
-      const input = await readBody(req, UpsertMcpServerRequestSchema, "UpsertMcpServerRequest");
+      const input = await readBody(req, schemas.upsertServer, schemas.upsertServerLabel);
       sendJson(res, 200, await handlers.upsertServer(scope, params.serverName, input));
     }),
     mcpRoute("DELETE", "/servers/:serverName", async ({ res, scope, params }) => {
@@ -367,21 +383,30 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     }),
   ];
 
-  const mcpRoutes: readonly Route[] = createScopedMcpRoutes("/mcp", {
-    getState: () => engine.getMcpState(),
-    putConfig: (_, input) => engine.putMcpConfig(input),
-    reconnect: (_, input) => engine.reconnectMcp(input),
-    upsertServer: (_, serverName, input) => engine.upsertMcpServer(serverName, input),
-    deleteServer: (_, serverName) => engine.deleteMcpServer(serverName),
-    getLogs: (_, serverName) => engine.getMcpLogs(serverName),
-    startOAuth: (_, serverName) => engine.startMcpOAuth(serverName),
-    streamOAuth: (req, res, _, serverName, sessionId) =>
-      streams.handleMcpOAuthStream(req, res, serverName, sessionId),
-    submitOAuthInput: (_, serverName, sessionId, input) =>
-      engine.submitMcpOAuthInput(serverName, sessionId, input),
-    cancelOAuth: (_, serverName, sessionId) => engine.cancelMcpOAuth(serverName, sessionId),
-    logoutOAuth: (_, serverName) => engine.logoutMcpOAuth(serverName),
-  });
+  const mcpRoutes: readonly Route[] = createScopedMcpRoutes(
+    "/mcp",
+    {
+      putConfig: PutGlobalMcpConfigRequestSchema,
+      putConfigLabel: "PutGlobalMcpConfigRequest",
+      upsertServer: UpsertGlobalMcpServerRequestSchema,
+      upsertServerLabel: "UpsertGlobalMcpServerRequest",
+    },
+    {
+      getState: () => engine.getMcpState(),
+      putConfig: (_, input) => engine.putMcpConfig(input),
+      reconnect: (_, input) => engine.reconnectMcp(input),
+      upsertServer: (_, serverName, input) => engine.upsertMcpServer(serverName, input),
+      deleteServer: (_, serverName) => engine.deleteMcpServer(serverName),
+      getLogs: (_, serverName) => engine.getMcpLogs(serverName),
+      startOAuth: (_, serverName) => engine.startMcpOAuth(serverName),
+      streamOAuth: (req, res, _, serverName, sessionId) =>
+        streams.handleMcpOAuthStream(req, res, serverName, sessionId),
+      submitOAuthInput: (_, serverName, sessionId, input) =>
+        engine.submitMcpOAuthInput(serverName, sessionId, input),
+      cancelOAuth: (_, serverName, sessionId) => engine.cancelMcpOAuth(serverName, sessionId),
+      logoutOAuth: (_, serverName) => engine.logoutMcpOAuth(serverName),
+    },
+  );
 
   const settingsRoutes: readonly Route[] = [
     route("GET", "/settings", ({ res }) => {
@@ -439,23 +464,33 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
       const input = await readBody(req, PutSkillsPolicyRequestSchema, "PutSkillsPolicyRequest");
       sendJson(res, 200, await engine.putProjectSkillsPolicy(params.projectId, input));
     }),
-    ...createScopedMcpRoutes("/projects/:projectId/mcp", {
-      getState: (projectId) => engine.getProjectMcpState(projectId),
-      putConfig: (projectId, input) => engine.putProjectMcpConfig(projectId, input),
-      reconnect: (projectId, input) => engine.reconnectProjectMcp(projectId, input),
-      upsertServer: (projectId, serverName, input) =>
-        engine.upsertProjectMcpServer(projectId, serverName, input),
-      deleteServer: (projectId, serverName) => engine.deleteProjectMcpServer(projectId, serverName),
-      getLogs: (projectId, serverName) => engine.getProjectMcpLogs(projectId, serverName),
-      startOAuth: (projectId, serverName) => engine.startProjectMcpOAuth(projectId, serverName),
-      streamOAuth: (req, res, projectId, serverName, sessionId) =>
-        streams.handleProjectMcpOAuthStream(req, res, projectId, serverName, sessionId),
-      submitOAuthInput: (projectId, serverName, sessionId, input) =>
-        engine.submitProjectMcpOAuthInput(projectId, serverName, sessionId, input),
-      cancelOAuth: (projectId, serverName, sessionId) =>
-        engine.cancelProjectMcpOAuth(projectId, serverName, sessionId),
-      logoutOAuth: (projectId, serverName) => engine.logoutProjectMcpOAuth(projectId, serverName),
-    }),
+    ...createScopedMcpRoutes(
+      "/projects/:projectId/mcp",
+      {
+        putConfig: PutMcpConfigRequestSchema,
+        putConfigLabel: "PutMcpConfigRequest",
+        upsertServer: UpsertMcpServerRequestSchema,
+        upsertServerLabel: "UpsertMcpServerRequest",
+      },
+      {
+        getState: (projectId) => engine.getProjectMcpState(projectId),
+        putConfig: (projectId, input) => engine.putProjectMcpConfig(projectId, input),
+        reconnect: (projectId, input) => engine.reconnectProjectMcp(projectId, input),
+        upsertServer: (projectId, serverName, input) =>
+          engine.upsertProjectMcpServer(projectId, serverName, input),
+        deleteServer: (projectId, serverName) =>
+          engine.deleteProjectMcpServer(projectId, serverName),
+        getLogs: (projectId, serverName) => engine.getProjectMcpLogs(projectId, serverName),
+        startOAuth: (projectId, serverName) => engine.startProjectMcpOAuth(projectId, serverName),
+        streamOAuth: (req, res, projectId, serverName, sessionId) =>
+          streams.handleProjectMcpOAuthStream(req, res, projectId, serverName, sessionId),
+        submitOAuthInput: (projectId, serverName, sessionId, input) =>
+          engine.submitProjectMcpOAuthInput(projectId, serverName, sessionId, input),
+        cancelOAuth: (projectId, serverName, sessionId) =>
+          engine.cancelProjectMcpOAuth(projectId, serverName, sessionId),
+        logoutOAuth: (projectId, serverName) => engine.logoutProjectMcpOAuth(projectId, serverName),
+      },
+    ),
     route("GET", "/projects/:projectId/board", async ({ res, params }) => {
       sendJson(res, 200, await engine.getBoard(params.projectId));
     }),

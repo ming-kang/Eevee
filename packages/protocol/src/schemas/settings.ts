@@ -1,6 +1,6 @@
 import { bool, int, lit, map, num, obj, opt, type Static, str } from "@earendil-works/pi-schema";
 import { ModelSlotsOverrideSchema, ToolsSettingsSchema } from "./common.ts";
-import { McpServerEntryFieldSchema } from "./mcp.ts";
+import { McpServerConfigSchema } from "./mcp.ts";
 import { ModelProfilesDocumentSchema } from "./providers.ts";
 import { SkillPolicyMapSchema } from "./skills.ts";
 
@@ -18,7 +18,7 @@ export const ConfigBundleSchema = obj({
   version: lit(1),
   settings: EngineSettingsSchema,
   modelProfiles: ModelProfilesDocumentSchema,
-  mcpServers: map(McpServerEntryFieldSchema),
+  mcpServers: map(McpServerConfigSchema),
   skillsPolicy: opt(SkillPolicyMapSchema),
   modelsConfig: opt(obj({}, { open: true })),
 });

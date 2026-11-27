@@ -22,7 +22,9 @@ import {
   ConfigBundleSchema,
   type EngineSettings,
   EngineSettingsSchema,
-  McpServerEntryFieldSchema,
+  type McpServerConfigPayload,
+  McpServerConfigSchema,
+  type McpServerEntryInput,
   type ModelProfilesDocument,
   ModelProfilesDocumentSchema,
   parseWithSchema,
@@ -80,7 +82,7 @@ export function formatModelProfiles(doc: ModelProfilesDocument): string | undefi
   return lines.join("\n");
 }
 
-const McpServersMapSchema = map(McpServerEntryFieldSchema);
+const McpServersMapSchema = map(McpServerConfigSchema);
 
 export function readEngineSettings(store: EngineStore): EngineSettings {
   return store.getKvParsed(KV_SETTINGS, EngineSettingsSchema) ?? {};
@@ -94,12 +96,8 @@ export function readModelProfiles(store: EngineStore): ModelProfilesDocument {
   return store.getKvParsed(KV_MODEL_PROFILES, ModelProfilesDocumentSchema) ?? { profiles: [] };
 }
 
-export function getMcpServersRecord(store: EngineStore): Record<string, Record<string, unknown>> {
-  return (
-    (store.getKvParsed(KV_MCP_SERVERS, McpServersMapSchema) as
-      | Record<string, Record<string, unknown>>
-      | undefined) ?? {}
-  );
+export function getMcpServersRecord(store: EngineStore): Record<string, McpServerConfigPayload> {
+  return store.getKvParsed(KV_MCP_SERVERS, McpServersMapSchema) ?? {};
 }
 
 export function readGlobalSkillsPolicy(store: EngineStore): SkillPolicyMap {
@@ -298,8 +296,8 @@ export function httpUrlOfMcpRecord(raw: unknown): string | undefined {
 }
 
 export function findRemovedHttpMcpServers(
-  previous: Readonly<Record<string, Record<string, unknown>>>,
-  next: Readonly<Record<string, Record<string, unknown>>>,
+  previous: Readonly<Record<string, unknown>>,
+  next: Readonly<Record<string, unknown>>,
 ): RemovedHttpMcpServer[] {
   const removed: RemovedHttpMcpServer[] = [];
   for (const [name, prevRaw] of Object.entries(previous)) {
@@ -319,7 +317,7 @@ export function findRemovedHttpMcpServers(
 
 function collectReferencedOAuthKeys(store: EngineStore): Set<string> {
   const keys = new Set<string>();
-  const addFromMap = (servers: Readonly<Record<string, Record<string, unknown>>>) => {
+  const addFromMap = (servers: Readonly<Record<string, unknown>>) => {
     for (const [name, raw] of Object.entries(servers)) {
       const url = httpUrlOfMcpRecord(raw);
       if (url !== undefined) {
@@ -339,13 +337,13 @@ function collectReferencedOAuthKeys(store: EngineStore): Set<string> {
 
 export function pruneOrphanProjectMcpOverrides(
   store: EngineStore,
-  nextGlobalServers: Readonly<Record<string, Record<string, unknown>>>,
+  nextGlobalServers: Readonly<Record<string, unknown>>,
 ): void {
   for (const project of store.listProjects()) {
     const projectServers = store.getProjectMcpServers(project.id);
     if (projectServers === undefined) continue;
     let changed = false;
-    const nextProjectServers: Record<string, Record<string, unknown>> = {};
+    const nextProjectServers: Record<string, McpServerEntryInput> = {};
     for (const [name, raw] of Object.entries(projectServers)) {
       if (isRecord(raw) && isMcpServerOverride(raw) && !Object.hasOwn(nextGlobalServers, name)) {
         changed = true;

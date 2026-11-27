@@ -19,6 +19,7 @@ import {
   InputModalitiesSchema,
   ModelDetailSchema,
   ModelsConfigDiagnosticSchema,
+  PartialModelCostSchema,
   ThinkingLevelConfigSchema,
 } from "./models.ts";
 
@@ -215,7 +216,7 @@ export const UpsertProviderModelRequestSchema = obj({
   input: opt(nullable(InputModalitiesSchema)),
   contextWindow: opt(nullable(num({ minimum: 0 }))),
   maxTokens: opt(nullable(num({ minimum: 0 }))),
-  cost: opt(nullable(obj({}, { open: true }))),
+  cost: opt(nullable(PartialModelCostSchema)),
   promptCache: opt(nullable(obj({}, { open: true }))),
   inputLimits: opt(nullable(obj({}, { open: true }))),
   samplingParams: opt(nullable(obj({}, { open: true }))),

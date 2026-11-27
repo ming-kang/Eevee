@@ -4,7 +4,8 @@ import { DatabaseSync } from "node:sqlite";
 import { arr, map, type Schema, type Static, str } from "@earendil-works/pi-schema";
 import {
   type CreateProjectRequest,
-  McpServerEntryFieldSchema,
+  type McpServerEntryInput,
+  McpServerEntryInputSchema,
   type ModelSlotsOverride,
   ModelSlotsOverrideSchema,
   type ProjectSummary,
@@ -39,7 +40,7 @@ type KvRow = {
 };
 
 const ProjectWorkspacesSchema = arr(str({ minLength: 1 }), { minItems: 1 });
-const McpServersMapSchema = map(McpServerEntryFieldSchema);
+const McpServersMapSchema = map(McpServerEntryInputSchema);
 
 type Migration = (db: DatabaseSync) => void;
 
@@ -368,21 +369,17 @@ export class EngineStore {
     return Number(result.changes) > 0;
   }
 
-  getProjectMcpServers(projectId: string): Record<string, Record<string, unknown>> | undefined {
+  getProjectMcpServers(projectId: string): Record<string, McpServerEntryInput> | undefined {
     const row = this.#db.prepare("SELECT mcp_json FROM projects WHERE id = ?").get(projectId) as
       | { readonly mcp_json: string | null }
       | undefined;
     if (row === undefined || row.mcp_json === null) return undefined;
-    return parseJsonColumn(
-      row.mcp_json,
-      McpServersMapSchema,
-      `project "${projectId}" mcp_json`,
-    ) as Record<string, Record<string, unknown>>;
+    return parseJsonColumn(row.mcp_json, McpServersMapSchema, `project "${projectId}" mcp_json`);
   }
 
   setProjectMcpServers(
     projectId: string,
-    servers: Record<string, Record<string, unknown>> | null,
+    servers: Record<string, McpServerEntryInput> | null,
   ): boolean {
     const json =
       servers === null || Object.keys(servers).length === 0 ? null : JSON.stringify(servers);

@@ -232,11 +232,14 @@ export class Engine {
     return this.#sync((c) => mcp.getMcpState(c.mcp));
   }
 
-  putMcpConfig(input: P.PutMcpConfigRequest): Promise<P.McpStateResponse> {
+  putMcpConfig(input: P.PutGlobalMcpConfigRequest): Promise<P.McpStateResponse> {
     return this.#call((c) => mcp.putMcpConfig(c.mcp, input));
   }
 
-  upsertMcpServer(name: string, input: P.UpsertMcpServerRequest): Promise<P.McpStateResponse> {
+  upsertMcpServer(
+    name: string,
+    input: P.UpsertGlobalMcpServerRequest,
+  ): Promise<P.McpStateResponse> {
     return this.#call((c) => mcp.upsertMcpServer(c.mcp, name, input));
   }
 

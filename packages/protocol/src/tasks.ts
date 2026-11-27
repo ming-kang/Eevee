@@ -41,3 +41,24 @@ export function buildTaskLineMatcher(
   const needle = rawFilter.toLowerCase();
   return (line) => line.toLowerCase().includes(needle);
 }
+
+export function validateTaskReadOptions(
+  options: { readonly filter?: string; readonly contextLines?: number } = {},
+): ((line: string) => boolean) | undefined {
+  const filter = options.filter !== undefined && options.filter !== "" ? options.filter : undefined;
+  if (options.contextLines !== undefined) {
+    if (filter === undefined) {
+      throw new Error("contextLines requires filter");
+    }
+    if (
+      !Number.isInteger(options.contextLines) ||
+      options.contextLines < 0 ||
+      options.contextLines > TASK_FILTER_MAX_CONTEXT_LINES
+    ) {
+      throw new Error(
+        `Invalid contextLines: must be an integer between 0 and ${TASK_FILTER_MAX_CONTEXT_LINES}`,
+      );
+    }
+  }
+  return filter !== undefined ? buildTaskLineMatcher(filter) : undefined;
+}

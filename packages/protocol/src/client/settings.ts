@@ -17,57 +17,55 @@ import {
 } from "../schemas/settings.ts";
 import type { HttpTransport } from "./transport.ts";
 
-export class SettingsClient {
-  readonly #transport: HttpTransport;
+export function createSettingsClient(transport: HttpTransport) {
+  return {
+    getWebSession(signal?: AbortSignal): Promise<WebSessionResponse> {
+      return transport.get("/auth/session", WebSessionResponseSchema, signal);
+    },
 
-  constructor(transport: HttpTransport) {
-    this.#transport = transport;
-  }
+    createWebSession(
+      input: CreateWebSessionRequest,
+      signal?: AbortSignal,
+    ): Promise<WebSessionResponse> {
+      return transport.post("/auth/session", WebSessionResponseSchema, input, signal);
+    },
 
-  getWebSession(signal?: AbortSignal): Promise<WebSessionResponse> {
-    return this.#transport.get("/auth/session", WebSessionResponseSchema, signal);
-  }
+    logoutWebSession(signal?: AbortSignal): Promise<OkResponse> {
+      return transport.post("/auth/logout", OkResponseSchema, {}, signal);
+    },
 
-  createWebSession(
-    input: CreateWebSessionRequest,
-    signal?: AbortSignal,
-  ): Promise<WebSessionResponse> {
-    return this.#transport.post("/auth/session", WebSessionResponseSchema, input, signal);
-  }
+    createWebTicket(signal?: AbortSignal): Promise<CreateWebTicketResponse> {
+      return transport.post("/auth/web-ticket", CreateWebTicketResponseSchema, {}, signal);
+    },
 
-  logoutWebSession(signal?: AbortSignal): Promise<OkResponse> {
-    return this.#transport.post("/auth/logout", OkResponseSchema, {}, signal);
-  }
+    health(signal?: AbortSignal): Promise<HealthResponse> {
+      return transport.get("/health", HealthResponseSchema, signal);
+    },
 
-  createWebTicket(signal?: AbortSignal): Promise<CreateWebTicketResponse> {
-    return this.#transport.post("/auth/web-ticket", CreateWebTicketResponseSchema, {}, signal);
-  }
+    shutdown(signal?: AbortSignal): Promise<OkResponse> {
+      return transport.post("/shutdown", OkResponseSchema, undefined, signal);
+    },
 
-  health(signal?: AbortSignal): Promise<HealthResponse> {
-    return this.#transport.get("/health", HealthResponseSchema, signal);
-  }
+    getSettings(signal?: AbortSignal): Promise<EngineSettings> {
+      return transport.get("/settings", EngineSettingsSchema, signal);
+    },
 
-  shutdown(signal?: AbortSignal): Promise<OkResponse> {
-    return this.#transport.post("/shutdown", OkResponseSchema, undefined, signal);
-  }
+    patchSettings(input: EngineSettings, signal?: AbortSignal): Promise<EngineSettings> {
+      return transport.patch("/settings", EngineSettingsSchema, input, signal);
+    },
 
-  getSettings(signal?: AbortSignal): Promise<EngineSettings> {
-    return this.#transport.get("/settings", EngineSettingsSchema, signal);
-  }
+    putSettings(input: EngineSettings, signal?: AbortSignal): Promise<EngineSettings> {
+      return transport.put("/settings", EngineSettingsSchema, input, signal);
+    },
 
-  patchSettings(input: EngineSettings, signal?: AbortSignal): Promise<EngineSettings> {
-    return this.#transport.patch("/settings", EngineSettingsSchema, input, signal);
-  }
+    exportConfig(signal?: AbortSignal): Promise<ConfigBundle> {
+      return transport.get("/config/export", ConfigBundleSchema, signal);
+    },
 
-  putSettings(input: EngineSettings, signal?: AbortSignal): Promise<EngineSettings> {
-    return this.#transport.put("/settings", EngineSettingsSchema, input, signal);
-  }
-
-  exportConfig(signal?: AbortSignal): Promise<ConfigBundle> {
-    return this.#transport.get("/config/export", ConfigBundleSchema, signal);
-  }
-
-  importConfig(input: ConfigBundle, signal?: AbortSignal): Promise<ConfigBundle> {
-    return this.#transport.post("/config/import", ConfigBundleSchema, input, signal);
-  }
+    importConfig(input: ConfigBundle, signal?: AbortSignal): Promise<ConfigBundle> {
+      return transport.post("/config/import", ConfigBundleSchema, input, signal);
+    },
+  };
 }
+
+export type SettingsClient = ReturnType<typeof createSettingsClient>;
