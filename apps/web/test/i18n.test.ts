@@ -30,4 +30,9 @@ test("translateFor interpolates parameters and readInitialLocale respects saved 
 
   const stored = new Map<string, string>([["eevee-locale", "en"]]);
   assert.equal(readInitialLocale({ getItem: (k) => stored.get(k) ?? null }, "zh-CN"), "en");
+
+  for (const level of ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const) {
+    assert.equal(translateFor("zh-CN", `modelMenu.thinking.${level}`), level);
+    assert.equal(translateFor("en", `modelMenu.thinking.${level}`), level);
+  }
 });

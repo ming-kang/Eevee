@@ -7,6 +7,7 @@ import type { OAuthUiSession } from "../useMcpOAuth.ts";
 import {
   DEFAULT_EXPOSURE,
   EXPOSURE_OPTIONS,
+  exposureDescKey,
   getExplicitToolExposure,
   type ServerLogsState,
 } from "./codec.ts";
@@ -168,6 +169,7 @@ export function ToolsDrawer({
                           ...EXPOSURE_OPTIONS.map((opt) => ({
                             value: opt.value,
                             label: opt.value,
+                            description: t(exposureDescKey(opt.value)),
                           })),
                         ]}
                         onChange={(next) => onToolExposureChange(server, tool.name, next)}

@@ -26,8 +26,19 @@ const EXPOSURE_LABEL_KEYS: Readonly<Record<McpExposure, LocaleKey>> = {
   hidden: "mcp.exposure.hidden",
 };
 
+const EXPOSURE_DESC_KEYS: Readonly<Record<McpExposure, LocaleKey>> = {
+  codemode: "mcp.exposure.codemodeDesc",
+  deferred: "mcp.exposure.deferredDesc",
+  direct: "mcp.exposure.directDesc",
+  hidden: "mcp.exposure.hiddenDesc",
+};
+
 export function exposureLabelKey(exposure: McpExposure): LocaleKey {
   return EXPOSURE_LABEL_KEYS[exposure];
+}
+
+export function exposureDescKey(exposure: McpExposure): LocaleKey {
+  return EXPOSURE_DESC_KEYS[exposure];
 }
 
 const EXPOSURE_PRIORITY: Readonly<Record<McpExposure, number>> = {

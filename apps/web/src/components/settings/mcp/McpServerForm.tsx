@@ -16,6 +16,7 @@ import { EvDropdown } from "../../EvDropdown.tsx";
 import { HeadersEditor } from "../HeadersEditor.tsx";
 import {
   EXPOSURE_OPTIONS,
+  exposureDescKey,
   exposureLabelKey,
   normalizeExposure,
   type ServerFormState,
@@ -126,6 +127,7 @@ export function McpServerForm({ initialForm, isProject, onSubmit, onCancel }: Mc
               options={EXPOSURE_OPTIONS.map((opt) => ({
                 value: opt.value,
                 label: t(exposureLabelKey(opt.value)),
+                description: t(exposureDescKey(opt.value)),
               }))}
               onChange={(next) => patchForm({ exposure: normalizeExposure(next) })}
             />
@@ -232,7 +234,7 @@ export function McpServerForm({ initialForm, isProject, onSubmit, onCancel }: Mc
                 value={form.argsText}
                 disabled={saving}
                 onValueChange={(argsText) => patchForm({ argsText })}
-                placeholder={"-y\n@modelcontextprotocol/server-filesystem\n."}
+                placeholder={`${t("mcp.form.argsPlaceholder")}\n-y\n@modelcontextprotocol/server-filesystem`}
               />
             </Field.Root>
 

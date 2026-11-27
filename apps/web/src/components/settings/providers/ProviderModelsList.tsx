@@ -9,6 +9,7 @@ import type { ProviderDetail } from "@eevee/protocol";
 import { useState } from "react";
 import { formatTokens } from "../../../lib/format.ts";
 import { useI18n } from "../../../lib/i18n.ts";
+import { EvTooltip } from "../../EvTooltip.tsx";
 import { SearchField } from "../../SearchField.tsx";
 import type { ModelEditorTarget } from "../model-editor/state.ts";
 import { SmokeTestResult } from "../SmokeTestResult.tsx";
@@ -123,8 +124,16 @@ export function ProviderModelsList({
                           {t("providers.badge.overridden")}
                         </span>
                       )}
-                      {model.reasoning && <span className="eevee-badge">reasoning</span>}
-                      {model.input.includes("image") && <span className="eevee-badge">image</span>}
+                      {model.reasoning && (
+                        <EvTooltip content={t("modelMenu.reasoningTooltip")} side="top">
+                          <span className="eevee-badge">{t("modelMenu.reasoning")}</span>
+                        </EvTooltip>
+                      )}
+                      {model.input.includes("image") && (
+                        <EvTooltip content={t("modelMenu.visionTooltip")} side="top">
+                          <span className="eevee-badge">{t("modelMenu.vision")}</span>
+                        </EvTooltip>
+                      )}
                     </div>
                     <div className="ev-provider-model-meta">
                       <KeyValue.Inline className="ev-kv-muted">

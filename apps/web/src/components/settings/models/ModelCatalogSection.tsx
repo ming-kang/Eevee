@@ -11,6 +11,7 @@ import type { ModelInfo } from "@eevee/protocol";
 import { useState } from "react";
 import { formatTokens } from "../../../lib/format.ts";
 import { useI18n } from "../../../lib/i18n.ts";
+import { EvTooltip } from "../../EvTooltip.tsx";
 import { SearchField } from "../../SearchField.tsx";
 
 const DISPLAY_LIMIT = 100;
@@ -129,9 +130,15 @@ export function ModelCatalogSection({
                           </span>
                         )}
                         {model.input?.includes("image") && (
-                          <span className="eevee-badge">image</span>
+                          <EvTooltip content={t("modelMenu.visionTooltip")} side="top">
+                            <span className="eevee-badge">{t("modelMenu.vision")}</span>
+                          </EvTooltip>
                         )}
-                        {model.reasoning && <span className="eevee-badge">reasoning</span>}
+                        {model.reasoning && (
+                          <EvTooltip content={t("modelMenu.reasoningTooltip")} side="top">
+                            <span className="eevee-badge">{t("modelMenu.reasoning")}</span>
+                          </EvTooltip>
+                        )}
                       </div>
                       {model.name !== model.id && (
                         <span className="ev-inline-muted">{model.name}</span>

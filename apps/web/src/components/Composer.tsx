@@ -334,12 +334,16 @@ export function Composer({
                   if (v === "followUp" || v === "steer") setWhenBusy(v);
                 }}
               >
-                <SegmentedControl.Item value="followUp">
-                  {t("composer.mode.followUp")}
-                </SegmentedControl.Item>
-                <SegmentedControl.Item value="steer">
-                  {t("composer.mode.steer")}
-                </SegmentedControl.Item>
+                <EvTooltip content={t("composer.mode.followUpHint")} side="top">
+                  <SegmentedControl.Item value="followUp">
+                    {t("composer.mode.followUp")}
+                  </SegmentedControl.Item>
+                </EvTooltip>
+                <EvTooltip content={t("composer.mode.steerHint")} side="top">
+                  <SegmentedControl.Item value="steer">
+                    {t("composer.mode.steer")}
+                  </SegmentedControl.Item>
+                </EvTooltip>
               </SegmentedControl.Root>
             )}
 
