@@ -179,11 +179,19 @@ export type ContextUsage = {
   readonly cached: number;
 };
 
+export type OutlineSection = {
+  readonly id: string;
+  readonly depth: 1 | 2 | 3;
+  readonly text: string;
+};
+
 export type OutlineEntry = {
   readonly key: string;
   readonly text: string;
   readonly reply?: string;
   readonly at?: number;
+  readonly weight: "sm" | "md" | "lg";
+  readonly sections?: readonly OutlineSection[];
 };
 
 export type FindMatch = {

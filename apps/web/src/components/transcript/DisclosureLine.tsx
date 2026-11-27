@@ -1,12 +1,15 @@
 import { ChevronRightIcon } from "@earendil-works/elanor-icons-react";
 import { ProgressiveDisclosure } from "@earendil-works/elanor-react";
-import { type ReactNode, type Ref, useEffect, useState } from "react";
+import { type ReactNode, type Ref, useState } from "react";
+import { useAutoExpandDisclosure } from "./useAutoExpandDisclosure.ts";
 
 export function DisclosureLine({
   ref,
   itemKey,
   wrapClass,
   open,
+  live,
+  forceOpen,
   onOpenChange,
   iconSize = 15,
   summary,
@@ -16,31 +19,35 @@ export function DisclosureLine({
   readonly itemKey?: string;
   readonly wrapClass?: string;
   readonly open?: boolean;
+  readonly live?: boolean;
+  readonly forceOpen?: boolean;
   readonly onOpenChange?: (nextOpen: boolean) => void;
   readonly iconSize?: number;
   readonly summary: ReactNode;
   readonly children?: ReactNode;
 }) {
   const controlled = onOpenChange !== undefined;
-  const [internalOpen, setInternalOpen] = useState(Boolean(open));
+  const [autoOpen, setAutoOpen] = useAutoExpandDisclosure(Boolean(live), {
+    initialOpen: open ?? (Boolean(live) || Boolean(forceOpen)),
+    forceOpen,
+  });
+  const [plainOpen, setPlainOpen] = useState(Boolean(open));
 
-  useEffect(() => {
-    if (!controlled && open !== undefined) {
-      setInternalOpen(open);
-    }
-  }, [controlled, open]);
+  const useAuto = !controlled && (live !== undefined || forceOpen !== undefined);
+  const isOpen = controlled ? Boolean(open) : useAuto ? autoOpen : plainOpen;
 
-  const isOpen = controlled ? Boolean(open) : internalOpen;
+  const handleOpenChange = (next: boolean) => {
+    if (controlled) onOpenChange(next);
+    else if (useAuto) setAutoOpen(next);
+    else setPlainOpen(next);
+  };
 
   return (
     <ProgressiveDisclosure.Root
       ref={ref}
       className={`ev-proc${wrapClass ? ` ${wrapClass}` : ""}`}
       open={isOpen}
-      onOpenChange={(next) => {
-        if (controlled) onOpenChange(next);
-        else setInternalOpen(next);
-      }}
+      onOpenChange={handleOpenChange}
       data-item-key={itemKey}
     >
       <ProgressiveDisclosure.Trigger className="ev-proc-trigger">
@@ -49,7 +56,7 @@ export function DisclosureLine({
       </ProgressiveDisclosure.Trigger>
       {children ? (
         <ProgressiveDisclosure.Panel className="ev-proc-panel">
-          {children}
+          <div className="ev-proc-panel-inner">{children}</div>
         </ProgressiveDisclosure.Panel>
       ) : null}
     </ProgressiveDisclosure.Root>

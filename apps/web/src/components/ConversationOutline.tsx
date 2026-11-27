@@ -1,4 +1,5 @@
 import { TocIcon } from "@earendil-works/elanor-icons-react";
+import { TableOfContents } from "@earendil-works/elanor-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { formatClock } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
@@ -12,10 +13,12 @@ export function ConversationOutline({
   entries,
   activeIndex,
   onPick,
+  onPickHeading,
 }: {
   readonly entries: readonly OutlineEntry[];
   readonly activeIndex: number;
   readonly onPick: (key: string) => void;
+  readonly onPickHeading?: (headingId: string) => void;
 }) {
   const { t } = useI18n();
   const listId = useId();
@@ -79,7 +82,8 @@ export function ConversationOutline({
     activeRowRef.current?.scrollIntoView({ block: "nearest" });
   }, [open]);
 
-  if (entries.length < 3) return null;
+  const hasLongSections = entries.some((entry) => (entry.sections?.length ?? 0) >= 2);
+  if (entries.length < 3 && !hasLongSections) return null;
 
   const height = `min(${Math.max(1, entries.length - 1) * 16}px, 42vh)`;
 
@@ -132,6 +136,7 @@ export function ConversationOutline({
                 className="ev-outline-tick"
                 style={{ top }}
                 data-active={idx === activeIndex}
+                data-weight={entry.weight}
                 aria-label={entry.text || t("transcript.outlineMessageFallback")}
                 onClick={(event) => {
                   if (lastPointerTypeRef.current === "touch" || event.detail === 0 || !open) {
@@ -174,6 +179,30 @@ export function ConversationOutline({
                     <span className="ev-truncate ev-outline-row-reply">{entry.reply}</span>
                   )}
                 </button>
+                {entry.sections && entry.sections.length >= 2 && onPickHeading && (
+                  <TableOfContents.Root
+                    className="ev-outline-toc"
+                    aria-label={entry.text || t("transcript.outlineMessageFallback")}
+                  >
+                    <TableOfContents.List className="ev-outline-toc-list">
+                      {entry.sections.map((section) => (
+                        <TableOfContents.Item key={section.id} data-depth={section.depth}>
+                          <TableOfContents.Link
+                            href={`#${section.id}`}
+                            className="ev-outline-toc-link"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              closeAll();
+                              onPickHeading(section.id);
+                            }}
+                          >
+                            <span className="ev-truncate">{section.text}</span>
+                          </TableOfContents.Link>
+                        </TableOfContents.Item>
+                      ))}
+                    </TableOfContents.List>
+                  </TableOfContents.Root>
+                )}
               </li>
             ))}
           </ul>

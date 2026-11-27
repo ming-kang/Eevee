@@ -352,6 +352,18 @@
   transform: rotate(90deg);
 }
 
+.ev-proc-panel {
+  overflow: hidden;
+  transition:
+    height var(--ev-dur-base) var(--ev-ease-out),
+    opacity var(--ev-dur-base) var(--ev-ease-out);
+}
+
+.ev-proc-panel[data-starting-style],
+.ev-proc-panel[data-ending-style] {
+  opacity: 0;
+}
+
 .ev-proc-panel:not([hidden]) {
   padding-inline-start: 0;
 }
@@ -359,6 +371,21 @@
 .ev-proc-panel:not([hidden])::before,
 .ev-proc-panel:not([hidden])::after {
   display: none;
+}
+
+.ev-proc-panel-inner {
+  animation: ev-disclosure-reveal var(--ev-dur-fast) var(--ev-ease-out);
+}
+
+@keyframes ev-disclosure-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .ev-proc-body {

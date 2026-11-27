@@ -75,7 +75,8 @@ function EditDisclosure({
       ref={setRefs}
       itemKey={item.key}
       wrapClass={mergeClasses(wrapClass, flashing ? "flash" : undefined)}
-      open={revealed || undefined}
+      live={item.status === "run"}
+      forceOpen={revealed}
       summary={
         <>
           <span className={item.status === "run" ? "ev-shimmer" : undefined}>{verb}</span>
@@ -255,7 +256,7 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
           ref={setRootRef}
           itemKey={item.key}
           wrapClass={wrapClass}
-          open={item.streaming === true}
+          live={item.streaming === true}
           summary={
             <>
               <span className={item.streaming ? "ev-shiny" : undefined}>
@@ -278,7 +279,8 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
           ref={setRootRef}
           itemKey={item.key}
           wrapClass={wrapClass}
-          open={item.status === "run"}
+          live={item.status === "run"}
+          forceOpen={item.status === "err"}
           summary={
             <>
               <span className={`ev-truncate${item.status === "run" ? " ev-shimmer" : ""}`}>
@@ -369,7 +371,8 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
           ref={setRootRef}
           itemKey={item.key}
           wrapClass={wrapClass}
-          open={item.live || hasErr}
+          live={item.live}
+          forceOpen={hasErr}
           summary={
             <>
               <span className={`ev-truncate${item.live ? " ev-shimmer" : ""}`}>{label}</span>
@@ -382,7 +385,8 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
               <DisclosureLine
                 key={step.id}
                 iconSize={14}
-                open={step.status === "error"}
+                live={step.status === "running" || step.status === "pending"}
+                forceOpen={step.status === "error"}
                 summary={
                   <>
                     <span className="ev-mono ev-step-name">{step.name}</span>

@@ -1,29 +1,87 @@
 import type { BoardViewPayload } from "@eevee/protocol";
-import type { DisplayItem, FindMatch, OutlineEntry, VisualStage } from "./types.ts";
+import { marked } from "marked";
+import { slugifyHeading } from "../markdown-utils.ts";
+import type { DisplayItem, FindMatch, OutlineEntry, OutlineSection, VisualStage } from "./types.ts";
+
+function extractReplyHeadings(text: string, assistantKey: string): OutlineSection[] {
+  const prefix = assistantKey.replace(/[^a-zA-Z0-9_-]/g, "-");
+  const tokens = marked.lexer(text, { gfm: true, breaks: false });
+  const sections: OutlineSection[] = [];
+  let headingCounter = 0;
+  for (const token of tokens) {
+    if (token.type !== "heading") continue;
+    const idx = headingCounter++;
+    if (token.depth <= 3) {
+      sections.push({
+        id: `${prefix}-${slugifyHeading(token.text, idx)}`,
+        depth: token.depth as 1 | 2 | 3,
+        text: token.text.trim(),
+      });
+    }
+  }
+  return sections;
+}
+
+function classifyTurnWeight(totalChars: number): "sm" | "md" | "lg" {
+  if (totalChars >= 1200) return "lg";
+  if (totalChars >= 360) return "md";
+  return "sm";
+}
 
 export function outlineEntries(items: readonly DisplayItem[]): OutlineEntry[] {
-  const out: OutlineEntry[] = [];
-  let current: { key: string; text: string; reply?: string; at?: number } | undefined;
+  const out: {
+    key: string;
+    text: string;
+    reply?: string;
+    at?: number;
+    chars: number;
+    sections?: OutlineSection[];
+  }[] = [];
+  let current:
+    | {
+        key: string;
+        text: string;
+        reply?: string;
+        at?: number;
+        chars: number;
+        sections?: OutlineSection[];
+      }
+    | undefined;
   for (const item of items) {
     if (item.kind === "user") {
       const first = item.text.trim().split("\n", 1)[0]?.trim() ?? "";
       const text = first.length > 72 ? `${first.slice(0, 71)}…` : first;
-      current = { key: item.key, text, ...(item.at ? { at: item.at } : {}) };
+      current = {
+        key: item.key,
+        text,
+        chars: item.text.length,
+        ...(item.at ? { at: item.at } : {}),
+      };
       out.push(current);
       continue;
     }
-    const reply =
+    const assistantItem =
       item.kind === "assistant"
-        ? item.text
+        ? item
         : item.kind === "worked"
-          ? item.items.findLast((c) => c.kind === "assistant")?.text
+          ? item.items.findLast(
+              (c): c is Extract<DisplayItem, { kind: "assistant" }> => c.kind === "assistant",
+            )
           : undefined;
-    if (reply && current) {
-      const flat = reply.replace(/\s+/g, " ").trim();
+    if (assistantItem && current) {
+      current.chars += assistantItem.text.length;
+      const flat = assistantItem.text.replace(/\s+/g, " ").trim();
       if (flat) current.reply = flat.length > 100 ? `${flat.slice(0, 99)}…` : flat;
+      const sections = extractReplyHeadings(assistantItem.text, assistantItem.key);
+      if (sections.length >= 2) {
+        current.sections = sections;
+      }
     }
   }
-  return out;
+  return out.map(({ chars, ...entry }) => ({
+    ...entry,
+    weight: classifyTurnWeight(chars),
+  }));
 }
 
 export function itemSearchText(item: DisplayItem): string {

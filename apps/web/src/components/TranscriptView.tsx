@@ -91,6 +91,13 @@ export function TranscriptView({
     el.scrollIntoView({ block: "center", behavior: "smooth" });
   }, []);
 
+  const jumpToHeading = useCallback((headingId: string) => {
+    const el = scrollRef.current?.querySelector<HTMLElement>(`[id="${CSS.escape(headingId)}"]`);
+    if (!el) return;
+    stickRef.current = false;
+    el.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, []);
+
   useEffect(() => {
     if (activeMatchKey) jumpToKey(activeMatchKey);
   }, [activeMatchKey, jumpToKey]);
@@ -199,7 +206,12 @@ export function TranscriptView({
         />
       )}
 
-      <ConversationOutline entries={outline} activeIndex={activeOutline} onPick={jumpToKey} />
+      <ConversationOutline
+        entries={outline}
+        activeIndex={activeOutline}
+        onPick={jumpToKey}
+        onPickHeading={jumpToHeading}
+      />
 
       <div ref={scrollRef} className="ev-transcript-scroll" onScroll={handleScroll}>
         <div ref={innerRef} className="ev-transcript-inner">

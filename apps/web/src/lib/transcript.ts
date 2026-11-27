@@ -32,6 +32,7 @@ export type {
   LiveDocView,
   NoticeInfo,
   OutlineEntry,
+  OutlineSection,
   ToolStep,
   UserFilePart,
   UserImagePart,
