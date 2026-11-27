@@ -11,28 +11,24 @@ import {
 } from "@eevee/agent";
 import { MODELS_FILE, ModelRuntime } from "@eevee/agent/models";
 import type { ModelSlots } from "@eevee/core";
+import type { ProjectSummary } from "@eevee/protocol";
 import { type DataDirLayout, dataDirLayout, resolveDataDir } from "./data-dir.ts";
 import {
-  type EngineKnobs,
+  createSettingsHandle,
   engineKnobs,
   getMcpServersRecord,
-  type ImportConfigDeps,
+  type SettingsHandle,
 } from "./engine-config.ts";
 import { EngineError } from "./engine-error.ts";
-import type { McpDeps } from "./engine-mcp.ts";
-import {
-  GLOBAL_SCOPE,
-  type McpOAuthDeps,
-  projectScope,
-  type ScopedMcpOAuth,
-  scopedMcpOAuth,
-} from "./engine-mcp-oauth.ts";
-import { getProject, type ProjectOpsDeps } from "./engine-projects.ts";
+import { createEngineMcpAccessor, type EngineMcpAccessor } from "./engine-mcp.ts";
+import { createProjectsHandle, type ProjectsHandle } from "./engine-projects.ts";
 import type { ProviderDeps } from "./engine-providers.ts";
-import type { SkillsDeps } from "./engine-skills.ts";
+import { createProvidersHandle, type ProvidersHandle } from "./engine-providers-manage.ts";
+import { createSkillsHandle, type SkillsDeps, type SkillsHandle } from "./engine-skills.ts";
 import { LoginSessionManager } from "./login-sessions.ts";
 import { McpOAuthSessionManager, projectMcpOAuthScope } from "./mcp-oauth-sessions.ts";
 import { type OpenProjectStorage, ProjectPool } from "./project-pool.ts";
+import { KeyedSerialQueue } from "./serial-queue.ts";
 import { EngineStore } from "./store.ts";
 
 export type EngineOptions = {
@@ -53,38 +49,37 @@ export type EngineOptions = {
   readonly onPumpError?: (projectId: string, error: unknown) => void;
 };
 
+export type EngineLifecycleState = {
+  closed: boolean;
+};
+
 export type EngineContext = {
   readonly layout: DataDirLayout;
   readonly store: EngineStore;
   readonly modelRuntime: ModelRuntime;
   readonly mcpHub: McpHub;
   readonly oauthStore: McpOAuthCredentialStore;
-  readonly knobs: EngineKnobs;
   readonly pool: ProjectPool;
   readonly loginSessions: LoginSessionManager;
   readonly mcpOAuthSessions: McpOAuthSessionManager;
-  readonly providers: ProviderDeps;
-  readonly skills: SkillsDeps;
-  readonly mcp: McpDeps;
-  readonly mcpOAuth: McpOAuthDeps;
-  readonly globalOAuth: ScopedMcpOAuth;
-  readonly projectOAuth: (projectId: string) => ScopedMcpOAuth;
-  readonly projects: ProjectOpsDeps;
-  readonly configImport: ImportConfigDeps;
+  readonly mutationQueue: KeyedSerialQueue;
   readonly models: () => Models;
+  readonly assertOpen: () => void;
+  readonly providers: ProvidersHandle;
+  readonly settings: SettingsHandle;
+  readonly skills: SkillsHandle;
+  readonly mcp: EngineMcpAccessor;
+  readonly projects: ProjectsHandle;
 };
 
 export async function disposeEngineContext(ctx: EngineContext): Promise<void> {
   await ctx.loginSessions.close().catch(() => undefined);
   await ctx.mcpOAuthSessions.close().catch(() => undefined);
+  await ctx.mutationQueue.drainAll().catch(() => undefined);
   await ctx.pool.closeAll();
   await ctx.mcpHub.close().catch(() => undefined);
   ctx.store.close();
 }
-
-export type EngineLifecycleState = {
-  closed: boolean;
-};
 
 export async function openEngineContext(
   options: EngineOptions,
@@ -144,13 +139,28 @@ export async function openEngineContext(
       onPumpError: options.onPumpError,
     });
 
+    const isClosed = () => state.closed;
+    const assertOpen = () => {
+      if (state.closed) {
+        throw new EngineError(503, "engine_closed", "Engine is closing");
+      }
+    };
+    const requireProject = (projectId: string): ProjectSummary => {
+      if (pool.isDeleting(projectId)) {
+        throw new EngineError(404, "project_not_found", `Unknown project ${projectId}`);
+      }
+      const project = store.getProject(projectId);
+      if (project === undefined) {
+        throw new EngineError(404, "project_not_found", `Unknown project ${projectId}`);
+      }
+      return project;
+    };
+
     const loginSessions = new LoginSessionManager();
     const mcpOAuthSessions = new McpOAuthSessionManager();
+    const mutationQueue = new KeyedSerialQueue();
     const cancelOAuthForServers = (serverNames: readonly string[], scopeKey?: string) =>
       mcpOAuthSessions.cancelAllForServers(serverNames, scopeKey);
-
-    let projectDeps!: ProjectOpsDeps;
-    const requireProject = (projectId: string) => getProject(projectDeps, projectId);
 
     const providerDeps: ProviderDeps = {
       models,
@@ -170,64 +180,66 @@ export async function openEngineContext(
       requireProject,
     };
 
-    projectDeps = {
-      layout,
+    const providers = createProvidersHandle({
+      providerDeps,
       store,
-      pool,
-      knobs,
-      skills: skillsDeps,
-      cancelProjectOAuth: (projectId) =>
-        mcpOAuthSessions.cancelForScope(projectMcpOAuthScope(projectId)),
-    };
+      loginSessions,
+      assertOpen,
+    });
 
-    const mcpDeps: McpDeps = {
-      layout,
-      store,
-      mcpHub,
-      oauthStore,
-      cancelOAuthForServers,
-      globalLogPath: mcpLogPath,
-      requireProject,
-      syncProjects: () => pool.reloadGlobalMcpChanges(),
-      syncExtensions: () => pool.syncMcpExtensions(),
-      getProjectMcpHub: (projectId) => pool.getProjectMcpHub(projectId),
-      openProjectMcpHub: (projectId) => pool.openProjectMcpHub(projectId),
-      syncProjectMcp: (projectId) => pool.syncProjectMcp(projectId),
-    };
-
-    const mcpOAuthDeps: McpOAuthDeps = {
-      store,
-      mcpHub,
-      oauthStore,
-      sessions: mcpOAuthSessions,
-      env: options.env,
-      isClosed: () => state.closed,
-      assertOpen: () => {
-        if (state.closed) {
-          throw new EngineError(503, "engine_closed", "Engine is closing");
-        }
-      },
-      requireProject,
-      isDeletingProject: (projectId) => pool.isDeleting(projectId),
-      getProjectMcpHub: (projectId) => pool.getProjectMcpHub(projectId),
-      reconnectServerOnProject: (projectId, serverName) =>
-        pool.reconnectServerOnProject(projectId, serverName),
-      reconnectServerOnProjectHubs: (serverName, storeKey, excludeProjectId) =>
-        pool.reconnectServerOnProjectHubs(serverName, storeKey, excludeProjectId),
-      syncMcpExtensions: () => pool.syncMcpExtensions(),
-    };
-
-    const configImportDeps: ImportConfigDeps = {
+    const settings = createSettingsHandle({
       layout,
       store,
       modelRuntime,
       mcpHub,
       oauthStore,
+      mutationQueue,
+      assertOpen,
       cancelOAuthForServers,
       env: options.env,
       syncProjects: () => pool.reloadGlobalMcpChanges(),
       applySettings: () => pool.applySettingsLive(),
-    };
+    });
+
+    const skills = createSkillsHandle({ ...skillsDeps, assertOpen });
+
+    const mcp = createEngineMcpAccessor({
+      layout,
+      store,
+      mcpHub,
+      oauthStore,
+      sessions: mcpOAuthSessions,
+      mutationQueue,
+      env: options.env,
+      isClosed,
+      assertOpen,
+      requireProject,
+      isDeletingProject: (projectId) => pool.isDeleting(projectId),
+      cancelOAuthForServers,
+      globalLogPath: mcpLogPath,
+      syncProjects: () => pool.reloadGlobalMcpChanges(),
+      syncMcpExtensions: () => pool.syncMcpExtensions(),
+      getProjectMcpHub: (projectId) => pool.getProjectMcpHub(projectId),
+      openProjectMcpHub: (projectId) => pool.openProjectMcpHub(projectId),
+      reconnectServerOnProject: (projectId, serverName) =>
+        pool.reconnectServerOnProject(projectId, serverName),
+      reconnectServerOnProjectHubs: (serverName, storeKey, excludeProjectId) =>
+        pool.reconnectServerOnProjectHubs(serverName, storeKey, excludeProjectId),
+      runProjectMcpMutation: (projectId, fn) => pool.runProjectMcpMutation(projectId, fn),
+      syncProjectMcpUnlocked: (projectId) => pool.syncProjectMcpUnlocked(projectId),
+    });
+
+    const projects = createProjectsHandle({
+      layout,
+      store,
+      pool,
+      knobs,
+      skills: skillsDeps,
+      assertOpen,
+      requireProject,
+      cancelProjectOAuth: (projectId) =>
+        mcpOAuthSessions.cancelForScope(projectMcpOAuthScope(projectId)),
+    });
 
     return {
       layout,
@@ -235,19 +247,17 @@ export async function openEngineContext(
       modelRuntime,
       mcpHub,
       oauthStore,
-      knobs,
       pool,
       loginSessions,
       mcpOAuthSessions,
-      providers: providerDeps,
-      skills: skillsDeps,
-      mcp: mcpDeps,
-      mcpOAuth: mcpOAuthDeps,
-      globalOAuth: scopedMcpOAuth(mcpOAuthDeps, GLOBAL_SCOPE),
-      projectOAuth: (projectId) => scopedMcpOAuth(mcpOAuthDeps, projectScope(projectId)),
-      projects: projectDeps,
-      configImport: configImportDeps,
+      mutationQueue,
       models,
+      assertOpen,
+      providers,
+      settings,
+      skills,
+      mcp,
+      projects,
     };
   } catch (error) {
     await mcpHub?.close().catch(() => undefined);

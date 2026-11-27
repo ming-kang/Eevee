@@ -13,9 +13,8 @@ import type {
   ProjectSummary,
   StartMcpOAuthResponse,
 } from "@eevee/protocol";
-import { getMcpServersRecord } from "./engine-config.ts";
+import { getMcpServersRecord, resolveEffectiveProjectMcp } from "./engine-config.ts";
 import { EngineError } from "./engine-error.ts";
-import { resolveEffectiveProjectMcp } from "./engine-mcp.ts";
 import {
   GLOBAL_MCP_OAUTH_SCOPE,
   type McpOAuthSessionManager,

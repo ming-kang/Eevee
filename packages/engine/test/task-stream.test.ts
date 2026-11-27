@@ -185,7 +185,7 @@ test("subscribeWorkerTaskStream reports onEnd('failed', message) when processBoa
     },
   });
 
-  const stream = await subscribeWorkerTaskStream(handle, "w1" as WorkerId, "task-1");
+  const stream = await subscribeWorkerTaskStream(handle, "w1" as CoreWorkerId, "task-1");
   assert.equal(stream.terminal, false);
 
   const ended = new Promise<{ reason: string; message?: string }>((resolve) => {
@@ -243,12 +243,14 @@ test("handleTaskStream forwards end reason='failed' and message over SSE", async
 
   const stubEngine = {
     acquireStream: () => () => {},
-    subscribeWorkerTaskStream: (
-      _projectId: string,
-      workerId: WorkerId,
-      taskId: string,
-      opts?: Parameters<ProjectHandle["readWorkerTaskOutput"]>[2],
-    ) => subscribeWorkerTaskStream(handle, workerId, taskId, opts),
+    projects: {
+      subscribeWorkerTaskStream: (
+        _projectId: string,
+        workerId: WorkerId,
+        taskId: string,
+        opts?: Parameters<ProjectHandle["readWorkerTaskOutput"]>[2],
+      ) => subscribeWorkerTaskStream(handle, workerId as CoreWorkerId, taskId, opts),
+    },
   } as unknown as Engine;
 
   const server = await startEngineHttpServer(stubEngine, {
@@ -338,7 +340,7 @@ test("subscribeWorkerTaskStream with head mode catches up [endByte, live.totalBy
     }),
   });
 
-  const stream = await subscribeWorkerTaskStream(handle, "w1" as WorkerId, "task-1", {
+  const stream = await subscribeWorkerTaskStream(handle, "w1" as CoreWorkerId, "task-1", {
     mode: "head",
     bytes: 256,
   });
@@ -441,7 +443,7 @@ test("subscribeWorkerTaskStream with head mode catches up pre-retained disk byte
       }),
     });
 
-    const stream = await subscribeWorkerTaskStream(handle, "w1" as WorkerId, "task-1", {
+    const stream = await subscribeWorkerTaskStream(handle, "w1" as CoreWorkerId, "task-1", {
       mode: "head",
       bytes: 256,
     });

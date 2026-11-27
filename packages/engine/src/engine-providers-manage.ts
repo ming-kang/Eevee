@@ -38,21 +38,42 @@ import type {
   BuiltinModelMatchResponse,
   ImportProviderModelsRequest,
   ImportProviderModelsResponse,
+  ListModelsResponse,
+  ListProvidersResponse,
+  LoginInputRequest,
   ModelDetail,
+  ModelProfilesDocument,
+  OkResponse,
   ProbeProviderRequest,
   ProbeProviderResponse,
   ProviderCatalogResponse,
   ProviderDetail,
   ProviderDetailResponse,
   ProviderSummary,
+  RefreshModelsRequest,
+  RefreshModelsResponse,
   ReloadModelsResponse,
+  SetApiKeyRequest,
   SmokeTestModelRequest,
   SmokeTestModelResponse,
+  StartLoginRequest,
+  StartLoginResponse,
   UpsertProviderModelRequest,
   UpsertProviderRequest,
 } from "@eevee/protocol";
-import { EngineError } from "./engine-error.ts";
-import { listProviders, type ProviderDeps, summarizeProvider } from "./engine-providers.ts";
+import { putModelProfiles, readModelProfiles } from "./engine-config.ts";
+import { EngineError, guardAsync, guardSync } from "./engine-error.ts";
+import {
+  listModels,
+  listProviders,
+  logoutProvider,
+  type ProviderDeps,
+  refreshModels,
+  setProviderApiKey,
+  summarizeProvider,
+} from "./engine-providers.ts";
+import type { LoginSessionManager, LoginSseFrame } from "./login-sessions.ts";
+import type { EngineStore } from "./store.ts";
 
 function runtime(deps: ProviderDeps): ModelRuntime {
   const value = deps.runtime?.();
@@ -653,4 +674,126 @@ export async function testProviderModel(
     ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
     ...(signal === undefined ? {} : { signal }),
   });
+}
+
+export type ProvidersHandleDeps = {
+  readonly providerDeps: ProviderDeps;
+  readonly store: EngineStore;
+  readonly loginSessions: LoginSessionManager;
+  readonly assertOpen: () => void;
+};
+
+export type ProvidersHandle = {
+  catalog(): Promise<ProviderCatalogResponse>;
+  detail(providerId: string): Promise<ProviderDetailResponse>;
+  create(input: UpsertProviderRequest): Promise<ProviderDetailResponse>;
+  update(id: string, input: UpsertProviderRequest): Promise<ProviderDetailResponse>;
+  delete(providerId: string): Promise<OkResponse>;
+  createModel(
+    providerId: string,
+    input: UpsertProviderModelRequest,
+  ): Promise<ProviderDetailResponse>;
+  updateModel(
+    providerId: string,
+    modelId: string,
+    input: UpsertProviderModelRequest,
+  ): Promise<ProviderDetailResponse>;
+  deleteModel(providerId: string, modelId: string): Promise<ProviderDetailResponse>;
+  probeDraft(input: ProbeProviderRequest, signal?: AbortSignal): Promise<ProbeProviderResponse>;
+  probe(
+    providerId: string,
+    input?: ProbeProviderRequest,
+    signal?: AbortSignal,
+  ): Promise<ProbeProviderResponse>;
+  importModels(
+    providerId: string,
+    input: ImportProviderModelsRequest,
+  ): Promise<ImportProviderModelsResponse>;
+  matchBuiltinModel(
+    providerId: string,
+    modelId: string,
+    input?: BuiltinModelMatchRequest,
+  ): Promise<BuiltinModelMatchResponse>;
+  testModel(
+    providerId: string,
+    modelId: string,
+    input?: SmokeTestModelRequest,
+    signal?: AbortSignal,
+  ): Promise<SmokeTestModelResponse>;
+  list(): Promise<ListProvidersResponse>;
+  setApiKey(providerId: string, input: SetApiKeyRequest): Promise<OkResponse>;
+  logout(providerId: string): Promise<OkResponse>;
+  startLogin(providerId: string, input: StartLoginRequest): Promise<StartLoginResponse>;
+  subscribeLogin(
+    providerId: string,
+    sessionId: string,
+    onFrame: (frame: LoginSseFrame) => void,
+  ): () => void;
+  submitLoginInput(providerId: string, sessionId: string, input: LoginInputRequest): OkResponse;
+  cancelLogin(providerId: string, sessionId: string): OkResponse;
+  listModels(opts?: {
+    readonly provider?: string;
+    readonly available?: boolean;
+  }): Promise<ListModelsResponse>;
+  refreshModels(input?: RefreshModelsRequest): Promise<RefreshModelsResponse>;
+  reloadModels(): Promise<ReloadModelsResponse>;
+  getModelProfiles(): ModelProfilesDocument;
+  putModelProfiles(doc: ModelProfilesDocument): ModelProfilesDocument;
+};
+
+export function createProvidersHandle(deps: ProvidersHandleDeps): ProvidersHandle {
+  const { providerDeps, store, loginSessions, assertOpen } = deps;
+  return {
+    catalog: guardAsync(assertOpen, () => getProviderCatalog(providerDeps)),
+    detail: guardAsync(assertOpen, (providerId) => getProviderDetail(providerDeps, providerId)),
+    create: guardAsync(assertOpen, (input) => createProvider(providerDeps, input)),
+    update: guardAsync(assertOpen, (id, input) => updateProvider(providerDeps, id, input)),
+    delete: guardAsync(assertOpen, (providerId) => deleteProvider(providerDeps, providerId)),
+    createModel: guardAsync(assertOpen, (providerId, input) =>
+      createProviderModel(providerDeps, providerId, input),
+    ),
+    updateModel: guardAsync(assertOpen, (providerId, modelId, input) =>
+      updateProviderModel(providerDeps, providerId, modelId, input),
+    ),
+    deleteModel: guardAsync(assertOpen, (providerId, modelId) =>
+      deleteProviderModel(providerDeps, providerId, modelId),
+    ),
+    probeDraft: guardAsync(assertOpen, (input, signal) =>
+      probeDraftProvider(providerDeps, input, signal),
+    ),
+    probe: guardAsync(assertOpen, (providerId, input = {}, signal) =>
+      probeProvider(providerDeps, providerId, input, signal),
+    ),
+    importModels: guardAsync(assertOpen, (providerId, input) =>
+      importProviderModels(providerDeps, providerId, input),
+    ),
+    matchBuiltinModel: guardAsync(assertOpen, (providerId, modelId, input = {}) =>
+      matchBuiltinModel(providerDeps, providerId, modelId, input),
+    ),
+    testModel: guardAsync(assertOpen, (providerId, modelId, input = {}, signal) =>
+      testProviderModel(providerDeps, providerId, modelId, input, signal),
+    ),
+    list: guardAsync(assertOpen, () => listProviders(providerDeps)),
+    setApiKey: guardAsync(assertOpen, (providerId, input) =>
+      setProviderApiKey(providerDeps, providerId, input),
+    ),
+    logout: guardAsync(assertOpen, (providerId) => logoutProvider(providerDeps, providerId)),
+    startLogin: guardAsync(assertOpen, (providerId, input) =>
+      loginSessions.start(providerDeps.models(), providerId, input.type),
+    ),
+    subscribeLogin: guardSync(assertOpen, (providerId, sessionId, onFrame) =>
+      loginSessions.subscribe(providerId, sessionId, onFrame),
+    ),
+    submitLoginInput: guardSync(assertOpen, (providerId, sessionId, input) =>
+      loginSessions.submitInput(providerId, sessionId, input),
+    ),
+    cancelLogin: guardSync(assertOpen, (providerId, sessionId) =>
+      loginSessions.cancel(providerId, sessionId),
+    ),
+    listModels: guardAsync(assertOpen, (opts) => listModels(providerDeps, opts)),
+    refreshModels: guardAsync(assertOpen, (input = {}) => refreshModels(providerDeps, input)),
+    reloadModels: guardAsync(assertOpen, () => reloadModels(providerDeps)),
+    getModelProfiles: guardSync(assertOpen, () => readModelProfiles(store)),
+    putModelProfiles: guardSync(assertOpen, (doc) => putModelProfiles(store, doc)),
+  };
 }

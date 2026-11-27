@@ -1,63 +1,100 @@
 import { join } from "node:path";
-import { map } from "@earendil-works/pi-schema";
 import {
   type McpHub,
-  type McpOAuthCredentialStore,
-  type McpServerEntry,
   type McpServerSnapshot,
-  normalizeMcpServerMap,
   parseMcpConfig,
-  resolveEffectiveMcpServers,
   synthesizeOfflineMcpSnapshots,
   validateMcpServerEntry,
 } from "@eevee/agent";
-import {
-  type McpLogsResponse,
-  type McpServerConfigPayload,
-  McpServerConfigSchema,
-  type McpServerEntryInput,
-  McpServerEntryInputSchema,
-  type McpServerSnapshotPayload,
-  type McpStateResponse,
-  type ProjectMcpStateResponse,
-  type ProjectSummary,
-  type PutGlobalMcpConfigRequest,
-  type PutMcpConfigRequest,
-  parseWithSchema,
-  type ReconnectMcpRequest,
-  type ReconnectMcpResponse,
-  type UpsertGlobalMcpServerRequest,
-  type UpsertMcpServerRequest,
+import type {
+  McpLogsResponse,
+  McpOAuthEvent,
+  McpOAuthInputRequest,
+  McpServerEntryInput,
+  McpServerSnapshotPayload,
+  McpStateResponse,
+  OkResponse,
+  ProjectMcpStateResponse,
+  PutGlobalMcpConfigRequest,
+  PutMcpConfigRequest,
+  ReconnectMcpRequest,
+  ReconnectMcpResponse,
+  StartMcpOAuthResponse,
+  UpsertGlobalMcpServerRequest,
+  UpsertMcpServerRequest,
 } from "@eevee/protocol";
 import { type DataDirLayout, projectPaths } from "./data-dir.ts";
 import {
+  applyGlobalMcpReplacement,
   cleanupRemovedMcpOAuth,
-  collectGlobalMcpOAuthCancellations,
   findRemovedHttpMcpServers,
   getMcpServersRecord,
-  KV_MCP_SERVERS,
-  pruneOrphanProjectMcpOverrides,
+  resolveEffectiveProjectMcp,
 } from "./engine-config.ts";
-import { EngineError } from "./engine-error.ts";
+import { EngineError, guardAsync, guardSync } from "./engine-error.ts";
+import {
+  GLOBAL_SCOPE,
+  type McpOAuthDeps,
+  projectScope,
+  scopedMcpOAuth,
+} from "./engine-mcp-oauth.ts";
 import { projectMcpOAuthScope } from "./mcp-oauth-sessions.ts";
-import type { EngineStore } from "./store.ts";
+import type { KeyedSerialQueue } from "./serial-queue.ts";
 
-export type McpDeps = {
+export type McpDeps = McpOAuthDeps & {
   readonly layout: DataDirLayout;
-  readonly store: EngineStore;
-  readonly mcpHub: McpHub;
-  readonly oauthStore: McpOAuthCredentialStore;
+  readonly mutationQueue: KeyedSerialQueue;
+  readonly globalLogPath: string;
   readonly cancelOAuthForServers: (
     serverNames: readonly string[],
     scopeKey?: string,
   ) => Promise<void>;
-  readonly globalLogPath: string;
-  readonly requireProject: (projectId: string) => ProjectSummary;
   readonly syncProjects: () => Promise<void>;
-  readonly syncExtensions: () => Promise<void>;
-  readonly getProjectMcpHub: (projectId: string) => McpHub | undefined;
   readonly openProjectMcpHub: (projectId: string) => Promise<McpHub>;
-  readonly syncProjectMcp: (projectId: string) => Promise<void>;
+  readonly runProjectMcpMutation: <T>(projectId: string, fn: () => Promise<T>) => Promise<T>;
+  readonly syncProjectMcpUnlocked: (projectId: string) => Promise<void>;
+};
+
+export type ScopedMcpHandle<
+  TState extends McpStateResponse | ProjectMcpStateResponse =
+    | McpStateResponse
+    | ProjectMcpStateResponse,
+  TPutInput extends PutMcpConfigRequest = PutMcpConfigRequest,
+  TUpsertInput extends UpsertMcpServerRequest = UpsertMcpServerRequest,
+> = {
+  getState(): TState;
+  putConfig(input: TPutInput): Promise<TState>;
+  upsertServer(serverName: string, input: TUpsertInput): Promise<TState>;
+  deleteServer(serverName: string): Promise<TState>;
+  reconnect(input?: ReconnectMcpRequest): Promise<ReconnectMcpResponse>;
+  getLogs(serverName: string): McpLogsResponse;
+  startOAuth(serverName: string): Promise<StartMcpOAuthResponse>;
+  subscribeOAuth(
+    serverName: string,
+    sessionId: string,
+    onEvent: (event: McpOAuthEvent) => void,
+  ): () => void;
+  submitOAuthInput(serverName: string, sessionId: string, input: McpOAuthInputRequest): OkResponse;
+  cancelOAuth(serverName: string, sessionId: string): OkResponse;
+  logoutOAuth(serverName: string): Promise<OkResponse>;
+};
+
+export type GlobalMcpHandle = ScopedMcpHandle<
+  McpStateResponse,
+  PutGlobalMcpConfigRequest,
+  UpsertGlobalMcpServerRequest
+>;
+
+export type ProjectMcpHandle = ScopedMcpHandle<
+  ProjectMcpStateResponse,
+  PutMcpConfigRequest,
+  UpsertMcpServerRequest
+>;
+
+export type EngineMcpAccessor = {
+  (): GlobalMcpHandle;
+  (projectId: string): ProjectMcpHandle;
+  (projectId?: string): GlobalMcpHandle | ProjectMcpHandle;
 };
 
 function toSnapshotPayload(
@@ -91,9 +128,6 @@ function toSnapshotPayload(
   };
 }
 
-const McpServerConfigMapSchema = map(McpServerConfigSchema);
-const McpServerEntryMapSchema = map(McpServerEntryInputSchema);
-
 function projectScopeOf(
   name: string,
   globalServers: Readonly<Record<string, unknown>>,
@@ -105,56 +139,14 @@ function projectScopeOf(
   return "global";
 }
 
-export function resolveEffectiveProjectMcp(
-  globalServers: Readonly<Record<string, unknown>>,
-  projectServers: Readonly<Record<string, unknown>>,
-  strict = false,
-): {
-  readonly entries: McpServerEntry[];
-  readonly effectiveServers: Record<string, McpServerConfigPayload>;
-  readonly normalizedProjectServers: Record<string, McpServerEntryInput>;
-} {
-  const resolved = resolveEffectiveMcpServers(globalServers, projectServers);
-  if (strict && resolved.errors.length > 0) {
-    throw new EngineError(400, "invalid_mcp_config", resolved.errors.join("; "));
-  }
-  return {
-    entries: resolved.entries,
-    effectiveServers: parseWithSchema(
-      McpServerConfigMapSchema,
-      resolved.effectiveServers,
-      "effective MCP servers",
-    ),
-    normalizedProjectServers: parseWithSchema(
-      McpServerEntryMapSchema,
-      resolved.normalizedProjectServers,
-      "normalized project MCP servers",
-    ),
-  };
-}
-
-export function resolveEffectiveProjectMcpForStore(
-  store: EngineStore,
-  projectId: string,
-): McpServerEntry[] {
-  const globalServers = getMcpServersRecord(store);
-  const projectServers = store.getProjectMcpServers(projectId) ?? {};
-  return resolveEffectiveProjectMcp(globalServers, projectServers, false).entries;
-}
-
-export function hasProjectMcpOverrides(store: EngineStore, projectId: string): boolean {
-  const projectServers = store.getProjectMcpServers(projectId);
-  return projectServers !== undefined && Object.keys(projectServers).length > 0;
-}
-
-export function getMcpState(deps: McpDeps): McpStateResponse {
+function getMcpState(deps: McpDeps): McpStateResponse {
   return {
     servers: getMcpServersRecord(deps.store),
     status: deps.mcpHub.status().map((snap) => toSnapshotPayload(snap, "global")),
   };
 }
 
-export function getMcpLogs(deps: McpDeps, serverName: string): McpLogsResponse {
+function getMcpLogs(deps: McpDeps, serverName: string): McpLogsResponse {
   const configured = getMcpServersRecord(deps.store);
   const hasStatus = deps.mcpHub.status().some((snap) => snap.name === serverName);
   if (!Object.hasOwn(configured, serverName) && !hasStatus) {
@@ -167,7 +159,7 @@ export function getMcpLogs(deps: McpDeps, serverName: string): McpLogsResponse {
   };
 }
 
-async function replaceMcpServers(
+async function replaceMcpServersUnlocked(
   deps: McpDeps,
   servers: Record<string, unknown>,
 ): Promise<McpStateResponse> {
@@ -175,66 +167,26 @@ async function replaceMcpServers(
   if (parsed.errors.length > 0) {
     throw new EngineError(400, "invalid_mcp_config", parsed.errors.join("; "));
   }
-  const nextGlobal = normalizeMcpServerMap(parsed.servers);
-  const { hadPreviousGlobal, previousGlobal, previousProjects, removedHttp, cancellations } =
-    deps.store.transaction(() => {
-      const hadGlobal = deps.store.getKv<unknown>(KV_MCP_SERVERS) !== undefined;
-      const prevGlobal = getMcpServersRecord(deps.store);
-      const prevProjects = deps.store.listProjects().map((project) => ({
-        id: project.id,
-        servers: deps.store.getProjectMcpServers(project.id),
-      }));
-      const removed = findRemovedHttpMcpServers(prevGlobal, nextGlobal);
-      const scopes = collectGlobalMcpOAuthCancellations(deps.store, removed);
-      deps.store.setKv(KV_MCP_SERVERS, nextGlobal);
-      pruneOrphanProjectMcpOverrides(deps.store, nextGlobal);
-      return {
-        hadPreviousGlobal: hadGlobal,
-        previousGlobal: prevGlobal,
-        previousProjects: prevProjects,
-        removedHttp: removed,
-        cancellations: scopes,
-      };
-    });
-
-  try {
-    await deps.mcpHub.reload(parsed.servers);
-  } catch (error) {
-    deps.store.transaction(() => {
-      if (hadPreviousGlobal) {
-        deps.store.setKv(KV_MCP_SERVERS, previousGlobal);
-      } else {
-        deps.store.deleteKv(KV_MCP_SERVERS);
-      }
-      for (const project of previousProjects) {
-        const current = deps.store.getProjectMcpServers(project.id);
-        if (JSON.stringify(current) !== JSON.stringify(project.servers)) {
-          deps.store.setProjectMcpServers(project.id, project.servers ?? null);
-        }
-      }
-    });
-    throw error;
-  }
-
-  await cleanupRemovedMcpOAuth({
-    store: deps.store,
-    oauthStore: deps.oauthStore,
-    cancelOAuthForServers: deps.cancelOAuthForServers,
-    removed: removedHttp,
-    cancellations,
-  });
-  await deps.syncProjects();
+  await applyGlobalMcpReplacement(deps, { servers: parsed.servers });
   return getMcpState(deps);
 }
 
-export async function putMcpConfig(
+async function putMcpConfig(
   deps: McpDeps,
   input: PutGlobalMcpConfigRequest,
 ): Promise<McpStateResponse> {
-  return replaceMcpServers(deps, input.servers);
+  const parsed = parseMcpConfig({ mcpServers: input.servers });
+  if (parsed.errors.length > 0) {
+    throw new EngineError(400, "invalid_mcp_config", parsed.errors.join("; "));
+  }
+  return deps.mutationQueue.enqueue("global", async () => {
+    deps.assertOpen();
+    await applyGlobalMcpReplacement(deps, { servers: parsed.servers });
+    return getMcpState(deps);
+  });
 }
 
-export async function upsertMcpServer(
+async function upsertMcpServer(
   deps: McpDeps,
   name: string,
   input: UpsertGlobalMcpServerRequest,
@@ -243,22 +195,28 @@ export async function upsertMcpServer(
   if (typeof validated === "string") {
     throw new EngineError(400, "invalid_mcp_config", validated);
   }
-  return replaceMcpServers(deps, {
-    ...getMcpServersRecord(deps.store),
-    [name]: { ...validated },
+  return deps.mutationQueue.enqueue("global", async () => {
+    deps.assertOpen();
+    return replaceMcpServersUnlocked(deps, {
+      ...getMcpServersRecord(deps.store),
+      [name]: { ...validated },
+    });
   });
 }
 
-export async function deleteMcpServer(deps: McpDeps, name: string): Promise<McpStateResponse> {
-  const current = { ...getMcpServersRecord(deps.store) };
-  if (!Object.hasOwn(current, name)) {
-    throw new EngineError(404, "mcp_server_not_found", `Unknown MCP server "${name}"`);
-  }
-  delete current[name];
-  return replaceMcpServers(deps, current);
+async function deleteMcpServer(deps: McpDeps, name: string): Promise<McpStateResponse> {
+  return deps.mutationQueue.enqueue("global", async () => {
+    deps.assertOpen();
+    const current = { ...getMcpServersRecord(deps.store) };
+    if (!Object.hasOwn(current, name)) {
+      throw new EngineError(404, "mcp_server_not_found", `Unknown MCP server "${name}"`);
+    }
+    delete current[name];
+    return replaceMcpServersUnlocked(deps, current);
+  });
 }
 
-export async function reconnectMcp(
+async function reconnectMcp(
   deps: McpDeps,
   input: ReconnectMcpRequest = {},
 ): Promise<ReconnectMcpResponse> {
@@ -272,11 +230,11 @@ export async function reconnectMcp(
     }
   }
   const status = await deps.mcpHub.reconnect(input.server);
-  await deps.syncExtensions();
+  await deps.syncMcpExtensions();
   return { status: status.map((snap) => toSnapshotPayload(snap, "global")) };
 }
 
-export function getProjectMcpState(deps: McpDeps, projectId: string): ProjectMcpStateResponse {
+function getProjectMcpState(deps: McpDeps, projectId: string): ProjectMcpStateResponse {
   deps.requireProject(projectId);
   const globalServers = getMcpServersRecord(deps.store);
   const projectServers = deps.store.getProjectMcpServers(projectId) ?? {};
@@ -299,91 +257,54 @@ export function getProjectMcpState(deps: McpDeps, projectId: string): ProjectMcp
   };
 }
 
-async function replaceProjectMcpServers(
+async function mutateProjectMcpServers(
   deps: McpDeps,
   projectId: string,
-  projectServers: Readonly<Record<string, unknown>>,
+  buildNextServers: (
+    current: Readonly<Record<string, McpServerEntryInput>>,
+  ) => Readonly<Record<string, unknown>>,
 ): Promise<ProjectMcpStateResponse> {
-  deps.requireProject(projectId);
-  const globalServers = getMcpServersRecord(deps.store);
-  const previousProjectServers = deps.store.getProjectMcpServers(projectId) ?? {};
-  const { effectiveServers: previousEffective } = resolveEffectiveProjectMcp(
-    globalServers,
-    previousProjectServers,
-    false,
-  );
-  const { effectiveServers: nextEffective, normalizedProjectServers } = resolveEffectiveProjectMcp(
-    globalServers,
-    projectServers,
-    true,
-  );
-  const removedHttp = findRemovedHttpMcpServers(previousProjectServers, normalizedProjectServers);
-  const effectiveRemovedHttp = findRemovedHttpMcpServers(previousEffective, nextEffective);
-  const cancelServerNames = [
-    ...new Set([
-      ...removedHttp.map((entry) => entry.name),
-      ...effectiveRemovedHttp.map((entry) => entry.name),
-    ]),
-  ];
-  deps.store.setProjectMcpServers(
-    projectId,
-    Object.keys(normalizedProjectServers).length === 0 ? null : normalizedProjectServers,
-  );
-  await cleanupRemovedMcpOAuth({
-    store: deps.store,
-    oauthStore: deps.oauthStore,
-    cancelOAuthForServers: deps.cancelOAuthForServers,
-    removed: removedHttp,
-    cancellations:
-      cancelServerNames.length === 0
-        ? []
-        : [{ scopeKey: projectMcpOAuthScope(projectId), serverNames: cancelServerNames }],
-  });
-  await deps.syncProjectMcp(projectId);
-  return getProjectMcpState(deps, projectId);
-}
-
-export async function putProjectMcpConfig(
-  deps: McpDeps,
-  projectId: string,
-  input: PutMcpConfigRequest,
-): Promise<ProjectMcpStateResponse> {
-  return replaceProjectMcpServers(deps, projectId, input.servers);
-}
-
-export async function upsertProjectMcpServer(
-  deps: McpDeps,
-  projectId: string,
-  serverName: string,
-  input: UpsertMcpServerRequest,
-): Promise<ProjectMcpStateResponse> {
-  deps.requireProject(projectId);
-  const current = deps.store.getProjectMcpServers(projectId) ?? {};
-  return replaceProjectMcpServers(deps, projectId, {
-    ...current,
-    [serverName]: input.config,
-  });
-}
-
-export async function deleteProjectMcpServer(
-  deps: McpDeps,
-  projectId: string,
-  serverName: string,
-): Promise<ProjectMcpStateResponse> {
-  deps.requireProject(projectId);
-  const current = { ...(deps.store.getProjectMcpServers(projectId) ?? {}) };
-  if (!Object.hasOwn(current, serverName)) {
-    throw new EngineError(
-      404,
-      "mcp_server_not_found",
-      `Unknown project MCP server "${serverName}"`,
+  return deps.runProjectMcpMutation(projectId, async () => {
+    deps.assertOpen();
+    deps.requireProject(projectId);
+    const globalServers = getMcpServersRecord(deps.store);
+    const previousProjectServers = deps.store.getProjectMcpServers(projectId) ?? {};
+    const nextProjectServers = buildNextServers(previousProjectServers);
+    const { effectiveServers: previousEffective } = resolveEffectiveProjectMcp(
+      globalServers,
+      previousProjectServers,
+      false,
     );
-  }
-  delete current[serverName];
-  return replaceProjectMcpServers(deps, projectId, current);
+    const { effectiveServers: nextEffective, normalizedProjectServers } =
+      resolveEffectiveProjectMcp(globalServers, nextProjectServers, true);
+    const removedHttp = findRemovedHttpMcpServers(previousProjectServers, normalizedProjectServers);
+    const effectiveRemovedHttp = findRemovedHttpMcpServers(previousEffective, nextEffective);
+    const cancelServerNames = [
+      ...new Set([
+        ...removedHttp.map((entry) => entry.name),
+        ...effectiveRemovedHttp.map((entry) => entry.name),
+      ]),
+    ];
+    deps.store.setProjectMcpServers(
+      projectId,
+      Object.keys(normalizedProjectServers).length === 0 ? null : normalizedProjectServers,
+    );
+    await cleanupRemovedMcpOAuth({
+      store: deps.store,
+      oauthStore: deps.oauthStore,
+      cancelOAuthForServers: deps.cancelOAuthForServers,
+      removed: removedHttp,
+      cancellations:
+        cancelServerNames.length === 0
+          ? []
+          : [{ scopeKey: projectMcpOAuthScope(projectId), serverNames: cancelServerNames }],
+    });
+    await deps.syncProjectMcpUnlocked(projectId);
+    return getProjectMcpState(deps, projectId);
+  });
 }
 
-export async function reconnectProjectMcp(
+async function reconnectProjectMcp(
   deps: McpDeps,
   projectId: string,
   input: ReconnectMcpRequest = {},
@@ -405,7 +326,7 @@ export async function reconnectProjectMcp(
 
   const hub = deps.getProjectMcpHub(projectId) ?? (await deps.openProjectMcpHub(projectId));
   const snapshots = await hub.reconnect(input.server);
-  await deps.syncExtensions();
+  await deps.syncMcpExtensions();
   return {
     status: snapshots.map((snap) =>
       toSnapshotPayload(snap, projectScopeOf(snap.name, globalServers, projectServers)),
@@ -413,11 +334,7 @@ export async function reconnectProjectMcp(
   };
 }
 
-export function getProjectMcpLogs(
-  deps: McpDeps,
-  projectId: string,
-  serverName: string,
-): McpLogsResponse {
+function getProjectMcpLogs(deps: McpDeps, projectId: string, serverName: string): McpLogsResponse {
   deps.requireProject(projectId);
   const globalServers = getMcpServersRecord(deps.store);
   const projectServers = deps.store.getProjectMcpServers(projectId) ?? {};
@@ -437,4 +354,77 @@ export function getProjectMcpLogs(
     lines: hub === undefined ? [] : [...hub.getServerLogs(serverName)],
     logPath,
   };
+}
+
+function buildGlobalMcpHandle(deps: McpDeps): GlobalMcpHandle {
+  const oauth = scopedMcpOAuth(deps, GLOBAL_SCOPE);
+  return {
+    getState: guardSync(deps.assertOpen, () => getMcpState(deps)),
+    putConfig: guardAsync(deps.assertOpen, (input) => putMcpConfig(deps, input)),
+    upsertServer: guardAsync(deps.assertOpen, (serverName, input) =>
+      upsertMcpServer(deps, serverName, input),
+    ),
+    deleteServer: guardAsync(deps.assertOpen, (serverName) => deleteMcpServer(deps, serverName)),
+    reconnect: guardAsync(deps.assertOpen, (input = {}) => reconnectMcp(deps, input)),
+    getLogs: guardSync(deps.assertOpen, (serverName) => getMcpLogs(deps, serverName)),
+    startOAuth: guardAsync(deps.assertOpen, oauth.start),
+    subscribeOAuth: guardSync(deps.assertOpen, oauth.subscribe),
+    submitOAuthInput: guardSync(deps.assertOpen, oauth.submitInput),
+    cancelOAuth: guardSync(deps.assertOpen, oauth.cancel),
+    logoutOAuth: guardAsync(deps.assertOpen, oauth.logout),
+  };
+}
+
+function buildProjectMcpHandle(deps: McpDeps, projectId: string): ProjectMcpHandle {
+  const oauth = scopedMcpOAuth(deps, projectScope(projectId));
+  return {
+    getState: guardSync(deps.assertOpen, () => getProjectMcpState(deps, projectId)),
+    putConfig: guardAsync(deps.assertOpen, (input) =>
+      mutateProjectMcpServers(deps, projectId, () => input.servers),
+    ),
+    upsertServer: guardAsync(deps.assertOpen, (serverName, input) =>
+      mutateProjectMcpServers(deps, projectId, (current) => ({
+        ...current,
+        [serverName]: input.config,
+      })),
+    ),
+    deleteServer: guardAsync(deps.assertOpen, (serverName) =>
+      mutateProjectMcpServers(deps, projectId, (current) => {
+        if (!Object.hasOwn(current, serverName)) {
+          throw new EngineError(
+            404,
+            "mcp_server_not_found",
+            `Unknown project MCP server "${serverName}"`,
+          );
+        }
+        const next = { ...current };
+        delete next[serverName];
+        return next;
+      }),
+    ),
+    reconnect: guardAsync(deps.assertOpen, (input = {}) =>
+      reconnectProjectMcp(deps, projectId, input),
+    ),
+    getLogs: guardSync(deps.assertOpen, (serverName) =>
+      getProjectMcpLogs(deps, projectId, serverName),
+    ),
+    startOAuth: guardAsync(deps.assertOpen, oauth.start),
+    subscribeOAuth: guardSync(deps.assertOpen, oauth.subscribe),
+    submitOAuthInput: guardSync(deps.assertOpen, oauth.submitInput),
+    cancelOAuth: guardSync(deps.assertOpen, oauth.cancel),
+    logoutOAuth: guardAsync(deps.assertOpen, oauth.logout),
+  };
+}
+
+export function createEngineMcpAccessor(deps: McpDeps): EngineMcpAccessor {
+  const globalHandle = buildGlobalMcpHandle(deps);
+
+  function mcp(): GlobalMcpHandle;
+  function mcp(projectId: string): ProjectMcpHandle;
+  function mcp(projectId?: string): GlobalMcpHandle | ProjectMcpHandle;
+  function mcp(projectId?: string): GlobalMcpHandle | ProjectMcpHandle {
+    return projectId === undefined ? globalHandle : buildProjectMcpHandle(deps, projectId);
+  }
+
+  return mcp;
 }

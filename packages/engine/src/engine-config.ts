@@ -1,13 +1,17 @@
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { isMcpServerOverride } from "@earendil-works/pi-mcp";
 import { map } from "@earendil-works/pi-schema";
 import {
   isRecord,
   type McpHub,
   type McpOAuthCredentialStore,
+  type McpServerEntry,
   mcpOAuthStoreKey,
   normalizeMcpServerMap,
   parseMcpConfig,
+  resolveEffectiveMcpServers,
+  withFileLock,
+  writeFileAtomic,
 } from "@eevee/agent";
 import {
   composeProviders,
@@ -25,6 +29,7 @@ import {
   type McpServerConfigPayload,
   McpServerConfigSchema,
   type McpServerEntryInput,
+  McpServerEntryInputSchema,
   type ModelProfilesDocument,
   ModelProfilesDocumentSchema,
   parseWithSchema,
@@ -33,8 +38,9 @@ import {
   type ToolsSettings,
 } from "@eevee/protocol";
 import type { DataDirLayout } from "./data-dir.ts";
-import { EngineError } from "./engine-error.ts";
+import { EngineError, guardAsync, guardSync } from "./engine-error.ts";
 import { GLOBAL_MCP_OAUTH_SCOPE, projectMcpOAuthScope } from "./mcp-oauth-sessions.ts";
+import type { KeyedSerialQueue } from "./serial-queue.ts";
 import type { EngineStore } from "./store.ts";
 
 export const KV_SETTINGS = "settings";
@@ -83,6 +89,49 @@ export function formatModelProfiles(doc: ModelProfilesDocument): string | undefi
 }
 
 const McpServersMapSchema = map(McpServerConfigSchema);
+const McpServerEntryMapSchema = map(McpServerEntryInputSchema);
+
+export function resolveEffectiveProjectMcp(
+  globalServers: Readonly<Record<string, unknown>>,
+  projectServers: Readonly<Record<string, unknown>>,
+  strict = false,
+): {
+  readonly entries: McpServerEntry[];
+  readonly effectiveServers: Record<string, McpServerConfigPayload>;
+  readonly normalizedProjectServers: Record<string, McpServerEntryInput>;
+} {
+  const resolved = resolveEffectiveMcpServers(globalServers, projectServers);
+  if (strict && resolved.errors.length > 0) {
+    throw new EngineError(400, "invalid_mcp_config", resolved.errors.join("; "));
+  }
+  return {
+    entries: resolved.entries,
+    effectiveServers: parseWithSchema(
+      McpServersMapSchema,
+      resolved.effectiveServers,
+      "effective MCP servers",
+    ),
+    normalizedProjectServers: parseWithSchema(
+      McpServerEntryMapSchema,
+      resolved.normalizedProjectServers,
+      "normalized project MCP servers",
+    ),
+  };
+}
+
+export function resolveEffectiveProjectMcpForStore(
+  store: EngineStore,
+  projectId: string,
+): McpServerEntry[] {
+  const globalServers = getMcpServersRecord(store);
+  const projectServers = store.getProjectMcpServers(projectId) ?? {};
+  return resolveEffectiveProjectMcp(globalServers, projectServers, false).entries;
+}
+
+export function hasProjectMcpOverrides(store: EngineStore, projectId: string): boolean {
+  const projectServers = store.getProjectMcpServers(projectId);
+  return projectServers !== undefined && Object.keys(projectServers).length > 0;
+}
 
 export function readEngineSettings(store: EngineStore): EngineSettings {
   return store.getKvParsed(KV_SETTINGS, EngineSettingsSchema) ?? {};
@@ -433,18 +482,106 @@ export async function cleanupRemovedMcpOAuth(
   }
 }
 
-export type ImportConfigDeps = ExportConfigDeps & {
-  readonly modelRuntime: ModelRuntime;
+export type GlobalMcpReplacementDeps = {
+  readonly store: EngineStore;
   readonly mcpHub: McpHub;
   readonly oauthStore: McpOAuthCredentialStore;
   readonly cancelOAuthForServers: (
     serverNames: readonly string[],
     scopeKey?: string,
   ) => Promise<void>;
-  readonly env: Readonly<Record<string, string | undefined>> | undefined;
   readonly syncProjects: () => Promise<void>;
-  readonly applySettings: () => Promise<void>;
 };
+
+export type ApplyGlobalMcpReplacementOptions = {
+  readonly servers: readonly McpServerEntry[];
+  readonly extraKvKeys?: readonly string[];
+  readonly mutateExtraStore?: () => void;
+  readonly beforeReload?: () => Promise<void>;
+  readonly onRollback?: () => Promise<void>;
+};
+
+export async function applyGlobalMcpReplacement(
+  deps: GlobalMcpReplacementDeps,
+  options: ApplyGlobalMcpReplacementOptions,
+): Promise<void> {
+  const nextGlobal = normalizeMcpServerMap(options.servers);
+  const kvKeys = [KV_MCP_SERVERS, ...(options.extraKvKeys ?? [])];
+  const { kvSnapshots, previousProjects, removedHttp, cancellations } = deps.store.transaction(
+    () => {
+      const snapshots = kvKeys.map((key) => ({
+        key,
+        value: deps.store.getKv<unknown>(key),
+      }));
+      const prevGlobal = getMcpServersRecord(deps.store);
+      const prevProjects = deps.store.listProjects().map((project) => ({
+        id: project.id,
+        servers: deps.store.getProjectMcpServers(project.id),
+      }));
+      const removed = findRemovedHttpMcpServers(prevGlobal, nextGlobal);
+      const scopes = collectGlobalMcpOAuthCancellations(deps.store, removed);
+      options.mutateExtraStore?.();
+      deps.store.setKv(KV_MCP_SERVERS, nextGlobal);
+      pruneOrphanProjectMcpOverrides(deps.store, nextGlobal);
+      return {
+        kvSnapshots: snapshots,
+        previousProjects: prevProjects,
+        removedHttp: removed,
+        cancellations: scopes,
+      };
+    },
+  );
+
+  try {
+    await options.beforeReload?.();
+    await deps.mcpHub.reload(options.servers);
+  } catch (error) {
+    deps.store.transaction(() => {
+      for (const entry of kvSnapshots) {
+        if (entry.value === undefined) {
+          deps.store.deleteKv(entry.key);
+        } else {
+          deps.store.setKv(entry.key, entry.value);
+        }
+      }
+      for (const project of previousProjects) {
+        const current = deps.store.getProjectMcpServers(project.id);
+        if (JSON.stringify(current) !== JSON.stringify(project.servers)) {
+          deps.store.setProjectMcpServers(project.id, project.servers ?? null);
+        }
+      }
+    });
+    await options.onRollback?.().catch(() => undefined);
+    throw error;
+  }
+
+  await cleanupRemovedMcpOAuth({
+    store: deps.store,
+    oauthStore: deps.oauthStore,
+    cancelOAuthForServers: deps.cancelOAuthForServers,
+    removed: removedHttp,
+    cancellations,
+  });
+  await deps.syncProjects();
+}
+
+async function readOptionalFileText(filePath: string): Promise<string | undefined> {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch (error) {
+    if (isEnoent(error)) return undefined;
+    throw error;
+  }
+}
+
+export type ImportConfigDeps = ExportConfigDeps &
+  GlobalMcpReplacementDeps & {
+    readonly modelRuntime: ModelRuntime;
+    readonly mutationQueue: KeyedSerialQueue;
+    readonly assertOpen: () => void;
+    readonly env: Readonly<Record<string, string | undefined>> | undefined;
+    readonly applySettings: () => Promise<void>;
+  };
 
 export async function importEngineConfig(
   deps: ImportConfigDeps,
@@ -469,38 +606,76 @@ export async function importEngineConfig(
     }
   }
 
-  if (parsedModelsConfig !== undefined) {
-    await writeModelsJsonFile(deps.layout.modelsFile, parsedModelsConfig);
-    await deps.modelRuntime.reload();
-  }
+  return deps.mutationQueue.enqueue("global", async () => {
+    deps.assertOpen();
+    const previousModelsRaw =
+      parsedModelsConfig === undefined
+        ? undefined
+        : await withFileLock(deps.layout.modelsFile, () =>
+            readOptionalFileText(deps.layout.modelsFile),
+          );
+    let modelsWritten = false;
 
-  const normalizedMcp = normalizeMcpServerMap(parsedMcp.servers);
-  const { removedHttpMcp, cancellations } = deps.store.transaction(() => {
-    const previousMcp = getMcpServersRecord(deps.store);
-    const removed = findRemovedHttpMcpServers(previousMcp, normalizedMcp);
-    const scopes = collectGlobalMcpOAuthCancellations(deps.store, removed);
-    deps.store.setKv(KV_SETTINGS, bundle.settings);
-    deps.store.setKv(KV_MODEL_PROFILES, bundle.modelProfiles);
-    deps.store.setKv(KV_MCP_SERVERS, normalizedMcp);
-    pruneOrphanProjectMcpOverrides(deps.store, normalizedMcp);
-    if (bundle.skillsPolicy !== undefined) {
-      deps.store.setKv(KV_SKILLS_POLICY, bundle.skillsPolicy);
-    } else {
-      deps.store.deleteKv(KV_SKILLS_POLICY);
-    }
-    return { removedHttpMcp: removed, cancellations: scopes };
+    await applyGlobalMcpReplacement(deps, {
+      servers: parsedMcp.servers,
+      extraKvKeys: [KV_SETTINGS, KV_MODEL_PROFILES, KV_SKILLS_POLICY],
+      mutateExtraStore: () => {
+        deps.store.setKv(KV_SETTINGS, bundle.settings);
+        deps.store.setKv(KV_MODEL_PROFILES, bundle.modelProfiles);
+        if (bundle.skillsPolicy !== undefined) {
+          deps.store.setKv(KV_SKILLS_POLICY, bundle.skillsPolicy);
+        } else {
+          deps.store.deleteKv(KV_SKILLS_POLICY);
+        }
+      },
+      beforeReload: async () => {
+        if (parsedModelsConfig === undefined) return;
+        await writeModelsJsonFile(deps.layout.modelsFile, parsedModelsConfig);
+        modelsWritten = true;
+        await deps.modelRuntime.reload();
+      },
+      onRollback: async () => {
+        if (!modelsWritten) return;
+        await withFileLock(deps.layout.modelsFile, async () => {
+          if (previousModelsRaw !== undefined) {
+            await writeFileAtomic(deps.layout.modelsFile, previousModelsRaw, 0o600);
+          } else {
+            await rm(deps.layout.modelsFile, { force: true });
+          }
+        });
+        await deps.modelRuntime.reload();
+      },
+    });
+
+    await deps.applySettings();
+    return exportEngineConfig(deps);
   });
+}
 
-  await cleanupRemovedMcpOAuth({
-    store: deps.store,
-    oauthStore: deps.oauthStore,
-    cancelOAuthForServers: deps.cancelOAuthForServers,
-    removed: removedHttpMcp,
-    cancellations,
-  });
+export type SettingsHandle = {
+  get(): EngineSettings;
+  patch(patch: EngineSettings): Promise<EngineSettings>;
+  put(next: EngineSettings): Promise<EngineSettings>;
+  exportConfig(): Promise<ConfigBundle>;
+  importConfig(input: ConfigBundle): Promise<ConfigBundle>;
+};
 
-  await deps.mcpHub.reload(parsedMcp.servers);
-  await deps.syncProjects();
-  await deps.applySettings();
-  return exportEngineConfig(deps);
+export function createSettingsHandle(deps: ImportConfigDeps): SettingsHandle {
+  return {
+    get: guardSync(deps.assertOpen, () => readEngineSettings(deps.store)),
+    patch: guardAsync(deps.assertOpen, (patch) =>
+      deps.mutationQueue.enqueue("global", async () => {
+        deps.assertOpen();
+        return patchEngineSettings(deps.store, patch, deps.applySettings);
+      }),
+    ),
+    put: guardAsync(deps.assertOpen, (next) =>
+      deps.mutationQueue.enqueue("global", async () => {
+        deps.assertOpen();
+        return putEngineSettings(deps.store, next, deps.applySettings);
+      }),
+    ),
+    exportConfig: guardAsync(deps.assertOpen, () => exportEngineConfig(deps)),
+    importConfig: guardAsync(deps.assertOpen, (input) => importEngineConfig(deps, input)),
+  };
 }

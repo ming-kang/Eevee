@@ -44,7 +44,7 @@ import { validateTaskReadOptions as validateProtocolTaskReadOptions } from "@eev
 import { decodeCursor, encodeCursor } from "./cursor.ts";
 import { type DataDirLayout, projectPaths } from "./data-dir.ts";
 import type { EngineKnobs } from "./engine-config.ts";
-import { EngineError, toEngineError } from "./engine-error.ts";
+import { EngineError, guardAsync, guardSync, toEngineError } from "./engine-error.ts";
 import { expandMessageSkills, type SkillsDeps } from "./engine-skills.ts";
 import { subscribeWorkerTaskStream, type WorkerTaskStream } from "./engine-task-stream.ts";
 import type { ProjectPool } from "./project-pool.ts";
@@ -64,7 +64,66 @@ export type ProjectOpsDeps = {
   readonly pool: ProjectPool;
   readonly knobs: EngineKnobs;
   readonly skills: SkillsDeps;
+  readonly assertOpen: () => void;
+  readonly requireProject: (projectId: string) => ProjectSummary;
   readonly cancelProjectOAuth: (projectId: string) => Promise<void>;
+};
+
+export type ProjectsHandle = {
+  create(input: CreateProjectRequest): ProjectSummary;
+  list(): ProjectSummary[];
+  get(projectId: string): ProjectSummary;
+  update(projectId: string, patch: UpdateProjectRequest): Promise<GetProjectResponse>;
+  delete(projectId: string): Promise<DeleteProjectResponse>;
+  getMemory(projectId: string): ProjectMemoryResponse;
+  putMemory(projectId: string, input: PutProjectMemoryRequest): ProjectMemoryResponse;
+  getUsage(projectId: string): Promise<ProjectUsageResponse>;
+  getBoard(projectId: string): Promise<BoardView>;
+  sendMessage(
+    projectId: string,
+    ref: ConversationRef,
+    input: SendMessageRequest,
+  ): Promise<SendMessageResponse>;
+  listEntries(
+    projectId: string,
+    ref: ConversationRef,
+    params?: ListEntriesParams,
+  ): Promise<ListEntriesResponse>;
+  interrupt(projectId: string, ref: ConversationRef): Promise<OkResponse>;
+  retry(projectId: string, ref: ConversationRef): Promise<SendMessageResponse>;
+  watchConversation(
+    projectId: string,
+    ref: ConversationRef,
+    context?: Context,
+    window?: ConversationWindow,
+  ): Promise<ConversationWatch>;
+  answerQuestion(
+    projectId: string,
+    questionId: QuestionId,
+    input: AnswerQuestionRequest,
+  ): Promise<AnswerQuestionResponse>;
+  listWorkerTasks(
+    projectId: string,
+    workerId: WorkerId,
+    options?: CoreListWorkerTasksOptions,
+  ): Promise<ListWorkerTasksResponse>;
+  readWorkerTask(
+    projectId: string,
+    workerId: WorkerId,
+    taskId: string,
+    options?: OutputReadOptions,
+  ): Promise<ReadWorkerTaskResponse>;
+  subscribeWorkerTaskStream(
+    projectId: string,
+    workerId: WorkerId,
+    taskId: string,
+    options?: OutputReadOptions,
+  ): Promise<WorkerTaskStream>;
+  killWorkerTask(
+    projectId: string,
+    workerId: WorkerId,
+    taskId: string,
+  ): Promise<KillWorkerTaskResponse>;
 };
 
 function conversationTarget(ref: ConversationRef): ProjectTarget {
@@ -110,14 +169,7 @@ export function listProjects(deps: ProjectOpsDeps): ProjectSummary[] {
 }
 
 export function getProject(deps: ProjectOpsDeps, projectId: string): ProjectSummary {
-  if (deps.pool.isDeleting(projectId)) {
-    throw new EngineError(404, "project_not_found", `Unknown project ${projectId}`);
-  }
-  const project = deps.store.getProject(projectId);
-  if (project === undefined) {
-    throw new EngineError(404, "project_not_found", `Unknown project ${projectId}`);
-  }
-  return project;
+  return deps.requireProject(projectId);
 }
 
 export async function updateProject(
@@ -159,13 +211,16 @@ export async function deleteProject(
   deps: ProjectOpsDeps,
   projectId: string,
 ): Promise<DeleteProjectResponse> {
-  getProject(deps, projectId);
-  await deps.cancelProjectOAuth(projectId);
-  await deps.pool.deleteOpenProject(projectId, async () => {
-    deps.store.deleteProject(projectId);
-    const paths = projectPaths(deps.layout, projectId);
-    await rm(paths.dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-  });
+  deps.requireProject(projectId);
+  await deps.pool.deleteOpenProject(
+    projectId,
+    async () => {
+      deps.store.deleteProject(projectId);
+      const paths = projectPaths(deps.layout, projectId);
+      await rm(paths.dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    },
+    () => deps.cancelProjectOAuth(projectId),
+  );
   return { ok: true, id: projectId };
 }
 
@@ -332,7 +387,7 @@ export async function subscribeTaskStream(
 ): Promise<WorkerTaskStream> {
   validateTaskReadOptions(options);
   return inProject(deps, projectId, (handle) =>
-    subscribeWorkerTaskStream(handle, workerId, taskId, options),
+    subscribeWorkerTaskStream(handle, workerId as CoreWorkerId, taskId, options),
   );
 }
 
@@ -361,4 +416,50 @@ export async function watchConversation(
   return inProject(deps, projectId, (handle) =>
     handle.watchConversation(conversationTarget(ref), context, window),
   );
+}
+
+export function createProjectsHandle(deps: ProjectOpsDeps): ProjectsHandle {
+  return {
+    create: guardSync(deps.assertOpen, (input) => createProject(deps, input)),
+    list: guardSync(deps.assertOpen, () => listProjects(deps)),
+    get: guardSync(deps.assertOpen, (projectId) => getProject(deps, projectId)),
+    update: guardAsync(deps.assertOpen, (projectId, patch) =>
+      updateProject(deps, projectId, patch),
+    ),
+    delete: guardAsync(deps.assertOpen, (projectId) => deleteProject(deps, projectId)),
+    getMemory: guardSync(deps.assertOpen, (projectId) => getProjectMemory(deps, projectId)),
+    putMemory: guardSync(deps.assertOpen, (projectId, input) =>
+      putProjectMemory(deps, projectId, input),
+    ),
+    getUsage: guardAsync(deps.assertOpen, (projectId) => getProjectUsage(deps, projectId)),
+    getBoard: guardAsync(deps.assertOpen, (projectId) => getBoard(deps, projectId)),
+    sendMessage: guardAsync(deps.assertOpen, (projectId, ref, input) =>
+      sendMessage(deps, projectId, ref, input),
+    ),
+    listEntries: guardAsync(deps.assertOpen, (projectId, ref, params = {}) =>
+      listEntries(deps, projectId, ref, params),
+    ),
+    interrupt: guardAsync(deps.assertOpen, (projectId, ref) => interrupt(deps, projectId, ref)),
+    retry: guardAsync(deps.assertOpen, (projectId, ref) => retry(deps, projectId, ref)),
+    watchConversation: guardAsync(
+      deps.assertOpen,
+      (projectId, ref, context = BACKGROUND_CONTEXT, window) =>
+        watchConversation(deps, projectId, ref, context, window),
+    ),
+    answerQuestion: guardAsync(deps.assertOpen, (projectId, questionId, input) =>
+      answerQuestion(deps, projectId, questionId, input),
+    ),
+    listWorkerTasks: guardAsync(deps.assertOpen, (projectId, workerId, options) =>
+      listWorkerTasks(deps, projectId, workerId, options),
+    ),
+    readWorkerTask: guardAsync(deps.assertOpen, (projectId, workerId, taskId, options) =>
+      readWorkerTask(deps, projectId, workerId, taskId, options),
+    ),
+    subscribeWorkerTaskStream: guardAsync(deps.assertOpen, (projectId, workerId, taskId, options) =>
+      subscribeTaskStream(deps, projectId, workerId, taskId, options),
+    ),
+    killWorkerTask: guardAsync(deps.assertOpen, (projectId, workerId, taskId) =>
+      killWorkerTask(deps, projectId, workerId, taskId),
+    ),
+  };
 }

@@ -16,7 +16,7 @@ import {
   KV_SKILLS_POLICY,
   readGlobalSkillsPolicy,
 } from "./engine-config.ts";
-import { EngineError } from "./engine-error.ts";
+import { EngineError, guardAsync } from "./engine-error.ts";
 import type { EngineStore } from "./store.ts";
 
 export type SkillsDeps = {
@@ -24,6 +24,24 @@ export type SkillsDeps = {
   readonly userHomeDir?: string | null;
   readonly requireProject: (projectId: string) => ProjectSummary;
 };
+
+export type SkillsHandle = {
+  list(projectId?: string): Promise<SkillsListResponse>;
+  putPolicy(input: PutSkillsPolicyRequest, projectId?: string): Promise<SkillsListResponse>;
+};
+
+export function createSkillsHandle(
+  deps: SkillsDeps & { readonly assertOpen: () => void },
+): SkillsHandle {
+  return {
+    list: guardAsync(deps.assertOpen, (projectId) => listSkills(deps, projectId)),
+    putPolicy: guardAsync(deps.assertOpen, (input, projectId) =>
+      projectId === undefined
+        ? putGlobalSkillsPolicy(deps, input)
+        : putProjectSkillsPolicy(deps, projectId, input),
+    ),
+  };
+}
 
 export async function listSkills(
   deps: SkillsDeps,

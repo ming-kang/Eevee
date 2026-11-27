@@ -19,12 +19,13 @@ import {
   type EngineKnobs,
   effectiveSkillsPolicy,
   formatModelProfiles,
+  hasProjectMcpOverrides,
   MAX_HIBERNATE_SWEEP_MS,
   MIN_HIBERNATE_SWEEP_MS,
   readModelProfiles,
+  resolveEffectiveProjectMcpForStore,
 } from "./engine-config.ts";
 import { EngineError } from "./engine-error.ts";
-import { hasProjectMcpOverrides, resolveEffectiveProjectMcpForStore } from "./engine-mcp.ts";
 import { KeyedSerialQueue } from "./serial-queue.ts";
 import type { EngineStore } from "./store.ts";
 
@@ -157,12 +158,17 @@ export class ProjectPool {
     return opening;
   }
 
-  async deleteOpenProject(projectId: string, remove: () => Promise<void>): Promise<void> {
+  async deleteOpenProject(
+    projectId: string,
+    remove: () => Promise<void>,
+    beforeClose?: () => Promise<void>,
+  ): Promise<void> {
     if (this.#deletingProjects.has(projectId)) {
       throw new EngineError(404, "project_not_found", `Unknown project ${projectId}`);
     }
     this.#deletingProjects.add(projectId);
     try {
+      await beforeClose?.();
       const opening = this.#opening.get(projectId);
       if (opening !== undefined) await opening.catch(() => undefined);
       const closing = this.#closingProjects.get(projectId);
@@ -238,6 +244,24 @@ export class ProjectPool {
 
   async syncProjectMcp(projectId: string): Promise<void> {
     await this.#mcpQueue.enqueue(projectId, () => this.#syncProjectMcpNow(projectId));
+  }
+
+  async syncProjectMcpUnlocked(projectId: string): Promise<void> {
+    await this.#syncProjectMcpNow(projectId);
+  }
+
+  async runProjectMcpMutation<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
+    if (this.#closed) {
+      throw new EngineError(503, "engine_closed", "Engine is closing");
+    }
+    this.#requireProject(projectId);
+    return this.#mcpQueue.enqueue(projectId, async () => {
+      if (this.#closed) {
+        throw new EngineError(503, "engine_closed", "Engine is closing");
+      }
+      this.#requireProject(projectId);
+      return fn();
+    });
   }
 
   async updateProjectMcpRoots(projectId: string, workspaces: readonly string[]): Promise<void> {

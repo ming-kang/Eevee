@@ -9,8 +9,10 @@ import {
   ImportProviderModelsRequestSchema,
   LoginInputRequestSchema,
   McpOAuthInputRequestSchema,
+  type McpStateResponse,
   ModelProfilesDocumentSchema,
   ProbeProviderRequestSchema,
+  type ProjectMcpStateResponse,
   PutGlobalMcpConfigRequestSchema,
   PutMcpConfigRequestSchema,
   PutProjectMemoryRequestSchema,
@@ -28,7 +30,7 @@ import {
   UpsertProviderRequestSchema,
 } from "@eevee/protocol";
 import { ENGINE_PROTOCOL_VERSION, ENGINE_VERSION } from "./constants.ts";
-import type { Engine } from "./engine.ts";
+import type { Engine, ScopedMcpHandle } from "./engine.ts";
 import {
   parseEntriesQuery,
   parseListWorkerTasksQuery,
@@ -62,39 +64,6 @@ async function withDisconnectSignal(
   }
 }
 
-type ScopedMcpHandlers<
-  TScope,
-  TPutInput extends Static<typeof PutMcpConfigRequestSchema> = Static<
-    typeof PutMcpConfigRequestSchema
-  >,
-  TUpsertInput extends Static<typeof UpsertMcpServerRequestSchema> = Static<
-    typeof UpsertMcpServerRequestSchema
-  >,
-> = {
-  readonly getState: (scope: TScope) => unknown;
-  readonly putConfig: (scope: TScope, input: TPutInput) => unknown;
-  readonly reconnect: (scope: TScope, input: Static<typeof ReconnectMcpRequestSchema>) => unknown;
-  readonly upsertServer: (scope: TScope, serverName: string, input: TUpsertInput) => unknown;
-  readonly deleteServer: (scope: TScope, serverName: string) => unknown;
-  readonly getLogs: (scope: TScope, serverName: string) => unknown;
-  readonly startOAuth: (scope: TScope, serverName: string) => unknown;
-  readonly streamOAuth: (
-    req: IncomingMessage,
-    res: ServerResponse,
-    scope: TScope,
-    serverName: string,
-    sessionId: string,
-  ) => void;
-  readonly submitOAuthInput: (
-    scope: TScope,
-    serverName: string,
-    sessionId: string,
-    input: Static<typeof McpOAuthInputRequestSchema>,
-  ) => unknown;
-  readonly cancelOAuth: (scope: TScope, serverName: string, sessionId: string) => unknown;
-  readonly logoutOAuth: (scope: TScope, serverName: string) => unknown;
-};
-
 type ScopedMcpParams = {
   readonly projectId?: string;
   readonly serverName: string;
@@ -102,94 +71,93 @@ type ScopedMcpParams = {
 };
 
 function createScopedMcpRoutes<
-  Prefix extends "/mcp" | "/projects/:projectId/mcp",
+  TState extends McpStateResponse | ProjectMcpStateResponse,
   TPutInput extends Static<typeof PutMcpConfigRequestSchema>,
   TUpsertInput extends Static<typeof UpsertMcpServerRequestSchema>,
 >(
-  prefix: Prefix,
+  prefix: "/mcp" | "/projects/:projectId/mcp",
   schemas: {
     readonly putConfig: Schema<TPutInput>;
     readonly putConfigLabel: string;
     readonly upsertServer: Schema<TUpsertInput>;
     readonly upsertServerLabel: string;
   },
-  handlers: ScopedMcpHandlers<Prefix extends "/mcp" ? undefined : string, TPutInput, TUpsertInput>,
+  getHandle: (params: ScopedMcpParams) => ScopedMcpHandle<TState, TPutInput, TUpsertInput>,
+  streams: SseStreamHandlers,
 ): readonly Route[] {
-  type TScope = Prefix extends "/mcp" ? undefined : string;
-  const scopeOf = (params: { readonly projectId?: string }) =>
-    (prefix === "/mcp" ? undefined : params.projectId) as TScope;
-
   const mcpRoute = (
     method: string,
     suffix: string,
     handle: (ctx: {
       readonly req: IncomingMessage;
       readonly res: ServerResponse;
-      readonly scope: TScope;
+      readonly mcp: ScopedMcpHandle<TState, TPutInput, TUpsertInput>;
       readonly params: ScopedMcpParams;
     }) => Promise<void> | void,
   ): Route =>
     route(
       method,
       `${prefix}${suffix}` as `/projects/:projectId/mcp/servers/:serverName/oauth/login/:sessionId/stream`,
-      ({ req, res, params }) => handle({ req, res, scope: scopeOf(params), params }),
+      ({ req, res, params }) => handle({ req, res, mcp: getHandle(params), params }),
     );
 
   return [
-    mcpRoute("GET", "", ({ res, scope }) => {
-      sendJson(res, 200, handlers.getState(scope));
+    mcpRoute("GET", "", ({ res, mcp }) => {
+      sendJson(res, 200, mcp.getState());
     }),
-    mcpRoute("PUT", "", async ({ req, res, scope }) => {
+    mcpRoute("PUT", "", async ({ req, res, mcp }) => {
       const input = await readBody(req, schemas.putConfig, schemas.putConfigLabel);
-      sendJson(res, 200, await handlers.putConfig(scope, input));
+      sendJson(res, 200, await mcp.putConfig(input));
     }),
-    mcpRoute("POST", "/reconnect", async ({ req, res, scope }) => {
+    mcpRoute("POST", "/reconnect", async ({ req, res, mcp }) => {
       const input = await readOptionalBody(req, ReconnectMcpRequestSchema, "ReconnectMcpRequest");
-      sendJson(res, 200, await handlers.reconnect(scope, input));
+      sendJson(res, 200, await mcp.reconnect(input));
     }),
-    mcpRoute("PUT", "/servers/:serverName", async ({ req, res, scope, params }) => {
+    mcpRoute("PUT", "/servers/:serverName", async ({ req, res, mcp, params }) => {
       const input = await readBody(req, schemas.upsertServer, schemas.upsertServerLabel);
-      sendJson(res, 200, await handlers.upsertServer(scope, params.serverName, input));
+      sendJson(res, 200, await mcp.upsertServer(params.serverName, input));
     }),
-    mcpRoute("DELETE", "/servers/:serverName", async ({ res, scope, params }) => {
-      sendJson(res, 200, await handlers.deleteServer(scope, params.serverName));
+    mcpRoute("DELETE", "/servers/:serverName", async ({ res, mcp, params }) => {
+      sendJson(res, 200, await mcp.deleteServer(params.serverName));
     }),
-    mcpRoute("GET", "/servers/:serverName/logs", ({ res, scope, params }) => {
-      sendJson(res, 200, handlers.getLogs(scope, params.serverName));
+    mcpRoute("GET", "/servers/:serverName/logs", ({ res, mcp, params }) => {
+      sendJson(res, 200, mcp.getLogs(params.serverName));
     }),
-    mcpRoute("POST", "/servers/:serverName/oauth/login", async ({ req, res, scope, params }) => {
+    mcpRoute("POST", "/servers/:serverName/oauth/login", async ({ req, res, mcp, params }) => {
       await readOptionalJsonBody(req);
-      sendJson(res, 201, await handlers.startOAuth(scope, params.serverName));
+      sendJson(res, 201, await mcp.startOAuth(params.serverName));
     }),
     mcpRoute(
       "GET",
       "/servers/:serverName/oauth/login/:sessionId/stream",
-      ({ req, res, scope, params }) => {
-        handlers.streamOAuth(req, res, scope, params.serverName, params.sessionId);
-      },
-    ),
-    mcpRoute(
-      "POST",
-      "/servers/:serverName/oauth/login/:sessionId/input",
-      async ({ req, res, scope, params }) => {
-        const input = await readBody(req, McpOAuthInputRequestSchema, "McpOAuthInputRequest");
-        sendJson(
+      ({ req, res, params }) => {
+        streams.handleMcpOAuthStream(
+          req,
           res,
-          200,
-          handlers.submitOAuthInput(scope, params.serverName, params.sessionId, input),
+          params.serverName,
+          params.sessionId,
+          params.projectId,
         );
       },
     ),
     mcpRoute(
       "POST",
-      "/servers/:serverName/oauth/login/:sessionId/cancel",
-      async ({ req, res, scope, params }) => {
-        await readOptionalJsonBody(req);
-        sendJson(res, 200, handlers.cancelOAuth(scope, params.serverName, params.sessionId));
+      "/servers/:serverName/oauth/login/:sessionId/input",
+      async ({ req, res, mcp, params }) => {
+        const input = await readBody(req, McpOAuthInputRequestSchema, "McpOAuthInputRequest");
+        sendJson(res, 200, mcp.submitOAuthInput(params.serverName, params.sessionId, input));
       },
     ),
-    mcpRoute("DELETE", "/servers/:serverName/oauth", async ({ res, scope, params }) => {
-      sendJson(res, 200, await handlers.logoutOAuth(scope, params.serverName));
+    mcpRoute(
+      "POST",
+      "/servers/:serverName/oauth/login/:sessionId/cancel",
+      async ({ req, res, mcp, params }) => {
+        await readOptionalJsonBody(req);
+        sendJson(res, 200, mcp.cancelOAuth(params.serverName, params.sessionId));
+      },
+    ),
+    mcpRoute("DELETE", "/servers/:serverName/oauth", async ({ res, mcp, params }) => {
+      sendJson(res, 200, await mcp.logoutOAuth(params.serverName));
     }),
   ];
 }
@@ -202,6 +170,7 @@ export type EngineRoutesOptions = {
 
 export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions): readonly Route[] {
   const { streams } = options;
+  const { providers, settings, skills, projects } = engine;
 
   const systemRoutes: readonly Route[] = [
     route("GET", "/health", ({ res }) => {
@@ -224,30 +193,30 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
 
   const providerRoutes: readonly Route[] = [
     route("GET", "/providers", async ({ res }) => {
-      sendJson(res, 200, await engine.listProviders());
+      sendJson(res, 200, await providers.list());
     }),
     route("GET", "/providers/catalog", async ({ res }) => {
-      sendJson(res, 200, await engine.getProviderCatalog());
+      sendJson(res, 200, await providers.catalog());
     }),
     route("POST", "/providers/probe", async ({ req, res }) => {
       await withDisconnectSignal(req, async (signal) => {
         const input = await readBody(req, ProbeProviderRequestSchema, "ProbeProviderRequest");
-        sendJson(res, 200, await engine.probeDraftProvider(input, signal));
+        sendJson(res, 200, await providers.probeDraft(input, signal));
       });
     }),
     route("POST", "/providers", async ({ req, res }) => {
       const input = await readBody(req, UpsertProviderRequestSchema, "UpsertProviderRequest");
-      sendJson(res, 201, await engine.createProvider(input));
+      sendJson(res, 201, await providers.create(input));
     }),
     route("GET", "/providers/:providerId", async ({ res, params }) => {
-      sendJson(res, 200, await engine.getProviderDetail(params.providerId));
+      sendJson(res, 200, await providers.detail(params.providerId));
     }),
     route("PATCH", "/providers/:providerId", async ({ req, res, params }) => {
       const input = await readBody(req, UpsertProviderRequestSchema, "UpsertProviderRequest");
-      sendJson(res, 200, await engine.updateProvider(params.providerId, input));
+      sendJson(res, 200, await providers.update(params.providerId, input));
     }),
     route("DELETE", "/providers/:providerId", async ({ res, params }) => {
-      sendJson(res, 200, await engine.deleteProvider(params.providerId));
+      sendJson(res, 200, await providers.delete(params.providerId));
     }),
     route("POST", "/providers/:providerId/models", async ({ req, res, params }) => {
       const input = await readBody(
@@ -255,7 +224,7 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
         UpsertProviderModelRequestSchema,
         "UpsertProviderModelRequest",
       );
-      sendJson(res, 201, await engine.createProviderModel(params.providerId, input));
+      sendJson(res, 201, await providers.createModel(params.providerId, input));
     }),
     route("POST", "/providers/:providerId/models/import", async ({ req, res, params }) => {
       const input = await readBody(
@@ -263,7 +232,7 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
         ImportProviderModelsRequestSchema,
         "ImportProviderModelsRequest",
       );
-      sendJson(res, 200, await engine.importProviderModels(params.providerId, input));
+      sendJson(res, 200, await providers.importModels(params.providerId, input));
     }),
     route("PATCH", "/providers/:providerId/models/:modelId", async ({ req, res, params }) => {
       const input = await readBody(
@@ -271,14 +240,10 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
         UpsertProviderModelRequestSchema,
         "UpsertProviderModelRequest",
       );
-      sendJson(
-        res,
-        200,
-        await engine.updateProviderModel(params.providerId, params.modelId, input),
-      );
+      sendJson(res, 200, await providers.updateModel(params.providerId, params.modelId, input));
     }),
     route("DELETE", "/providers/:providerId/models/:modelId", async ({ res, params }) => {
-      sendJson(res, 200, await engine.deleteProviderModel(params.providerId, params.modelId));
+      sendJson(res, 200, await providers.deleteModel(params.providerId, params.modelId));
     }),
     route("POST", "/providers/:providerId/probe", async ({ req, res, params }) => {
       await withDisconnectSignal(req, async (signal) => {
@@ -287,7 +252,7 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
           ProbeProviderRequestSchema,
           "ProbeProviderRequest",
         );
-        sendJson(res, 200, await engine.probeProvider(params.providerId, input, signal));
+        sendJson(res, 200, await providers.probe(params.providerId, input, signal));
       });
     }),
     route(
@@ -302,7 +267,7 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
         sendJson(
           res,
           200,
-          await engine.matchBuiltinModel(params.providerId, params.modelId, input),
+          await providers.matchBuiltinModel(params.providerId, params.modelId, input),
         );
       },
     ),
@@ -316,20 +281,20 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
         sendJson(
           res,
           200,
-          await engine.testProviderModel(params.providerId, params.modelId, input, signal),
+          await providers.testModel(params.providerId, params.modelId, input, signal),
         );
       });
     }),
     route("PUT", "/providers/:providerId/auth/api-key", async ({ req, res, params }) => {
       const input = await readBody(req, SetApiKeyRequestSchema, "SetApiKeyRequest");
-      sendJson(res, 200, await engine.setProviderApiKey(params.providerId, input));
+      sendJson(res, 200, await providers.setApiKey(params.providerId, input));
     }),
     route("DELETE", "/providers/:providerId/auth", async ({ res, params }) => {
-      sendJson(res, 200, await engine.logoutProvider(params.providerId));
+      sendJson(res, 200, await providers.logout(params.providerId));
     }),
     route("POST", "/providers/:providerId/auth/login", async ({ req, res, params }) => {
       const input = await readBody(req, StartLoginRequestSchema, "StartLoginRequest");
-      sendJson(res, 201, engine.startProviderLogin(params.providerId, input));
+      sendJson(res, 201, await providers.startLogin(params.providerId, input));
     }),
     route("GET", "/providers/:providerId/auth/login/:sessionId/stream", ({ req, res, params }) => {
       streams.handleLoginStream(req, res, params.providerId, params.sessionId);
@@ -339,7 +304,7 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
       "/providers/:providerId/auth/login/:sessionId/input",
       async ({ req, res, params }) => {
         const input = await readBody(req, LoginInputRequestSchema, "LoginInputRequest");
-        sendJson(res, 200, engine.submitLoginInput(params.providerId, params.sessionId, input));
+        sendJson(res, 200, providers.submitLoginInput(params.providerId, params.sessionId, input));
       },
     ),
     route(
@@ -347,43 +312,43 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
       "/providers/:providerId/auth/login/:sessionId/cancel",
       async ({ req, res, params }) => {
         await readOptionalJsonBody(req);
-        sendJson(res, 200, engine.cancelLoginSession(params.providerId, params.sessionId));
+        sendJson(res, 200, providers.cancelLogin(params.providerId, params.sessionId));
       },
     ),
   ];
 
   const modelRoutes: readonly Route[] = [
     route("GET", "/models", async ({ res, url }) => {
-      sendJson(res, 200, await engine.listModels(parseModelsQuery(url)));
+      sendJson(res, 200, await providers.listModels(parseModelsQuery(url)));
     }),
     route("POST", "/models/refresh", async ({ req, res }) => {
       const input = await readOptionalBody(req, RefreshModelsRequestSchema, "RefreshModelsRequest");
-      sendJson(res, 200, await engine.refreshModels(input));
+      sendJson(res, 200, await providers.refreshModels(input));
     }),
     route("POST", "/models/reload", async ({ req, res }) => {
       await readOptionalJsonBody(req);
-      sendJson(res, 200, await engine.reloadModels());
+      sendJson(res, 200, await providers.reloadModels());
     }),
     route("GET", "/models/profiles", ({ res }) => {
-      sendJson(res, 200, engine.getModelProfiles());
+      sendJson(res, 200, providers.getModelProfiles());
     }),
     route("PUT", "/models/profiles", async ({ req, res }) => {
       const input = await readBody(req, ModelProfilesDocumentSchema, "ModelProfilesDocument");
-      sendJson(res, 200, engine.putModelProfiles(input));
+      sendJson(res, 200, providers.putModelProfiles(input));
     }),
   ];
 
   const skillsRoutes: readonly Route[] = [
     route("GET", "/skills", async ({ res }) => {
-      sendJson(res, 200, await engine.listSkills());
+      sendJson(res, 200, await skills.list());
     }),
     route("PUT", "/skills/policy", async ({ req, res }) => {
       const input = await readBody(req, PutSkillsPolicyRequestSchema, "PutSkillsPolicyRequest");
-      sendJson(res, 200, await engine.putSkillsPolicy(input));
+      sendJson(res, 200, await skills.putPolicy(input));
     }),
   ];
 
-  const mcpRoutes: readonly Route[] = createScopedMcpRoutes(
+  const mcpRoutes = createScopedMcpRoutes(
     "/mcp",
     {
       putConfig: PutGlobalMcpConfigRequestSchema,
@@ -391,78 +356,65 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
       upsertServer: UpsertGlobalMcpServerRequestSchema,
       upsertServerLabel: "UpsertGlobalMcpServerRequest",
     },
-    {
-      getState: () => engine.getMcpState(),
-      putConfig: (_, input) => engine.putMcpConfig(input),
-      reconnect: (_, input) => engine.reconnectMcp(input),
-      upsertServer: (_, serverName, input) => engine.upsertMcpServer(serverName, input),
-      deleteServer: (_, serverName) => engine.deleteMcpServer(serverName),
-      getLogs: (_, serverName) => engine.getMcpLogs(serverName),
-      startOAuth: (_, serverName) => engine.startMcpOAuth(serverName),
-      streamOAuth: (req, res, _, serverName, sessionId) =>
-        streams.handleMcpOAuthStream(req, res, serverName, sessionId),
-      submitOAuthInput: (_, serverName, sessionId, input) =>
-        engine.submitMcpOAuthInput(serverName, sessionId, input),
-      cancelOAuth: (_, serverName, sessionId) => engine.cancelMcpOAuth(serverName, sessionId),
-      logoutOAuth: (_, serverName) => engine.logoutMcpOAuth(serverName),
-    },
+    () => engine.mcp(),
+    streams,
   );
 
   const settingsRoutes: readonly Route[] = [
     route("GET", "/settings", ({ res }) => {
-      sendJson(res, 200, engine.getSettings());
+      sendJson(res, 200, settings.get());
     }),
     route("PATCH", "/settings", async ({ req, res }) => {
       const input = await readBody(req, EngineSettingsSchema, "EngineSettings");
-      sendJson(res, 200, await engine.patchSettings(input));
+      sendJson(res, 200, await settings.patch(input));
     }),
     route("PUT", "/settings", async ({ req, res }) => {
       const input = await readBody(req, EngineSettingsSchema, "EngineSettings");
-      sendJson(res, 200, await engine.putSettings(input));
+      sendJson(res, 200, await settings.put(input));
     }),
     route("GET", "/config/export", async ({ res }) => {
-      sendJson(res, 200, await engine.exportConfig());
+      sendJson(res, 200, await settings.exportConfig());
     }),
     route("POST", "/config/import", async ({ req, res }) => {
       const input = await readBody(req, ConfigBundleSchema, "ConfigBundle");
-      sendJson(res, 200, await engine.importConfig(input));
+      sendJson(res, 200, await settings.importConfig(input));
     }),
   ];
 
   const projectRoutes: readonly Route[] = [
     route("GET", "/projects", ({ res }) => {
-      sendJson(res, 200, { projects: engine.listProjects() });
+      sendJson(res, 200, { projects: projects.list() });
     }),
     route("POST", "/projects", async ({ req, res }) => {
       const input = await readBody(req, CreateProjectRequestSchema, "CreateProjectRequest");
-      sendJson(res, 201, { project: engine.createProject(input) });
+      sendJson(res, 201, { project: projects.create(input) });
     }),
     route("GET", "/projects/:projectId", ({ res, params }) => {
-      sendJson(res, 200, { project: engine.getProject(params.projectId) });
+      sendJson(res, 200, { project: projects.get(params.projectId) });
     }),
     route("PATCH", "/projects/:projectId", async ({ req, res, params }) => {
       const input = await readBody(req, UpdateProjectRequestSchema, "UpdateProjectRequest");
-      sendJson(res, 200, await engine.updateProject(params.projectId, input));
+      sendJson(res, 200, await projects.update(params.projectId, input));
     }),
     route("DELETE", "/projects/:projectId", async ({ res, params }) => {
-      sendJson(res, 200, await engine.deleteProject(params.projectId));
+      sendJson(res, 200, await projects.delete(params.projectId));
     }),
     route("GET", "/projects/:projectId/memory", ({ res, params }) => {
-      sendJson(res, 200, engine.getProjectMemory(params.projectId));
+      sendJson(res, 200, projects.getMemory(params.projectId));
     }),
     route("PUT", "/projects/:projectId/memory", async ({ req, res, params }) => {
       const input = await readBody(req, PutProjectMemoryRequestSchema, "PutProjectMemoryRequest");
-      sendJson(res, 200, engine.putProjectMemory(params.projectId, input));
+      sendJson(res, 200, projects.putMemory(params.projectId, input));
     }),
     route("GET", "/projects/:projectId/usage", async ({ res, params }) => {
-      sendJson(res, 200, await engine.getProjectUsage(params.projectId));
+      sendJson(res, 200, await projects.getUsage(params.projectId));
     }),
     route("GET", "/projects/:projectId/skills", async ({ res, params }) => {
-      sendJson(res, 200, await engine.listProjectSkills(params.projectId));
+      sendJson(res, 200, await skills.list(params.projectId));
     }),
     route("PUT", "/projects/:projectId/skills/policy", async ({ req, res, params }) => {
       const input = await readBody(req, PutSkillsPolicyRequestSchema, "PutSkillsPolicyRequest");
-      sendJson(res, 200, await engine.putProjectSkillsPolicy(params.projectId, input));
+      sendJson(res, 200, await skills.putPolicy(input, params.projectId));
     }),
     ...createScopedMcpRoutes(
       "/projects/:projectId/mcp",
@@ -472,27 +424,11 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
         upsertServer: UpsertMcpServerRequestSchema,
         upsertServerLabel: "UpsertMcpServerRequest",
       },
-      {
-        getState: (projectId) => engine.getProjectMcpState(projectId),
-        putConfig: (projectId, input) => engine.putProjectMcpConfig(projectId, input),
-        reconnect: (projectId, input) => engine.reconnectProjectMcp(projectId, input),
-        upsertServer: (projectId, serverName, input) =>
-          engine.upsertProjectMcpServer(projectId, serverName, input),
-        deleteServer: (projectId, serverName) =>
-          engine.deleteProjectMcpServer(projectId, serverName),
-        getLogs: (projectId, serverName) => engine.getProjectMcpLogs(projectId, serverName),
-        startOAuth: (projectId, serverName) => engine.startProjectMcpOAuth(projectId, serverName),
-        streamOAuth: (req, res, projectId, serverName, sessionId) =>
-          streams.handleProjectMcpOAuthStream(req, res, projectId, serverName, sessionId),
-        submitOAuthInput: (projectId, serverName, sessionId, input) =>
-          engine.submitProjectMcpOAuthInput(projectId, serverName, sessionId, input),
-        cancelOAuth: (projectId, serverName, sessionId) =>
-          engine.cancelProjectMcpOAuth(projectId, serverName, sessionId),
-        logoutOAuth: (projectId, serverName) => engine.logoutProjectMcpOAuth(projectId, serverName),
-      },
+      ({ projectId }) => engine.mcp(projectId ?? ""),
+      streams,
     ),
     route("GET", "/projects/:projectId/board", async ({ res, params }) => {
-      sendJson(res, 200, await engine.getBoard(params.projectId));
+      sendJson(res, 200, await projects.getBoard(params.projectId));
     }),
     route("GET", "/projects/:projectId/board/stream", async ({ req, res, params }) => {
       await streams.handleBoardStream(req, res, params.projectId);
@@ -505,7 +441,7 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
       "/projects/:projectId/conversations/:ref/messages",
       async ({ req, res, params }) => {
         const input = await readBody(req, SendMessageRequestSchema, "SendMessageRequest");
-        sendJson(res, 202, await engine.sendMessage(params.projectId, params.ref, input));
+        sendJson(res, 202, await projects.sendMessage(params.projectId, params.ref, input));
       },
     ),
     route(
@@ -513,14 +449,14 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
       "/projects/:projectId/conversations/:ref/entries",
       async ({ res, url, params }) => {
         const query = parseEntriesQuery(url);
-        sendJson(res, 200, await engine.listEntries(params.projectId, params.ref, query));
+        sendJson(res, 200, await projects.listEntries(params.projectId, params.ref, query));
       },
     ),
     route("POST", "/projects/:projectId/conversations/:ref/interrupt", async ({ res, params }) => {
-      sendJson(res, 200, await engine.interrupt(params.projectId, params.ref));
+      sendJson(res, 200, await projects.interrupt(params.projectId, params.ref));
     }),
     route("POST", "/projects/:projectId/conversations/:ref/retry", async ({ res, params }) => {
-      sendJson(res, 202, await engine.retry(params.projectId, params.ref));
+      sendJson(res, 202, await projects.retry(params.projectId, params.ref));
     }),
     route(
       "GET",
@@ -538,7 +474,7 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
       "/projects/:projectId/questions/:questionId/answer",
       async ({ req, res, params }) => {
         const input = await readBody(req, AnswerQuestionRequestSchema, "AnswerQuestionRequest");
-        const result = await engine.answerQuestion(params.projectId, params.questionId, input);
+        const result = await projects.answerQuestion(params.projectId, params.questionId, input);
         sendJson(res, 200, result);
       },
     ),
@@ -548,7 +484,7 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
     route("GET", "/projects/:projectId/workers/:workerId/tasks", async ({ res, url, params }) => {
       const query = parseListWorkerTasksQuery(url);
       const { projectId, workerId } = params;
-      sendJson(res, 200, await engine.listWorkerTasks(projectId, workerId, query));
+      sendJson(res, 200, await projects.listWorkerTasks(projectId, workerId, query));
     }),
     route(
       "GET",
@@ -556,7 +492,7 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
       async ({ res, url, params }) => {
         const query = parseReadWorkerTaskQuery(url);
         const { projectId, workerId, taskId } = params;
-        sendJson(res, 200, await engine.readWorkerTask(projectId, workerId, taskId, query));
+        sendJson(res, 200, await projects.readWorkerTask(projectId, workerId, taskId, query));
       },
     ),
     route(
@@ -573,7 +509,7 @@ export function createEngineRoutes(engine: Engine, options: EngineRoutesOptions)
       "/projects/:projectId/workers/:workerId/tasks/:taskId/kill",
       async ({ res, params }) => {
         const { projectId, workerId, taskId } = params;
-        sendJson(res, 200, await engine.killWorkerTask(projectId, workerId, taskId));
+        sendJson(res, 200, await projects.killWorkerTask(projectId, workerId, taskId));
       },
     ),
   ];

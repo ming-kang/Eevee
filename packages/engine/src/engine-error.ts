@@ -59,3 +59,23 @@ export function toEngineError(error: unknown): unknown {
   }
   return error;
 }
+
+export function guardSync<TArgs extends readonly unknown[], TResult>(
+  assertOpen: () => void,
+  fn: (...args: TArgs) => TResult,
+): (...args: TArgs) => TResult {
+  return (...args) => {
+    assertOpen();
+    return fn(...args);
+  };
+}
+
+export function guardAsync<TArgs extends readonly unknown[], TResult>(
+  assertOpen: () => void,
+  fn: (...args: TArgs) => Promise<TResult>,
+): (...args: TArgs) => Promise<TResult> {
+  return async (...args) => {
+    assertOpen();
+    return fn(...args);
+  };
+}

@@ -18,7 +18,6 @@ import type {
   BackgroundTaskStatus,
   ReadWorkerTaskResponse,
   TaskStreamChunkEvent,
-  WorkerId,
 } from "@eevee/protocol";
 
 export type WorkerTaskStreamCallbacks = {
@@ -50,6 +49,25 @@ export function taskStatusPhase(status: BackgroundTaskStatus): number {
   }
 }
 
+function sameTaskRecord(a: BackgroundTaskRecordPayload, b: BackgroundTaskRecordPayload): boolean {
+  return (
+    a.id === b.id &&
+    a.status === b.status &&
+    a.exitCode === b.exitCode &&
+    a.error === b.error &&
+    a.cancelReason === b.cancelReason &&
+    a.endedAt === b.endedAt &&
+    a.logPath === b.logPath &&
+    a.logTruncated === b.logTruncated &&
+    a.logError === b.logError &&
+    a.command === b.command &&
+    a.cwd === b.cwd &&
+    a.shell === b.shell &&
+    a.durableTaskId === b.durableTaskId &&
+    a.startedAt === b.startedAt
+  );
+}
+
 function needsPreRetainedRead(
   droppedBytes: number,
   totalBytes: number,
@@ -74,26 +92,18 @@ function needsPreRetainedRead(
 
 export async function subscribeWorkerTaskStream(
   handle: ProjectHandle,
-  workerId: WorkerId,
+  workerId: CoreWorkerId,
   taskId: string,
   options?: OutputReadOptions,
 ): Promise<WorkerTaskStream> {
-  const { worker, record } = await handle.resolveWorkerTask(
-    workerId as CoreWorkerId,
-    taskId,
-    BACKGROUND_CONTEXT,
-  );
+  const { worker, record } = await handle.resolveWorkerTask(workerId, taskId, BACKGROUND_CONTEXT);
   const resolvedId = record.id;
+  const readOutput = (readOpts?: OutputReadOptions) =>
+    handle.readWorkerTaskOutput(workerId, resolvedId, readOpts, BACKGROUND_CONTEXT);
 
   if (isTaskTerminalStatus(record.status)) {
-    const snapshot = await handle.readWorkerTaskOutput(
-      workerId as CoreWorkerId,
-      resolvedId,
-      options,
-      BACKGROUND_CONTEXT,
-    );
     return {
-      snapshot,
+      snapshot: await readOutput(options),
       terminal: true,
       start: () => {},
       close: () => {},
@@ -121,7 +131,6 @@ export async function subscribeWorkerTaskStream(
   };
 
   let handleBoard = (_board: BoardView) => {};
-
   let snapshot: ReadWorkerTaskResponse;
   let liveBuffer: Buffer | undefined;
   let liveTotalBytes = 0;
@@ -152,6 +161,42 @@ export async function subscribeWorkerTaskStream(
     });
   };
 
+  const resolveInitialTaskSnapshot = async (
+    live:
+      | {
+          readonly buffer: Buffer;
+          readonly droppedBytes: number;
+          readonly totalBytes: number;
+        }
+      | undefined,
+  ): Promise<{ readonly snapshot: ReadWorkerTaskResponse; readonly terminal: boolean }> => {
+    if (live === undefined) {
+      const diskSnapshot = await readOutput(options);
+      return { snapshot: diskSnapshot, terminal: isTaskTerminalStatus(diskSnapshot.task.status) };
+    }
+    const preSnapshot = needsPreRetainedRead(live.droppedBytes, live.totalBytes, options)
+      ? await readOutput(options)
+      : undefined;
+    const freshTask = await getConversationTask(
+      handle.harness,
+      worker.conversationId,
+      resolvedId,
+      BACKGROUND_CONTEXT,
+    );
+    const task = freshTask ?? preSnapshot?.task ?? record;
+    if (isTaskTerminalStatus(task.status)) {
+      const finalSnapshot =
+        preSnapshot !== undefined && task.status === preSnapshot.task.status
+          ? preSnapshot
+          : await readOutput(options);
+      return { snapshot: finalSnapshot, terminal: true };
+    }
+    const output =
+      preSnapshot?.output ??
+      sliceRetainedOutput(live.buffer, live.droppedBytes, live.totalBytes, options);
+    return { snapshot: { task, output }, terminal: false };
+  };
+
   let running: ReturnType<ProjectHandle["tasks"]["get"]>;
   try {
     unsubBoard = handle.subscribeBoard((board) => {
@@ -177,88 +222,23 @@ export async function subscribeWorkerTaskStream(
       liveTotalBytes = live.totalBytes;
       liveDroppedBytes = live.droppedBytes;
       liveBuffer = Buffer.from(live.text, "utf8");
-
-      if (needsPreRetainedRead(liveDroppedBytes, liveTotalBytes, options)) {
-        const preSnapshot = await handle.readWorkerTaskOutput(
-          workerId as CoreWorkerId,
-          resolvedId,
-          options,
-          BACKGROUND_CONTEXT,
-        );
-        const freshTask = await getConversationTask(
-          handle.harness,
-          worker.conversationId,
-          resolvedId,
-          BACKGROUND_CONTEXT,
-        );
-        const task = freshTask ?? preSnapshot.task;
-        if (isTaskTerminalStatus(task.status)) {
-          cleanup();
-          const finalSnapshot =
-            task.status === preSnapshot.task.status
-              ? preSnapshot
-              : await handle.readWorkerTaskOutput(
-                  workerId as CoreWorkerId,
-                  resolvedId,
-                  options,
-                  BACKGROUND_CONTEXT,
-                );
-          return {
-            snapshot: finalSnapshot,
-            terminal: true,
-            start: () => {},
-            close: () => {},
-          };
-        }
-        snapshot = { task, output: preSnapshot.output };
-      } else {
-        const initialOutput = sliceRetainedOutput(
-          liveBuffer,
-          liveDroppedBytes,
-          liveTotalBytes,
-          options,
-        );
-        const freshTask = await getConversationTask(
-          handle.harness,
-          worker.conversationId,
-          resolvedId,
-          BACKGROUND_CONTEXT,
-        );
-        const task = freshTask ?? record;
-        if (isTaskTerminalStatus(task.status)) {
-          cleanup();
-          const finalSnapshot = await handle.readWorkerTaskOutput(
-            workerId as CoreWorkerId,
-            resolvedId,
-            options,
-            BACKGROUND_CONTEXT,
-          );
-          return {
-            snapshot: finalSnapshot,
-            terminal: true,
-            start: () => {},
-            close: () => {},
-          };
-        }
-        snapshot = { task, output: initialOutput };
-      }
-    } else {
-      snapshot = await handle.readWorkerTaskOutput(
-        workerId as CoreWorkerId,
-        resolvedId,
-        options,
-        BACKGROUND_CONTEXT,
-      );
-      if (isTaskTerminalStatus(snapshot.task.status)) {
-        cleanup();
-        return {
-          snapshot,
-          terminal: true,
-          start: () => {},
-          close: () => {},
-        };
-      }
     }
+
+    const initial = await resolveInitialTaskSnapshot(
+      liveBuffer === undefined
+        ? undefined
+        : { buffer: liveBuffer, droppedBytes: liveDroppedBytes, totalBytes: liveTotalBytes },
+    );
+    if (initial.terminal) {
+      cleanup();
+      return {
+        snapshot: initial.snapshot,
+        terminal: true,
+        start: () => {},
+        close: () => {},
+      };
+    }
+    snapshot = initial.snapshot;
   } catch (error) {
     cleanup();
     throw error;
@@ -266,7 +246,6 @@ export async function subscribeWorkerTaskStream(
 
   cursorByte = snapshot.output.endByte;
   let lastTask = snapshot.task;
-  let lastTaskJson = JSON.stringify(lastTask);
   let pendingBoard = Promise.resolve();
 
   const failStream = (error: unknown) => {
@@ -275,6 +254,24 @@ export async function subscribeWorkerTaskStream(
     const onEnd = callbacks?.onEnd;
     cleanup();
     onEnd?.("failed", message || "Task stream failed");
+  };
+
+  const emitDiskCatchUp = async (endByte?: number): Promise<void> => {
+    while (!closed && (endByte === undefined || cursorByte < endByte)) {
+      const read = await readOutput({
+        mode: "head",
+        sinceBytes: cursorByte,
+        ...(endByte === undefined ? {} : { endByte }),
+        bytes: TASK_READ_MAX_BYTES,
+      });
+      if (closed) return;
+      const slice = read.output;
+      if (slice.fromByte >= cursorByte && slice.endByte > cursorByte && slice.text.length > 0) {
+        emitChunkSlice(slice);
+        if (slice.endByte < (endByte ?? slice.totalBytes)) continue;
+      }
+      break;
+    }
   };
 
   const processBoard = async (board: BoardView): Promise<void> => {
@@ -293,37 +290,20 @@ export async function subscribeWorkerTaskStream(
     if (taskStatusPhase(candidate.status) < taskStatusPhase(lastTask.status)) {
       return;
     }
-    const candidateJson = JSON.stringify(candidate);
     if (isTaskTerminalStatus(candidate.status)) {
       unsubOutput?.();
       unsubOutput = undefined;
-      for (;;) {
-        if (closed) return;
-        const read = await handle.readWorkerTaskOutput(
-          workerId as CoreWorkerId,
-          resolvedId,
-          { mode: "head", sinceBytes: cursorByte, bytes: TASK_READ_MAX_BYTES },
-          BACKGROUND_CONTEXT,
-        );
-        const slice = read.output;
-        if (slice.fromByte >= cursorByte && slice.endByte > cursorByte && slice.text.length > 0) {
-          emitChunkSlice(slice);
-          if (slice.endByte < slice.totalBytes) continue;
-        }
-        break;
-      }
+      await emitDiskCatchUp();
       if (closed) return;
       lastTask = candidate;
-      lastTaskJson = candidateJson;
       callbacks?.onStatus(candidate);
       const onEnd = callbacks?.onEnd;
       cleanup();
       onEnd?.("completed");
       return;
     }
-    if (candidateJson !== lastTaskJson) {
+    if (!sameTaskRecord(candidate, lastTask)) {
       lastTask = candidate;
-      lastTaskJson = candidateJson;
       callbacks?.onStatus(candidate);
     }
   };
@@ -351,15 +331,13 @@ export async function subscribeWorkerTaskStream(
   const finishStart = () => {
     if (closed) return;
     while (!closed && bufferedChunks.length > 0) {
-      const queuedChunks = bufferedChunks.splice(0, bufferedChunks.length);
-      for (const chunk of queuedChunks) {
+      for (const chunk of bufferedChunks.splice(0, bufferedChunks.length)) {
         emitChunkText(chunk);
       }
     }
     if (closed) return;
     started = true;
-    const queuedBoards = bufferedBoards.splice(0, bufferedBoards.length);
-    for (const board of queuedBoards) {
+    for (const board of bufferedBoards.splice(0, bufferedBoards.length)) {
       handleBoard(board);
     }
   };
@@ -373,37 +351,14 @@ export async function subscribeWorkerTaskStream(
       callbacks = nextCallbacks;
 
       if (running !== undefined && cursorByte < liveDroppedBytes) {
-        const runCatchUp = async () => {
-          while (!closed && cursorByte < liveDroppedBytes) {
-            const read = await handle.readWorkerTaskOutput(
-              workerId as CoreWorkerId,
-              resolvedId,
-              {
-                mode: "head",
-                sinceBytes: cursorByte,
-                endByte: liveDroppedBytes,
-                bytes: TASK_READ_MAX_BYTES,
-              },
-              BACKGROUND_CONTEXT,
-            );
+        void emitDiskCatchUp(liveDroppedBytes)
+          .then(() => {
             if (closed) return;
-            const slice = read.output;
-            if (
-              slice.fromByte >= cursorByte &&
-              slice.endByte > cursorByte &&
-              slice.text.length > 0
-            ) {
-              emitChunkSlice(slice);
-              if (slice.endByte < liveDroppedBytes) continue;
-            }
-            break;
-          }
-          if (closed) return;
-          cursorByte = Math.max(cursorByte, liveDroppedBytes);
-          emitLiveBufferCatchUp();
-          finishStart();
-        };
-        void runCatchUp().catch(failStream);
+            cursorByte = Math.max(cursorByte, liveDroppedBytes);
+            emitLiveBufferCatchUp();
+            finishStart();
+          })
+          .catch(failStream);
         return;
       }
 

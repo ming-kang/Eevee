@@ -45,13 +45,7 @@ export type SseStreamHandlers = {
     res: ServerResponse,
     serverName: string,
     sessionId: string,
-  ) => void;
-  readonly handleProjectMcpOAuthStream: (
-    req: IncomingMessage,
-    res: ServerResponse,
-    projectId: string,
-    serverName: string,
-    sessionId: string,
+    projectId?: string,
   ) => void;
 };
 
@@ -280,7 +274,7 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     streamBufferedSession<LoginSseFrame>(
       req,
       res,
-      (onFrame) => engine.subscribeLoginSession(providerId, sessionId, onFrame),
+      (onFrame) => engine.providers.subscribeLogin(providerId, sessionId, onFrame),
       (frame) => ({
         event: frame.event,
         data: frame.data,
@@ -345,10 +339,10 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     const stream = new SseStream(req, res, deps);
     let watchClosed = false;
     const watchAbort = new AbortController();
-    let watch: Awaited<ReturnType<Engine["watchConversation"]>> | undefined;
+    let watch: Awaited<ReturnType<Engine["projects"]["watchConversation"]>> | undefined;
     try {
       const watchContext = withAbortSignal(watchAbort.signal, BACKGROUND_CONTEXT);
-      watch = await engine.watchConversation(projectId, ref, watchContext, window);
+      watch = await engine.projects.watchConversation(projectId, ref, watchContext, window);
 
       if (
         !stream.open({
@@ -413,7 +407,12 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     let taskStream: WorkerTaskStream | undefined;
     const stream = new SseStream(req, res, deps);
     try {
-      taskStream = await engine.subscribeWorkerTaskStream(projectId, workerId, taskId, query);
+      taskStream = await engine.projects.subscribeWorkerTaskStream(
+        projectId,
+        workerId,
+        taskId,
+        query,
+      );
       if (
         !stream.open({
           onServerClose: () => ({ event: "end", data: { reason: "closed" } }),
@@ -462,28 +461,12 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     res: ServerResponse,
     serverName: string,
     sessionId: string,
+    projectId?: string,
   ): void {
     streamBufferedSession<McpOAuthEvent>(
       req,
       res,
-      (onEvent) => engine.subscribeMcpOAuthSession(serverName, sessionId, onEvent),
-      toMcpOAuthSseFrame,
-      MCP_OAUTH_SHUTDOWN_FRAME,
-    );
-  }
-
-  function handleProjectMcpOAuthStream(
-    req: IncomingMessage,
-    res: ServerResponse,
-    projectId: string,
-    serverName: string,
-    sessionId: string,
-  ): void {
-    streamBufferedSession<McpOAuthEvent>(
-      req,
-      res,
-      (onEvent) =>
-        engine.subscribeProjectMcpOAuthSession(projectId, serverName, sessionId, onEvent),
+      (onEvent) => engine.mcp(projectId).subscribeOAuth(serverName, sessionId, onEvent),
       toMcpOAuthSseFrame,
       MCP_OAUTH_SHUTDOWN_FRAME,
     );
@@ -495,6 +478,5 @@ export function createSseStreamHandlers(deps: SseStreamDeps): SseStreamHandlers 
     handleTaskStream,
     handleLoginStream,
     handleMcpOAuthStream,
-    handleProjectMcpOAuthStream,
   };
 }

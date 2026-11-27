@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -37,8 +37,14 @@ import {
   parseWithSchema,
   SkillsListResponseSchema,
 } from "@eevee/protocol";
-import { getMcpServersRecord, KV_MCP_SERVERS } from "../src/engine-config.ts";
-import { Engine, EngineStore, startForegroundEngine } from "../src/index.ts";
+import {
+  getMcpServersRecord,
+  KV_MCP_SERVERS,
+  readEngineSettings,
+  readGlobalSkillsPolicy,
+  readModelProfiles,
+} from "../src/engine-config.ts";
+import { Engine, EngineError, EngineStore, startForegroundEngine } from "../src/index.ts";
 
 const MODEL_ID = "faux-1";
 
@@ -1097,7 +1103,7 @@ test("Engine.open starts background connections without blocking on slow server 
     });
     try {
       assert.ok(Date.now() - start < 1000, "Engine.open must not await slow MCP initialize");
-      assert.equal(engine.getMcpState().status[0]?.status, "connecting");
+      assert.equal(engine.mcp().getState().status[0]?.status, "connecting");
     } finally {
       await engine.close();
     }
@@ -1919,11 +1925,11 @@ test("replaceMcpServers rolls back global KV and pruned project overrides when m
     });
 
     try {
-      await engine.putMcpConfig({
+      await engine.mcp().putConfig({
         servers: { g1: { command: "g1-cmd", exposure: "direct" } },
       });
-      const project = engine.createProject({ workspaces: [ws], title: "RollbackTest" });
-      await engine.putProjectMcpConfig(project.id, {
+      const project = engine.projects.create({ workspaces: [ws], title: "RollbackTest" });
+      await engine.mcp(project.id).putConfig({
         servers: {
           g1: { enabled: false },
           projonly: { command: "proj-cmd", exposure: "direct" },
@@ -1940,7 +1946,7 @@ test("replaceMcpServers rolls back global KV and pruned project overrides when m
         return originalReload(servers);
       };
 
-      await assert.rejects(engine.deleteMcpServer("g1"), /simulated reload failure/);
+      await assert.rejects(engine.mcp().deleteServer("g1"), /simulated reload failure/);
 
       assert.deepEqual(getMcpServersRecord(engine.store), {
         g1: { command: "g1-cmd", exposure: "direct" },
@@ -1955,6 +1961,310 @@ test("replaceMcpServers rolls back global KV and pruned project overrides when m
       );
     } finally {
       await engine.close();
+    }
+  });
+});
+
+test("concurrent global MCP mutations serialize cleanly without diverging SQLite, mcpHub, or rollback", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+
+    const servers = new Map<string, FakeMcpServer>([
+      ["s1", new FakeMcpServer([mcpTool("t1", "Tool 1")])],
+      ["s2", new FakeMcpServer([mcpTool("t2", "Tool 2")])],
+      ["s3", new FakeMcpServer([mcpTool("t3", "Tool 3")])],
+      ["s4", new FakeMcpServer([mcpTool("t4", "Tool 4")])],
+      ["bad_fail", new FakeMcpServer([mcpTool("tb", "Tool Bad")])],
+    ]);
+    for (const srv of servers.values()) {
+      srv.openDelayMs = 20;
+    }
+
+    const engine = await Engine.open({
+      dataDir: home,
+      userHomeDir: null,
+      createMcpTransport: (entry: McpServerEntry) => {
+        const srv = servers.get(entry.name);
+        if (srv === undefined) throw new Error(`Unexpected server ${entry.name}`);
+        return srv.createTransport();
+      },
+    });
+
+    try {
+      const originalReload = engine.mcpHub.reload.bind(engine.mcpHub);
+      engine.mcpHub.reload = async (entries) => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        if (entries.some((entry) => entry.name === "bad_fail")) {
+          throw new Error("simulated bad_fail reload error");
+        }
+        return originalReload(entries);
+      };
+
+      await Promise.all([
+        engine.mcp().upsertServer("s1", { config: { command: "cmd-1", exposure: "direct" } }),
+        engine.mcp().upsertServer("s2", { config: { command: "cmd-2", exposure: "direct" } }),
+        engine.mcp().upsertServer("s3", { config: { command: "cmd-3", exposure: "direct" } }),
+      ]);
+
+      assert.deepEqual(Object.keys(getMcpServersRecord(engine.store)).sort(), ["s1", "s2", "s3"]);
+      assert.deepEqual(
+        engine.mcpHub
+          .status()
+          .map((snap) => snap.name)
+          .sort(),
+        ["s1", "s2", "s3"],
+      );
+
+      const results = await Promise.allSettled([
+        engine.mcp().deleteServer("s2"),
+        engine.mcp().upsertServer("s4", { config: { command: "cmd-4", exposure: "direct" } }),
+        engine
+          .mcp()
+          .upsertServer("bad_fail", { config: { command: "cmd-bad", exposure: "direct" } }),
+      ]);
+      assert.equal(results[0].status, "fulfilled");
+      assert.equal(results[1].status, "fulfilled");
+      assert.equal(results[2].status, "rejected");
+
+      assert.deepEqual(Object.keys(getMcpServersRecord(engine.store)).sort(), ["s1", "s3", "s4"]);
+      assert.deepEqual(
+        engine.mcpHub
+          .status()
+          .map((snap) => snap.name)
+          .sort(),
+        ["s1", "s3", "s4"],
+      );
+    } finally {
+      await engine.close();
+    }
+  });
+});
+
+test("importConfig rolls back SQLite KV, pruned project overrides, models.json, and modelRuntime on mcpHub.reload failure without deleting OAuth credentials", async () => {
+  await withTempDir(async (dir) => {
+    const homeWithModels = join(dir, "home-with-models");
+    const homeWithoutModels = join(dir, "home-without-models");
+    const ws = join(dir, "ws");
+    await mkdir(homeWithModels, { recursive: true });
+    await mkdir(ws, { recursive: true });
+
+    const initialModelsRaw = `${JSON.stringify(
+      {
+        providers: {
+          "orig-p": {
+            baseUrl: "http://127.0.0.1:1/v1",
+            api: "openai-responses",
+            apiKey: "orig-key",
+            models: [{ id: "orig-1", name: "Original Model" }],
+          },
+        },
+      },
+      null,
+      2,
+    )}\n`;
+    await writeFile(join(homeWithModels, "models.json"), initialModelsRaw, "utf8");
+
+    const g1 = new FakeMcpServer([mcpTool("t1", "Tool 1")]);
+    const projOnly = new FakeMcpServer([mcpTool("tp", "Project Tool")]);
+    const g1Url = "http://127.0.0.1:9999/mcp";
+
+    const engineA = await Engine.open({
+      dataDir: homeWithModels,
+      userHomeDir: null,
+      createMcpTransport: (entry: McpServerEntry) => {
+        if (entry.name === "g1") return g1.createTransport();
+        if (entry.name === "projonly") return projOnly.createTransport();
+        throw new Error(`Unexpected server ${entry.name}`);
+      },
+    });
+
+    try {
+      await engineA.settings.put({ maxActiveWorkers: 4 });
+      engineA.providers.putModelProfiles({
+        profiles: [
+          {
+            id: "orig",
+            model: { provider: "orig-p", modelId: "orig-1" },
+            description: "Original profile",
+          },
+        ],
+      });
+      await engineA.skills.putPolicy({ policy: { myskill: "disabled" } });
+      await engineA.mcp().putConfig({
+        servers: { g1: { type: "http", url: g1Url, exposure: "direct" } },
+      });
+      await engineA.oauthStore.forServer("g1", g1Url).save({
+        serverUrl: g1Url,
+        tokens: { access_token: "keep-me", token_type: "bearer" },
+      });
+
+      const project = engineA.projects.create({ workspaces: [ws], title: "ImportRollback" });
+      await engineA.mcp(project.id).putConfig({
+        servers: {
+          g1: { enabled: false },
+          projonly: { command: "proj-cmd", exposure: "direct" },
+        },
+      });
+
+      const originalReload = engineA.mcpHub.reload.bind(engineA.mcpHub);
+      let failOnce = true;
+      engineA.mcpHub.reload = async (entries) => {
+        if (failOnce) {
+          failOnce = false;
+          throw new Error("simulated import reload failure");
+        }
+        return originalReload(entries);
+      };
+
+      await assert.rejects(
+        engineA.settings.importConfig({
+          version: 1,
+          settings: { maxActiveWorkers: 9 },
+          modelProfiles: { profiles: [] },
+          mcpServers: { g2: { command: "g2-cmd", exposure: "direct" } },
+          modelsConfig: {
+            providers: {
+              imported: {
+                baseUrl: "http://127.0.0.1:2/v1",
+                api: "openai-responses",
+                apiKey: "imp-key",
+                models: [{ id: "imp-1", name: "Imported Model" }],
+              },
+            },
+          },
+        }),
+        /simulated import reload failure/,
+      );
+
+      assert.deepEqual(readEngineSettings(engineA.store), { maxActiveWorkers: 4 });
+      assert.deepEqual(readModelProfiles(engineA.store), {
+        profiles: [
+          {
+            id: "orig",
+            model: { provider: "orig-p", modelId: "orig-1" },
+            description: "Original profile",
+          },
+        ],
+      });
+      assert.deepEqual(readGlobalSkillsPolicy(engineA.store), { myskill: "disabled" });
+      assert.deepEqual(getMcpServersRecord(engineA.store), {
+        g1: { type: "http", url: g1Url, exposure: "direct" },
+      });
+      assert.deepEqual(engineA.store.getProjectMcpServers(project.id), {
+        g1: { enabled: false },
+        projonly: { command: "proj-cmd", exposure: "direct" },
+      });
+      assert.equal(await readFile(join(homeWithModels, "models.json"), "utf8"), initialModelsRaw);
+      assert.ok(engineA.modelRuntime.resolveModel({ provider: "orig-p", modelId: "orig-1" }));
+      assert.equal(
+        engineA.modelRuntime.resolveModel({ provider: "imported", modelId: "imp-1" }),
+        undefined,
+      );
+      assert.equal(await engineA.oauthStore.hasTokens("g1", g1Url), true);
+    } finally {
+      await engineA.close();
+    }
+
+    const engineB = await Engine.open({ dataDir: homeWithoutModels, userHomeDir: null });
+    try {
+      engineB.mcpHub.reload = async () => {
+        throw new Error("simulated fresh import failure");
+      };
+
+      await assert.rejects(
+        engineB.settings.importConfig({
+          version: 1,
+          settings: { maxActiveWorkers: 7 },
+          modelProfiles: { profiles: [] },
+          mcpServers: {},
+          modelsConfig: {
+            providers: {
+              imported: {
+                baseUrl: "http://127.0.0.1:2/v1",
+                api: "openai-responses",
+                apiKey: "imp-key",
+                models: [{ id: "imp-1", name: "Imported Model" }],
+              },
+            },
+          },
+        }),
+        /simulated fresh import failure/,
+      );
+
+      await assert.rejects(stat(join(homeWithoutModels, "models.json")), { code: "ENOENT" });
+      assert.deepEqual(engineB.modelRuntime.config(), { providers: {} });
+      assert.deepEqual(readEngineSettings(engineB.store), {});
+    } finally {
+      await engineB.close();
+    }
+  });
+});
+
+test("deleteProject rejects concurrent project OAuth start and openProject once deletion begins", async () => {
+  await withTempDir(async (dir) => {
+    const home = join(dir, "home");
+    const ws = join(dir, "ws");
+    await mkdir(ws, { recursive: true });
+    const mock = await startMockOAuthMcpServer("proj_tool");
+
+    const engine = await Engine.open({ dataDir: home, userHomeDir: null });
+    try {
+      const project = engine.projects.create({ workspaces: [ws], title: "DeleteRace" });
+      await engine.mcp(project.id).putConfig({
+        servers: {
+          projhttp: { type: "http", url: mock.mcpUrl, exposure: "direct" },
+        },
+      });
+
+      const session = await engine.mcp(project.id).startOAuth("projhttp");
+      const sawAuthUrl = new Promise<void>((resolve, reject) => {
+        const unsub = engine
+          .mcp(project.id)
+          .subscribeOAuth("projhttp", session.sessionId, (evt) => {
+            if (evt.type === "auth_url") {
+              unsub();
+              resolve();
+            } else if (evt.type === "error") {
+              unsub();
+              reject(new Error(evt.message));
+            }
+          });
+      });
+      await sawAuthUrl;
+
+      const sawCancelled = new Promise<McpOAuthEvent>((resolve) => {
+        const unsub = engine
+          .mcp(project.id)
+          .subscribeOAuth("projhttp", session.sessionId, (evt) => {
+            if (evt.type === "error" || evt.type === "complete") {
+              unsub();
+              resolve(evt);
+            }
+          });
+      });
+
+      const deletePromise = engine.projects.delete(project.id);
+
+      await assert.rejects(
+        engine.mcp(project.id).startOAuth("projhttp"),
+        (err: unknown) =>
+          err instanceof EngineError && err.status === 404 && err.code === "project_not_found",
+      );
+      await assert.rejects(
+        engine.openProject(project.id),
+        (err: unknown) =>
+          err instanceof EngineError && err.status === 404 && err.code === "project_not_found",
+      );
+
+      assert.deepEqual(await deletePromise, { ok: true, id: project.id });
+      const lastEvent = await sawCancelled;
+      assert.equal(lastEvent.type, "error");
+      if (lastEvent.type === "error") {
+        assert.equal(lastEvent.code, "login_cancelled");
+      }
+    } finally {
+      await engine.close();
+      await mock.close();
     }
   });
 });
