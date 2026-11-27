@@ -15,29 +15,19 @@ import {
   Text,
   TextArea,
 } from "@earendil-works/elanor-react";
-import type {
-  ModelInfo,
-  ModelProfile,
-  SmokeTestModelResponse,
-  ThinkingLevel,
-} from "@eevee/protocol";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import type { ModelInfo, ModelProfile, ThinkingLevel } from "@eevee/protocol";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { api } from "../../lib/api.ts";
 import { formatTokens } from "../../lib/format.ts";
 import { THINKING_LEVELS } from "./provider-utils.ts";
 import { SmokeTestResult } from "./SmokeTestResult.tsx";
+import { useModelSmokeTests } from "./useModelSmokeTests.ts";
 
 const DISPLAY_LIMIT = 100;
 
 type IndexedProfile = {
   readonly uid: number;
   readonly profile: ModelProfile;
-};
-
-type ProfileSmokeState = {
-  readonly loading: boolean;
-  readonly result?: SmokeTestModelResponse;
-  readonly error?: string;
 };
 
 let nextProfileUid = 1;
@@ -83,8 +73,7 @@ export function ModelsTab() {
   const [savedNotice, setSavedNotice] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
-  const [profileTests, setProfileTests] = useState<Record<number, ProfileSmokeState>>({});
-  const smokeAbortsRef = useRef<Map<number, AbortController>>(new Map());
+  const { tests: profileTests, runTest: runSmokeTest, cancelTest } = useModelSmokeTests();
   const datalistPrefix = useId();
   const providerListId = `${datalistPrefix}-providers`;
 
@@ -105,11 +94,6 @@ export function ModelsTab() {
 
   useEffect(() => {
     void load();
-    const smokeAborts = smokeAbortsRef.current;
-    return () => {
-      for (const controller of smokeAborts.values()) controller.abort();
-      smokeAborts.clear();
-    };
   }, [load]);
 
   const refreshCatalog = async () => {
@@ -158,13 +142,7 @@ export function ModelsTab() {
   };
 
   const removeProfile = (uid: number) => {
-    smokeAbortsRef.current.get(uid)?.abort();
-    smokeAbortsRef.current.delete(uid);
-    setProfileTests((prev) => {
-      const next = { ...prev };
-      delete next[uid];
-      return next;
-    });
+    cancelTest(String(uid));
     setProfiles((prev) => prev.filter((item) => item.uid !== uid));
     setSavedNotice(false);
   };
@@ -188,43 +166,16 @@ export function ModelsTab() {
     }
   };
 
-  const runProfileTest = async (uid: number, profile: ModelProfile) => {
+  const runProfileTest = (uid: number, profile: ModelProfile) => {
     const provider = profile.model.provider.trim();
     const modelId = profile.model.modelId.trim();
     if (!provider || !modelId) return;
-    smokeAbortsRef.current.get(uid)?.abort();
-    const controller = new AbortController();
-    smokeAbortsRef.current.set(uid, controller);
-    setProfileTests((prev) => ({ ...prev, [uid]: { loading: true } }));
-    try {
-      const result = await api.testProviderModel(
-        provider,
-        modelId,
-        profile.model.thinkingLevel ? { thinkingLevel: profile.model.thinkingLevel } : {},
-        controller.signal,
-      );
-      setProfileTests((prev) => ({ ...prev, [uid]: { loading: false, result } }));
-    } catch (err) {
-      if (!controller.signal.aborted) {
-        setProfileTests((prev) => ({
-          ...prev,
-          [uid]: {
-            loading: false,
-            error: err instanceof Error ? err.message : String(err),
-          },
-        }));
-      }
-    }
-  };
-
-  const clearProfileTest = (uid: number) => {
-    smokeAbortsRef.current.get(uid)?.abort();
-    smokeAbortsRef.current.delete(uid);
-    setProfileTests((prev) => {
-      const next = { ...prev };
-      delete next[uid];
-      return next;
-    });
+    void runSmokeTest(
+      provider,
+      modelId,
+      profile.model.thinkingLevel ? { thinkingLevel: profile.model.thinkingLevel } : {},
+      String(uid),
+    );
   };
 
   const scopedModels = onlyAvailable ? allModels.filter((m) => m.available) : allModels;
@@ -294,7 +245,7 @@ export function ModelsTab() {
             supportedLevels !== undefined &&
             !supportedLevels.includes(currentThinking);
           const modelListId = `${datalistPrefix}-models-${uid}`;
-          const smoke = profileTests[uid];
+          const smoke = profileTests[String(uid)];
 
           return (
             <div key={uid} className="ev-settings-card">
@@ -382,7 +333,7 @@ export function ModelsTab() {
                   iconStart={<ExperimentIcon width={14} height={14} />}
                   disabled={!providerValue || !modelIdValue}
                   pending={smoke?.loading === true}
-                  onClick={() => void runProfileTest(uid, profile)}
+                  onClick={() => runProfileTest(uid, profile)}
                 >
                   测试
                 </Button>
@@ -416,7 +367,7 @@ export function ModelsTab() {
                       type="button"
                       hierarchy="tertiary"
                       density="compact"
-                      onClick={() => clearProfileTest(uid)}
+                      onClick={() => cancelTest(String(uid))}
                     >
                       收起结果
                     </Button>

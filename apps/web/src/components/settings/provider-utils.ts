@@ -1,4 +1,11 @@
-import type { ThinkingLevel, ThinkingLevelConfig, ThinkingLevelRule } from "@eevee/protocol";
+import type {
+  ImportProviderModelsRequest,
+  ProbedModel,
+  ProviderSummary,
+  ThinkingLevel,
+  ThinkingLevelConfig,
+  ThinkingLevelRule,
+} from "@eevee/protocol";
 import { isRecord } from "../../lib/object.ts";
 
 export const THINKING_LEVELS: readonly ThinkingLevel[] = [
@@ -188,4 +195,36 @@ export function normalizeHeaderObject(
 
 export function modelInputWithImage(image: boolean): ("text" | "image")[] {
   return image ? ["text", "image"] : ["text"];
+}
+
+export function toImportModelPayload(
+  model: ProbedModel,
+): ImportProviderModelsRequest["models"][number] {
+  const trimmedName = model.name?.trim();
+  return {
+    id: model.id,
+    ...(trimmedName ? { name: trimmedName } : {}),
+    ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
+    ...(model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens }),
+    ...(model.input === undefined ? {} : { input: [...model.input] }),
+    ...(model.reasoning === undefined ? {} : { reasoning: model.reasoning }),
+  };
+}
+
+export function filterProbedModels(
+  models: readonly ProbedModel[],
+  filter: string,
+): readonly ProbedModel[] {
+  const query = filter.trim().toLowerCase();
+  if (!query) return models;
+  return models.filter((model) => `${model.id} ${model.name ?? ""}`.toLowerCase().includes(query));
+}
+
+export function formatAuthMeta(provider: ProviderSummary): string {
+  if (!provider.configured) return "未配置";
+  const parts: string[] = [];
+  parts.push(provider.authSource ?? provider.authType ?? "已配置");
+  if (provider.authAccountLabel) parts.push(provider.authAccountLabel);
+  if (provider.authPreview) parts.push(provider.authPreview);
+  return parts.join(" · ");
 }
