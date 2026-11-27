@@ -18,6 +18,7 @@ import {
   createMcpHub,
   getMcpServerExtensionRoles,
   isMcpServerEnabledForRole,
+  McpServerConnection,
   type McpServerEntry,
   McpServerLog,
   mcpServerExtensionName,
@@ -557,6 +558,16 @@ test("roles config validation, extension role metadata, and degraded refresh tra
     assert.ok(ext);
     assert.deepEqual(getMcpServerExtensionRoles(ext), { router: false, worker: true });
 
+    const entries = hub.serverExtensionEntries();
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0]?.server, "worker-only");
+    assert.deepEqual(entries[0]?.roles, { router: false, worker: true });
+    assert.deepEqual(hub.rolesForExtension(mcpServerExtensionName("worker-only")), {
+      router: false,
+      worker: true,
+    });
+    assert.equal(hub.rolesForExtension("eevee.mcp.missing"), undefined);
+
     // Trigger degraded state when tools/list fails on live refresh, then recover
     srv.failToolsList = true;
     srv.pushToolsChanged();
@@ -723,5 +734,86 @@ test("hub without roots does not advertise roots capability while hub with roots
     await hubWithoutRoots.close();
     await hubWithRoots.close();
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("McpServerConnection epoch isolation ignores stale connect failures and closes stale transports", async () => {
+  const srv = new LifecycleFakeMcpServer([
+    { name: "ping", description: "Ping", inputSchema: { type: "object", properties: {} } },
+  ]);
+  const log = new McpServerLog();
+  let stateChanges = 0;
+  let attempt = 0;
+  let releaseHangingInit!: () => void;
+  const hangingInit = new Promise<void>((resolve) => {
+    releaseHangingInit = resolve;
+  });
+
+  const conn = new McpServerConnection({
+    entry: { name: "epoch-srv", config: { command: "fake", exposure: "direct" } },
+    cwd: process.cwd(),
+    env: {},
+    clientInfo: { name: "test", version: "0.0.1" },
+    defaultTimeoutMs: 5_000,
+    readyTimeoutMs: 5_000,
+    transientRetryDelayMs: 10,
+    log,
+    createTransport: () => {
+      attempt += 1;
+      if (attempt === 1) {
+        const inner = srv.createTransport();
+        return {
+          start: () => inner.start(),
+          send: async (message) => {
+            if ("method" in message && message.method === "initialize") {
+              await hangingInit;
+            }
+            return inner.send(message);
+          },
+          onMessage: (listener) => inner.onMessage(listener),
+          onError: (listener) => inner.onError(listener),
+          onClose: (listener) => inner.onClose(listener),
+          close: () => inner.close(),
+        };
+      }
+      return srv.createTransport();
+    },
+    onStateChange: () => {
+      stateChanges += 1;
+    },
+  });
+
+  try {
+    assert.equal(conn.currentEpoch, 0);
+    const staleConnect = conn.connect(true);
+    staleConnect.catch(() => undefined);
+    await waitFor(() => attempt === 1, "first attempt started");
+    const epochAfterConnect = conn.currentEpoch;
+    assert.equal(epochAfterConnect, 1);
+
+    // Reconnect supersedes epoch 1 with epoch 2 even while attempt 1 is suspended
+    const reconnectPromise = conn.reconnect();
+    assert.equal(conn.currentEpoch, 2);
+    releaseHangingInit();
+    await reconnectPromise;
+    await assert.rejects(staleConnect);
+
+    assert.equal(conn.status, "connected");
+    assert.equal(conn.currentEpoch, 2);
+    assert.equal(srv.openCount, 2);
+    assert.equal(srv.closeCount, 1);
+    assert.ok(stateChanges >= 2);
+
+    // Closing increments epoch and keeps status permanently "closed"
+    const closePromise = conn.close();
+    assert.equal(conn.status, "closed");
+    assert.equal(conn.currentEpoch, 3);
+    await closePromise;
+    await assert.rejects(conn.connect(true), /is closed/);
+    await conn.reconnect();
+    assert.equal(conn.status, "closed");
+  } finally {
+    await conn.close();
+    await log.close();
   }
 });

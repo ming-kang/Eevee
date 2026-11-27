@@ -41,9 +41,12 @@ import {
   type McpServerEntry,
   type McpStdioServerConfig,
   mcpServerExtensionName,
+  mergeMcpServerOverride,
   parseMcpConfig,
+  resolveEffectiveMcpServers,
   resolveServerEnv,
   resolveServerHeaders,
+  synthesizeOfflineMcpSnapshots,
   validateMcpServerEntry,
 } from "../src/index.ts";
 import { createTestHarness, extractText } from "./harness.ts";
@@ -1281,5 +1284,132 @@ test("McpHub.reconnect reconnects failed or connected servers, skips disabled, a
     unbind();
     await hub.close();
     await th.cleanup();
+  }
+});
+
+test("mergeMcpServerOverride deep-merges roles and toolExposure while replacing scalar fields", () => {
+  const merged = mergeMcpServerOverride(
+    {
+      command: "global-cmd",
+      description: "Global",
+      exposure: "codemode",
+      roles: { router: true, worker: true },
+      toolExposure: { a: "direct", b: "hidden" },
+    },
+    {
+      enabled: false,
+      description: "Override",
+      roles: { router: false },
+      toolExposure: { b: "deferred", c: "codemode" },
+    },
+  );
+  assert.deepEqual(merged, {
+    command: "global-cmd",
+    enabled: false,
+    description: "Override",
+    exposure: "codemode",
+    roles: { router: false, worker: true },
+    toolExposure: { a: "direct", b: "deferred", c: "codemode" },
+  });
+});
+
+test("resolveEffectiveMcpServers resolves overrides, standalone entries, and reports errors cleanly", () => {
+  const globalServers: Record<string, unknown> = {
+    shared: {
+      command: "shared-cmd",
+      roles: { router: true, worker: true },
+      toolExposure: { ping: "direct" },
+    },
+    "foo-bar": { command: "foobar-cmd" },
+  };
+
+  const valid = resolveEffectiveMcpServers(globalServers, {
+    shared: {
+      enabled: false,
+      roles: { router: false },
+      toolExposure: { pong: "deferred" },
+    },
+    projonly: { type: "http", url: "https://example.com/mcp", exposure: "direct" },
+  });
+  assert.deepEqual(valid.errors, []);
+  assert.deepEqual(
+    valid.entries.map((entry) => entry.name),
+    ["shared", "foo-bar", "projonly"],
+  );
+  assert.deepEqual(valid.effectiveServers.shared, {
+    command: "shared-cmd",
+    enabled: false,
+    roles: { router: false, worker: true },
+    toolExposure: { ping: "direct", pong: "deferred" },
+  });
+  assert.deepEqual(valid.normalizedProjectServers, {
+    shared: {
+      enabled: false,
+      roles: { router: false },
+      toolExposure: { pong: "deferred" },
+    },
+    projonly: { type: "http", url: "https://example.com/mcp", exposure: "direct" },
+  });
+
+  const invalid = resolveEffectiveMcpServers(globalServers, {
+    nonobj: "bad",
+    ghost: { enabled: false },
+    broken: { type: "http", url: "not-a-url" },
+    foo_bar: { command: "collide" },
+  });
+  assert.equal(invalid.errors.length, 4);
+  assert.match(invalid.errors[0] ?? "", /must be an object/);
+  assert.match(invalid.errors[1] ?? "", /needs either "command"/);
+  assert.match(invalid.errors[2] ?? "", /url must be an http or https URL/);
+  assert.match(invalid.errors[3] ?? "", /conflicts with "foo-bar"/);
+  assert.deepEqual(Object.keys(invalid.normalizedProjectServers), ["foo_bar"]);
+
+  const badOverrideStrict = resolveEffectiveMcpServers(globalServers, {
+    shared: { exposure: "invalid" },
+  });
+  assert.equal(badOverrideStrict.errors.length, 1);
+  assert.equal(
+    badOverrideStrict.entries.some((entry) => entry.name === "shared"),
+    false,
+  );
+
+  const badOverrideFallback = resolveEffectiveMcpServers(
+    globalServers,
+    { shared: { exposure: "invalid" } },
+    { fallbackOnInvalidOverride: true },
+  );
+  assert.equal(badOverrideFallback.errors.length, 1);
+  assert.equal(
+    badOverrideFallback.entries.some((entry) => entry.name === "shared"),
+    true,
+  );
+});
+
+test("synthesizeOfflineMcpSnapshots produces snapshots matching idle/disabled McpHub.status()", async () => {
+  const entries: McpServerEntry[] = [
+    {
+      name: "stdio-srv",
+      config: {
+        command: "run-srv",
+        description: "Local server",
+        exposure: "direct",
+        roles: { router: true, worker: false },
+      },
+    },
+    {
+      name: "http-off",
+      config: {
+        type: "http",
+        url: "https://example.com/mcp",
+        enabled: false,
+        roles: { router: false, worker: true },
+      },
+    },
+  ];
+  const hub = createMcpHub({ servers: entries });
+  try {
+    assert.deepEqual(synthesizeOfflineMcpSnapshots(entries), hub.status());
+  } finally {
+    await hub.close();
   }
 });

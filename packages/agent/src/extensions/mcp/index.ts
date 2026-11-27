@@ -11,25 +11,30 @@ export {
   type McpStdioServerConfig,
   type ParsedMcpConfig,
   parseMcpConfig,
+  type ResolvedMcpServerRoles,
+  resolveMcpServerRoles,
   resolveServerEnv,
   resolveServerHeaders,
   validateMcpServerEntry,
 } from "./config.ts";
 export {
-  createMcpExtension,
-  createMcpHub,
+  McpServerConnection,
+  type McpServerConnectionOptions,
+} from "./connection.ts";
+export {
   getMcpServerExtensionRoles,
   MCP_EXTENSION,
   MCP_SERVER_EXTENSION_PREFIX,
+  type McpServerExtensionEntry,
+  mcpServerExtensionName,
+} from "./extension.ts";
+export {
+  createMcpExtension,
+  createMcpHub,
   type McpExtension,
   McpHub,
   type McpHubOptions,
   type McpHubStartOptions,
-  type McpServerSnapshot,
-  type McpServerStatus,
-  type McpServerToolSummary,
-  mcpServerExtensionName,
-  type ResolvedMcpServerRoles,
 } from "./hub.ts";
 export {
   DEFAULT_MCP_LOG_MAX_FILE_BYTES,
@@ -46,6 +51,8 @@ export {
   McpOAuthCredentialStore,
   type McpOAuthCredentialStoreOptions,
   type McpOAuthSession,
+  McpOAuthSessionError,
+  type McpOAuthSessionErrorCode,
   type McpOAuthSignInEvent,
   type McpOAuthTokenSummary,
   McpRefreshLockBusyError,
@@ -57,6 +64,15 @@ export {
   toMcpOAuthSettings,
 } from "./oauth.ts";
 export {
+  isMcpServerOverride,
+  mergeMcpServerOverride,
+  normalizeMcpServerMap,
+  type ResolvedEffectiveMcpServers,
+  type ResolveEffectiveMcpServersOptions,
+  resolveEffectiveMcpServers,
+  synthesizeOfflineMcpSnapshots,
+} from "./overrides.ts";
+export {
   type CreateMcpResourceToolsOptions,
   createMcpResourceTools,
   isMcpUiResource,
@@ -67,6 +83,12 @@ export {
   type McpResourceToolDetails,
   READ_MCP_RESOURCE_TOOL_NAME,
 } from "./resources.ts";
+export {
+  buildOfflineMcpSnapshot,
+  type McpServerSnapshot,
+  type McpServerStatus,
+  type McpServerToolSummary,
+} from "./snapshot.ts";
 export {
   type AdaptMcpToolsOptions,
   adaptMcpTools,

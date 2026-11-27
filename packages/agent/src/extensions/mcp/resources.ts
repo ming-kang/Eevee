@@ -1,6 +1,8 @@
-import type { JsonValue } from "@earendil-works/chord/json";
+import type { Context } from "@earendil-works/chord/context";
 import {
   defineTool,
+  type JsonObject,
+  type ToolExecutionApi,
   type ToolExecutionResult,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
@@ -19,6 +21,7 @@ import { obj, opt, str } from "@earendil-works/pi-schema";
 import { withToolPromptMeta } from "../../context/tool-meta.ts";
 import { errorMessage } from "../../shared/guards.ts";
 import { formatSize } from "../../shared/truncate.ts";
+import { resourceContentToLlm } from "./content.ts";
 
 export const LIST_MCP_RESOURCES_TOOL_NAME = "list_mcp_resources";
 export const LIST_MCP_RESOURCE_TEMPLATES_TOOL_NAME = "list_mcp_resource_templates";
@@ -72,44 +75,20 @@ export function isMcpUiResource(resource: {
   readonly uri?: string;
   readonly mimeType?: string;
 }): boolean {
-  if (resource.uri?.trim().toLowerCase().startsWith("ui://")) {
-    return true;
-  }
-  if (resource.mimeType !== undefined && /(?:^|;\s*)profile=mcp-app\b/i.test(resource.mimeType)) {
-    return true;
-  }
-  return false;
+  if (resource.uri?.trim().toLowerCase().startsWith("ui://")) return true;
+  return resource.mimeType !== undefined && /(?:^|;\s*)profile=mcp-app\b/i.test(resource.mimeType);
 }
 
-function extensionOf(uri: string): string {
-  const path = URL.canParse(uri) ? new URL(uri).pathname : uri;
-  return /\.[A-Za-z0-9]{1,8}$/.exec(path)?.[0] ?? ".bin";
-}
-
-function isTextMimeType(mimeType: string | undefined): boolean {
-  if (mimeType === undefined) return false;
-  const type = mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
-  return (
-    type.startsWith("text/") ||
-    type === "application/json" ||
-    type === "application/xml" ||
-    type.endsWith("+json") ||
-    type.endsWith("+xml")
-  );
-}
+type ToolAgentApi = Pick<ToolExecutionApi<McpResourceToolDetails>, "agent"> | undefined;
 
 async function resolveAccessibleServers(
   host: McpResourceHost,
-  api: {
-    agent?: (
-      context: never,
-    ) => Promise<{ readonly extensions: readonly { readonly name: string }[] }>;
-  },
-  context: unknown,
+  api: ToolAgentApi,
+  context: Context,
 ): Promise<readonly McpResourceServerInfo[]> {
   const all = host.listResourceServers();
   if (typeof api?.agent !== "function") return all;
-  const agent = await api.agent(context as never);
+  const agent = await api.agent(context);
   const active = new Set(agent.extensions.map((ext) => ext.name));
   return all.filter((server) => active.has(server.extensionName));
 }
@@ -121,40 +100,24 @@ function findServer(
   return accessible.find((server) => server.name === query || server.namespace === query);
 }
 
-const listResourcesParams = obj(
-  {
-    server: opt(
-      str({
-        description:
-          "MCP server name or namespace (e.g. docs or mcp__docs). Omit to list across all accessible servers.",
-      }),
-    ),
-    cursor: opt(
-      str({
-        description: "Pagination cursor from a previous list_mcp_resources call (requires server).",
-      }),
-    ),
-  },
-  { open: true },
-);
-
-const listTemplatesParams = obj(
-  {
-    server: opt(
-      str({
-        description:
-          "MCP server name or namespace (e.g. docs or mcp__docs). Omit to list across all accessible servers.",
-      }),
-    ),
-    cursor: opt(
-      str({
-        description:
-          "Pagination cursor from a previous list_mcp_resource_templates call (requires server).",
-      }),
-    ),
-  },
-  { open: true },
-);
+function createListParams(toolName: string) {
+  return obj(
+    {
+      server: opt(
+        str({
+          description:
+            "MCP server name or namespace (e.g. docs or mcp__docs). Omit to list across all accessible servers.",
+        }),
+      ),
+      cursor: opt(
+        str({
+          description: `Pagination cursor from a previous ${toolName} call (requires server).`,
+        }),
+      ),
+    },
+    { open: true },
+  );
+}
 
 const readResourceParams = obj(
   {
@@ -164,58 +127,37 @@ const readResourceParams = obj(
   { open: true },
 );
 
-const LIST_RESOURCES_RESULT_SCHEMA: Record<string, unknown> = {
-  type: "object",
-  properties: {
-    resources: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          server: { type: "string" },
-          namespace: { type: "string" },
-          uri: { type: "string" },
-          name: { type: "string" },
-          title: { type: "string" },
-          description: { type: "string" },
-          mimeType: { type: "string" },
-          size: { type: "number" },
+function createListResultSchema(
+  resultKey: "resources" | "resourceTemplates",
+  extraProperties: Record<string, unknown>,
+  requiredFields: readonly string[],
+): Record<string, unknown> {
+  return {
+    type: "object",
+    properties: {
+      [resultKey]: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            server: { type: "string" },
+            namespace: { type: "string" },
+            name: { type: "string" },
+            title: { type: "string" },
+            description: { type: "string" },
+            mimeType: { type: "string" },
+            ...extraProperties,
+          },
+          required: [...requiredFields],
+          additionalProperties: true,
         },
-        required: ["server", "namespace", "uri", "name"],
-        additionalProperties: true,
       },
+      nextCursor: { type: "string" },
     },
-    nextCursor: { type: "string" },
-  },
-  required: ["resources"],
-  additionalProperties: true,
-};
-
-const LIST_TEMPLATES_RESULT_SCHEMA: Record<string, unknown> = {
-  type: "object",
-  properties: {
-    resourceTemplates: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          server: { type: "string" },
-          namespace: { type: "string" },
-          uriTemplate: { type: "string" },
-          name: { type: "string" },
-          title: { type: "string" },
-          description: { type: "string" },
-          mimeType: { type: "string" },
-        },
-        required: ["server", "namespace", "uriTemplate", "name"],
-        additionalProperties: true,
-      },
-    },
-    nextCursor: { type: "string" },
-  },
-  required: ["resourceTemplates"],
-  additionalProperties: true,
-};
+    required: [resultKey],
+    additionalProperties: true,
+  };
+}
 
 const READ_RESOURCE_RESULT_SCHEMA: Record<string, unknown> = {
   type: "object",
@@ -245,100 +187,60 @@ const READ_RESOURCE_RESULT_SCHEMA: Record<string, unknown> = {
   additionalProperties: true,
 };
 
-type TaggedResource = {
-  readonly server: string;
-  readonly namespace: string;
-  readonly uri: string;
-  readonly name: string;
-  readonly title?: string;
-  readonly description?: string;
-  readonly mimeType?: string;
-  readonly size?: number;
-};
-
-type TaggedTemplate = {
-  readonly server: string;
-  readonly namespace: string;
-  readonly uriTemplate: string;
+type ListItemMeta = {
   readonly name: string;
   readonly title?: string;
   readonly description?: string;
   readonly mimeType?: string;
 };
 
-function tagResource(info: McpResourceServerInfo, item: Resource): TaggedResource {
-  return {
+function tagListItem(
+  info: McpResourceServerInfo,
+  item: ListItemMeta,
+  extra: JsonObject,
+): JsonObject {
+  const tagged: JsonObject = {
     server: info.name,
     namespace: info.namespace,
-    uri: item.uri,
     name: item.name,
-    ...(item.title === undefined ? {} : { title: item.title }),
-    ...(item.description === undefined ? {} : { description: item.description }),
-    ...(item.mimeType === undefined ? {} : { mimeType: item.mimeType }),
-    ...(item.size === undefined ? {} : { size: item.size }),
+    ...extra,
   };
+  if (item.title !== undefined) tagged.title = item.title;
+  if (item.description !== undefined) tagged.description = item.description;
+  if (item.mimeType !== undefined) tagged.mimeType = item.mimeType;
+  return tagged;
 }
 
-function tagTemplate(info: McpResourceServerInfo, item: ResourceTemplate): TaggedTemplate {
-  return {
-    server: info.name,
-    namespace: info.namespace,
-    uriTemplate: item.uriTemplate,
-    name: item.name,
-    ...(item.title === undefined ? {} : { title: item.title }),
-    ...(item.description === undefined ? {} : { description: item.description }),
-    ...(item.mimeType === undefined ? {} : { mimeType: item.mimeType }),
-  };
+function formatListLine(
+  serverName: string,
+  address: string,
+  item: ListItemMeta,
+  size?: number,
+): string {
+  const label = item.title ?? item.name;
+  const meta = [item.mimeType, size === undefined ? undefined : formatSize(size)].filter(
+    (part): part is string => part !== undefined,
+  );
+  const metaSuffix = meta.length > 0 ? ` (${meta.join(", ")})` : "";
+  const desc = item.description ? `: ${item.description}` : "";
+  return `- [${serverName}] ${address} — ${label}${metaSuffix}${desc}`;
 }
 
-function formatResourcesText(
-  items: readonly TaggedResource[],
+function formatListText(
+  lines: string[],
+  noun: string,
   nextCursor: string | undefined,
   notes: readonly string[],
 ): string {
-  if (items.length === 0 && notes.length === 0) {
+  if (lines.length === 0 && notes.length === 0) {
     return nextCursor === undefined
-      ? "No MCP resources found."
-      : `No MCP resources on this page. nextCursor: ${nextCursor}`;
+      ? `No ${noun} found.`
+      : `No ${noun} on this page. nextCursor: ${nextCursor}`;
   }
-  const lines = items.map((item) => {
-    const label = item.title ?? item.name;
-    const meta = [
-      item.mimeType,
-      item.size === undefined ? undefined : formatSize(item.size),
-    ].filter((part): part is string => part !== undefined);
-    const metaSuffix = meta.length > 0 ? ` (${meta.join(", ")})` : "";
-    const desc = item.description ? `: ${item.description}` : "";
-    return `- [${item.server}] ${item.uri} — ${label}${metaSuffix}${desc}`;
-  });
-  if (nextCursor !== undefined) {
-    lines.push(`More results available. nextCursor: ${nextCursor}`);
-  }
-  for (const note of notes) lines.push(note);
-  return lines.join("\n");
-}
-
-function formatTemplatesText(
-  items: readonly TaggedTemplate[],
-  nextCursor: string | undefined,
-  notes: readonly string[],
-): string {
-  if (items.length === 0 && notes.length === 0) {
-    return nextCursor === undefined
-      ? "No MCP resource templates found."
-      : `No MCP resource templates on this page. nextCursor: ${nextCursor}`;
-  }
-  const lines = items.map((item) => {
-    const label = item.title ?? item.name;
-    const meta = item.mimeType ? ` (${item.mimeType})` : "";
-    const desc = item.description ? `: ${item.description}` : "";
-    return `- [${item.server}] ${item.uriTemplate} — ${label}${meta}${desc}`;
-  });
-  if (nextCursor !== undefined) {
-    lines.push(`More results available. nextCursor: ${nextCursor}`);
-  }
-  for (const note of notes) lines.push(note);
-  return lines.join("\n");
+  const output = [...lines];
+  if (nextCursor !== undefined) output.push(`More results available. nextCursor: ${nextCursor}`);
+  for (const note of notes) output.push(note);
+  return output.join("\n");
 }
 
 function serversForCrossServerList(accessible: readonly McpResourceServerInfo[]): {
@@ -359,16 +261,54 @@ function serversForCrossServerList(accessible: readonly McpResourceServerInfo[])
   };
 }
 
-export function createMcpResourceTools(options: CreateMcpResourceToolsOptions): ToolRegistration[] {
+function errorResult(
+  text: string,
+  details: McpResourceToolDetails = {},
+): ToolExecutionResult<McpResourceToolDetails> {
+  return { output: [{ type: "text", text }], details, isError: true };
+}
+
+type ListToolSpec<TItem> = {
+  readonly toolName: string;
+  readonly description: string;
+  readonly resultKey: "resources" | "resourceTemplates";
+  readonly noun: string;
+  readonly promptSnippet: string;
+  readonly promptGuidelines?: string[];
+  readonly extraProperties: Record<string, unknown>;
+  readonly requiredFields: readonly string[];
+  readonly isUiItem: (item: TItem) => boolean;
+  readonly toJson: (info: McpResourceServerInfo, item: TItem) => JsonObject;
+  readonly formatLine: (serverName: string, item: TItem) => string;
+  readonly fetchPage: (
+    host: McpResourceHost,
+    server: string,
+    cursor: string | undefined,
+    options: McpRequestOptions,
+  ) => Promise<{ readonly items: readonly TItem[]; readonly nextCursor?: string }>;
+  readonly fetchAll: (
+    host: McpResourceHost,
+    server: string,
+    options: McpRequestOptions,
+  ) => Promise<readonly TItem[]>;
+};
+
+function createMcpListTool<TItem>(
+  options: CreateMcpResourceToolsOptions,
+  spec: ListToolSpec<TItem>,
+): ToolRegistration {
   const { host, saveOutput, timeoutMs } = options;
 
-  const listResourcesTool = withToolPromptMeta(
+  return withToolPromptMeta(
     defineTool({
-      name: LIST_MCP_RESOURCES_TOOL_NAME,
-      description:
-        "List available resources exposed by connected MCP servers. Optionally filter by server and paginate with cursor.",
-      parameters: listResourcesParams,
-      structuredOutputSchema: LIST_RESOURCES_RESULT_SCHEMA,
+      name: spec.toolName,
+      description: spec.description,
+      parameters: createListParams(spec.toolName),
+      structuredOutputSchema: createListResultSchema(
+        spec.resultKey,
+        spec.extraProperties,
+        spec.requiredFields,
+      ),
       replay: "safe",
       execute: async (
         { server, cursor },
@@ -376,7 +316,7 @@ export function createMcpResourceTools(options: CreateMcpResourceToolsOptions): 
         context,
       ): Promise<ToolExecutionResult<McpResourceToolDetails>> => {
         try {
-          const accessible = await resolveAccessibleServers(host, api as never, context);
+          const accessible = await resolveAccessibleServers(host, api, context);
           const reqOptions: McpRequestOptions = {
             signal: context.abortSignal,
             ...(timeoutMs === undefined ? {} : { timeoutMs }),
@@ -385,23 +325,18 @@ export function createMcpResourceTools(options: CreateMcpResourceToolsOptions): 
           if (server !== undefined) {
             const target = findServer(accessible, server);
             if (target === undefined) {
-              return {
-                output: [
-                  {
-                    type: "text",
-                    text: `MCP server "${server}" is not available in this conversation.`,
-                  },
-                ],
-                details: { server },
-                isError: true,
-              };
+              return errorResult(`MCP server "${server}" is not available in this conversation.`, {
+                server,
+              });
             }
-            const page = await host.listResourcesPage(target.name, cursor, reqOptions);
-            const items = page.resources
-              .filter((item) => !isMcpUiResource(item))
-              .map((item) => tagResource(target, item));
-            const text = formatResourcesText(items, page.nextCursor, []);
+            const page = await spec.fetchPage(host, target.name, cursor, reqOptions);
+            const visible = page.items.filter((item) => !spec.isUiItem(item));
+            const items = visible.map((item) => spec.toJson(target, item));
+            const lines = visible.map((item) => spec.formatLine(target.name, item));
+            const text = formatListText(lines, spec.noun, page.nextCursor, []);
             const limited = await limitMcpContent([{ type: "text", text }], saveOutput);
+            const structuredOutput: JsonObject = { [spec.resultKey]: items };
+            if (page.nextCursor !== undefined) structuredOutput.nextCursor = page.nextCursor;
             return {
               output: limited.content,
               details: {
@@ -412,173 +347,30 @@ export function createMcpResourceTools(options: CreateMcpResourceToolsOptions): 
                   ? {}
                   : { fullOutputPath: limited.fullOutputPath }),
               },
-              structuredOutput: {
-                resources: items,
-                ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
-              } as unknown as JsonValue,
+              structuredOutput,
             };
           }
 
           if (cursor !== undefined) {
-            return {
-              output: [
-                {
-                  type: "text",
-                  text: "Specify server when passing cursor to list_mcp_resources.",
-                },
-              ],
-              details: {},
-              isError: true,
-            };
+            return errorResult(`Specify server when passing cursor to ${spec.toolName}.`);
           }
 
           const { ready, pending } = serversForCrossServerList(accessible);
-          const items: TaggedResource[] = [];
+          const items: JsonObject[] = [];
+          const lines: string[] = [];
           const notes: string[] = [];
           const settled = await Promise.allSettled(
-            ready.map(async (target) => ({
-              target,
-              resources: await host.listResources(target.name, reqOptions),
-            })),
+            ready.map((target) => spec.fetchAll(host, target.name, reqOptions)),
           );
           for (let i = 0; i < settled.length; i += 1) {
             const result = settled[i];
             const target = ready[i];
             if (!result || !target) continue;
             if (result.status === "fulfilled") {
-              for (const item of result.value.resources) {
-                if (!isMcpUiResource(item)) items.push(tagResource(target, item));
-              }
-            } else {
-              notes.push(`- [${target.name}] unavailable: ${errorMessage(result.reason)}`);
-            }
-          }
-          if (pending.length > 0) {
-            notes.push(
-              `Still connecting: ${pending.map((s) => s.name).join(", ")}. Specify server to wait on a specific server.`,
-            );
-          }
-
-          const text = formatResourcesText(items, undefined, notes);
-          const limited = await limitMcpContent([{ type: "text", text }], saveOutput);
-          return {
-            output: limited.content,
-            details: {
-              count: items.length,
-              ...(limited.fullOutputPath === undefined
-                ? {}
-                : { fullOutputPath: limited.fullOutputPath }),
-            },
-            structuredOutput: { resources: items } as unknown as JsonValue,
-          };
-        } catch (error) {
-          return {
-            output: [
-              { type: "text", text: `Failed to list MCP resources: ${errorMessage(error)}` },
-            ],
-            details: server === undefined ? {} : { server },
-            isError: true,
-          };
-        }
-      },
-    }),
-    {
-      promptSnippet: "List available MCP resources from connected servers",
-      promptGuidelines: [
-        "Use list_mcp_resources and read_mcp_resource to inspect server-exposed documents, schemas, and data before guessing URIs.",
-      ],
-    },
-  );
-
-  const listTemplatesTool = withToolPromptMeta(
-    defineTool({
-      name: LIST_MCP_RESOURCE_TEMPLATES_TOOL_NAME,
-      description:
-        "List parameterized URI templates for resources exposed by connected MCP servers. Optionally filter by server and paginate with cursor.",
-      parameters: listTemplatesParams,
-      structuredOutputSchema: LIST_TEMPLATES_RESULT_SCHEMA,
-      replay: "safe",
-      execute: async (
-        { server, cursor },
-        api,
-        context,
-      ): Promise<ToolExecutionResult<McpResourceToolDetails>> => {
-        try {
-          const accessible = await resolveAccessibleServers(host, api as never, context);
-          const reqOptions: McpRequestOptions = {
-            signal: context.abortSignal,
-            ...(timeoutMs === undefined ? {} : { timeoutMs }),
-          };
-
-          if (server !== undefined) {
-            const target = findServer(accessible, server);
-            if (target === undefined) {
-              return {
-                output: [
-                  {
-                    type: "text",
-                    text: `MCP server "${server}" is not available in this conversation.`,
-                  },
-                ],
-                details: { server },
-                isError: true,
-              };
-            }
-            const page = await host.listResourceTemplatesPage(target.name, cursor, reqOptions);
-            const items = page.resourceTemplates
-              .filter(
-                (item) => !isMcpUiResource({ uri: item.uriTemplate, mimeType: item.mimeType }),
-              )
-              .map((item) => tagTemplate(target, item));
-            const text = formatTemplatesText(items, page.nextCursor, []);
-            const limited = await limitMcpContent([{ type: "text", text }], saveOutput);
-            return {
-              output: limited.content,
-              details: {
-                server: target.name,
-                count: items.length,
-                ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
-                ...(limited.fullOutputPath === undefined
-                  ? {}
-                  : { fullOutputPath: limited.fullOutputPath }),
-              },
-              structuredOutput: {
-                resourceTemplates: items,
-                ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
-              } as unknown as JsonValue,
-            };
-          }
-
-          if (cursor !== undefined) {
-            return {
-              output: [
-                {
-                  type: "text",
-                  text: "Specify server when passing cursor to list_mcp_resource_templates.",
-                },
-              ],
-              details: {},
-              isError: true,
-            };
-          }
-
-          const { ready, pending } = serversForCrossServerList(accessible);
-          const items: TaggedTemplate[] = [];
-          const notes: string[] = [];
-          const settled = await Promise.allSettled(
-            ready.map(async (target) => ({
-              target,
-              templates: await host.listResourceTemplates(target.name, reqOptions),
-            })),
-          );
-          for (let i = 0; i < settled.length; i += 1) {
-            const result = settled[i];
-            const target = ready[i];
-            if (!result || !target) continue;
-            if (result.status === "fulfilled") {
-              for (const item of result.value.templates) {
-                if (!isMcpUiResource({ uri: item.uriTemplate, mimeType: item.mimeType })) {
-                  items.push(tagTemplate(target, item));
+              for (const item of result.value) {
+                if (!spec.isUiItem(item)) {
+                  items.push(spec.toJson(target, item));
+                  lines.push(spec.formatLine(target.name, item));
                 }
               }
             } else {
@@ -591,7 +383,7 @@ export function createMcpResourceTools(options: CreateMcpResourceToolsOptions): 
             );
           }
 
-          const text = formatTemplatesText(items, undefined, notes);
+          const text = formatListText(lines, spec.noun, undefined, notes);
           const limited = await limitMcpContent([{ type: "text", text }], saveOutput);
           return {
             output: limited.content,
@@ -601,26 +393,70 @@ export function createMcpResourceTools(options: CreateMcpResourceToolsOptions): 
                 ? {}
                 : { fullOutputPath: limited.fullOutputPath }),
             },
-            structuredOutput: { resourceTemplates: items } as unknown as JsonValue,
+            structuredOutput: { [spec.resultKey]: items },
           };
         } catch (error) {
-          return {
-            output: [
-              {
-                type: "text",
-                text: `Failed to list MCP resource templates: ${errorMessage(error)}`,
-              },
-            ],
-            details: server === undefined ? {} : { server },
-            isError: true,
-          };
+          return errorResult(
+            `Failed to list ${spec.noun}: ${errorMessage(error)}`,
+            server === undefined ? {} : { server },
+          );
         }
       },
     }),
     {
-      promptSnippet: "List parameterized MCP resource URI templates",
+      promptSnippet: spec.promptSnippet,
+      ...(spec.promptGuidelines === undefined ? {} : { promptGuidelines: spec.promptGuidelines }),
     },
   );
+}
+
+export function createMcpResourceTools(options: CreateMcpResourceToolsOptions): ToolRegistration[] {
+  const { host, saveOutput, timeoutMs } = options;
+
+  const listResourcesTool = createMcpListTool<Resource>(options, {
+    toolName: LIST_MCP_RESOURCES_TOOL_NAME,
+    description:
+      "List available resources exposed by connected MCP servers. Optionally filter by server and paginate with cursor.",
+    resultKey: "resources",
+    noun: "MCP resources",
+    promptSnippet: "List available MCP resources from connected servers",
+    promptGuidelines: [
+      "Use list_mcp_resources and read_mcp_resource to inspect server-exposed documents, schemas, and data before guessing URIs.",
+    ],
+    extraProperties: { uri: { type: "string" }, size: { type: "number" } },
+    requiredFields: ["server", "namespace", "uri", "name"],
+    isUiItem: (item) => isMcpUiResource(item),
+    toJson: (info, item) =>
+      tagListItem(info, item, {
+        uri: item.uri,
+        ...(item.size === undefined ? {} : { size: item.size }),
+      }),
+    formatLine: (serverName, item) => formatListLine(serverName, item.uri, item, item.size),
+    fetchPage: async (h, server, cursor, reqOptions) => {
+      const page = await h.listResourcesPage(server, cursor, reqOptions);
+      return { items: page.resources, nextCursor: page.nextCursor };
+    },
+    fetchAll: (h, server, reqOptions) => h.listResources(server, reqOptions),
+  });
+
+  const listTemplatesTool = createMcpListTool<ResourceTemplate>(options, {
+    toolName: LIST_MCP_RESOURCE_TEMPLATES_TOOL_NAME,
+    description:
+      "List parameterized URI templates for resources exposed by connected MCP servers. Optionally filter by server and paginate with cursor.",
+    resultKey: "resourceTemplates",
+    noun: "MCP resource templates",
+    promptSnippet: "List parameterized MCP resource URI templates",
+    extraProperties: { uriTemplate: { type: "string" } },
+    requiredFields: ["server", "namespace", "uriTemplate", "name"],
+    isUiItem: (item) => isMcpUiResource({ uri: item.uriTemplate, mimeType: item.mimeType }),
+    toJson: (info, item) => tagListItem(info, item, { uriTemplate: item.uriTemplate }),
+    formatLine: (serverName, item) => formatListLine(serverName, item.uriTemplate, item),
+    fetchPage: async (h, server, cursor, reqOptions) => {
+      const page = await h.listResourceTemplatesPage(server, cursor, reqOptions);
+      return { items: page.resourceTemplates, nextCursor: page.nextCursor };
+    },
+    fetchAll: (h, server, reqOptions) => h.listResourceTemplates(server, reqOptions),
+  });
 
   const readResourceTool = withToolPromptMeta(
     defineTool({
@@ -635,31 +471,19 @@ export function createMcpResourceTools(options: CreateMcpResourceToolsOptions): 
         context,
       ): Promise<ToolExecutionResult<McpResourceToolDetails>> => {
         try {
-          const accessible = await resolveAccessibleServers(host, api as never, context);
+          const accessible = await resolveAccessibleServers(host, api, context);
           const target = findServer(accessible, server);
           if (target === undefined) {
-            return {
-              output: [
-                {
-                  type: "text",
-                  text: `MCP server "${server}" is not available in this conversation.`,
-                },
-              ],
-              details: { server, uri },
-              isError: true,
-            };
+            return errorResult(`MCP server "${server}" is not available in this conversation.`, {
+              server,
+              uri,
+            });
           }
           if (isMcpUiResource({ uri })) {
-            return {
-              output: [
-                {
-                  type: "text",
-                  text: `MCP App UI resource "${uri}" is not accessible via read_mcp_resource.`,
-                },
-              ],
-              details: { server: target.name, uri },
-              isError: true,
-            };
+            return errorResult(
+              `MCP App UI resource "${uri}" is not accessible via read_mcp_resource.`,
+              { server: target.name, uri },
+            );
           }
 
           const reqOptions: McpRequestOptions = {
@@ -669,78 +493,20 @@ export function createMcpResourceTools(options: CreateMcpResourceToolsOptions): 
           const result = await host.readResource(target.name, uri, reqOptions);
           const filtered = result.contents.filter((item) => !isMcpUiResource(item));
           if (result.contents.length > 0 && filtered.length === 0) {
-            return {
-              output: [
-                {
-                  type: "text",
-                  text: `MCP App UI resource "${uri}" is not accessible via read_mcp_resource.`,
-                },
-              ],
-              details: { server: target.name, uri },
-              isError: true,
-            };
+            return errorResult(
+              `MCP App UI resource "${uri}" is not accessible via read_mcp_resource.`,
+              { server: target.name, uri },
+            );
           }
 
           const modelBlocks: LlmContent[] = [];
-          const structuredContents: Record<string, unknown>[] = [];
+          const structuredContents: JsonObject[] = [];
           const savedPaths: string[] = [];
-
           for (const item of filtered) {
-            if ("text" in item) {
-              modelBlocks.push({ type: "text", text: item.text });
-              structuredContents.push({
-                uri: item.uri,
-                ...(item.mimeType === undefined ? {} : { mimeType: item.mimeType }),
-                text: item.text,
-              });
-              continue;
-            }
-            if (item.mimeType?.startsWith("image/")) {
-              modelBlocks.push({ type: "image", data: item.blob, mimeType: item.mimeType });
-              structuredContents.push({
-                uri: item.uri,
-                mimeType: item.mimeType,
-                encoding: "base64",
-                data: item.blob,
-              });
-              continue;
-            }
-            const data = Buffer.from(item.blob, "base64");
-            if (isTextMimeType(item.mimeType)) {
-              const text = data.toString("utf8");
-              modelBlocks.push({ type: "text", text });
-              structuredContents.push({
-                uri: item.uri,
-                ...(item.mimeType === undefined ? {} : { mimeType: item.mimeType }),
-                text,
-              });
-              continue;
-            }
-            const kind = `${item.mimeType ?? "application/octet-stream"}, ${formatSize(data.length)}`;
-            if (saveOutput === undefined) {
-              modelBlocks.push({
-                type: "text",
-                text: `[Binary resource ${item.uri} (${kind}) omitted]`,
-              });
-              structuredContents.push({
-                uri: item.uri,
-                ...(item.mimeType === undefined ? {} : { mimeType: item.mimeType }),
-                size: data.length,
-              });
-              continue;
-            }
-            const savedPath = await saveOutput(data, extensionOf(item.uri));
-            savedPaths.push(savedPath);
-            modelBlocks.push({
-              type: "text",
-              text: `[Binary resource ${item.uri} (${kind}) saved to ${savedPath}]`,
-            });
-            structuredContents.push({
-              uri: item.uri,
-              ...(item.mimeType === undefined ? {} : { mimeType: item.mimeType }),
-              size: data.length,
-              savedPath,
-            });
+            const converted = await resourceContentToLlm(item, { saveOutput });
+            modelBlocks.push(converted.modelBlock);
+            structuredContents.push(converted.structured);
+            if (converted.savedPath !== undefined) savedPaths.push(converted.savedPath);
           }
 
           const limited = await limitMcpContent(modelBlocks, saveOutput);
@@ -764,25 +530,17 @@ export function createMcpResourceTools(options: CreateMcpResourceToolsOptions): 
               namespace: target.namespace,
               uri,
               contents: structuredContents,
-            } as unknown as JsonValue,
+            },
           };
         } catch (error) {
-          return {
-            output: [
-              {
-                type: "text",
-                text: `Failed to read MCP resource ${uri} from ${server}: ${errorMessage(error)}`,
-              },
-            ],
-            details: { server, uri },
-            isError: true,
-          };
+          return errorResult(
+            `Failed to read MCP resource ${uri} from ${server}: ${errorMessage(error)}`,
+            { server, uri },
+          );
         }
       },
     }),
-    {
-      promptSnippet: "Read an MCP resource by server and URI",
-    },
+    { promptSnippet: "Read an MCP resource by server and URI" },
   );
 
   return [listResourcesTool, listTemplatesTool, readResourceTool];

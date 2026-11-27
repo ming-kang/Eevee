@@ -1,4 +1,4 @@
-import type { JsonValue } from "@earendil-works/chord/json";
+import { copyJson } from "@earendil-works/chord/json";
 import type { ToolExecutionResult, ToolRegistration } from "@earendil-works/pi-durable";
 import {
   type CallToolResult,
@@ -15,6 +15,7 @@ import {
 import { errorMessage, isRecord } from "../../shared/guards.ts";
 import { formatSize } from "../../shared/truncate.ts";
 import { getMcpToolExposure, type McpServerConfig } from "./config.ts";
+import { resourceContentToLlm } from "./content.ts";
 
 export type McpToolDetails = {
   readonly server: string;
@@ -91,23 +92,6 @@ function textOf(content: readonly LlmContent[]): string {
     .join("\n");
 }
 
-function extensionOf(uri: string): string {
-  const path = URL.canParse(uri) ? new URL(uri).pathname : uri;
-  return /\.[A-Za-z0-9]{1,8}$/.exec(path)?.[0] ?? ".bin";
-}
-
-function isTextMimeType(mimeType: string | undefined): boolean {
-  if (mimeType === undefined) return false;
-  const type = mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
-  return (
-    type.startsWith("text/") ||
-    type === "application/json" ||
-    type === "application/xml" ||
-    type.endsWith("+json") ||
-    type.endsWith("+xml")
-  );
-}
-
 async function blockToContent(
   block: ContentBlock,
   saveOutput: McpOutputSaver | undefined,
@@ -128,27 +112,13 @@ async function blockToContent(
     ];
   }
 
-  if (
-    block.type === "resource" &&
-    "blob" in block.resource &&
-    !block.resource.mimeType?.startsWith("image/")
-  ) {
-    const { uri, mimeType, blob } = block.resource;
-    const data = Buffer.from(blob, "base64");
-    if (isTextMimeType(mimeType)) return [{ type: "text", text: data.toString("utf8") }];
-    const kind = `${mimeType ?? "unknown type"}, ${formatSize(data.length)}`;
-    if (saveOutput === undefined) {
-      return [{ type: "text", text: `[Binary resource ${uri} (${kind}) omitted]` }];
-    }
-    try {
-      const path = await saveOutput(data, extensionOf(uri));
-      return [{ type: "text", text: `[Binary resource ${uri} (${kind}) saved to ${path}]` }];
-    } catch (error) {
-      const reason = errorMessage(error);
-      return [
-        { type: "text", text: `[Binary resource ${uri} (${kind}) could not be saved: ${reason}]` },
-      ];
-    }
+  if (block.type === "resource") {
+    const converted = await resourceContentToLlm(block.resource, {
+      saveOutput,
+      defaultBinaryMimeType: "unknown type",
+      catchSaveError: true,
+    });
+    return [converted.modelBlock];
   }
 
   return toLlmContent({ content: [block] });
@@ -179,7 +149,7 @@ export async function convertMcpResult(
     converted.push({ type: "text", text: `MCP tool ${server}/${tool} returned an error` });
   }
   const limited = await limitMcpContent(converted, options.saveOutput);
-  const { _meta: _ignored, ...structuredOutput } = result;
+  const { _meta: _ignored, ...rest } = result;
   return {
     output: limited.content,
     details: {
@@ -187,7 +157,7 @@ export async function convertMcpResult(
       tool,
       ...(limited.fullOutputPath === undefined ? {} : { fullOutputPath: limited.fullOutputPath }),
     },
-    structuredOutput: structuredOutput as unknown as JsonValue,
+    structuredOutput: copyJson(rest, { omitUndefinedProperties: true }),
     ...(result.isError === true ? { isError: true } : {}),
   };
 }
@@ -229,14 +199,10 @@ export function adaptMcpTools(options: AdaptMcpToolsOptions): ToolRegistration[]
       replay: tool.annotations?.readOnlyHint === true ? "safe" : "unsafe",
       execute: async (args, _api, context): Promise<ToolExecutionResult<McpToolDetails>> => {
         try {
-          const result = await options.callTool(
-            tool.name,
-            (args ?? {}) as Record<string, unknown>,
-            {
-              signal: context.abortSignal,
-              timeoutMs: options.timeoutMs,
-            },
-          );
+          const result = await options.callTool(tool.name, isRecord(args) ? args : {}, {
+            signal: context.abortSignal,
+            timeoutMs: options.timeoutMs,
+          });
           return await convertMcpResult(server, tool.name, result, {
             saveOutput: options.saveOutput,
           });

@@ -33,6 +33,18 @@ export {
 
 export const MCP_AUTH_FILE = "mcp-auth.json";
 
+export type McpOAuthSessionErrorCode = "session_closed" | "not_waiting" | "invalid_redirect";
+
+export class McpOAuthSessionError extends Error {
+  readonly code: McpOAuthSessionErrorCode;
+
+  constructor(code: McpOAuthSessionErrorCode, message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "McpOAuthSessionError";
+    this.code = code;
+  }
+}
+
 const DEFAULT_REDIRECT_URL = "http://127.0.0.1/callback";
 
 export type McpOAuthTokenSummary = {
@@ -492,13 +504,20 @@ export function startMcpOAuthSignIn(options: StartMcpOAuthSignInOptions): McpOAu
     },
     submitRedirectUrl(redirectUrl: string) {
       if (terminal) {
-        throw new Error("MCP OAuth sign-in session has ended");
+        throw new McpOAuthSessionError("session_closed", "MCP OAuth sign-in session has ended");
       }
       if (currentAuthorization === undefined) {
-        throw new Error("MCP OAuth sign-in is not waiting for a redirect URL");
+        throw new McpOAuthSessionError(
+          "not_waiting",
+          "MCP OAuth sign-in is not waiting for a redirect URL",
+        );
       }
       // Validate up front so an invalid pasted URL reports immediately without killing loopback wait.
-      responseFromRedirectUrl(redirectUrl, currentAuthorization);
+      try {
+        responseFromRedirectUrl(redirectUrl, currentAuthorization);
+      } catch (error) {
+        throw new McpOAuthSessionError("invalid_redirect", errorMessage(error), { cause: error });
+      }
       setManualInput(redirectUrl);
     },
     cancel() {

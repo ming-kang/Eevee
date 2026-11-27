@@ -24,6 +24,11 @@ export type McpServerRoles = {
   readonly worker?: boolean;
 };
 
+export type ResolvedMcpServerRoles = {
+  readonly router: boolean;
+  readonly worker: boolean;
+};
+
 export interface McpStdioServerConfig extends PiMcpStdioServerConfig {
   exposure?: McpExposure;
   toolExposure?: Record<string, McpExposure>;
@@ -43,6 +48,13 @@ export function isMcpServerEnabledForRole(
   role: "router" | "worker",
 ): boolean {
   return config.roles?.[role] !== false;
+}
+
+export function resolveMcpServerRoles(config: McpServerConfig): ResolvedMcpServerRoles {
+  return {
+    router: isMcpServerEnabledForRole(config, "router"),
+    worker: isMcpServerEnabledForRole(config, "worker"),
+  };
 }
 
 export type McpServerEntry = {

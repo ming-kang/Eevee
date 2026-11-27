@@ -10,6 +10,7 @@ import {
   createEeveeMcpAuthProvider,
   createMcpHub,
   McpOAuthCredentialStore,
+  McpOAuthSessionError,
   type McpOAuthSignInEvent,
   McpRefreshLockBusyError,
   mcpOAuthStoreKey,
@@ -409,12 +410,24 @@ test("startMcpOAuthSignIn supports manual redirect URL submission, cancellation,
       loopback: false,
       redirectUrl: "http://127.0.0.1:41999/callback",
     });
+
+    assert.throws(
+      () => session.submitRedirectUrl("http://127.0.0.1:41999/callback?code=x&state=y"),
+      (err: unknown) =>
+        err instanceof McpOAuthSessionError &&
+        err.code === "not_waiting" &&
+        /not waiting/.test(err.message),
+    );
+
     const authUrl = await session.waitForAuthUrl();
     assert.ok(authUrl);
 
     assert.throws(
       () => session.submitRedirectUrl("http://evil.example/callback?code=x&state=y"),
-      /does not match/,
+      (err: unknown) =>
+        err instanceof McpOAuthSessionError &&
+        err.code === "invalid_redirect" &&
+        /does not match/.test(err.message),
     );
 
     const authRedirect = await fetch(authUrl, { redirect: "manual" });
@@ -425,6 +438,14 @@ test("startMcpOAuthSignIn supports manual redirect URL submission, cancellation,
     session.submitRedirectUrl(location);
     await session.done;
     assert.equal(await store.hasTokens("manual", mock.mcpUrl), true);
+
+    assert.throws(
+      () => session.submitRedirectUrl(location),
+      (err: unknown) =>
+        err instanceof McpOAuthSessionError &&
+        err.code === "session_closed" &&
+        /has ended/.test(err.message),
+    );
 
     // Simulate near-expiry token and verify createEeveeMcpAuthProvider refreshes via refresh_token
     const serverStore = store.forServer("manual", mock.mcpUrl);
