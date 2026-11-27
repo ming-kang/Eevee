@@ -39,32 +39,12 @@ Eevee 是一个基于 `pi-durable` 构建的 Proactive Agent，Router 与 Worker
 ## 协作与流转
 
 - **Worker 显式对话 Router**：Worker 可调用 `message_router` 向 Router 发送进展、结论或求助。
-- **自然交棒兜底**：Worker 回合结束且无活跃后台 `tasks` 进入 `idle` 时，若本次 run 最后一轮工具调用未包含 `message_router`，系统自动把最终回复转交 Router（最后一轮已调用则不重复推送）；回合异常失败同样自动通知 Router。
+- **自然交棒兜底**：Worker 回合结束且无活跃后台 `tasks` 进入 `idle` 时，若本次 run 最后一轮工具调用未包含 `message_router`，系统自动把最终回复转交 Router；回合异常失败同样自动通知 Router。
 - **后台静默**：只要 Worker 仍有运行中的后台 `tasks`，其状态保持 `running`，不打扰 Router 与用户；后台任务结束后自动唤醒该 Worker 继续处理。
-- **用户提问**：只有 Router 持有 `ask_user`，非阻塞发起结构化问题，用户答复统一回到 Router。
+- **用户提问**：只有 Router 持有 `ask_user`，可以发起提问。
 
 ## 记忆与压缩
 
-- **Router（二叉森林会话记忆）**：原始消息完整保留，`Dreamer` 独立静默将历史摘要为完美二叉树节点；上下文达到阈值时以缓存前缀友好的方式折叠视图，需要细节时用 `zoom` 逐层下钻或用 `search` 检索原文。
+- **Router**：原始消息完整保留，`Dreamer` 独立静默将历史摘要为完美二叉树节点；上下文达到阈值时以缓存前缀友好的方式折叠视图，需要细节时用 `zoom` 逐层探查或用 `search` 检索原文。
 - **Worker**：上下文压缩时复用实时对话前缀与 `sessionId` 命中 provider prompt cache，生成带文件操作清单的检查点摘要；遇 `overflow` 或异常自动回退 `pi-durable` 原生压缩。
 - **项目记忆与模型画像**：均由用户维护并存储在 `engine.sqlite` 中；项目记忆注入 Router 与 Worker，模型画像注入 Router 辅助为 Worker 选型，修改后下一次请求生效。
-
-## 数据归属
-
-| 路径 | 归属 | 内容 |
-|:-:|---|---|
-| `auth.json` | `agent` / `engine` | Provider API Key 与 OAuth 凭据（与 Pi 发行版格式对齐） |
-| `models.json` | `agent` / `engine` | 自定义 Provider、Model 定义与覆盖（与 Pi 发行版格式对齐） |
-| `models-store.json` | `agent` / `engine` | 动态刷新的模型目录缓存 |
-| `mcp-auth.json` | `agent` / `engine` | MCP OAuth 凭据与客户端注册信息 |
-| `engine.sqlite` | `engine` | 项目列表（含多目录工作区）、项目记忆、模型画像、MCP 服务配置、全局策略与项目级工具/Skills/MCP 覆盖 |
-| `projects/<id>/session.sqlite` | `core` | 单个项目的全部会话、Worker、Ticket、Question、后台任务与二叉森林记忆 |
-| `projects/<id>/logs/` | `engine` | 后台任务持久化输出日志 |
-
-删除项目只清理项目自身数据并停止其未完成工作，绝不触碰工作目录中的用户文件。
-
-## 本地进程生命周期
-
-后台运行时，Supervisor 只负责 Engine 子进程的生命周期，项目与会话仍由 Engine 托管。Engine 异常退出后由同一个 Supervisor 重启；用户停止通过停止请求文件与 IPC 传递，在 Windows 与 POSIX 上都走优雅关闭，不会被误判为崩溃。前台模式不启动 Supervisor。
-
-Engine 启动后重新打开已有项目，复用持久会话的恢复机制继续未完成 run 和排队 Worker。运行状态与进程锁带 PID 属主，崩溃残留可被后续启动安全回收。
