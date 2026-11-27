@@ -82,7 +82,7 @@ export function App() {
 
   const activeWorkerId = surfaceRoute.name === "project" ? surfaceRoute.workerId : undefined;
   const withRail = surfaceRoute.name === "project" && activeProject !== undefined;
-  const layout = useShellLayout();
+  const layout = useShellLayout(withRail);
 
   const routeKey =
     surfaceRoute.name === "project"
@@ -150,6 +150,18 @@ export function App() {
         return true;
       }
       return false;
+    },
+  });
+
+  useShortcutLayer({
+    id: "app-drawer-escape",
+    active: authenticated && layout.drawer !== null && !modalOpen && route.name !== "control",
+    priority: SHORTCUT_PRIORITY.OVERLAY,
+    onKeyDown: (event) => {
+      if (event.key !== "Escape") return false;
+      event.preventDefault();
+      layout.closeDrawer();
+      return true;
     },
   });
 
@@ -308,22 +320,22 @@ export function App() {
         : undefined;
 
   const frameStyle = {
-    "--ev-side-w": `${layout.sideWidth}px`,
-    "--ev-rail-w": `${layout.railWidth}px`,
+    "--ev-side-w": `${layout.effectiveSideWidth}px`,
+    "--ev-rail-w": `${layout.effectiveRailWidth}px`,
   } as CSSProperties;
 
   return (
     <div className="ev-viewport">
       <div className="ev-side-trigger-anchor">
         <IconButton
-          aria-label={layout.sideCollapsed ? t("app.expandSide") : t("app.collapseSide")}
+          aria-label={layout.sideVisible ? t("app.collapseSide") : t("app.expandSide")}
           title={t("app.toggleSide", { shortcut: `${modLabel()} B` })}
           onClick={layout.toggleSide}
         >
-          {layout.sideCollapsed ? (
-            <LeftPanelOpenIcon width={17} height={17} />
+          {layout.sideVisible ? (
+            <LeftPanelCloseIcon width={18} height={18} />
           ) : (
-            <LeftPanelCloseIcon width={17} height={17} />
+            <LeftPanelOpenIcon width={18} height={18} />
           )}
         </IconButton>
       </div>
@@ -331,18 +343,18 @@ export function App() {
       {withRail && (
         <div className="ev-rail-trigger-anchor">
           <div className="ev-rail-toggle-wrap">
-            {layout.railCollapsed && collapsedRailStage && (
+            {!layout.railVisible && collapsedRailStage && (
               <span className="ev-dot" data-stage={collapsedRailStage} />
             )}
             <IconButton
-              aria-label={layout.railCollapsed ? t("app.expandRail") : t("app.collapseRail")}
+              aria-label={layout.railVisible ? t("app.collapseRail") : t("app.expandRail")}
               title={t("app.toggleRail", { shortcut: `${modLabel()} Alt B` })}
               onClick={layout.toggleRail}
             >
-              {layout.railCollapsed ? (
-                <RightPanelOpenIcon width={17} height={17} />
+              {layout.railVisible ? (
+                <RightPanelCloseIcon width={18} height={18} />
               ) : (
-                <RightPanelCloseIcon width={17} height={17} />
+                <RightPanelOpenIcon width={18} height={18} />
               )}
             </IconButton>
           </div>
@@ -460,25 +472,25 @@ export function App() {
           </aside>
         )}
 
-        {!layout.sideCollapsed && (
+        {!layout.sideDrawerMode && !layout.sideCollapsed && (
           <Sash
             side="left"
             label={t("app.resizeSide")}
-            min={200}
+            min={210}
             max={400}
-            now={layout.sideWidth}
+            now={layout.effectiveSideWidth}
             onResize={layout.setSideWidth}
             onReset={layout.resetSideWidth}
           />
         )}
 
-        {withRail && !layout.railCollapsed && (
+        {withRail && !layout.railDrawerMode && !layout.railCollapsed && (
           <Sash
             side="right"
             label={t("app.resizeRail")}
             min={300}
             max={640}
-            now={layout.railWidth}
+            now={layout.effectiveRailWidth}
             onResize={layout.setRailWidth}
             onReset={layout.resetRailWidth}
           />

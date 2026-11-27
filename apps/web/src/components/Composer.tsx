@@ -167,9 +167,11 @@ export function Composer({
   const [lightboxImage, setLightboxImage] = useState<LightboxImage | undefined>(undefined);
 
   const dragDepthRef = useRef(0);
+  const formRef = useRef<HTMLFormElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const shouldScrollOptionRef = useRef(false);
 
   const cacheKey = projectId ?? "__global__";
   const inflightKeyRef = useRef<string | undefined>(undefined);
@@ -398,13 +400,26 @@ export function Composer({
   useEffect(() => {
     void skillTokenKey;
     void mentionTokenKey;
+    shouldScrollOptionRef.current = true;
     setActiveIndex(0);
   }, [skillTokenKey, mentionTokenKey]);
 
   useEffect(() => {
-    if (!skillPopoverOpen && !mentionPopoverOpen) return;
+    if ((!skillPopoverOpen && !mentionPopoverOpen) || !shouldScrollOptionRef.current) return;
+    shouldScrollOptionRef.current = false;
     optionRefs.current[safeIndex]?.scrollIntoView({ block: "nearest" });
   }, [skillPopoverOpen, mentionPopoverOpen, safeIndex]);
+
+  useEffect(() => {
+    if (!skillPopoverOpen && !mentionPopoverOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && formRef.current?.contains(event.target)) return;
+      if (skillPopoverOpen && skillTokenKey) setDismissedSkillKey(skillTokenKey);
+      if (mentionPopoverOpen && mentionTokenKey) setDismissedMentionKey(mentionTokenKey);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [skillPopoverOpen, mentionPopoverOpen, skillTokenKey, mentionTokenKey]);
 
   const syncCursor = (event: SyntheticEvent<HTMLTextAreaElement>) => {
     const pos = event.currentTarget.selectionStart;
@@ -590,11 +605,13 @@ export function Composer({
       if (matchingSkills.length > 0) {
         if (event.key === "ArrowDown") {
           event.preventDefault();
+          shouldScrollOptionRef.current = true;
           setActiveIndex((prev) => (prev + 1) % matchingSkills.length);
           return;
         }
         if (event.key === "ArrowUp") {
           event.preventDefault();
+          shouldScrollOptionRef.current = true;
           setActiveIndex((prev) => (prev - 1 + matchingSkills.length) % matchingSkills.length);
           return;
         }
@@ -618,11 +635,13 @@ export function Composer({
       if (mentionOptions.length > 0) {
         if (event.key === "ArrowDown") {
           event.preventDefault();
+          shouldScrollOptionRef.current = true;
           setActiveIndex((prev) => (prev + 1) % mentionOptions.length);
           return;
         }
         if (event.key === "ArrowUp") {
           event.preventDefault();
+          shouldScrollOptionRef.current = true;
           setActiveIndex((prev) => (prev - 1 + mentionOptions.length) % mentionOptions.length);
           return;
         }
@@ -680,6 +699,7 @@ export function Composer({
   return (
     <>
       <form
+        ref={formRef}
         className={`ev-composer-form${compact ? " compact" : ""}${dragging ? " dragging" : ""}`}
         onSubmit={handleSubmit}
         onDragEnter={handleDragEnter}
@@ -912,22 +932,14 @@ export function Composer({
               />
             ) : (
               !compact &&
-              modelLabel && (
-                <span
-                  className="ev-mono"
-                  style={{ fontSize: "0.71875rem", color: "var(--ev-fg-subtle)" }}
-                >
-                  {modelLabel}
-                </span>
-              )
+              modelLabel && <span className="ev-mono ev-composer-meta">{modelLabel}</span>
             )}
           </Stack>
 
-          <Stack direction="row" gap="xSmall" align="center">
+          <Stack direction="row" gap="xSmall" align="center" style={{ marginLeft: "auto" }}>
             {contextUsage && (
               <span
-                className="ev-mono ev-num"
-                style={{ fontSize: "0.71875rem", color: "var(--ev-fg-subtle)" }}
+                className="ev-mono ev-num ev-composer-meta"
                 title={t("composer.ctxTooltip", {
                   used: formatTokens(contextUsage.used),
                   cached: formatTokens(contextUsage.cached),

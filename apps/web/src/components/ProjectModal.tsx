@@ -56,7 +56,7 @@ export function ProjectModal({ open, onOpenChange, onCreated }: ProjectModalProp
           <Modal.Popup className="ev-project-create-dialog">
             <Modal.Title>{t("project.new.title")}</Modal.Title>
             <form onSubmit={(event) => void handleSubmit(event)} className="ev-form-stack">
-              <Modal.Body>
+              <Modal.Body className="ev-editor-body">
                 <div className="ev-form-stack">
                   {error && <div className="ev-error-banner">{error}</div>}
                   <Field.Root>
@@ -89,7 +89,7 @@ export function ProjectModal({ open, onOpenChange, onCreated }: ProjectModalProp
                   </Field.Root>
                 </div>
               </Modal.Body>
-              <Modal.Actions style={{ marginTop: 12 }}>
+              <Modal.Actions className="ev-editor-actions">
                 <Modal.Close
                   render={
                     <Button type="button" hierarchy="secondary">

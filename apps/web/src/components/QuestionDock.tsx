@@ -133,8 +133,7 @@ export function QuestionCard({
               <button
                 key={q.id}
                 type="button"
-                className="ev-tab-link"
-                style={{ height: 22, padding: "0 6px", fontSize: 11.5 }}
+                className="ev-tab-link ev-qcard-tab"
                 data-active={idx === qIndex}
                 onClick={() => setQIndex(idx)}
               >
@@ -169,7 +168,7 @@ export function QuestionCard({
 
       {activeItem && (
         <div className="ev-qcard-body">
-          <div style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.45 }}>
+          <div className="ev-qcard-question">
             {items.length > 1 && (
               <span className="ev-num" style={{ color: "var(--ev-fg-subtle)", marginRight: 6 }}>
                 {subIndex + 1}.
@@ -225,7 +224,7 @@ export function QuestionCard({
       )}
 
       <div className="ev-qcard-foot">
-        {error && <span style={{ fontSize: 12, color: "var(--ev-danger)" }}>{error}</span>}
+        {error && <span className="ev-inline-error">{error}</span>}
         <span style={{ flex: 1 }} />
         <Button type="button" hierarchy="tertiary" density="compact" onClick={onLater}>
           {t("question.later")}

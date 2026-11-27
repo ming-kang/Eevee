@@ -31,7 +31,7 @@ export function OAuthSessionBox({
         </Button>
       </div>
       {session.instructions && (
-        <Text style={{ margin: 0, fontSize: "0.8125rem" }}>{session.instructions}</Text>
+        <Text className="ev-mcp-oauth-instructions">{session.instructions}</Text>
       )}
       {session.authUrl && (
         <div className="ev-mcp-oauth-url">

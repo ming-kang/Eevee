@@ -160,19 +160,7 @@ export function ConfigTab() {
   return (
     <div className="ev-settings-section" style={{ gap: 22 }}>
       {error && <div className="ev-error-banner">{error}</div>}
-      {notice && (
-        <div
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            background: "var(--ev-accent-soft)",
-            color: "var(--ev-accent)",
-            fontSize: "0.8125rem",
-          }}
-        >
-          {notice}
-        </div>
-      )}
+      {notice && <div className="ev-info-banner">{notice}</div>}
 
       <div className="ev-settings-section">
         <Heading level={2} size={5}>

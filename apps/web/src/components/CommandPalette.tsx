@@ -28,6 +28,8 @@ export function CommandPalette({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const shouldScrollSelectedRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -51,7 +53,15 @@ export function CommandPalette({
     if (selected >= filtered.length) setSelected(Math.max(0, filtered.length - 1));
   }, [filtered.length, selected]);
 
+  useEffect(() => {
+    if (!open || !shouldScrollSelectedRef.current) return;
+    shouldScrollSelectedRef.current = false;
+    rowRefs.current[selected]?.scrollIntoView({ block: "nearest" });
+  }, [open, selected]);
+
   if (!open) return null;
+
+  rowRefs.current.length = filtered.length;
 
   const choose = (item: PaletteItem | undefined) => {
     if (!item) return;
@@ -67,12 +77,16 @@ export function CommandPalette({
     }
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      if (filtered.length > 0) setSelected((prev) => (prev + 1) % filtered.length);
+      if (filtered.length > 0) {
+        shouldScrollSelectedRef.current = true;
+        setSelected((prev) => (prev + 1) % filtered.length);
+      }
       return;
     }
     if (event.key === "ArrowUp") {
       event.preventDefault();
       if (filtered.length > 0) {
+        shouldScrollSelectedRef.current = true;
         setSelected((prev) => (prev - 1 + filtered.length) % filtered.length);
       }
       return;
@@ -94,7 +108,7 @@ export function CommandPalette({
             onKeyDown={onKeyDown}
           >
             <div className="ev-palette-input-row">
-              <SearchIcon width={17} height={17} />
+              <SearchIcon width={18} height={18} />
               <input
                 ref={inputRef}
                 className="ev-raw-input"
@@ -108,34 +122,17 @@ export function CommandPalette({
             </div>
             <div className="ev-palette-list" role="listbox" aria-label={t("palette.resultsLabel")}>
               {filtered.length === 0 ? (
-                <div
-                  style={{
-                    padding: "18px 12px",
-                    textAlign: "center",
-                    fontSize: "0.8125rem",
-                    color: "var(--ev-fg-subtle)",
-                  }}
-                >
-                  {t("palette.empty")}
-                </div>
+                <div className="ev-palette-empty">{t("palette.empty")}</div>
               ) : (
                 filtered.map((item, idx) => {
                   const showGroup = idx === 0 || filtered[idx - 1]?.group !== item.group;
                   return (
                     <div key={item.id}>
-                      {showGroup && (
-                        <div
-                          style={{
-                            padding: "7px 10px 3px",
-                            fontSize: "0.71875rem",
-                            fontWeight: 500,
-                            color: "var(--ev-fg-subtle)",
-                          }}
-                        >
-                          {item.group}
-                        </div>
-                      )}
+                      {showGroup && <div className="ev-palette-group">{item.group}</div>}
                       <button
+                        ref={(el) => {
+                          rowRefs.current[idx] = el;
+                        }}
                         type="button"
                         role="option"
                         aria-selected={idx === selected}
@@ -147,14 +144,7 @@ export function CommandPalette({
                         <span className="ev-truncate" style={{ flex: 1 }}>
                           {item.label}
                         </span>
-                        {item.meta && (
-                          <span
-                            className="ev-mono"
-                            style={{ fontSize: "0.71875rem", color: "var(--ev-fg-subtle)" }}
-                          >
-                            {item.meta}
-                          </span>
-                        )}
+                        {item.meta && <span className="ev-mono ev-palette-meta">{item.meta}</span>}
                         {item.keys && (
                           <KeyboardShortcut>
                             {item.keys.map((k) => (

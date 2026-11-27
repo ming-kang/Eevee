@@ -138,7 +138,7 @@ export function OverviewPage({
       className="ev-triage-card"
       onClick={() => onOpenProject(card.projectId, card.workerId)}
     >
-      <div style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.4 }}>
+      <div className="ev-triage-title">
         {card.chip && (
           <span className="ev-chip-id" style={{ marginRight: 6 }}>
             {card.chip}
@@ -146,31 +146,10 @@ export function OverviewPage({
         )}
         {card.title}
       </div>
-      {card.context && (
-        <div
-          style={{
-            fontSize: 12.5,
-            color: "var(--ev-fg-muted)",
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {card.context}
-        </div>
-      )}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          fontSize: 12,
-          color: "var(--ev-fg-subtle)",
-        }}
-      >
+      {card.context && <div className="ev-triage-context">{card.context}</div>}
+      <div className="ev-triage-meta">
         <span className="ev-dot" data-stage={card.stage} />
-        <span style={{ color: "var(--ev-fg-muted)", fontWeight: 500 }}>{card.stageLabel}</span>
+        <span className="ev-triage-stage">{card.stageLabel}</span>
         {showProjectName && (
           <>
             <span>·</span>
@@ -179,7 +158,7 @@ export function OverviewPage({
         )}
         <span style={{ flex: 1 }} />
         {card.at && <span className="ev-num">{formatRelativeTime(card.at)}</span>}
-        <span style={{ color: "var(--ev-fg)", fontWeight: 500 }}>{card.actionLabel}</span>
+        <span className="ev-triage-action">{card.actionLabel}</span>
       </div>
     </button>
   );
@@ -241,18 +220,7 @@ export function OverviewPage({
 
       {projects.length === 0 ? (
         projectsError ? null : projectsLoading ? (
-          <div
-            style={{
-              flex: 1,
-              display: "grid",
-              placeItems: "center",
-              padding: 24,
-              color: "var(--ev-fg-subtle)",
-              fontSize: 13.5,
-            }}
-          >
-            {t("overview.loadingProjects")}
-          </div>
+          <div className="ev-overview-loading">{t("overview.loadingProjects")}</div>
         ) : (
           <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 24 }}>
             <EmptyState.Root>
@@ -304,11 +272,8 @@ export function OverviewPage({
               ))}
             </fieldset>
 
-            <div
-              className="ev-side-search"
-              style={{ marginLeft: "auto", width: "min(260px, 100%)" }}
-            >
-              <SearchIcon width={14} height={14} />
+            <div className="ev-overview-search">
+              <SearchIcon width={15} height={15} />
               <input
                 className="ev-raw-input"
                 type="search"
@@ -334,16 +299,7 @@ export function OverviewPage({
                 </div>
                 <div className="ev-lane-scroll">
                   {pending.length === 0 ? (
-                    <div
-                      style={{
-                        padding: "24px 8px",
-                        textAlign: "center",
-                        fontSize: 12.5,
-                        color: "var(--ev-fg-subtle)",
-                      }}
-                    >
-                      {t("overview.emptyPending")}
-                    </div>
+                    <div className="ev-lane-empty">{t("overview.emptyPending")}</div>
                   ) : (
                     pending.map(renderCard)
                   )}
@@ -369,16 +325,7 @@ export function OverviewPage({
                     </div>
                     <div className="ev-lane-scroll">
                       {running.length === 0 ? (
-                        <div
-                          style={{
-                            padding: "18px 8px",
-                            textAlign: "center",
-                            fontSize: 12.5,
-                            color: "var(--ev-fg-subtle)",
-                          }}
-                        >
-                          {t("overview.emptyRunning")}
-                        </div>
+                        <div className="ev-lane-empty">{t("overview.emptyRunning")}</div>
                       ) : (
                         running.map(renderCard)
                       )}
@@ -394,16 +341,7 @@ export function OverviewPage({
                     </div>
                     <div className="ev-lane-scroll">
                       {done.length === 0 ? (
-                        <div
-                          style={{
-                            padding: "18px 8px",
-                            textAlign: "center",
-                            fontSize: 12.5,
-                            color: "var(--ev-fg-subtle)",
-                          }}
-                        >
-                          {t("overview.emptyDone")}
-                        </div>
+                        <div className="ev-lane-empty">{t("overview.emptyDone")}</div>
                       ) : (
                         done.slice(0, 20).map(renderCard)
                       )}

@@ -6,8 +6,8 @@ export type SizeBounds = {
   readonly default: number;
 };
 
-export const UI_SIZE_BOUNDS = { min: 12, max: 20, default: 16 } as const satisfies SizeBounds;
-export const CODE_SIZE_BOUNDS = { min: 10, max: 18, default: 13 } as const satisfies SizeBounds;
+export const UI_SIZE_BOUNDS = { min: 12, max: 22, default: 17 } as const satisfies SizeBounds;
+export const CODE_SIZE_BOUNDS = { min: 10, max: 22, default: 15 } as const satisfies SizeBounds;
 
 export const UI_SIZE_STORAGE_KEY = "eevee-ui-size";
 export const CODE_SIZE_STORAGE_KEY = "eevee-code-size";

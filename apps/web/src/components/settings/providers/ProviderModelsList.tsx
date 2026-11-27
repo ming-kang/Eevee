@@ -43,15 +43,7 @@ export function ProviderModelsList({
       <div className="ev-settings-head">
         <Heading level={3} size={6}>
           {t("providers.models.title")}
-          <span
-            className="ev-num"
-            style={{
-              marginLeft: 8,
-              fontSize: 12.5,
-              fontWeight: 400,
-              color: "var(--ev-fg-subtle)",
-            }}
-          >
+          <span className="ev-num ev-heading-count">
             {detailModels.length === detail.models.length
               ? detail.models.length
               : `${detailModels.length} / ${detail.models.length}`}

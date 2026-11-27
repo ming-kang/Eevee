@@ -196,7 +196,7 @@ export function ModelProfilesSection({
             </datalist>
 
             <div className="ev-profile-row">
-              <Field.Root style={{ width: 140 }}>
+              <Field.Root className="ev-profile-field-id">
                 <Field.Label>{translate("models.profileId")}</Field.Label>
                 <Input
                   type="text"
@@ -204,7 +204,7 @@ export function ModelProfilesSection({
                   onValueChange={(value) => onUpdateProfile(uid, { ...profile, id: value })}
                 />
               </Field.Root>
-              <Field.Root style={{ width: 150 }}>
+              <Field.Root className="ev-profile-field-provider">
                 <Field.Label>Provider</Field.Label>
                 <Input
                   type="text"
@@ -218,7 +218,7 @@ export function ModelProfilesSection({
                   }
                 />
               </Field.Root>
-              <Field.Root style={{ flex: 1, minWidth: 180 }}>
+              <Field.Root className="ev-profile-field-model">
                 <Field.Label>Model ID</Field.Label>
                 <Input
                   type="text"
@@ -232,7 +232,7 @@ export function ModelProfilesSection({
                   }
                 />
               </Field.Root>
-              <Field.Root style={{ width: 130 }}>
+              <Field.Root className="ev-profile-field-thinking">
                 <Field.Label>Thinking</Field.Label>
                 <select
                   className="ev-select"
@@ -259,23 +259,25 @@ export function ModelProfilesSection({
                   ))}
                 </select>
               </Field.Root>
-              <Button
-                type="button"
-                hierarchy="secondary"
-                density="compact"
-                iconStart={<ExperimentIcon width={14} height={14} />}
-                disabled={!providerValue || !modelIdValue}
-                pending={smoke?.loading === true}
-                onClick={() => runProfileTest(uid, profile)}
-              >
-                {translate("models.test")}
-              </Button>
-              <IconButton
-                aria-label={translate("models.deleteProfile")}
-                onClick={() => handleRemove(uid)}
-              >
-                <DeleteIcon width={16} height={16} />
-              </IconButton>
+              <div className="ev-profile-actions">
+                <Button
+                  type="button"
+                  hierarchy="secondary"
+                  density="compact"
+                  iconStart={<ExperimentIcon width={14} height={14} />}
+                  disabled={!providerValue || !modelIdValue}
+                  pending={smoke?.loading === true}
+                  onClick={() => runProfileTest(uid, profile)}
+                >
+                  {translate("models.test")}
+                </Button>
+                <IconButton
+                  aria-label={translate("models.deleteProfile")}
+                  onClick={() => handleRemove(uid)}
+                >
+                  <DeleteIcon width={16} height={16} />
+                </IconButton>
+              </div>
             </div>
 
             {unsupportedCurrent && (

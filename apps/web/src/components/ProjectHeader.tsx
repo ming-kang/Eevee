@@ -26,8 +26,8 @@ export function ProjectHeader({
 }) {
   const { t } = useI18n();
   return (
-    <header className="ev-page-header">
-      <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+    <header className="ev-page-header ev-project-header">
+      <div className="ev-page-header-lead">
         {worker ? (
           <>
             <span className="ev-chip-id">{worker.id}</span>
@@ -51,7 +51,7 @@ export function ProjectHeader({
               title={t("project.editSettings")}
               onClick={onEditProject}
             >
-              <EditIcon width={14} height={14} />
+              <EditIcon width={15} height={15} />
             </IconButton>
           </>
         )}
@@ -80,18 +80,18 @@ export function ProjectHeader({
         ))}
       </nav>
 
-      <span style={{ flex: 1 }} />
-
-      {view === "chat" && onOpenFind && (
-        <IconButton
-          aria-label={t("project.findInChat")}
-          title={t("project.findInChatTitle", { shortcut: `${modLabel()} F` })}
-          onClick={onOpenFind}
-        >
-          <SearchIcon width={16} height={16} />
-        </IconButton>
-      )}
-      {actions}
+      <div className="ev-page-header-actions">
+        {view === "chat" && onOpenFind && (
+          <IconButton
+            aria-label={t("project.findInChat")}
+            title={t("project.findInChatTitle", { shortcut: `${modLabel()} F` })}
+            onClick={onOpenFind}
+          >
+            <SearchIcon width={17} height={17} />
+          </IconButton>
+        )}
+        {actions}
+      </div>
     </header>
   );
 }

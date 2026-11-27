@@ -59,16 +59,7 @@ export function FindBar({
           placeholder={t("transcript.findPlaceholder")}
           aria-label={t("transcript.findLabel")}
         />
-        <span
-          className="ev-num"
-          style={{
-            minWidth: 46,
-            textAlign: "center",
-            fontSize: 12,
-            color: "var(--ev-fg-subtle)",
-          }}
-          aria-live="polite"
-        >
+        <span className="ev-num ev-find-count" aria-live="polite">
           {query.trim() === "" ? "" : total === 0 ? "0 / 0" : `${index + 1} / ${total}`}
         </span>
         <IconButton aria-label={t("transcript.findPrev")} disabled={total === 0} onClick={onPrev}>

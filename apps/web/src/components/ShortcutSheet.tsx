@@ -33,7 +33,7 @@ export function ShortcutSheet({
                       level={3}
                       size={6}
                       style={{
-                        fontSize: "0.6875rem",
+                        fontSize: "0.75rem",
                         letterSpacing: "0.06em",
                         textTransform: "uppercase",
                         color: "var(--ev-fg-subtle)",
@@ -49,8 +49,8 @@ export function ShortcutSheet({
                           alignItems: "center",
                           justifyContent: "space-between",
                           gap: 16,
-                          padding: "3px 0",
-                          fontSize: "0.84375rem",
+                          padding: "4px 0",
+                          fontSize: "0.9375rem",
                           width: "100%",
                         }}
                       >

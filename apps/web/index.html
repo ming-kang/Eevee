@@ -27,12 +27,12 @@
           var uiRaw = localStorage.getItem("eevee-ui-size");
           if (uiRaw && /^\d+$/.test(uiRaw)) {
             var ui = Number(uiRaw);
-            if (ui >= 12 && ui <= 20) document.documentElement.style.setProperty("--ev-ui-size", ui + "px");
+            if (ui >= 12 && ui <= 22) document.documentElement.style.setProperty("--ev-ui-size", ui + "px");
           }
           var codeRaw = localStorage.getItem("eevee-code-size");
           if (codeRaw && /^\d+$/.test(codeRaw)) {
             var code = Number(codeRaw);
-            if (code >= 10 && code <= 18) document.documentElement.style.setProperty("--ev-code-size", code + "px");
+            if (code >= 10 && code <= 22) document.documentElement.style.setProperty("--ev-code-size", code + "px");
           }
           var savedLocale = localStorage.getItem("eevee-locale");
           var locale =

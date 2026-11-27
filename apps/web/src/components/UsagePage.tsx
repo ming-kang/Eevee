@@ -106,9 +106,7 @@ export function UsagePage({
           </Heading>
 
           {rows.length === 0 ? (
-            <div style={{ fontSize: "0.8125rem", color: "var(--ev-fg-subtle)" }}>
-              {loading ? t("common.loading") : t("usage.empty")}
-            </div>
+            <div className="ev-inline-hint">{loading ? t("common.loading") : t("usage.empty")}</div>
           ) : (
             <Table.Container className="ev-table-frame">
               <Table.Root>

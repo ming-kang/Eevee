@@ -56,15 +56,17 @@
   --ev-dur-slow: 300ms;
   --ev-ease-out: cubic-bezier(0.165, 0.84, 0.44, 1);
 
-  --ev-ui-size: 16px;
-  --ev-code-size: 13px;
-  --ev-header-h: 48px;
-  --ev-chat-max: 720px;
-  --ev-gutter: 28px;
+  --ev-ui-size: 17px;
+  --ev-code-size: 15px;
+  --ev-header-h: 50px;
+  --ev-chat-max: 1040px;
+  --ev-gutter: 24px;
   --ev-control-inset: 12px;
   --ev-titlebar-clear: 48px;
   --semantic-typography-code-primary-font-size: var(--ev-code-size);
-  --semantic-typography-code-secondary-font-size: max(10px, calc(var(--ev-code-size) - 1px));
+  --semantic-typography-code-secondary-font-size: max(11px, calc(var(--ev-code-size) - 1px));
+  --semantic-typography-ui-tertiary-font-size: 0.75rem;
+  --semantic-dimension-size-max-width-text: 100%;
 
   --primitive-font-family-mono:
     "Maple Mono NF CN", "Maple Mono NF", "Commit Mono", ui-monospace, "Cascadia Code",
@@ -138,7 +140,7 @@
   }
 
   html {
-    font-size: var(--ev-ui-size, 16px);
+    font-size: var(--ev-ui-size, 17px);
   }
 
   html,
@@ -156,8 +158,8 @@
     background: var(--ev-bg);
     color: var(--ev-fg);
     font-family: var(--primitive-font-family-sans-serif);
-    font-size: 0.9375rem;
-    line-height: 1.5;
+    font-size: 1rem;
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;

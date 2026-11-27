@@ -165,15 +165,7 @@ export function TranscriptView({
             !live.partialText &&
             !live.partialThinking &&
             live.partialTools.length === 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 13,
-                  color: "var(--ev-fg-subtle)",
-                }}
-              >
+              <div className="ev-live-status">
                 <span className="ev-dot" data-stage="working" />
                 <span>
                   {live.compacting

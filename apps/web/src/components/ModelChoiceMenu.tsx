@@ -6,7 +6,19 @@ import {
   StarIcon,
 } from "@earendil-works/elanor-icons-react";
 import type { ModelChoice, ModelInfo, ThinkingLevel } from "@eevee/protocol";
-import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
+import { type ComputedPopoverPosition, computePopoverPosition } from "../lib/floating.ts";
 import { formatTokens } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
 import {
@@ -44,6 +56,9 @@ type MenuRow =
   | { readonly kind: "clear"; readonly key: string }
   | { readonly kind: "model"; readonly key: string; readonly model: ModelInfo };
 
+const POPOVER_DESIRED_WIDTH = 380;
+const POPOVER_ESTIMATED_HEIGHT = 260;
+
 export function ModelChoiceMenu({
   value,
   models,
@@ -62,13 +77,16 @@ export function ModelChoiceMenu({
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const shouldScrollActiveRef = useRef(false);
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [pinnedKeys, setPinnedKeys] = useState<string[]>(() => readPinnedModelKeys());
+  const [position, setPosition] = useState<ComputedPopoverPosition | undefined>(undefined);
 
   const currentInfo = useMemo(() => findModelInfo(models, value), [models, value]);
   const thinkingLevels = useMemo(() => supportedThinkingLevelsOf(models, value), [models, value]);
@@ -96,13 +114,59 @@ export function ModelChoiceMenu({
 
   const safeActiveIndex = flatRows.length === 0 ? 0 : Math.min(activeIndex, flatRows.length - 1);
 
-  const closeMenu = (restoreFocus = false) => {
+  const closeMenu = useCallback((restoreFocus = false) => {
     setOpen(false);
     setQuery("");
     if (restoreFocus) {
       window.requestAnimationFrame(() => triggerRef.current?.focus());
     }
-  };
+  }, []);
+
+  const updatePosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return;
+    if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
+      setOpen(false);
+      setQuery("");
+      return;
+    }
+    setPosition(
+      computePopoverPosition({
+        anchor: rect,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        preferredPlacement: placement,
+        preferredAlign: align,
+        popoverWidth: Math.max(POPOVER_DESIRED_WIDTH, Math.round(rect.width)),
+        estimatedHeight: POPOVER_ESTIMATED_HEIGHT,
+      }),
+    );
+  }, [placement, align]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition(undefined);
+      return;
+    }
+    updatePosition();
+    const onScroll = (event: Event) => {
+      if (
+        popoverRef.current &&
+        event.target instanceof Node &&
+        popoverRef.current.contains(event.target)
+      ) {
+        return;
+      }
+      updatePosition();
+    };
+    window.addEventListener("resize", updatePosition, { passive: true });
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", onScroll, { capture: true });
+    };
+  }, [open, updatePosition]);
 
   useShortcutLayer({
     id: `model-choice-menu:${menuId}`,
@@ -118,20 +182,30 @@ export function ModelChoiceMenu({
 
   useEffect(() => {
     if (!open) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-        setQuery("");
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (rootRef.current?.contains(target) || popoverRef.current?.contains(target)) {
+        return;
       }
+      setOpen(false);
+      setQuery("");
     };
-    window.addEventListener("mousedown", onPointerDown);
-    return () => window.removeEventListener("mousedown", onPointerDown);
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
   const flatRowsRef = useRef(flatRows);
   flatRowsRef.current = flatRows;
   const valueRef = useRef(value);
   valueRef.current = value;
+
+  const isPositioned = position !== undefined;
+
+  useEffect(() => {
+    if (!open || !isPositioned) return;
+    window.requestAnimationFrame(() => searchRef.current?.focus());
+  }, [open, isPositioned]);
 
   useEffect(() => {
     if (!open) return;
@@ -140,19 +214,21 @@ export function ModelChoiceMenu({
         ? valueRef.current === undefined
         : sameModelChoice(row.model, valueRef.current),
     );
+    shouldScrollActiveRef.current = true;
     setActiveIndex(Math.max(0, initial));
-    window.requestAnimationFrame(() => searchRef.current?.focus());
   }, [open]);
 
   useEffect(() => {
     void query;
+    shouldScrollActiveRef.current = true;
     setActiveIndex(0);
   }, [query]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !isPositioned || !shouldScrollActiveRef.current) return;
+    shouldScrollActiveRef.current = false;
     rowRefs.current[safeActiveIndex]?.scrollIntoView({ block: "nearest" });
-  }, [open, safeActiveIndex]);
+  }, [open, isPositioned, safeActiveIndex]);
 
   const handleToggleOpen = () => {
     if (disabled) return;
@@ -191,10 +267,12 @@ export function ModelChoiceMenu({
     if (event.key === "ArrowDown") {
       if (flatRows.length === 0) return;
       event.preventDefault();
+      shouldScrollActiveRef.current = true;
       setActiveIndex((prev) => (prev + 1) % flatRows.length);
     } else if (event.key === "ArrowUp") {
       if (flatRows.length === 0) return;
       event.preventDefault();
+      shouldScrollActiveRef.current = true;
       setActiveIndex((prev) => (prev - 1 + flatRows.length) % flatRows.length);
     } else if (event.key === "Enter") {
       const target = flatRows[safeActiveIndex];
@@ -218,6 +296,7 @@ export function ModelChoiceMenu({
       : undefined;
   const isUnavailable = value !== undefined && models.length > 0 && currentInfo === undefined;
 
+  rowRefs.current.length = flatRows.length;
   let rowCursor = 0;
 
   const renderModelRow = (model: ModelInfo, prefix: "pin" | "grp") => {
@@ -248,8 +327,8 @@ export function ModelChoiceMenu({
         <span className="ev-truncate ev-model-menu-name">{model.name}</span>
         {model.reasoning && (
           <LightbulbIcon
-            width={13}
-            height={13}
+            width={14}
+            height={14}
             className="ev-model-menu-meta-icon"
             aria-label={t("modelMenu.reasoning")}
           />
@@ -267,14 +346,132 @@ export function ModelChoiceMenu({
             handleTogglePin(model);
           }}
         >
-          <StarIcon width={13} height={13} />
+          <StarIcon width={14} height={14} />
         </button>
         <span className="ev-model-menu-check" aria-hidden="true">
-          {selected && <CheckIcon width={14} height={14} />}
+          {selected && <CheckIcon width={15} height={15} />}
         </span>
       </div>
     );
   };
+
+  const popoverStyle: CSSProperties | undefined = position
+    ? {
+        left: position.left,
+        width: position.width,
+        maxHeight: position.maxHeight,
+        ...(position.top !== undefined ? { top: position.top } : {}),
+        ...(position.bottom !== undefined ? { bottom: position.bottom } : {}),
+      }
+    : undefined;
+
+  const popoverNode =
+    open && position ? (
+      <div
+        ref={popoverRef}
+        id={menuId}
+        className={`ev-model-menu-popover placement-${position.placement}`}
+        style={popoverStyle}
+        role="dialog"
+        aria-label={ariaLabel ?? t("modelMenu.ariaLabel")}
+      >
+        {value && thinkingLevels.length > 0 && (
+          <div className="ev-model-thinking-bar">
+            <span className="ev-model-thinking-label">{t("modelMenu.thinking")}</span>
+            <fieldset
+              className="ev-model-thinking-pills"
+              aria-label={t("modelMenu.thinking")}
+              style={{ border: 0, margin: 0, padding: 0 }}
+            >
+              <button
+                type="button"
+                className="ev-model-thinking-pill"
+                aria-pressed={value.thinkingLevel === undefined}
+                onClick={() => handlePickThinking(undefined)}
+              >
+                {t("common.default")}
+              </button>
+              {thinkingLevels.map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className="ev-model-thinking-pill"
+                  aria-pressed={value.thinkingLevel === level}
+                  onClick={() => handlePickThinking(level)}
+                >
+                  {t(thinkingLevelLocaleKey(level))}
+                </button>
+              ))}
+            </fieldset>
+          </div>
+        )}
+
+        <div className="ev-model-menu-search">
+          <SearchIcon width={15} height={15} />
+          <input
+            ref={searchRef}
+            type="search"
+            className="ev-raw-input"
+            value={query}
+            placeholder={t("modelMenu.searchPlaceholder")}
+            aria-label={t("modelMenu.searchPlaceholder")}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={handleSearchKeyDown}
+          />
+        </div>
+
+        <div className="ev-model-menu-list" role="listbox" aria-label={t("modelMenu.model")}>
+          {showClear &&
+            (() => {
+              const idx = rowCursor++;
+              const selected = value === undefined;
+              return (
+                <div
+                  key="__clear__"
+                  ref={(el) => {
+                    rowRefs.current[idx] = el;
+                  }}
+                  role="option"
+                  tabIndex={-1}
+                  aria-selected={selected}
+                  className={`ev-model-menu-row${idx === safeActiveIndex ? " active" : ""}${selected ? " selected" : ""}`}
+                  onMouseEnter={() => setActiveIndex(idx)}
+                  onClick={handleClear}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleClear();
+                    }
+                  }}
+                >
+                  <span className="ev-truncate ev-model-menu-name">{clearLabel}</span>
+                  <span className="ev-model-menu-check" aria-hidden="true">
+                    {selected && <CheckIcon width={15} height={15} />}
+                  </span>
+                </div>
+              );
+            })()}
+
+          {showPinned && (
+            <>
+              <div className="ev-model-menu-group">{t("modelMenu.pinned")}</div>
+              {pinnedModels.map((model) => renderModelRow(model, "pin"))}
+            </>
+          )}
+
+          {groups.map(([provider, list]) => (
+            <div key={provider}>
+              <div className="ev-model-menu-group">{provider}</div>
+              {list.map((model) => renderModelRow(model, "grp"))}
+            </div>
+          ))}
+
+          {flatRows.length === 0 && (
+            <div className="ev-model-menu-empty">{t("modelMenu.empty")}</div>
+          )}
+        </div>
+      </div>
+    ) : null;
 
   return (
     <div ref={rootRef} className={`ev-model-menu-root ${variant}`}>
@@ -304,113 +501,11 @@ export function ModelChoiceMenu({
             {t("modelMenu.unavailable")}
           </span>
         )}
-        <ExpandMoreIcon width={15} height={15} className="ev-model-menu-caret" />
+        <ExpandMoreIcon width={16} height={16} className="ev-model-menu-caret" />
       </button>
 
-      {open && (
-        <div
-          id={menuId}
-          className={`ev-model-menu-popover placement-${placement} align-${align}`}
-          role="dialog"
-          aria-label={ariaLabel ?? t("modelMenu.ariaLabel")}
-        >
-          {value && thinkingLevels.length > 0 && (
-            <div className="ev-model-thinking-bar">
-              <span className="ev-model-thinking-label">{t("modelMenu.thinking")}</span>
-              <fieldset
-                className="ev-model-thinking-pills"
-                aria-label={t("modelMenu.thinking")}
-                style={{ border: 0, margin: 0, padding: 0 }}
-              >
-                <button
-                  type="button"
-                  className="ev-model-thinking-pill"
-                  aria-pressed={value.thinkingLevel === undefined}
-                  onClick={() => handlePickThinking(undefined)}
-                >
-                  {t("common.default")}
-                </button>
-                {thinkingLevels.map((level) => (
-                  <button
-                    key={level}
-                    type="button"
-                    className="ev-model-thinking-pill"
-                    aria-pressed={value.thinkingLevel === level}
-                    onClick={() => handlePickThinking(level)}
-                  >
-                    {t(thinkingLevelLocaleKey(level))}
-                  </button>
-                ))}
-              </fieldset>
-            </div>
-          )}
-
-          <div className="ev-model-menu-search">
-            <SearchIcon width={14} height={14} />
-            <input
-              ref={searchRef}
-              type="search"
-              className="ev-raw-input"
-              value={query}
-              placeholder={t("modelMenu.searchPlaceholder")}
-              aria-label={t("modelMenu.searchPlaceholder")}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={handleSearchKeyDown}
-            />
-          </div>
-
-          <div className="ev-model-menu-list" role="listbox" aria-label={t("modelMenu.model")}>
-            {showClear &&
-              (() => {
-                const idx = rowCursor++;
-                const selected = value === undefined;
-                return (
-                  <div
-                    key="__clear__"
-                    ref={(el) => {
-                      rowRefs.current[idx] = el;
-                    }}
-                    role="option"
-                    tabIndex={-1}
-                    aria-selected={selected}
-                    className={`ev-model-menu-row${idx === safeActiveIndex ? " active" : ""}${selected ? " selected" : ""}`}
-                    onMouseEnter={() => setActiveIndex(idx)}
-                    onClick={handleClear}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        handleClear();
-                      }
-                    }}
-                  >
-                    <span className="ev-truncate ev-model-menu-name">{clearLabel}</span>
-                    <span className="ev-model-menu-check" aria-hidden="true">
-                      {selected && <CheckIcon width={14} height={14} />}
-                    </span>
-                  </div>
-                );
-              })()}
-
-            {showPinned && (
-              <>
-                <div className="ev-model-menu-group">{t("modelMenu.pinned")}</div>
-                {pinnedModels.map((model) => renderModelRow(model, "pin"))}
-              </>
-            )}
-
-            {groups.map(([provider, list]) => (
-              <div key={provider}>
-                <div className="ev-model-menu-group">{provider}</div>
-                {list.map((model) => renderModelRow(model, "grp"))}
-              </div>
-            ))}
-
-            {flatRows.length === 0 && (
-              <div className="ev-model-menu-empty">{t("modelMenu.empty")}</div>
-            )}
-          </div>
-        </div>
-      )}
+      {popoverNode &&
+        (typeof document === "undefined" ? popoverNode : createPortal(popoverNode, document.body))}
     </div>
   );
 }

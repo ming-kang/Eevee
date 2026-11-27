@@ -30,7 +30,7 @@
 
 .ev-rail-scope-control > button {
   padding-inline: 10px;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
 }
 
 .ev-rail-scroll {
@@ -46,7 +46,7 @@
 .ev-rail-empty {
   padding: 28px 12px;
   text-align: center;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   color: var(--ev-fg-subtle);
 }
 
@@ -55,7 +55,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 8px 4px;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--ev-fg-subtle);
 }
@@ -86,7 +86,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 9px 10px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -114,21 +114,21 @@
 }
 
 .ev-rail-item-title {
-  font-size: 0.84375rem;
+  font-size: 0.875rem;
   font-weight: 500;
 }
 
 .ev-rail-item-title-sm {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
 }
 
 .ev-rail-item-sub {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   color: var(--ev-fg-subtle);
 }
 
 .ev-rail-item-sub-sm {
-  font-size: 0.71875rem;
+  font-size: 0.75rem;
   color: var(--ev-fg-subtle);
 }
 
@@ -136,13 +136,13 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 2px;
+  margin-top: 3px;
   min-width: 0;
 }
 
 .ev-rail-ticket-note {
-  margin-top: 3px;
-  font-size: 0.75rem;
+  margin-top: 4px;
+  font-size: 0.8125rem;
   color: var(--ev-fg-muted);
 }
 
@@ -166,17 +166,18 @@
 }
 
 .ev-task-cmd {
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   font-weight: 500;
 }
 
 .ev-task-sub {
-  font-size: 0.71875rem;
+  font-size: 0.75rem;
   color: var(--ev-fg-subtle);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 2px 6px;
+  gap: 3px 6px;
+  margin-top: 2px;
 }
 
 .ev-task-viewer {
@@ -198,11 +199,11 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
+  height: 32px;
   border-radius: 7px;
   border: var(--ev-hairline) solid var(--ev-border);
   background: var(--ev-surface-2);
-  padding: 0 6px 0 8px;
+  padding: 0 6px 0 9px;
   color: var(--ev-fg-subtle);
   transition:
     border-color var(--ev-dur-fast) var(--ev-ease-out),
@@ -223,7 +224,7 @@
   border: 0;
   background: transparent;
   color: var(--ev-fg);
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   outline: none;
 }
 
@@ -234,8 +235,8 @@
 .ev-task-clear-btn {
   display: inline-grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   border: 0;
   border-radius: 4px;
   background: transparent;
@@ -253,13 +254,13 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 28px;
-  padding: 0 9px;
+  height: 30px;
+  padding: 0 10px;
   border: var(--ev-hairline) solid var(--ev-border);
   border-radius: 7px;
   background: var(--ev-surface);
   color: var(--ev-fg-muted);
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
   transition:
@@ -285,7 +286,7 @@
 }
 
 .ev-task-pre {
-  max-height: 240px;
+  max-height: 260px;
 }
 
 .ev-task-meta {
@@ -294,7 +295,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 4px 8px;
-  font-size: 0.71875rem;
+  font-size: 0.75rem;
   color: var(--ev-fg-subtle);
 }
 

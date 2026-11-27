@@ -36,20 +36,10 @@ export function ModelCatalogSection({
       <div className="ev-settings-head">
         <Heading level={2} size={5}>
           {t("models.catalogTitle")}
-          <span
-            className="ev-num"
-            style={{
-              marginLeft: 8,
-              fontSize: "0.8125rem",
-              fontWeight: 400,
-              color: "var(--ev-fg-subtle)",
-            }}
-          >
-            {visibleModels.length}
-          </span>
+          <span className="ev-num ev-heading-count">{visibleModels.length}</span>
         </Heading>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <div style={{ width: 220 }}>
+        <div className="ev-catalog-toolbar">
+          <div className="ev-catalog-search">
             <Input
               type="text"
               value={filter}
@@ -106,9 +96,7 @@ export function ModelCatalogSection({
                         {model.provider}/{model.id}
                       </span>
                       {model.name !== model.id && (
-                        <span className="ev-inline-muted" style={{ fontSize: "0.75rem" }}>
-                          {model.name}
-                        </span>
+                        <span className="ev-inline-muted">{model.name}</span>
                       )}
                       <div className="ev-model-badges">
                         {model.isCustom && (

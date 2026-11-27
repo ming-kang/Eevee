@@ -165,6 +165,7 @@ function CodeBlock({ code, lang }: { readonly code: string; readonly lang?: stri
   const highlighted = useMemo(() => highlightCode(code, lang), [code, lang]);
   return (
     <CodeSnippet
+      className="ev-code-snippet"
       actions={<CopyButton value={code} aria-label={t("transcript.copyCode")} />}
       data-language={lang || undefined}
     >

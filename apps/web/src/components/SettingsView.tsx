@@ -58,7 +58,7 @@ export function SettingsView({
       aria-modal="true"
       aria-label={t("settings.title")}
     >
-      <header className="ev-page-header" style={{ paddingLeft: 20, paddingRight: 16 }}>
+      <header className="ev-page-header ev-settings-header">
         <Heading level={1} size={6} className="ev-page-title">
           {t("settings.title")}
         </Heading>
@@ -77,18 +77,19 @@ export function SettingsView({
             </button>
           ))}
         </nav>
-        <span style={{ flex: 1 }} />
-        <IconButton
-          aria-label={t("common.close")}
-          title={t("settings.closeTitle")}
-          onClick={onClose}
-        >
-          <CloseIcon width={18} height={18} />
-        </IconButton>
+        <div className="ev-page-header-actions">
+          <IconButton
+            aria-label={t("common.close")}
+            title={t("settings.closeTitle")}
+            onClick={onClose}
+          >
+            <CloseIcon width={18} height={18} />
+          </IconButton>
+        </div>
       </header>
 
       <div className="ev-page-scroll">
-        <div className="ev-page-narrow" style={{ maxWidth: 880 }}>
+        <div className="ev-page-wide">
           {section === "general" && <GeneralTab />}
           {section === "providers" && <ProvidersTab />}
           {section === "models" && <ModelsTab />}

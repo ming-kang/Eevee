@@ -9,7 +9,10 @@ import {
 } from "../src/lib/typography.ts";
 
 test("parseBoundedSize and clampSize enforce typography bounds and defaults", () => {
+  assert.equal(UI_SIZE_BOUNDS.default, 17);
+  assert.equal(CODE_SIZE_BOUNDS.default, 15);
   assert.equal(parseBoundedSize("14", UI_SIZE_BOUNDS), 14);
+  assert.equal(parseBoundedSize("22", UI_SIZE_BOUNDS), 22);
   assert.equal(parseBoundedSize("99", UI_SIZE_BOUNDS), UI_SIZE_BOUNDS.default);
   assert.equal(parseBoundedSize("abc", CODE_SIZE_BOUNDS), CODE_SIZE_BOUNDS.default);
   assert.equal(parseBoundedSize(null, CODE_SIZE_BOUNDS), CODE_SIZE_BOUNDS.default);

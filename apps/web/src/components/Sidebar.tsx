@@ -409,8 +409,7 @@ export function Sidebar({
       <div className="ev-side-footer">
         <button
           type="button"
-          className="ev-nav-row-btn"
-          style={{ padding: "6px 10px", fontSize: "0.84375rem", color: "var(--ev-fg-muted)" }}
+          className="ev-nav-row-btn ev-side-footer-settings"
           onClick={onOpenControl}
         >
           {t("sidebar.settings")}

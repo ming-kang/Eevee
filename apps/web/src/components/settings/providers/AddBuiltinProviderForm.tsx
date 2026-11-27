@@ -98,7 +98,7 @@ export function AddBuiltinProviderForm({
           <form id="ev-add-builtin-form" noValidate onSubmit={onSubmit} className="ev-form-stack">
             <div className="ev-editor-section">
               <div className="ev-provider-item-head">
-                <strong style={{ fontSize: 15 }}>{selectedBuiltin.name}</strong>
+                <strong className="ev-catalog-selected-name">{selectedBuiltin.name}</strong>
                 <span className="ev-mono ev-inline-muted">{selectedBuiltin.id}</span>
               </div>
               {selectedBuiltin.baseUrl && (

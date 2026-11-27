@@ -25,7 +25,7 @@ export function ProviderOAuthPanel({ oauth }: { readonly oauth: UseProviderOAuth
         </Button>
       </div>
       {login.authEvents.map(({ id, event: ev }) => (
-        <div key={id} style={{ fontSize: "13.5px" }}>
+        <div key={id} className="ev-oauth-event">
           {ev.type === "auth_url" && (
             <div className="ev-form-stack" style={{ gap: 4 }}>
               {ev.instructions && <Text style={{ margin: 0 }}>{ev.instructions}</Text>}

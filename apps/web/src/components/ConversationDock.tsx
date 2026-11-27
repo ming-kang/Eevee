@@ -22,9 +22,7 @@ export function ConversationDock({
 
       {inbox.length > 0 && (
         <div className="ev-queued-dock">
-          <span style={{ fontSize: "0.71875rem", color: "var(--ev-fg-subtle)", fontWeight: 500 }}>
-            {t("chat.queued", { count: inbox.length })}
-          </span>
+          <span className="ev-queued-dock-title">{t("chat.queued", { count: inbox.length })}</span>
           {inbox.map((item) => (
             <div
               key={item.id}
