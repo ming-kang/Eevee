@@ -1,7 +1,8 @@
 import { defineTool } from "@earendil-works/pi-durable";
 import { arr, bool, int, num, obj, opt, str } from "@earendil-works/pi-schema";
 import { withToolPromptMeta } from "../../context/tool-meta.ts";
-import { DEFAULT_MAX_BYTES, formatSize, truncateHead } from "../../shared/truncate.ts";
+import type { TruncationResult } from "../../shared/truncate.ts";
+import { formatTruncatedListing } from "./listings.ts";
 
 const DEFAULT_LIMIT = 500;
 
@@ -12,7 +13,7 @@ const lsStructuredOutput = obj({
 });
 
 export type LsToolDetails = {
-  readonly truncation?: ReturnType<typeof truncateHead>;
+  readonly truncation?: TruncationResult;
   readonly entryLimitReached?: number;
 };
 
@@ -62,32 +63,22 @@ export const lsTool = withToolPromptMeta(
         entries.push(entry.kind === "directory" ? `${entry.name}/` : entry.name);
       }
 
-      const details: {
-        truncation?: ReturnType<typeof truncateHead>;
-        entryLimitReached?: number;
-      } = {};
       if (entries.length === 0) {
         return {
           output: [{ type: "text" as const, text: "(empty directory)" }],
           structuredOutput: { entries: [], truncated: false },
         };
       }
-      const truncation = truncateHead(entries.join("\n"), { maxLines: Number.MAX_SAFE_INTEGER });
-      let output = truncation.content;
-      const notices: string[] = [];
-      if (entryLimitReached) {
-        notices.push(
-          `${effectiveLimit} entries limit reached. Use limit=${effectiveLimit * 2} for more`,
-        );
-        details.entryLimitReached = effectiveLimit;
-      }
-      if (truncation.truncated) {
-        notices.push(`${formatSize(DEFAULT_MAX_BYTES)} limit reached`);
-        details.truncation = truncation;
-      }
-      if (notices.length > 0) output += `\n\n[${notices.join(". ")}]`;
+      const notices = entryLimitReached
+        ? [`${effectiveLimit} entries limit reached. Use limit=${effectiveLimit * 2} for more`]
+        : [];
+      const { text, truncation } = formatTruncatedListing(entries, notices);
+      const details: LsToolDetails = {
+        ...(entryLimitReached ? { entryLimitReached: effectiveLimit } : {}),
+        ...(truncation.truncated ? { truncation } : {}),
+      };
       return {
-        output: [{ type: "text" as const, text: output }],
+        output: [{ type: "text" as const, text }],
         structuredOutput: {
           entries,
           truncated: truncation.truncated,

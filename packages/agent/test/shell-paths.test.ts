@@ -5,14 +5,16 @@ import { join } from "node:path";
 import { test } from "node:test";
 import {
   createShellPathsExtension,
+  rewriteToolArguments,
+} from "../src/extensions/shell-paths/index.ts";
+import {
   isLegacyWslBashPath,
   parseMounts,
   resolveWindowsBash,
   rewriteDrivePath,
   rewriteMsysPath,
-  rewriteToolArguments,
   toWindowsPath,
-} from "../src/extensions/shell-paths/index.ts";
+} from "../src/shell/index.ts";
 
 async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "eevee-shell-paths-test-"));

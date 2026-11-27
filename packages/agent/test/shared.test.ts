@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, stat, utimes } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
@@ -13,8 +13,28 @@ import {
   resolveHeadersStrict,
 } from "../src/shared/config-value.ts";
 import { withFileLock, writeFileAtomic } from "../src/shared/file-lock.ts";
+import {
+  errorCode,
+  errorMessage,
+  isEnoent,
+  isRecord,
+  isStringRecord,
+} from "../src/shared/guards.ts";
+import { createIgnoreRule, isIgnoredByRules } from "../src/shared/ignore.ts";
 import { stripBom, stripJsonComments } from "../src/shared/json.ts";
-import { formatSize, truncateHead, truncateTail } from "../src/shared/truncate.ts";
+import { LockedJsonMapStore } from "../src/shared/json-map-store.ts";
+import { expandHome } from "../src/shared/paths.ts";
+import {
+  alignUtf8End,
+  alignUtf8Start,
+  formatSize,
+  truncateHead,
+  truncateTail,
+  utf8HeadBytes,
+  utf8HeadClip,
+  utf8TailClip,
+} from "../src/shared/truncate.ts";
+import { escapeXml, escapeXmlAttr } from "../src/shared/xml.ts";
 
 async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "eevee-shared-test-"));
@@ -234,5 +254,147 @@ test("withFileLock breaks a stale lock directory left by a dead process", async 
     const result = await withFileLock(file, async () => "acquired");
     assert.equal(result, "acquired");
     await assert.rejects(stat(`${file}.lock`));
+  });
+});
+
+test("guards validate plain records, string records, error messages, and ENOENT errors", () => {
+  assert.equal(isRecord({ a: 1 }), true);
+  assert.equal(isRecord(null), false);
+  assert.equal(isRecord([1, 2]), false);
+  assert.equal(isRecord("str"), false);
+
+  assert.equal(isStringRecord({ a: "x", b: "y" }), true);
+  assert.equal(isStringRecord({ a: "x", b: 1 }), false);
+  assert.equal(isStringRecord(null), false);
+
+  assert.equal(errorMessage(new Error("boom")), "boom");
+  assert.equal(errorMessage("plain"), "plain");
+  assert.equal(errorMessage(42), "42");
+
+  const enoent = Object.assign(new Error("missing"), { code: "ENOENT" });
+  const eacces = Object.assign(new Error("denied"), { code: "EACCES" });
+  assert.equal(errorCode(enoent), "ENOENT");
+  assert.equal(errorCode(new Error("no code")), undefined);
+  assert.equal(isEnoent(enoent), true);
+  assert.equal(isEnoent(eacces), false);
+  assert.equal(isEnoent("ENOENT"), false);
+});
+
+test("expandHome resolves ~ and ~/ across platforms and leaves other paths untouched", () => {
+  assert.equal(expandHome("~"), homedir());
+  assert.equal(expandHome("~/sub/file"), join(homedir(), "sub/file"));
+  assert.equal(expandHome("/abs/path"), "/abs/path");
+  assert.equal(expandHome("~other/file"), "~other/file");
+  if (process.platform === "win32") {
+    assert.equal(expandHome("~\\sub\\file"), join(homedir(), "sub\\file"));
+  } else {
+    assert.equal(expandHome("~\\sub\\file"), "~\\sub\\file");
+  }
+});
+
+test("escapeXml and escapeXmlAttr escape special XML characters", () => {
+  assert.equal(escapeXml('a & <b> "c"'), 'a &amp; &lt;b&gt; "c"');
+  assert.equal(escapeXmlAttr('a & <b> "c"'), "a &amp; &lt;b&gt; &quot;c&quot;");
+});
+
+test("createIgnoreRule and isIgnoredByRules respect root, directory, and nested negation rules", () => {
+  const rules = [createIgnoreRule("", "*.log\ndist/\n"), createIgnoreRule("sub", "!keep.log\n")];
+  assert.equal(isIgnoredByRules(rules, "root.log", false), true);
+  assert.equal(isIgnoredByRules(rules, "dist", true), true);
+  assert.equal(isIgnoredByRules(rules, "dist/bundle.js", false), true);
+  assert.equal(isIgnoredByRules(rules, "sub/drop.log", false), true);
+  assert.equal(isIgnoredByRules(rules, "sub/keep.log", false), false);
+  assert.equal(isIgnoredByRules(rules, "src/index.ts", false), false);
+});
+
+test("UTF-8 alignment and clipping helpers never split multibyte sequences", () => {
+  const sample = "a€😀b";
+  const bytes = Buffer.from(sample, "utf8");
+  assert.equal(bytes.length, 9);
+
+  assert.equal(alignUtf8Start(bytes, -2), 0);
+  assert.equal(alignUtf8Start(bytes, 1), 1);
+  assert.equal(alignUtf8Start(bytes, 2), 4);
+  assert.equal(alignUtf8Start(bytes, 3), 4);
+  assert.equal(alignUtf8Start(bytes, 5), 8);
+
+  assert.equal(alignUtf8End(bytes, 0), 0);
+  assert.equal(alignUtf8End(bytes, 1), 1);
+  assert.equal(alignUtf8End(bytes, 2), 1);
+  assert.equal(alignUtf8End(bytes, 3), 1);
+  assert.equal(alignUtf8End(bytes, 4), 4);
+  assert.equal(alignUtf8End(bytes, 7), 4);
+  assert.equal(alignUtf8End(bytes, 8), 8);
+  assert.equal(alignUtf8End(bytes, 100), 9);
+
+  assert.equal(utf8HeadClip(sample, 0), "");
+  assert.equal(utf8HeadClip(sample, 3), "a");
+  assert.equal(utf8HeadClip(sample, 4), "a€");
+  assert.equal(utf8HeadClip(sample, 7), "a€");
+  assert.equal(utf8HeadClip(sample, 8), "a€😀");
+  assert.equal(utf8HeadClip(sample, 9), sample);
+  assert.equal(utf8HeadBytes(sample, 7).toString("utf8"), "a€");
+
+  assert.equal(utf8TailClip(sample, 0), "");
+  assert.equal(utf8TailClip(sample, 1), "b");
+  assert.equal(utf8TailClip(sample, 4), "b");
+  assert.equal(utf8TailClip(sample, 5), "😀b");
+  assert.equal(utf8TailClip(sample, 7), "😀b");
+  assert.equal(utf8TailClip(sample, 8), "€😀b");
+  assert.equal(utf8TailClip(sample, 9), sample);
+});
+
+test("LockedJsonMapStore reads JSONC/BOM, enforces validation and 0o600 mode, and serializes writes", async () => {
+  await withTempDir(async (dir) => {
+    const filePath = join(dir, "map.json");
+    const store = new LockedJsonMapStore<{ readonly value: number }>({
+      filePath,
+      invalidRootMessage: "Root must be object",
+      formatParseError: (error) => new Error(`Parse failure: ${errorMessage(error)}`),
+      wrapError: (error) => new Error(`Wrapped: ${errorMessage(error)}`),
+      validateEntry: (key, entry) => {
+        if (!isRecord(entry) || typeof entry.value !== "number") {
+          throw new Error(`Bad entry ${key}`);
+        }
+        return { value: entry.value };
+      },
+    });
+
+    assert.deepEqual(await store.readAll(), {});
+    assert.equal(await store.get("missing"), undefined);
+    assert.equal(await store.delete("missing"), false);
+
+    await Promise.all([
+      store.set("a", { value: 1 }),
+      store.set("b", { value: 2 }),
+      store.modify("c", (current) => ({ value: (current?.value ?? 0) + 3 })),
+    ]);
+
+    assert.deepEqual(await store.readAll(), {
+      a: { value: 1 },
+      b: { value: 2 },
+      c: { value: 3 },
+    });
+
+    if (process.platform !== "win32") {
+      assert.equal((await stat(filePath)).mode & 0o777, 0o600);
+    }
+
+    const unchanged = await store.modify("a", () => undefined);
+    assert.deepEqual(unchanged, { value: 1 });
+    assert.equal(await store.delete("b"), true);
+    assert.equal(await store.get("b"), undefined);
+
+    await writeFile(filePath, '\ufeff{ // comment\n  "k": { "value": 9 }\n}');
+    assert.deepEqual(await store.get("k"), { value: 9 });
+
+    await writeFile(filePath, "{ bad json");
+    await assert.rejects(store.readAll(), /Wrapped: Parse failure:/);
+
+    await writeFile(filePath, "[]");
+    await assert.rejects(store.readAll(), /Wrapped: Root must be object/);
+
+    await writeFile(filePath, JSON.stringify({ bad: { value: "nope" } }));
+    await assert.rejects(store.readAll(), /Wrapped: Bad entry bad/);
   });
 });

@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type McpOAuthConfig, mcpNamespace } from "@earendil-works/pi-mcp";
 import {
@@ -21,8 +20,9 @@ import {
   waitForLoopbackSignIn,
 } from "@earendil-works/pi-mcp/oauth";
 import { resolveConfigValue } from "../../shared/config-value.ts";
-import { withFileLock, writeFileAtomic } from "../../shared/file-lock.ts";
-import { stripBom, stripJsonComments } from "../../shared/json.ts";
+import { withFileLock } from "../../shared/file-lock.ts";
+import { errorMessage, isRecord } from "../../shared/guards.ts";
+import { LockedJsonMapStore } from "../../shared/json-map-store.ts";
 
 export {
   McpOAuthAuthorizationRequiredError,
@@ -34,8 +34,6 @@ export {
 export const MCP_AUTH_FILE = "mcp-auth.json";
 
 const DEFAULT_REDIRECT_URL = "http://127.0.0.1/callback";
-
-type AuthStoreFileData = Record<string, McpOAuthState>;
 
 export type McpOAuthTokenSummary = {
   readonly hasTokens: boolean;
@@ -50,10 +48,6 @@ export function mcpOAuthStoreKey(name: string, serverUrl: string): string {
   return `${mcpNamespace(name)}|${new URL(serverUrl).href}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isLockTimeoutError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return (
@@ -63,40 +57,28 @@ function isLockTimeoutError(error: unknown): boolean {
   );
 }
 
-async function readStoreFile(filePath: string): Promise<AuthStoreFileData> {
-  let text: string;
-  try {
-    text = await readFile(filePath, "utf8");
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return {};
-    throw error;
+function validateOAuthEntry(key: string, entry: unknown): McpOAuthState {
+  if (!isRecord(entry) || typeof entry.serverUrl !== "string") {
+    throw new Error(`Invalid ${MCP_AUTH_FILE} entry "${key}"`);
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stripJsonComments(stripBom(text)));
-  } catch (error) {
-    throw new Error(
-      `Failed to parse ${MCP_AUTH_FILE}: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-  if (!isRecord(parsed)) {
-    throw new Error(`Invalid ${MCP_AUTH_FILE}: expected an object keyed by server`);
-  }
-  for (const [key, entry] of Object.entries(parsed)) {
-    if (!isRecord(entry) || typeof entry.serverUrl !== "string") {
-      throw new Error(`Invalid ${MCP_AUTH_FILE} entry "${key}"`);
-    }
-  }
-  return parsed as AuthStoreFileData;
+  return { ...entry, serverUrl: entry.serverUrl } as McpOAuthState;
 }
 
 export class McpOAuthCredentialStore {
   readonly filePath: string;
+  private readonly store: LockedJsonMapStore<McpOAuthState>;
   private readonly refreshLockTimeoutMs?: number;
   private readonly activeRefreshes = new Map<string, Promise<void>>();
 
   constructor(dir: string, options: McpOAuthCredentialStoreOptions = {}) {
     this.filePath = join(dir, MCP_AUTH_FILE);
+    this.store = new LockedJsonMapStore({
+      filePath: this.filePath,
+      validateEntry: validateOAuthEntry,
+      formatParseError: (error) =>
+        new Error(`Failed to parse ${MCP_AUTH_FILE}: ${errorMessage(error)}`),
+      invalidRootMessage: `Invalid ${MCP_AUTH_FILE}: expected an object keyed by server`,
+    });
     this.refreshLockTimeoutMs = options.refreshLockTimeoutMs;
   }
 
@@ -106,16 +88,11 @@ export class McpOAuthCredentialStore {
     const refreshLockPath = join(dirname(this.filePath), `.mcp-refresh-${lockHash}`);
     return {
       load: async (): Promise<McpOAuthState | undefined> => {
-        const data = await readStoreFile(this.filePath);
-        const state = data[key];
+        const state = await this.store.get(key);
         return state === undefined ? undefined : structuredClone(state);
       },
       save: async (state: McpOAuthState): Promise<void> => {
-        await withFileLock(this.filePath, async () => {
-          const data = await readStoreFile(this.filePath);
-          data[key] = structuredClone(state);
-          await writeFileAtomic(this.filePath, `${JSON.stringify(data, null, 2)}\n`, 0o600);
-        });
+        await this.store.set(key, structuredClone(state));
       },
       withRefreshLock: async <T>(fn: () => Promise<T>): Promise<T> => {
         let entered = false;
@@ -187,14 +164,7 @@ export class McpOAuthCredentialStore {
   }
 
   async remove(name: string, serverUrl: string): Promise<boolean> {
-    const key = mcpOAuthStoreKey(name, serverUrl);
-    return withFileLock(this.filePath, async () => {
-      const data = await readStoreFile(this.filePath);
-      if (!Object.hasOwn(data, key)) return false;
-      delete data[key];
-      await writeFileAtomic(this.filePath, `${JSON.stringify(data, null, 2)}\n`, 0o600);
-      return true;
-    });
+    return this.store.delete(mcpOAuthStoreKey(name, serverUrl));
   }
 }
 

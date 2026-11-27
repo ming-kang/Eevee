@@ -349,3 +349,83 @@ test("resolveModelSpec reports exact-ID ambiguity across providers", () => {
   assert.equal(result.kind === "ambiguous" ? result.matches.length : 0, 2);
   assert.deepEqual(resolveModelSpec(models, "missing"), { kind: "not_found" });
 });
+
+test("probeProviderModels uses x-goog-api-key for Google APIs and redacts it on errors", async () => {
+  let seenKey: string | null = null;
+  await assert.rejects(
+    probeProviderModels({
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      api: "google-generative-ai",
+      auth: { apiKey: "AIza-secret-token" },
+      fetch: async (_input, init) => {
+        seenKey = new Headers(init?.headers).get("x-goog-api-key");
+        return new Response("bad key AIza-secret-token", { status: 403 });
+      },
+    }),
+    (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      assert.ok(!message.includes("AIza-secret-token"));
+      assert.ok(message.includes("[redacted]"));
+      return true;
+    },
+  );
+  assert.equal(seenKey, "AIza-secret-token");
+});
+
+test("runModelSmokeTest reports timeout and abort cleanly while redacting secrets", async () => {
+  const selected = model("smoke");
+  const models = {
+    getModel: () => selected,
+    getAuth: () => ({ auth: { apiKey: "smoke-timeout-secret" } }),
+    streamSimple: (_model: Model<Api>, _context: unknown, options?: ModelsSimpleStreamOptions) => {
+      const stream = createAssistantMessageEventStream();
+      const emitAborted = () => {
+        stream.push({
+          type: "error",
+          reason: "aborted",
+          error: {
+            role: "assistant",
+            content: [],
+            api: selected.api,
+            provider: selected.provider,
+            model: selected.id,
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            stopReason: "aborted",
+            errorMessage: "aborted with smoke-timeout-secret",
+            timestamp: Date.now(),
+          },
+        });
+      };
+      if (options?.signal?.aborted) emitAborted();
+      else options?.signal?.addEventListener("abort", emitAborted, { once: true });
+      return stream;
+    },
+  } as unknown as Models;
+
+  const timedOut = await runModelSmokeTest({
+    models,
+    providerId: "local",
+    modelId: "smoke",
+    timeoutMs: 10,
+  });
+  assert.equal(timedOut.ok, false);
+  assert.match(timedOut.error ?? "", /timed out/);
+
+  const controller = new AbortController();
+  controller.abort();
+  const aborted = await runModelSmokeTest({
+    models,
+    providerId: "local",
+    modelId: "smoke",
+    signal: controller.signal,
+  });
+  assert.equal(aborted.ok, false);
+  assert.match(aborted.error ?? "", /aborted/);
+});

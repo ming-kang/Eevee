@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { Api, KnownApi, Model, ModelCost, Provider } from "@earendil-works/pi-ai";
 import {
   builtinProviders,
@@ -6,6 +7,7 @@ import {
 } from "@earendil-works/pi-ai/providers/all";
 import { CompatSchemasByApi } from "@earendil-works/pi-ai/providers/compat-schema";
 import type { ModelEntryConfig, ModelOverrideConfig } from "./model-config.ts";
+import { modelCatalogUrl } from "./probe.ts";
 import { CHAT_API_STREAMS } from "./provider-composer.ts";
 
 export const SUPPORTED_CHAT_APIS: readonly KnownApi[] = Object.freeze(
@@ -79,23 +81,12 @@ export function baseUrlPlaceholder(api: string | undefined): string {
   }
 }
 
-function previewCatalogUrl(baseUrl: string, api?: string): URL {
-  const url = new URL(baseUrl);
-  const path = url.pathname.replace(/\/+$/, "");
-  if (api === "anthropic-messages" && !/\/v1(?:\/anthropic)?$/i.test(path)) {
-    url.pathname = `${path}/v1/models`.replace(/^\/\//, "/");
-  } else {
-    url.pathname = `${path}/models`.replace(/^\/\//, "/");
-  }
-  return url;
-}
-
 export function describeConnectionUrl(
   api: string | undefined,
   baseUrl: string | undefined,
 ): { readonly text: string; readonly warning?: boolean } | undefined {
   if (baseUrl === undefined || validateBaseUrl(baseUrl) !== undefined) return undefined;
-  const url = previewCatalogUrl(baseUrl, api);
+  const url = modelCatalogUrl(new URL(baseUrl), api);
   const doubledV1 = /\/v1\/v1(?:\/|$)/i.test(url.pathname);
   return {
     text: url.toString(),
@@ -285,7 +276,7 @@ export function computeBuiltinFieldDiffs(
         : source[field];
     const referenceValue =
       field === "cost" ? withoutCostTiers(referenceModel.cost) : reference[field];
-    const same = applicable && isDeepEqual(currentValue, referenceValue);
+    const same = applicable && isDeepStrictEqual(currentValue, referenceValue);
     return {
       field,
       applicable,
@@ -296,29 +287,4 @@ export function computeBuiltinFieldDiffs(
       ...(applicable && referenceValue !== undefined ? { value: referenceValue } : {}),
     };
   });
-}
-
-function isDeepEqual(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) return true;
-  if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) {
-    return false;
-  }
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return (
-      Array.isArray(left) &&
-      Array.isArray(right) &&
-      left.length === right.length &&
-      left.every((entry, index) => isDeepEqual(entry, right[index]))
-    );
-  }
-  const leftRecord = left as Record<string, unknown>;
-  const rightRecord = right as Record<string, unknown>;
-  const leftKeys = Object.keys(leftRecord);
-  const rightKeys = Object.keys(rightRecord);
-  return (
-    leftKeys.length === rightKeys.length &&
-    leftKeys.every(
-      (key) => Object.hasOwn(rightRecord, key) && isDeepEqual(leftRecord[key], rightRecord[key]),
-    )
-  );
 }

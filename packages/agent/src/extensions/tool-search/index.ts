@@ -14,6 +14,7 @@ import {
 } from "@earendil-works/pi-durable/tool-search";
 import { num, obj, opt, str } from "@earendil-works/pi-schema";
 import { withToolPromptMeta } from "../../context/tool-meta.ts";
+import { isRecord } from "../../shared/guards.ts";
 
 export type { ToolSearchToolDetails };
 export { DEFAULT_TOOL_SEARCH_LIMIT, TOOL_SEARCH_TOOL_NAME };
@@ -189,26 +190,22 @@ function rankDeferredTools(query: string, docs: readonly SearchDoc[], limit: num
     .map((match) => match.name);
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function collectSchemaText(
   schema: unknown,
   root: Record<string, unknown>,
   parts: string[],
   seen: Set<unknown>,
 ): void {
-  if (!isObject(schema)) return;
+  if (!isRecord(schema)) return;
   if (typeof schema.$ref === "string") {
     const target = resolveSchemaRef(schema.$ref, root);
-    if (isObject(target) && !seen.has(target)) {
+    if (isRecord(target) && !seen.has(target)) {
       seen.add(target);
       collectSchemaText(target, root, parts, seen);
     }
   }
   if (typeof schema.description === "string") parts.push(schema.description);
-  if (isObject(schema.properties)) {
+  if (isRecord(schema.properties)) {
     for (const [name, property] of Object.entries(schema.properties)) {
       parts.push(name);
       collectSchemaText(property, root, parts, seen);
@@ -225,7 +222,7 @@ function collectSchemaText(
 
 function toolSearchText(tool: ToolRegistration): string {
   const parts = [tool.description];
-  const root = isObject(tool.parameters) ? tool.parameters : {};
+  const root = isRecord(tool.parameters) ? tool.parameters : {};
   collectSchemaText(tool.parameters, root, parts, new Set([tool.parameters]));
   return parts.filter((part) => part.trim() !== "").join(" ");
 }

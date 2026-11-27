@@ -1096,3 +1096,147 @@ test("composeProviders rejects authHeader: true on unsupported APIs and ModelRun
     });
   }
 });
+
+test("custom providers wrap ApiKeyAuth once without double-executing commands or headers", async () => {
+  await withTempDir(async (dir) => {
+    const keyHitsFile = join(dir, "key-hits.txt");
+    const headerHitsFile = join(dir, "header-hits.txt");
+    const keyScript = join(dir, "key-cmd.cjs");
+    const headerScript = join(dir, "header-cmd.cjs");
+
+    await writeFile(
+      keyScript,
+      [
+        'const fs = require("node:fs");',
+        `fs.appendFileSync(${JSON.stringify(keyHitsFile)}, "hit\\n");`,
+        'if (process.argv[2] === "emit") console.log("cmd-secret");',
+      ].join("\n"),
+    );
+    await writeFile(
+      headerScript,
+      [
+        'const fs = require("node:fs");',
+        `fs.appendFileSync(${JSON.stringify(headerHitsFile)}, "hit\\n");`,
+        'console.log("hdr-secret");',
+      ].join("\n"),
+    );
+
+    const failingKeyCommand = `!"${process.execPath}" "${keyScript}" empty`;
+    const emittingHeaderCommand = `!"${process.execPath}" "${headerScript}"`;
+
+    await writeFile(
+      join(dir, "models.json"),
+      JSON.stringify({
+        providers: {
+          local: {
+            baseUrl: "http://127.0.0.1:1/v1",
+            api: "openai-completions",
+            apiKey: failingKeyCommand,
+            headers: { "X-Custom-Auth": emittingHeaderCommand },
+            models: [{ id: "m" }],
+          },
+        },
+      }),
+    );
+
+    const runtime = await ModelRuntime.open({ dir, env: {} });
+    const model = runtime.resolveModel({ provider: "local", modelId: "m" });
+    assert.ok(model);
+
+    assert.equal(await runtime.models().getAuth(model), undefined);
+    const keyHitsAfterEmpty = (await readFile(keyHitsFile, "utf8")).trim().split("\n");
+    assert.equal(keyHitsAfterEmpty.length, 1);
+
+    await runtime.credentials.modify("local", async () => ({
+      type: "api_key",
+      key: "stored-secret",
+    }));
+    const auth = await runtime.models().getAuth(model);
+    assert.equal(auth?.auth.apiKey, "stored-secret");
+    assert.equal(auth?.auth.headers?.["X-Custom-Auth"], "hdr-secret");
+    const headerHits = (await readFile(headerHitsFile, "utf8")).trim().split("\n");
+    assert.equal(headerHits.length, 1);
+  });
+});
+
+test("modelOverrides merges canonical ModelInputLimits fields cleanly", () => {
+  const builtin = composeProviders({ providers: {} }, { env: {} })
+    .find((provider) => provider.id === "anthropic")
+    ?.getModels()[0];
+  assert.ok(builtin);
+  const config = parseModelsConfig(
+    JSON.stringify({
+      providers: {
+        anthropic: {
+          models: [
+            {
+              id: builtin.id,
+              api: "anthropic-messages",
+              inputLimits: {
+                maxRequestBytes: 10_000_000,
+                images: {
+                  maxPerMessage: 5,
+                  maxPerRequest: 20,
+                  resize: { maxWidth: 1600, maxHeight: 1200, maxBytes: 1_000_000, jpegQuality: 85 },
+                },
+              },
+            },
+          ],
+          modelOverrides: {
+            [builtin.id]: {
+              inputLimits: {
+                images: {
+                  maxPerMessage: 3,
+                  resize: { jpegQuality: 70 },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+  const model = composeProviders(config, { env: {} })
+    .find((provider) => provider.id === "anthropic")
+    ?.getModels()
+    .find((entry) => entry.id === builtin.id);
+  assert.deepEqual(model?.inputLimits, {
+    maxRequestBytes: 10_000_000,
+    images: {
+      maxPerMessage: 3,
+      maxPerRequest: 20,
+      resize: { maxWidth: 1600, maxHeight: 1200, maxBytes: 1_000_000, jpegQuality: 70 },
+    },
+  });
+});
+
+test("custom providers recognize x-goog-api-key for header-only auth", async () => {
+  await withTempDir(async (dir) => {
+    await writeFile(
+      join(dir, "models.json"),
+      JSON.stringify({
+        providers: {
+          geminiProxy: {
+            baseUrl: "http://127.0.0.1:1/v1beta",
+            api: "google-generative-ai",
+            headers: { "x-goog-api-key": "$GEMINI_PROXY_KEY" },
+            models: [{ id: "gemini-custom" }],
+          },
+        },
+      }),
+    );
+
+    const missing = await ModelRuntime.open({ dir, env: {} });
+    assert.equal(await missing.models().checkAuth("geminiProxy"), undefined);
+    assert.equal((await missing.getAuthSummary("geminiProxy")).configured, false);
+
+    const runtime = await ModelRuntime.open({ dir, env: { GEMINI_PROXY_KEY: "goog-secret-key" } });
+    assert.deepEqual(await runtime.models().checkAuth("geminiProxy"), {
+      type: "api_key",
+      source: "models.json",
+    });
+    const summary = await runtime.getAuthSummary("geminiProxy");
+    assert.equal(summary.configured, true);
+    assert.equal(summary.preview, "goog...-key");
+  });
+});

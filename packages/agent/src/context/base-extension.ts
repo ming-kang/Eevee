@@ -1,4 +1,5 @@
 import { defineExtension, type PromptInput, section } from "@earendil-works/pi-durable";
+import { escapeXml, escapeXmlAttr } from "../shared/xml.ts";
 import {
   type ContextDiscovery,
   type ContextFile,
@@ -16,14 +17,6 @@ export type BaseExtensionOptions = Omit<PromptContextOptions, "workspaces"> & {
   readonly workspaces?: readonly string[] | (() => readonly string[]);
   readonly skillPolicy?: SkillPolicyMap | (() => SkillPolicyMap | undefined);
 };
-
-function escapeXml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function escapeXmlAttr(text: string): string {
-  return escapeXml(text).replace(/"/g, "&quot;");
-}
 
 function renderContextFiles(files: readonly ContextFile[]): string | undefined {
   const parts = files

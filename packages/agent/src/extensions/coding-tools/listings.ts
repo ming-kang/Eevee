@@ -1,6 +1,12 @@
 import type { Context } from "@earendil-works/chord/context";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
-import ignore, { type Ignore } from "ignore";
+import { createIgnoreRule, type IgnoreRule, isIgnoredByRules } from "../../shared/ignore.ts";
+import {
+  DEFAULT_MAX_BYTES,
+  formatSize,
+  type TruncationResult,
+  truncateHead,
+} from "../../shared/truncate.ts";
 
 export type WalkEntry = {
   readonly path: string;
@@ -11,31 +17,22 @@ export type WalkResult =
   | { ok: true; entries: WalkEntry[]; truncated: boolean }
   | { ok: false; error: string };
 
-type IgnoreRule = {
-  readonly base: string;
-  readonly matcher: Ignore;
-};
-
 export const WALK_MAX_ENTRIES = 50000;
 
-function isIgnored(rules: readonly IgnoreRule[], path: string, directory: boolean): boolean {
-  for (let index = rules.length - 1; index >= 0; index--) {
-    const rule = rules[index];
-    if (rule === undefined) continue;
-    let relative: string;
-    if (rule.base === "") {
-      relative = path;
-    } else if (path.startsWith(`${rule.base}/`)) {
-      relative = path.slice(rule.base.length + 1);
-    } else {
-      continue;
-    }
-    if (relative === "") continue;
-    const result = rule.matcher.test(directory ? `${relative}/` : relative);
-    if (result.ignored) return true;
-    if (result.unignored) return false;
+export function formatTruncatedListing(
+  lines: readonly string[],
+  notices: readonly string[] = [],
+): { readonly text: string; readonly truncation: TruncationResult } {
+  const truncation = truncateHead(lines.join("\n"), { maxLines: Number.MAX_SAFE_INTEGER });
+  const allNotices = [...notices];
+  if (truncation.truncated) {
+    allNotices.push(`${formatSize(DEFAULT_MAX_BYTES)} limit reached`);
   }
-  return false;
+  const text =
+    allNotices.length > 0
+      ? `${truncation.content}\n\n[${allNotices.join(". ")}]`
+      : truncation.content;
+  return { text, truncation };
 }
 
 async function readGitignore(
@@ -48,7 +45,7 @@ async function readGitignore(
   if (!joined.ok) return undefined;
   const content = await env.readTextFile(joined.value, context);
   if (!content.ok) return undefined;
-  return { base, matcher: ignore().add(content.value) };
+  return createIgnoreRule(base, content.value);
 }
 
 export async function walkFiles(
@@ -94,7 +91,9 @@ export async function walkFiles(
       if (truncated) return;
       if (entry.name === ".git") continue;
       const relative = base === "" ? entry.name : `${base}/${entry.name}`;
-      if (respectGitignore && isIgnored(rules, relative, entry.kind === "directory")) continue;
+      if (respectGitignore && isIgnoredByRules(rules, relative, entry.kind === "directory")) {
+        continue;
+      }
       if (entries.length >= maxEntries) {
         truncated = true;
         return;

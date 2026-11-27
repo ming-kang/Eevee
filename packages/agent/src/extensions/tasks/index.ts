@@ -19,6 +19,7 @@ import {
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { arr, bool, num, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import { getToolPromptMeta, withToolPromptMeta } from "../../context/tool-meta.ts";
+import { errorMessage } from "../../shared/guards.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from "../../shared/truncate.ts";
 import { type ResolvedPowerShell, resolvePowerShell } from "../../shell/index.ts";
 import {
@@ -652,7 +653,7 @@ export function createTasksExtension(options: TasksExtensionOptions = {}) {
               ...(args.contextLines === undefined ? {} : { contextLines: args.contextLines }),
             });
           } catch (error) {
-            return textResult(error instanceof Error ? error.message : String(error), true);
+            return textResult(errorMessage(error), true);
           }
 
           const lines = [`task ${record.id} — ${describeTaskOutcome(record)}`];

@@ -1,4 +1,6 @@
 import { readFile } from "node:fs/promises";
+import { errorMessage } from "../shared/guards.ts";
+import { escapeXmlAttr } from "../shared/xml.ts";
 import {
   resolveSkillTriggerMode,
   type SkillInfo,
@@ -41,14 +43,6 @@ const SKILL_PREFIX = "/skill:";
 const CJK_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const IDENT_OR_PATH_LEFT_RE = /[\p{L}\p{N}_./\\-]/u;
 const IDENT_RIGHT_RE = /[\p{L}\p{N}_-]/u;
-
-function escapeXmlAttr(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 function isEscapedByBackslash(text: string, index: number): boolean {
   let count = 0;
@@ -338,7 +332,7 @@ export async function expandSkillReferences(
       errors.push({
         name: skill.name,
         path: skill.path,
-        message: error instanceof Error ? error.message : String(error),
+        message: errorMessage(error),
       });
       sawUnexpanded = true;
     }

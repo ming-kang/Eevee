@@ -247,6 +247,53 @@ export {
   writeModelsJsonFile,
 } from "./models/index.ts";
 export {
+  withFileLock,
+  writeFileAtomic,
+} from "./shared/file-lock.ts";
+export {
+  errorCode,
+  errorMessage,
+  isEnoent,
+  isRecord,
+  isStringRecord,
+} from "./shared/guards.ts";
+export {
+  createIgnoreRule,
+  type IgnoreRule,
+  isIgnoredByRules,
+} from "./shared/ignore.ts";
+export {
+  stripBom,
+  stripJsonComments,
+  stripJsonTrailingCommas,
+} from "./shared/json.ts";
+export {
+  LockedJsonMapStore,
+  type LockedJsonMapStoreOptions,
+} from "./shared/json-map-store.ts";
+export { expandHome } from "./shared/paths.ts";
+export {
+  alignUtf8End,
+  alignUtf8Start,
+  DEFAULT_MAX_BYTES,
+  DEFAULT_MAX_LINES,
+  formatSize,
+  GREP_MAX_LINE_LENGTH,
+  sliceHead,
+  type TruncateOptions,
+  type TruncationResult,
+  truncateHead,
+  truncateLine,
+  truncateTail,
+  utf8HeadBytes,
+  utf8HeadClip,
+  utf8TailClip,
+} from "./shared/truncate.ts";
+export {
+  escapeXml,
+  escapeXmlAttr,
+} from "./shared/xml.ts";
+export {
   type BashShellConfig,
   createManagedExecutionEnv,
   createMountLoader,

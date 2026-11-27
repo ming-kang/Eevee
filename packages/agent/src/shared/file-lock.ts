@@ -1,6 +1,7 @@
 import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { errorCode } from "./guards.ts";
 
 const RETRY_DELAY_MS = 25;
 const MAX_WAIT_MS = 10_000;
@@ -9,7 +10,7 @@ const STALE_LOCK_MS = 30_000;
 const inProcessQueues = new Map<string, Promise<unknown>>();
 
 function isRetryableLockError(error: unknown): boolean {
-  const code = error instanceof Error && "code" in error ? error.code : undefined;
+  const code = errorCode(error);
   if (code === "EEXIST") return true;
   // Windows may keep a freshly removed lock directory delete-pending briefly.
   if (code === "EPERM" && process.platform === "win32") return true;

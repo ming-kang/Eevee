@@ -9,6 +9,8 @@ import type {
   ShellExecResult,
   ShellSpillOptions,
 } from "@earendil-works/pi-durable/env";
+import { errorMessage } from "../../shared/guards.ts";
+import { alignUtf8Start, utf8HeadBytes } from "../../shared/truncate.ts";
 import { type ResolvedPowerShell, resolvePowerShell } from "../../shell/discovery.ts";
 import { normalizePosixBashCommand } from "../../shell/normalize.ts";
 import type { BackgroundTaskRecord } from "./docs.ts";
@@ -78,18 +80,6 @@ export type RunningCommand = {
   kill(reason?: TaskKillReason | boolean): void;
 };
 
-function utf8AlignedPrefix(text: string, maxBytes: number): Buffer {
-  const buf = Buffer.from(text, "utf8");
-  if (buf.length <= maxBytes) return buf;
-  if (maxBytes <= 0) return buf.subarray(0, 0);
-  let lead = maxBytes - 1;
-  while (lead > 0 && ((buf[lead] ?? 0) & 0xc0) === 0x80) lead -= 1;
-  const first = buf[lead] ?? 0;
-  const seqLen = first < 0x80 ? 1 : first < 0xe0 ? 2 : first < 0xf0 ? 3 : 4;
-  const end = lead + seqLen <= maxBytes ? maxBytes : lead;
-  return buf.subarray(0, end);
-}
-
 /**
  * Start a command detached from any invocation: the process dies only on `kill()`,
  * so a background command survives the tool call and host turns that started it.
@@ -118,8 +108,7 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
     }
     if (retainedBytes > RETAINED_OUTPUT_BYTES) {
       const buffer = Buffer.from(chunks.join(""), "utf8");
-      let start = buffer.length - RETAINED_OUTPUT_BYTES;
-      while (start < buffer.length && ((buffer[start] ?? 0) & 0xc0) === 0x80) start += 1;
+      const start = alignUtf8Start(buffer, buffer.length - RETAINED_OUTPUT_BYTES);
       chunks = [buffer.subarray(start).toString("utf8")];
       retainedBytes = buffer.length - start;
     }
@@ -204,7 +193,7 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
     return {
       kind: "error",
       code: "unknown",
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage(error),
     };
   });
 
@@ -470,13 +459,13 @@ export class TaskManager {
       await mkdir(dirname(path), { recursive: true });
       stream = createWriteStream(path, { flags: "w" });
     } catch (error) {
-      state.logError = error instanceof Error ? error.message : String(error);
+      state.logError = errorMessage(error);
       state.stopped = true;
       return;
     }
 
     stream.on("error", (error) => {
-      state.logError ??= error instanceof Error ? error.message : String(error);
+      state.logError ??= errorMessage(error);
       state.stopped = true;
     });
 
@@ -490,7 +479,7 @@ export class TaskManager {
       }
       const remaining = Math.max(0, this.maxLogBytes - state.writtenBytes);
       if (remaining > 0) {
-        const prefix = utf8AlignedPrefix(chunk, remaining);
+        const prefix = utf8HeadBytes(chunk, remaining);
         if (prefix.length > 0) {
           state.writtenBytes += prefix.length;
           if (!stream.destroyed) stream.write(prefix);
@@ -532,7 +521,7 @@ export class TaskManager {
         resolve();
       };
       const onError = (error: unknown) => {
-        sink.state.logError ??= error instanceof Error ? error.message : String(error);
+        sink.state.logError ??= errorMessage(error);
         sink.state.stopped = true;
         done();
       };
@@ -657,7 +646,7 @@ export class TaskManager {
           resolve();
         };
         const onError = (error: unknown) => {
-          sink.state.logError ??= error instanceof Error ? error.message : String(error);
+          sink.state.logError ??= errorMessage(error);
           done();
         };
         timer = setTimeout(() => {

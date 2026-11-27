@@ -11,6 +11,7 @@ import {
   resolveConfigValue,
   resolveHeaders,
 } from "../../shared/config-value.ts";
+import { errorMessage, isRecord } from "../../shared/guards.ts";
 import { stripBom, stripJsonComments } from "../../shared/json.ts";
 
 export type McpExposure = "deferred" | "direct" | "codemode" | "hidden";
@@ -58,10 +59,6 @@ const MCP_EXPOSURES: readonly McpExposure[] = ["deferred", "direct", "codemode",
 const MCP_EXPOSURE_ALIASES: Readonly<Record<string, McpExposure>> = {
   "codemode-deferred": "codemode",
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isExposure(value: unknown): value is McpExposure {
   return typeof value === "string" && MCP_EXPOSURES.includes(value as McpExposure);
@@ -137,9 +134,7 @@ export function parseMcpConfig(input: string | Record<string, unknown>): ParsedM
     } catch (error) {
       return {
         servers: [],
-        errors: [
-          `invalid MCP config JSON: ${error instanceof Error ? error.message : String(error)}`,
-        ],
+        errors: [`invalid MCP config JSON: ${errorMessage(error)}`],
       };
     }
   }

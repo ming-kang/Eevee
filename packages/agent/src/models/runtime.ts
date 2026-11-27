@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   type Api,
@@ -16,6 +15,9 @@ import {
 } from "@earendil-works/pi-ai";
 import type { ModelRef } from "@earendil-works/pi-durable";
 import { resolveConfigValue } from "../shared/config-value.ts";
+import { errorMessage, isEnoent, isRecord } from "../shared/guards.ts";
+import { expandHome } from "../shared/paths.ts";
+import { REQUEST_AUTH_HEADER_NAMES } from "./auth-headers.ts";
 import { AuthStorage } from "./auth-storage.ts";
 import { type ModelsConfig, ModelsConfigError, parseModelsConfig } from "./model-config.ts";
 import { FileModelsStore } from "./models-store.ts";
@@ -58,14 +60,6 @@ export type ProviderAuthSummary = {
   readonly expiresAt?: number;
 };
 
-function expandHome(path: string): string {
-  if (path === "~") return homedir();
-  if (path.startsWith("~/") || path.startsWith("~\\")) {
-    return join(homedir(), path.slice(2));
-  }
-  return path;
-}
-
 function runtimeAuthContext(env?: Readonly<Record<string, string | undefined>>): AuthContext {
   return {
     env: async (name) => {
@@ -98,7 +92,7 @@ function errorPosition(text: string, error: unknown): { line?: number; column?: 
 function diagnosticFor(error: unknown, text = "", fallbackPath = ""): ModelsConfigDiagnostic {
   return {
     path: error instanceof ModelsConfigError ? error.path : fallbackPath,
-    message: error instanceof Error ? error.message : String(error),
+    message: errorMessage(error),
     ...errorPosition(text, error),
   };
 }
@@ -114,7 +108,7 @@ async function readModelsConfig(filePath: string, strict: boolean): Promise<Conf
   try {
     text = await readFile(filePath, "utf8");
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+    if (isEnoent(error)) {
       return { config: { providers: {} }, diagnostics: [] };
     }
     throw error;
@@ -138,10 +132,9 @@ function maskSecret(value: string | undefined): string | undefined {
 }
 
 function accountLabel(credential: unknown): string | undefined {
-  if (typeof credential !== "object" || credential === null) return undefined;
-  const record = credential as Record<string, unknown>;
+  if (!isRecord(credential)) return undefined;
   for (const key of ["accountLabel", "email", "accountId", "account", "user", "name"]) {
-    const value = record[key];
+    const value = credential[key];
     if (typeof value === "string" && value) return value;
   }
   return undefined;
@@ -250,9 +243,7 @@ export class ModelRuntime {
     if (!secret) {
       const headers = resolved?.auth.headers ?? {};
       const authorization = Object.entries(headers).find(([name]) =>
-        ["authorization", "x-api-key", "x-goog-api-key", "cf-aig-authorization"].includes(
-          name.toLowerCase(),
-        ),
+        REQUEST_AUTH_HEADER_NAMES.has(name.toLowerCase()),
       )?.[1];
       if (typeof authorization === "string") secret = authorization.replace(/^Bearer\s+/i, "");
     }

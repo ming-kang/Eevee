@@ -7,7 +7,9 @@ import type {
   SamplingParamsByThinkingLevel,
   ThinkingLevelMap,
 } from "@earendil-works/pi-ai";
+import { errorMessage, isRecord } from "../shared/guards.ts";
 import { stripBom, stripJsonComments, stripJsonTrailingCommas } from "../shared/json.ts";
+import { ALL_THINKING_LEVELS } from "./thinking-map.ts";
 
 export type CompatConfig = Record<string, unknown>;
 
@@ -61,7 +63,7 @@ export class ModelsConfigError extends Error {
   }
 }
 
-const THINKING_LEVEL_KEYS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+const THINKING_LEVEL_KEYS: ReadonlySet<string> = new Set(ALL_THINKING_LEVELS);
 const INPUT_MODALITIES = new Set(["text", "image"]);
 
 function fail(path: string, message: string): never {
@@ -69,10 +71,10 @@ function fail(path: string, message: string): never {
 }
 
 function asObject(value: unknown, path: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  if (!isRecord(value)) {
     fail(path, "expected an object");
   }
-  return value as Record<string, unknown>;
+  return value;
 }
 
 function optString(source: Record<string, unknown>, key: string, path: string): string | undefined {
@@ -406,10 +408,7 @@ export function parseModelsConfig(text: string): ModelsConfig {
   try {
     parsed = JSON.parse(stripJsonTrailingCommas(stripJsonComments(stripBom(text))));
   } catch (error) {
-    throw new ModelsConfigError(
-      "",
-      `invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    throw new ModelsConfigError("", `invalid JSON: ${errorMessage(error)}`);
   }
   const root = asObject(parsed, "");
   const providersValue = root.providers;

@@ -1,8 +1,7 @@
 import { defineTool } from "@earendil-works/pi-durable";
 import { arr, bool, int, num, obj, opt, str } from "@earendil-works/pi-schema";
 import { withToolPromptMeta } from "../../context/tool-meta.ts";
-import { DEFAULT_MAX_BYTES, formatSize, truncateHead } from "../../shared/truncate.ts";
-import { matchGlob, walkFiles } from "./listings.ts";
+import { formatTruncatedListing, matchGlob, walkFiles } from "./listings.ts";
 
 const DEFAULT_LIMIT = 1000;
 
@@ -59,27 +58,18 @@ export const findTool = withToolPromptMeta(
           structuredOutput: { paths: [], truncated: false },
         };
       }
-      const truncation = truncateHead(matched.join("\n"), { maxLines: Number.MAX_SAFE_INTEGER });
-      let output = truncation.content;
       const notices: string[] = [];
-      const details: {
-        truncation?: ReturnType<typeof truncateHead>;
-        resultLimitReached?: number;
-      } = {};
-      if (resultLimitReached) {
-        notices.push(`${effectiveLimit} results limit reached`);
-        details.resultLimitReached = effectiveLimit;
-      }
+      if (resultLimitReached) notices.push(`${effectiveLimit} results limit reached`);
       if (listing.truncated) {
         notices.push("directory listing truncated before every entry was seen");
       }
-      if (truncation.truncated) {
-        notices.push(`${formatSize(DEFAULT_MAX_BYTES)} limit reached`);
-        details.truncation = truncation;
-      }
-      if (notices.length > 0) output += `\n\n[${notices.join(". ")}]`;
+      const { text, truncation } = formatTruncatedListing(matched, notices);
+      const details = {
+        ...(resultLimitReached ? { resultLimitReached: effectiveLimit } : {}),
+        ...(truncation.truncated ? { truncation } : {}),
+      };
       return {
-        output: [{ type: "text" as const, text: output }],
+        output: [{ type: "text" as const, text }],
         structuredOutput: {
           paths: matched,
           truncated: truncation.truncated,

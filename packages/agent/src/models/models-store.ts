@@ -1,63 +1,38 @@
-import { readFile } from "node:fs/promises";
 import type {
+  AnyModel,
   ModelsStore,
   ModelsStoreEntry,
   ModelsStoreOperationOptions,
 } from "@earendil-works/pi-ai";
-import { withFileLock, writeFileAtomic } from "../shared/file-lock.ts";
-import { stripBom, stripJsonComments } from "../shared/json.ts";
+import { errorMessage, isRecord } from "../shared/guards.ts";
+import { LockedJsonMapStore } from "../shared/json-map-store.ts";
 
-type ModelsStoreFileData = Record<string, ModelsStoreEntry>;
-
-function isModelsStoreEntry(value: unknown): value is ModelsStoreEntry {
-  if (typeof value !== "object" || value === null) return false;
-  return Array.isArray((value as { models?: unknown }).models);
-}
-
-function parseModelsStoreFile(text: string): ModelsStoreFileData {
-  const parsed: unknown = JSON.parse(stripJsonComments(stripBom(text)));
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error("Invalid models-store.json: expected an object keyed by provider id");
+function validateModelsStoreEntry(providerId: string, value: unknown): ModelsStoreEntry {
+  if (!isRecord(value) || !Array.isArray(value.models)) {
+    throw new Error(`Invalid models-store.json entry for provider "${providerId}"`);
   }
-  for (const [providerId, entry] of Object.entries(parsed)) {
-    if (!isModelsStoreEntry(entry)) {
-      throw new Error(`Invalid models-store.json entry for provider "${providerId}"`);
-    }
-  }
-  return parsed as ModelsStoreFileData;
-}
-
-async function readModelsStoreFile(filePath: string): Promise<ModelsStoreFileData> {
-  let text: string;
-  try {
-    text = await readFile(filePath, "utf8");
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return {};
-    throw error;
-  }
-  try {
-    return parseModelsStoreFile(text);
-  } catch (error) {
-    throw new Error(
-      `Failed to read models-store.json: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
+  return { ...value, models: value.models as readonly AnyModel[] };
 }
 
 export class FileModelsStore implements ModelsStore {
   readonly filePath: string;
+  readonly #store: LockedJsonMapStore<ModelsStoreEntry>;
 
   constructor(filePath: string) {
     this.filePath = filePath;
+    this.#store = new LockedJsonMapStore({
+      filePath,
+      validateEntry: validateModelsStoreEntry,
+      invalidRootMessage: "Invalid models-store.json: expected an object keyed by provider id",
+      wrapError: (error) => new Error(`Failed to read models-store.json: ${errorMessage(error)}`),
+    });
   }
 
   async read(
     providerId: string,
     options?: ModelsStoreOperationOptions,
   ): Promise<ModelsStoreEntry | undefined> {
-    options?.signal?.throwIfAborted();
-    const data = await readModelsStoreFile(this.filePath);
-    return data[providerId];
+    return this.#store.get(providerId, options?.signal);
   }
 
   async write(
@@ -65,27 +40,10 @@ export class FileModelsStore implements ModelsStore {
     entry: ModelsStoreEntry,
     options?: ModelsStoreOperationOptions,
   ): Promise<void> {
-    await withFileLock(
-      this.filePath,
-      async () => {
-        const data = await readModelsStoreFile(this.filePath);
-        data[providerId] = entry;
-        await writeFileAtomic(this.filePath, `${JSON.stringify(data, null, 2)}\n`);
-      },
-      options?.signal,
-    );
+    await this.#store.set(providerId, entry, options?.signal);
   }
 
   async delete(providerId: string, options?: ModelsStoreOperationOptions): Promise<void> {
-    await withFileLock(
-      this.filePath,
-      async () => {
-        const data = await readModelsStoreFile(this.filePath);
-        if (!(providerId in data)) return;
-        delete data[providerId];
-        await writeFileAtomic(this.filePath, `${JSON.stringify(data, null, 2)}\n`);
-      },
-      options?.signal,
-    );
+    await this.#store.delete(providerId, options?.signal);
   }
 }

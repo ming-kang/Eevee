@@ -99,7 +99,7 @@ export function truncateTail(content: string, options: TruncateOptions = {}): Tr
     if (bytes + lineBytes > maxBytes) {
       truncatedBy = "bytes";
       if (kept.length === 0) {
-        kept.push(truncateUtf8Tail(line, maxBytes));
+        kept.push(utf8TailClip(line, maxBytes));
       }
       break;
     }
@@ -119,16 +119,53 @@ export function truncateTail(content: string, options: TruncateOptions = {}): Tr
   };
 }
 
-function truncateUtf8Tail(text: string, maxBytes: number): string {
+const UTF8_CONTINUATION_MASK = 0xc0;
+const UTF8_CONTINUATION_BITS = 0x80;
+
+function utf8SequenceLength(lead: number): number {
+  return lead < 0x80 ? 1 : lead < 0xe0 ? 2 : lead < 0xf0 ? 3 : 4;
+}
+
+export function alignUtf8Start(bytes: Uint8Array, index: number): number {
+  let aligned = Math.max(0, Math.floor(index));
+  while (
+    aligned < bytes.length &&
+    ((bytes[aligned] ?? 0) & UTF8_CONTINUATION_MASK) === UTF8_CONTINUATION_BITS
+  ) {
+    aligned += 1;
+  }
+  return aligned;
+}
+
+export function alignUtf8End(bytes: Uint8Array, index: number): number {
+  const bound = Math.min(bytes.length, Math.floor(index));
+  if (bound <= 0) return 0;
+  let lead = bound - 1;
+  while (lead > 0 && ((bytes[lead] ?? 0) & UTF8_CONTINUATION_MASK) === UTF8_CONTINUATION_BITS) {
+    lead -= 1;
+  }
+  return lead + utf8SequenceLength(bytes[lead] ?? 0) <= bound ? bound : lead;
+}
+
+export function utf8HeadBytes(text: string, maxBytes: number): Buffer {
+  if (!(maxBytes > 0)) return Buffer.alloc(0);
+  const buf = Buffer.from(text, "utf8");
+  if (buf.length <= maxBytes) return buf;
+  return buf.subarray(0, alignUtf8End(buf, maxBytes));
+}
+
+export function utf8HeadClip(text: string, maxBytes: number): string {
+  if (!(maxBytes > 0)) return "";
   const buf = Buffer.from(text, "utf8");
   if (buf.length <= maxBytes) return text;
-  let start = buf.length - maxBytes;
-  while (start < buf.length) {
-    const byte = buf[start];
-    if (byte === undefined || (byte & 0xc0) !== 0x80) break;
-    start++;
-  }
-  return buf.subarray(start).toString("utf8");
+  return buf.subarray(0, alignUtf8End(buf, maxBytes)).toString("utf8");
+}
+
+export function utf8TailClip(text: string, maxBytes: number): string {
+  if (!(maxBytes > 0)) return "";
+  const buf = Buffer.from(text, "utf8");
+  if (buf.length <= maxBytes) return text;
+  return buf.subarray(alignUtf8Start(buf, buf.length - maxBytes)).toString("utf8");
 }
 
 export const GREP_MAX_LINE_LENGTH = 500;

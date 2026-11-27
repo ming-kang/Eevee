@@ -12,6 +12,7 @@ import {
   normalizeMcpInputSchema,
   toLlmContent,
 } from "@earendil-works/pi-mcp";
+import { errorMessage, isRecord } from "../../shared/guards.ts";
 import { formatSize } from "../../shared/truncate.ts";
 import { getMcpToolExposure, type McpServerConfig } from "./config.ts";
 
@@ -45,19 +46,14 @@ const SCHEMA_MAP_KEYWORDS: ReadonlySet<string> = new Set([
 
 function relocateSchema(schema: unknown, pointer: string): unknown {
   if (Array.isArray(schema)) return schema.map((item) => relocateSchema(item, pointer));
-  if (typeof schema !== "object" || schema === null) return schema;
+  if (!isRecord(schema)) return schema;
   const relocated: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(schema)) {
     if (key === "$ref" && typeof value === "string" && (value === "#" || value.startsWith("#/"))) {
       relocated[key] = `${pointer}${value.slice(1)}`;
     } else if (SCHEMA_DATA_KEYWORDS.has(key)) {
       relocated[key] = value;
-    } else if (
-      SCHEMA_MAP_KEYWORDS.has(key) &&
-      typeof value === "object" &&
-      value !== null &&
-      !Array.isArray(value)
-    ) {
+    } else if (SCHEMA_MAP_KEYWORDS.has(key) && isRecord(value)) {
       relocated[key] = Object.fromEntries(
         Object.entries(value).map(([name, subschema]) => [
           name,
@@ -148,7 +144,7 @@ async function blockToContent(
       const path = await saveOutput(data, extensionOf(uri));
       return [{ type: "text", text: `[Binary resource ${uri} (${kind}) saved to ${path}]` }];
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = errorMessage(error);
       return [
         { type: "text", text: `[Binary resource ${uri} (${kind}) could not be saved: ${reason}]` },
       ];
@@ -210,10 +206,6 @@ export type AdaptMcpToolsOptions = {
   readonly callTool: McpToolCaller;
   readonly saveOutput?: McpOutputSaver;
 };
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 export function adaptMcpTools(options: AdaptMcpToolsOptions): ToolRegistration[] {
   const { server, config } = options;

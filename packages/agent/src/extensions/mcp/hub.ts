@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdtemp, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
@@ -38,6 +38,8 @@ import {
   McpOAuthAuthorizationRequiredError,
   type OAuthChallenge,
 } from "@earendil-works/pi-mcp/oauth";
+import { errorMessage } from "../../shared/guards.ts";
+import { expandHome } from "../../shared/paths.ts";
 import {
   DEFAULT_MCP_EXPOSURE,
   getMcpToolExposure,
@@ -174,10 +176,6 @@ const NETWORK_ERROR_CODES = new Set([
   "ECONNABORTED",
 ]);
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function firstLine(text: string): string {
   return (text.split("\n", 1)[0] ?? "").trimEnd();
 }
@@ -268,14 +266,6 @@ function definedEnv(env: Readonly<Record<string, string | undefined>>): Record<s
   return Object.fromEntries(
     Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   );
-}
-
-function expandHome(value: string): string {
-  if (value === "~") return homedir();
-  if (value.startsWith("~/") || (process.platform === "win32" && value.startsWith("~\\"))) {
-    return join(homedir(), value.slice(2));
-  }
-  return value;
 }
 
 function toMcpRoots(dirs: readonly string[], cwd: string): Root[] {

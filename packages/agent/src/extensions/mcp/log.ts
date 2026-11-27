@@ -1,5 +1,6 @@
 import { appendFile, mkdir, rename, rm, stat } from "node:fs/promises";
 import { dirname } from "node:path";
+import { utf8HeadClip } from "../../shared/truncate.ts";
 
 export const DEFAULT_MCP_LOG_MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const DEFAULT_MCP_RING_LINES = 100;
@@ -42,16 +43,6 @@ function formatNotificationMessage(params: unknown): {
     }
   }
   return { level, message: `${logger}${body}` };
-}
-
-function clampUtf8(text: string, maxBytes: number): string {
-  if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
-  if (maxBytes <= 0) return "";
-  const buf = Buffer.from(text, "utf8");
-  let end = maxBytes;
-  // Walk back over UTF-8 continuation bytes so truncation does not split a multibyte sequence.
-  while (end > 0 && ((buf[end] ?? 0) & 0xc0) === 0x80) end -= 1;
-  return buf.subarray(0, end).toString("utf8");
 }
 
 export class McpServerLog {
@@ -144,7 +135,7 @@ export class McpServerLog {
 
   private appendEntry(server: string, tag: string, message: string): void {
     const timestamp = new Date().toISOString();
-    const ringLine = clampUtf8(`${timestamp} [${tag}] ${message}`, this.maxBytesPerServer);
+    const ringLine = utf8HeadClip(`${timestamp} [${tag}] ${message}`, this.maxBytesPerServer);
     const ring = this.ensureRing(server);
     const lineBytes = Buffer.byteLength(ringLine, "utf8");
     ring.lines.push(ringLine);

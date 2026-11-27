@@ -17,6 +17,7 @@ import {
 } from "@earendil-works/pi-mcp";
 import { obj, opt, str } from "@earendil-works/pi-schema";
 import { withToolPromptMeta } from "../../context/tool-meta.ts";
+import { errorMessage } from "../../shared/guards.ts";
 import { formatSize } from "../../shared/truncate.ts";
 
 export const LIST_MCP_RESOURCES_TOOL_NAME = "list_mcp_resources";
@@ -95,10 +96,6 @@ function isTextMimeType(mimeType: string | undefined): boolean {
     type.endsWith("+json") ||
     type.endsWith("+xml")
   );
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 async function resolveAccessibleServers(

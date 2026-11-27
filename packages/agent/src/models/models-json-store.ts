@@ -9,6 +9,7 @@ import {
   parseTree,
 } from "jsonc-parser";
 import { withFileLock, writeFileAtomic } from "../shared/file-lock.ts";
+import { isEnoent, isRecord } from "../shared/guards.ts";
 import {
   type ModelEntryConfig,
   type ModelOverrideConfig,
@@ -40,18 +41,21 @@ export type ModelsJsonDocument = {
   readonly rawText: string;
 };
 
-function isMissing(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
+async function readOptionalRawText(filePath: string): Promise<string | undefined> {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch (error) {
+    if (isEnoent(error)) return undefined;
+    throw error;
+  }
 }
 
 export async function readModelsJsonDocument(filePath: string): Promise<ModelsJsonDocument> {
-  try {
-    const rawText = await readFile(filePath, "utf8");
-    return { exists: true, config: parseModelsConfig(rawText), rawText };
-  } catch (error) {
-    if (!isMissing(error)) throw error;
+  const rawText = await readOptionalRawText(filePath);
+  if (rawText === undefined) {
     return { exists: false, config: { providers: {} }, rawText: "" };
   }
+  return { exists: true, config: parseModelsConfig(rawText), rawText };
 }
 
 function pruneDraft(draft: MutableModelsConfig): void {
@@ -142,19 +146,10 @@ function applyMinimalEdits(
       text = applyValueEdit(text, path, right, options);
       return;
     }
-    if (
-      typeof left === "object" &&
-      left !== null &&
-      !Array.isArray(left) &&
-      typeof right === "object" &&
-      right !== null &&
-      !Array.isArray(right)
-    ) {
-      const leftObject = left as Record<string, unknown>;
-      const rightObject = right as Record<string, unknown>;
-      const keys = new Set([...Object.keys(leftObject), ...Object.keys(rightObject)]);
+    if (isRecord(left) && isRecord(right)) {
+      const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
       for (const key of keys) {
-        visit([...path, key], leftObject[key], rightObject[key]);
+        visit([...path, key], left[key], right[key]);
       }
       return;
     }
@@ -166,28 +161,46 @@ function applyMinimalEdits(
 }
 
 async function backupExists(filePath: string): Promise<boolean> {
-  try {
-    await readFile(`${filePath}.bak`);
-    return true;
-  } catch (error) {
-    if (isMissing(error)) return false;
-    throw error;
-  }
+  return (await readOptionalRawText(`${filePath}.bak`)) !== undefined;
+}
+
+function validateModelsConfig(config: unknown): ModelsConfig {
+  const candidate = parseModelsConfig(JSON.stringify(config));
+  composeProviders(candidate);
+  return candidate;
+}
+
+async function commitModelsJson(
+  filePath: string,
+  build: () => Promise<{
+    readonly candidate: ModelsConfig;
+    readonly nextText?: string;
+    readonly existingRawText?: string;
+  }>,
+): Promise<ModelsConfig> {
+  return withFileLock(filePath, async () => {
+    const { candidate, nextText, existingRawText } = await build();
+    if (nextText === undefined) return candidate;
+    if (existingRawText !== undefined && !(await backupExists(filePath))) {
+      await writeFileAtomic(`${filePath}.bak`, existingRawText, 0o600);
+    }
+    await writeFileAtomic(filePath, nextText, 0o600);
+    return candidate;
+  });
 }
 
 export async function mutateModelsJson(
   filePath: string,
   mutator: (draft: MutableModelsConfig) => void,
 ): Promise<ModelsConfig> {
-  return withFileLock(filePath, async () => {
+  return commitModelsJson(filePath, async () => {
     const document = await readModelsJsonDocument(filePath);
     const draft = structuredClone(document.config) as MutableModelsConfig;
     mutator(draft);
     pruneDraft(draft);
-    const candidate = parseModelsConfig(JSON.stringify(draft));
-    composeProviders(candidate);
+    const candidate = validateModelsConfig(draft);
 
-    if (isDeepStrictEqual(document.config, candidate)) return candidate;
+    if (isDeepStrictEqual(document.config, candidate)) return { candidate };
 
     let nextText: string;
     if (!document.exists || document.rawText.trim().length === 0) {
@@ -207,11 +220,11 @@ export async function mutateModelsJson(
     }
     parseModelsConfig(nextText);
 
-    if (document.exists && !(await backupExists(filePath))) {
-      await writeFileAtomic(`${filePath}.bak`, document.rawText, 0o600);
-    }
-    await writeFileAtomic(filePath, nextText, 0o600);
-    return candidate;
+    return {
+      candidate,
+      nextText,
+      existingRawText: document.exists ? document.rawText : undefined,
+    };
   });
 }
 
@@ -219,21 +232,14 @@ export async function writeModelsJsonFile(
   filePath: string,
   config: ModelsConfig,
 ): Promise<ModelsConfig> {
-  return withFileLock(filePath, async () => {
-    const candidate = parseModelsConfig(JSON.stringify(config));
-    composeProviders(candidate);
-    let existingRawText: string | undefined;
-    try {
-      existingRawText = await readFile(filePath, "utf8");
-    } catch (error) {
-      if (!isMissing(error)) throw error;
-    }
-    const nextText = `${JSON.stringify(candidate, null, 2)}\n`;
-    if (existingRawText !== undefined && !(await backupExists(filePath))) {
-      await writeFileAtomic(`${filePath}.bak`, existingRawText, 0o600);
-    }
-    await writeFileAtomic(filePath, nextText, 0o600);
-    return candidate;
+  return commitModelsJson(filePath, async () => {
+    const candidate = validateModelsConfig(config);
+    const existingRawText = await readOptionalRawText(filePath);
+    return {
+      candidate,
+      nextText: `${JSON.stringify(candidate, null, 2)}\n`,
+      existingRawText,
+    };
   });
 }
 

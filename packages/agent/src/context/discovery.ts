@@ -2,8 +2,9 @@ import type { Dirent, Stats } from "node:fs";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import ignore, { type Ignore } from "ignore";
 import { parse as parseYaml } from "yaml";
+import { errorMessage, isRecord } from "../shared/guards.ts";
+import { createIgnoreRule, type IgnoreRule, isIgnoredByRules } from "../shared/ignore.ts";
 import { stripBom } from "../shared/json.ts";
 
 export const CONTEXT_FILE = "AGENTS.md";
@@ -302,19 +303,18 @@ function parseSkillDocument(text: string): ParsedSkillDocument {
   } catch (error) {
     return {
       frontmatter: {},
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     };
   }
 
   if (parsed === null || parsed === undefined) return { frontmatter: {} };
-  if (typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (!isRecord(parsed)) {
     return { frontmatter: {}, error: "Skill frontmatter must be a YAML object" };
   }
 
-  const record = parsed as Record<string, unknown>;
-  const rawName = record.name;
-  const rawDescription = record.description;
-  const rawDisableModelInvocation = record["disable-model-invocation"];
+  const rawName = parsed.name;
+  const rawDescription = parsed.description;
+  const rawDisableModelInvocation = parsed["disable-model-invocation"];
 
   const name = typeof rawName === "string" && rawName.trim() !== "" ? rawName.trim() : undefined;
   const description =
@@ -351,41 +351,12 @@ export function resolveSkillTriggerMode(
   return skill.disableModelInvocation ? "user" : "model";
 }
 
-type IgnoreRule = {
-  readonly base: string;
-  readonly matcher: Ignore;
-};
-
-function isIgnoredByRules(
-  rules: readonly IgnoreRule[],
-  relativePath: string,
-  directory: boolean,
-): boolean {
-  for (let index = rules.length - 1; index >= 0; index--) {
-    const rule = rules[index];
-    if (rule === undefined) continue;
-    let relative: string;
-    if (rule.base === "") {
-      relative = relativePath;
-    } else if (relativePath.startsWith(`${rule.base}/`)) {
-      relative = relativePath.slice(rule.base.length + 1);
-    } else {
-      continue;
-    }
-    if (relative === "") continue;
-    const result = rule.matcher.test(directory ? `${relative}/` : relative);
-    if (result.ignored) return true;
-    if (result.unignored) return false;
-  }
-  return false;
-}
-
 async function readIgnoreRules(dir: string, base: string): Promise<IgnoreRule[]> {
   const rules: IgnoreRule[] = [];
   for (const filename of IGNORE_FILENAMES) {
     const raw = await readTextFile(join(dir, filename));
     if (raw === undefined || raw.trim() === "") continue;
-    rules.push({ base, matcher: ignore().add(raw) });
+    rules.push(createIgnoreRule(base, raw));
   }
   return rules;
 }

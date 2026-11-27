@@ -1,4 +1,6 @@
 import { open } from "node:fs/promises";
+import { errorMessage } from "../../shared/guards.ts";
+import { alignUtf8End, alignUtf8Start, utf8HeadClip, utf8TailClip } from "../../shared/truncate.ts";
 
 export const TASK_READ_MIN_BYTES = 256;
 export const TASK_READ_DEFAULT_BYTES = 8 * 1024;
@@ -71,39 +73,6 @@ function outputWindow(size: number, options: OutputReadOptions): OutputWindow {
   return { mode, floor, ceiling, start, end };
 }
 
-const CONTINUATION = 0x80;
-
-function utf8SequenceLength(lead: number): number {
-  return lead < 0x80 ? 1 : lead < 0xe0 ? 2 : lead < 0xf0 ? 3 : 4;
-}
-
-/** First index at or after `index` that does not continue a multi-byte sequence. */
-function alignStart(bytes: Uint8Array, index: number): number {
-  let aligned = index;
-  while (aligned < bytes.length && ((bytes[aligned] ?? 0) & 0xc0) === CONTINUATION) aligned += 1;
-  return aligned;
-}
-
-/** Last index at or before `index` on a codepoint boundary. */
-function alignEnd(bytes: Uint8Array, index: number): number {
-  if (index <= 0) return 0;
-  let lead = index - 1;
-  while (lead > 0 && ((bytes[lead] ?? 0) & 0xc0) === CONTINUATION) lead -= 1;
-  return lead + utf8SequenceLength(bytes[lead] ?? 0) <= index ? index : lead;
-}
-
-function utf8HeadClip(text: string, maxBytes: number): string {
-  const buf = Buffer.from(text, "utf8");
-  if (buf.length <= maxBytes) return text;
-  return buf.subarray(0, alignEnd(buf, maxBytes)).toString("utf8");
-}
-
-function utf8TailClip(text: string, maxBytes: number): string {
-  const buf = Buffer.from(text, "utf8");
-  if (buf.length <= maxBytes) return text;
-  return buf.subarray(alignStart(buf, buf.length - maxBytes)).toString("utf8");
-}
-
 function buildLineMatcher(rawFilter: string): (line: string) => boolean {
   const regexMatch = /^\/(.+)\/([dgimsuvy]*)$/.exec(rawFilter);
   if (regexMatch !== null) {
@@ -112,9 +81,7 @@ function buildLineMatcher(rawFilter: string): (line: string) => boolean {
     try {
       new RegExp(pattern, flags);
     } catch (error) {
-      throw new Error(
-        `Invalid filter regular expression: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      throw new Error(`Invalid filter regular expression: ${errorMessage(error)}`);
     }
     const stateless = new RegExp(pattern, flags.replace(/[gy]/g, ""));
     return (line) => stateless.test(line);
@@ -320,8 +287,8 @@ export function sliceRetainedOutput(
     const retainedEnd = fromByte + retained.length;
     const lo = Math.max(bounds.scanStart, fromByte);
     const hi = Math.min(bounds.scanEnd, retainedEnd);
-    const start = lo <= fromByte ? 0 : alignStart(retained, lo - fromByte);
-    let end = hi >= retainedEnd ? retained.length : alignEnd(retained, hi - fromByte);
+    const start = lo <= fromByte ? 0 : alignUtf8Start(retained, lo - fromByte);
+    let end = hi >= retainedEnd ? retained.length : alignUtf8End(retained, hi - fromByte);
     if (end < start) end = start;
     const actualStart = fromByte + start;
     const actualEnd = fromByte + end;
@@ -345,8 +312,8 @@ export function sliceRetainedOutput(
   const retainedEnd = fromByte + retained.length;
   const lo = Math.max(window.start, fromByte);
   const hi = Math.min(window.end, retainedEnd);
-  const start = lo <= fromByte ? 0 : alignStart(retained, lo - fromByte);
-  let end = hi >= retainedEnd ? retained.length : alignEnd(retained, hi - fromByte);
+  const start = lo <= fromByte ? 0 : alignUtf8Start(retained, lo - fromByte);
+  let end = hi >= retainedEnd ? retained.length : alignUtf8End(retained, hi - fromByte);
   if (end < start) end = start;
   const endByte = fromByte + end;
   const truncated =
@@ -371,7 +338,8 @@ export function sliceOutputText(text: string, options: OutputReadOptions = {}): 
 export function utf8Tail(text: string, maxBytes: number): { text: string; fromByte: number } {
   const bytes = Buffer.from(text, "utf8");
   if (bytes.length <= maxBytes) return { text, fromByte: 0 };
-  const start = alignStart(bytes, bytes.length - maxBytes);
+  if (!(maxBytes > 0)) return { text: "", fromByte: bytes.length };
+  const start = alignUtf8Start(bytes, bytes.length - maxBytes);
   return { text: bytes.subarray(start).toString("utf8"), fromByte: start };
 }
 
@@ -408,7 +376,7 @@ export async function readOutputFileSlice(
         if (firstChunk) {
           firstChunk = false;
           if (pos > 0) {
-            const offset = alignStart(view, 0);
+            const offset = alignUtf8Start(view, 0);
             if (offset > 0) {
               actualStart += offset;
               view = view.subarray(offset);
@@ -434,8 +402,8 @@ export async function readOutputFileSlice(
     const buffer = Buffer.alloc(length);
     const { bytesRead } = await handle.read(buffer, 0, length, window.start);
     const data = buffer.subarray(0, bytesRead);
-    const start = alignStart(data, 0);
-    const end = Math.max(start, alignEnd(data, data.length));
+    const start = alignUtf8Start(data, 0);
+    const end = Math.max(start, alignUtf8End(data, data.length));
     const endByte = window.start + end;
     const truncated = (window.mode !== "head" && window.start > window.floor) || endByte < size;
     return {

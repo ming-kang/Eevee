@@ -1,5 +1,6 @@
 import { contentText, type Message, type ToolResultMessage } from "@earendil-works/pi-ai";
 import { CompactionEntry, type EntryRecord, SystemEntry } from "@earendil-works/pi-durable";
+import { isRecord } from "../../shared/guards.ts";
 
 export type FileOperations = {
   readonly read: Set<string>;
@@ -284,20 +285,16 @@ function addFileOp(fileOps: FileOperations, toolName: string, path: unknown): vo
   }
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function extractCodemodeCalls(details: unknown, fileOps: FileOperations): void {
-  if (!isPlainObject(details) || !Array.isArray(details.calls)) return;
+  if (!isRecord(details) || !Array.isArray(details.calls)) return;
   for (const call of details.calls) {
-    if (!isPlainObject(call) || typeof call.name !== "string" || typeof call.args !== "string") {
+    if (!isRecord(call) || typeof call.name !== "string" || typeof call.args !== "string") {
       continue;
     }
     // CodemodeNestedCall.args is compact JSON cut for display; a truncated tail is not valid JSON.
     try {
       const args: unknown = JSON.parse(call.args);
-      if (isPlainObject(args)) addFileOp(fileOps, call.name, args.path);
+      if (isRecord(args)) addFileOp(fileOps, call.name, args.path);
     } catch {}
   }
 }
@@ -322,7 +319,7 @@ export function extractFileOps(entries: readonly EntryRecord[]): FileOperations 
       if (message.role === "assistant" && !EXCLUDED_STOP_REASONS.has(message.stopReason)) {
         for (const block of message.content) {
           if (block.type !== "toolCall") continue;
-          if (isPlainObject(block.arguments)) addFileOp(fileOps, block.name, block.arguments.path);
+          if (isRecord(block.arguments)) addFileOp(fileOps, block.name, block.arguments.path);
         }
       } else if (message.role === "toolResult" && message.toolName === "codemode") {
         extractCodemodeCalls(message.details, fileOps);
