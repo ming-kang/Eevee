@@ -19,6 +19,7 @@ import {
 import { BrandLogo } from "./components/BrandLogo.tsx";
 import { ChatPage } from "./components/ChatPage.tsx";
 import { CommandPalette } from "./components/CommandPalette.tsx";
+import { CompactSidebarRail } from "./components/CompactSidebarRail.tsx";
 import { EvTooltip } from "./components/EvTooltip.tsx";
 import { LoginView } from "./components/LoginView.tsx";
 import { MemoryPage } from "./components/MemoryPage.tsx";
@@ -80,6 +81,8 @@ export function App() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectSummary | undefined>(undefined);
   const [deletingProject, setDeletingProject] = useState<ProjectSummary | undefined>(undefined);
+  const [flyoutOpen, setFlyoutOpen] = useState(false);
+  const flyoutTimerRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     const sync = () => {
@@ -104,6 +107,40 @@ export function App() {
   const activeWorkerId = surfaceRoute.name === "project" ? surfaceRoute.workerId : undefined;
   const withRail = surfaceRoute.name === "project" && activeProject !== undefined;
   const layout = useShellLayout(withRail);
+  const showCompactRail = !layout.sideDrawerMode && layout.sideCollapsed;
+
+  useEffect(() => {
+    if (!showCompactRail) {
+      setFlyoutOpen(false);
+    }
+  }, [showCompactRail]);
+
+  const scheduleCloseFlyout = useCallback(() => {
+    if (flyoutTimerRef.current !== undefined) {
+      window.clearTimeout(flyoutTimerRef.current);
+    }
+    flyoutTimerRef.current = window.setTimeout(() => {
+      flyoutTimerRef.current = undefined;
+      setFlyoutOpen(false);
+    }, 180);
+  }, []);
+
+  const openFlyout = useCallback(() => {
+    if (flyoutTimerRef.current !== undefined) {
+      window.clearTimeout(flyoutTimerRef.current);
+      flyoutTimerRef.current = undefined;
+    }
+    setFlyoutOpen(true);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (flyoutTimerRef.current !== undefined) {
+        window.clearTimeout(flyoutTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const routeKey =
     surfaceRoute.name === "project"
@@ -312,20 +349,22 @@ export function App() {
   return (
     <Tooltip.Provider delay={320} closeDelay={80}>
       <div className="ev-viewport">
-        <div className="ev-side-trigger-anchor">
-          <EvTooltip content={t("app.toggleSide", { shortcut: `${modLabel()} B` })} side="bottom">
-            <IconButton
-              aria-label={layout.sideVisible ? t("app.collapseSide") : t("app.expandSide")}
-              onClick={layout.toggleSide}
-            >
-              {layout.sideVisible ? (
-                <LeftPanelCloseIcon width={18} height={18} />
-              ) : (
-                <LeftPanelOpenIcon width={18} height={18} />
-              )}
-            </IconButton>
-          </EvTooltip>
-        </div>
+        {!showCompactRail && (
+          <div className="ev-side-trigger-anchor">
+            <EvTooltip content={t("app.toggleSide", { shortcut: `${modLabel()} B` })} side="bottom">
+              <IconButton
+                aria-label={layout.sideVisible ? t("app.collapseSide") : t("app.expandSide")}
+                onClick={layout.toggleSide}
+              >
+                {layout.sideVisible ? (
+                  <LeftPanelCloseIcon width={18} height={18} />
+                ) : (
+                  <LeftPanelOpenIcon width={18} height={18} />
+                )}
+              </IconButton>
+            </EvTooltip>
+          </div>
+        )}
 
         {withRail && (
           <div className="ev-rail-trigger-anchor">
@@ -357,11 +396,13 @@ export function App() {
           style={frameStyle}
         >
           <nav
-            className={`ev-sidebar${layout.drawer === "side" ? " drawer-open" : ""}`}
+            className={`ev-sidebar${layout.drawer === "side" ? " drawer-open" : ""}${showCompactRail ? " compact-rail" : ""}`}
             aria-label={t("app.mainNav")}
+            onMouseEnter={showCompactRail ? openFlyout : undefined}
+            onMouseLeave={showCompactRail ? scheduleCloseFlyout : undefined}
           >
-            <div className="ev-sidebar-inner">
-              <Sidebar
+            {showCompactRail ? (
+              <CompactSidebarRail
                 projects={projects}
                 boards={boards}
                 activeProject={activeProject}
@@ -370,18 +411,93 @@ export function App() {
                 themeScheme={theme.scheme}
                 onOpenOverview={openOverview}
                 onOpenProject={(pid, view, wid) => openProject(pid, view, wid)}
-                onOpenQuestion={openQuestion}
                 onNewProject={() => setCreateOpen(true)}
-                onEditProject={setEditingProject}
-                onDeleteProject={setDeletingProject}
                 onOpenPalette={() => setPaletteOpen(true)}
                 onOpenControl={() => openControl("general")}
                 onOpenShortcuts={() => setShortcutsOpen(true)}
                 onCycleTheme={theme.cycle}
+                onExpandSide={layout.toggleSide}
+              />
+            ) : (
+              <div className="ev-sidebar-inner">
+                <Sidebar
+                  projects={projects}
+                  boards={boards}
+                  activeProject={activeProject}
+                  route={surfaceRoute}
+                  themePreference={theme.preference}
+                  themeScheme={theme.scheme}
+                  onOpenOverview={openOverview}
+                  onOpenProject={(pid, view, wid) => openProject(pid, view, wid)}
+                  onOpenQuestion={openQuestion}
+                  onNewProject={() => setCreateOpen(true)}
+                  onEditProject={setEditingProject}
+                  onDeleteProject={setDeletingProject}
+                  onOpenPalette={() => setPaletteOpen(true)}
+                  onOpenControl={() => openControl("general")}
+                  onOpenShortcuts={() => setShortcutsOpen(true)}
+                  onCycleTheme={theme.cycle}
+                  onLogout={() => void logout()}
+                />
+              </div>
+            )}
+          </nav>
+
+          {showCompactRail && flyoutOpen && (
+            <nav
+              className="ev-sidebar-flyout"
+              aria-label={t("app.mainNav")}
+              onMouseEnter={openFlyout}
+              onMouseLeave={scheduleCloseFlyout}
+            >
+              <Sidebar
+                projects={projects}
+                boards={boards}
+                activeProject={activeProject}
+                route={surfaceRoute}
+                themePreference={theme.preference}
+                themeScheme={theme.scheme}
+                onOpenOverview={() => {
+                  setFlyoutOpen(false);
+                  openOverview();
+                }}
+                onOpenProject={(pid, view, wid) => {
+                  setFlyoutOpen(false);
+                  openProject(pid, view, wid);
+                }}
+                onOpenQuestion={(pid) => {
+                  setFlyoutOpen(false);
+                  openQuestion(pid);
+                }}
+                onNewProject={() => {
+                  setFlyoutOpen(false);
+                  setCreateOpen(true);
+                }}
+                onEditProject={(p) => {
+                  setFlyoutOpen(false);
+                  setEditingProject(p);
+                }}
+                onDeleteProject={(p) => {
+                  setFlyoutOpen(false);
+                  setDeletingProject(p);
+                }}
+                onOpenPalette={() => {
+                  setFlyoutOpen(false);
+                  setPaletteOpen(true);
+                }}
+                onOpenControl={() => {
+                  setFlyoutOpen(false);
+                  openControl("general");
+                }}
+                onOpenShortcuts={() => {
+                  setFlyoutOpen(false);
+                  setShortcutsOpen(true);
+                }}
+                onCycleTheme={theme.cycle}
                 onLogout={() => void logout()}
               />
-            </div>
-          </nav>
+            </nav>
+          )}
 
           <main className="ev-main">
             {surfaceRoute.name === "overview" || !activeProject ? (

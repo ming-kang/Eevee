@@ -3,6 +3,7 @@ import {
   ContentCopyIcon,
   ExpandLessIcon,
   ExpandMoreIcon,
+  VisibilityIcon,
   WrapTextIcon,
 } from "@earendil-works/elanor-icons-react";
 import {
@@ -21,6 +22,7 @@ import {
 import { common, createLowlight } from "lowlight";
 import { type MarkedToken, marked, type Token, type Tokens } from "marked";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { detectPreviewKind, type PreviewArtifact } from "../lib/artifact-preview.ts";
 import { useI18n } from "../lib/i18n.ts";
 import {
   classifyColumn,
@@ -30,6 +32,7 @@ import {
   tableToMarkdown,
 } from "../lib/markdown-utils.ts";
 import { showToast } from "../lib/toasts.ts";
+import { ArtifactPreviewDrawer } from "./ArtifactPreviewDrawer.tsx";
 import { EvTooltip } from "./EvTooltip.tsx";
 
 const lowlight = createLowlight(common);
@@ -216,10 +219,12 @@ function CodeBlock({
   code,
   lang,
   streaming,
+  onPreviewArtifact,
 }: {
   readonly code: string;
   readonly lang?: string;
   readonly streaming: boolean;
+  readonly onPreviewArtifact?: (artifact: PreviewArtifact) => void;
 }) {
   const { t } = useI18n();
   const [wrapped, setWrapped] = useState(false);
@@ -229,6 +234,7 @@ function CodeBlock({
   const isCollapsed = collapsible && !expanded;
   const highlighted = useMemo(() => highlightCode(code, lang), [code, lang]);
   const displayLang = lang?.trim().split(/\s+/)[0] || undefined;
+  const previewKind = !streaming ? detectPreviewKind(lang, code) : undefined;
 
   return (
     <div
@@ -240,6 +246,25 @@ function CodeBlock({
       <div className="ev-code-head">
         <span className="ev-code-lang ev-mono">{displayLang ?? "code"}</span>
         <div className="ev-code-actions">
+          {previewKind && onPreviewArtifact && (
+            <EvTooltip content={t("artifact.previewButton")} side="top">
+              <button
+                type="button"
+                className="ev-code-act-btn ev-code-preview-btn"
+                aria-label={t("artifact.previewButton")}
+                onClick={() =>
+                  onPreviewArtifact({
+                    kind: previewKind,
+                    code,
+                    language: displayLang ?? previewKind,
+                    title: `${(displayLang ?? previewKind).toUpperCase()} · ${t("artifact.previewTitle")}`,
+                  })
+                }
+              >
+                <VisibilityIcon width={14} height={14} />
+              </button>
+            </EvTooltip>
+          )}
           <EvTooltip content={t("transcript.codeWrap")} side="top">
             <button
               type="button"
@@ -428,6 +453,7 @@ function EditorialTable({
 type RenderBlocksContext = {
   readonly streaming: boolean;
   readonly headingPrefix?: string;
+  readonly onPreviewArtifact?: (artifact: PreviewArtifact) => void;
   headingCounter: number;
 };
 
@@ -461,7 +487,13 @@ function renderBlocks(
         return <Text key={key}>{token.tokens ? renderInline(token.tokens, key) : token.text}</Text>;
       case "code":
         return (
-          <CodeBlock key={key} code={token.text} lang={token.lang} streaming={ctx.streaming} />
+          <CodeBlock
+            key={key}
+            code={token.text}
+            lang={token.lang}
+            streaming={ctx.streaming}
+            onPreviewArtifact={ctx.onPreviewArtifact}
+          />
         );
       case "blockquote":
         return <Blockquote key={key}>{renderBlocks(token.tokens, key, ctx)}</Blockquote>;
@@ -510,18 +542,30 @@ export function Markdown({
   readonly headingPrefix?: string;
 }) {
   const { t } = useI18n();
+  const [previewArtifact, setPreviewArtifact] = useState<PreviewArtifact | undefined>(undefined);
   const tokens = useMemo(() => marked.lexer(text, { gfm: true, breaks: false }), [text]);
-  const ctx: RenderBlocksContext = { streaming, headingPrefix, headingCounter: 0 };
+  const ctx: RenderBlocksContext = {
+    streaming,
+    headingPrefix,
+    onPreviewArtifact: setPreviewArtifact,
+    headingCounter: 0,
+  };
   return (
-    <Prose className="eevee-markdown">
-      {renderBlocks(tokens, "md", ctx)}
-      {streaming && (
-        <span
-          className="eevee-streaming-dot"
-          role="status"
-          aria-label={t("transcript.generating")}
-        />
-      )}
-    </Prose>
+    <>
+      <Prose className="eevee-markdown">
+        {renderBlocks(tokens, "md", ctx)}
+        {streaming && (
+          <span
+            className="eevee-streaming-dot"
+            role="status"
+            aria-label={t("transcript.generating")}
+          />
+        )}
+      </Prose>
+      <ArtifactPreviewDrawer
+        artifact={previewArtifact}
+        onClose={() => setPreviewArtifact(undefined)}
+      />
+    </>
   );
 }
