@@ -1,4 +1,4 @@
-import { Button, TextArea } from "@earendil-works/elanor-react";
+import { Button } from "@earendil-works/elanor-react";
 import type { ProjectSummary } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
@@ -80,14 +80,14 @@ export function MemoryPage({
   });
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+    <section className="ev-page">
       <ProjectHeader
         project={project}
         view="memory"
         onSelectView={onSelectView}
         onEditProject={onEditProject}
         actions={
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div className="ev-inline-actions">
             {dirty && (
               <Button
                 hierarchy="tertiary"
@@ -111,16 +111,22 @@ export function MemoryPage({
         }
       />
 
-      <div className="ev-page-scroll">
-        <div className="ev-page-narrow">
-          {error && <div className="ev-error-banner">{error}</div>}
-          <TextArea
-            rows={20}
-            value={text}
-            onValueChange={(val) => setText(val)}
-            placeholder={t("memory.placeholder")}
-          />
+      {error && (
+        <div className="ev-page-banner">
+          <div className="ev-error-banner" role="alert">
+            {error}
+          </div>
         </div>
+      )}
+
+      <div className="ev-note-surface">
+        <textarea
+          className="ev-note-editor"
+          aria-label={t("project.tab.memory")}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          placeholder={t("memory.placeholder")}
+        />
       </div>
     </section>
   );

@@ -1,4 +1,4 @@
-import { Input, Switch, Text } from "@earendil-works/elanor-react";
+import { Input, Switch } from "@earendil-works/elanor-react";
 import { THINKING_LEVELS, type ThinkingLevel, type ThinkingLevelConfig } from "@eevee/protocol";
 import { useI18n } from "../../lib/i18n.ts";
 import { setThinkingRule } from "./provider-utils.ts";
@@ -6,13 +6,11 @@ import { setThinkingRule } from "./provider-utils.ts";
 export function ThinkingLevelsEditor({
   value,
   onChange,
-  reasoning,
   showInheritedBadges = false,
   disabled = false,
 }: {
   readonly value: ThinkingLevelConfig;
   readonly onChange: (value: ThinkingLevelConfig) => void;
-  readonly reasoning?: boolean;
   readonly showInheritedBadges?: boolean;
   readonly disabled?: boolean;
 }) {
@@ -83,9 +81,6 @@ export function ThinkingLevelsEditor({
           </div>
         );
       })}
-      {reasoning !== true && (
-        <Text className="ev-inline-hint">{t("thinking.reasoningDisabledHint")}</Text>
-      )}
     </div>
   );
 }

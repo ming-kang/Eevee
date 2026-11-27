@@ -1,9 +1,9 @@
-import { SearchIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Text } from "@earendil-works/elanor-react";
 import type { ProbedModel } from "@eevee/protocol";
 import type { ReactNode } from "react";
 import { formatTokens } from "../../lib/format.ts";
 import { useI18n } from "../../lib/i18n.ts";
+import { SearchField } from "../SearchField.tsx";
 import { filterProbedModels } from "./provider-utils.ts";
 
 export type ModelProbeSelectorProps = {
@@ -68,15 +68,14 @@ export function ModelProbeSelector({
   return (
     <div className="ev-probe-section">
       <div className="ev-probe-toolbar">
-        <div className="ev-probe-search">
-          <SearchIcon width={14} height={14} />
-          <input
-            className="ev-raw-input"
-            value={filter}
-            placeholder={resolvedFilterPlaceholder}
-            onChange={(event) => onFilterChange(event.target.value)}
-          />
-        </div>
+        <SearchField
+          size="compact"
+          className="ev-probe-search-field"
+          value={filter}
+          onChange={onFilterChange}
+          placeholder={resolvedFilterPlaceholder}
+          clearOnEscape
+        />
         {models.length > 0 && (
           <>
             <span className="eevee-badge ev-num">

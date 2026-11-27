@@ -112,7 +112,7 @@ export function WorkspacesField({
     <Field.Root>
       <Field.Label>{t("project.field.workspaces")}</Field.Label>
       <div className="ev-workspaces-field">
-        {value.length > 0 ? (
+        {value.length > 0 && (
           <div className="ev-workspaces-list">
             {value.map((dir) => (
               <div key={dir} className="ev-workspace-row">
@@ -132,8 +132,6 @@ export function WorkspacesField({
               </div>
             ))}
           </div>
-        ) : (
-          <div className="ev-workspaces-empty">{t("project.workspace.empty")}</div>
         )}
 
         <div className="ev-workspaces-controls" ref={inputWrapRef}>
@@ -173,7 +171,6 @@ export function WorkspacesField({
           </Button>
         </div>
 
-        <p className="ev-inline-hint">{t("project.field.workspacesHint")}</p>
         {notice && <p className="ev-inline-error">{notice}</p>}
       </div>
     </Field.Root>

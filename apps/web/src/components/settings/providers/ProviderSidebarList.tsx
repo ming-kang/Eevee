@@ -1,8 +1,8 @@
-import { SearchIcon } from "@earendil-works/elanor-icons-react";
 import { SegmentedControl, Text } from "@earendil-works/elanor-react";
 import type { ProviderSummary } from "@eevee/protocol";
 import { useEffect, useMemo, useRef } from "react";
 import { useI18n } from "../../../lib/i18n.ts";
+import { SearchField } from "../../SearchField.tsx";
 import { formatAuthMeta, sortProvidersForSidebar } from "../provider-utils.ts";
 
 export type ProviderCategoryFilter = "all" | "configured" | "custom" | "builtin";
@@ -55,15 +55,13 @@ export function ProviderSidebarList({
   return (
     <div className="ev-provider-list-pane">
       <div className="ev-provider-filter-stack">
-        <div className="ev-probe-search">
-          <SearchIcon width={14} height={14} />
-          <input
-            className="ev-raw-input"
-            value={filter}
-            placeholder={t("providers.sidebar.filterPlaceholder")}
-            onChange={(event) => onFilterChange(event.target.value)}
-          />
-        </div>
+        <SearchField
+          size="compact"
+          value={filter}
+          onChange={onFilterChange}
+          placeholder={t("providers.sidebar.filterPlaceholder")}
+          clearOnEscape
+        />
         <SegmentedControl.Root
           className="ev-provider-category-filter"
           density="compact"
@@ -108,28 +106,28 @@ export function ProviderSidebarList({
                 ref={provider.id === selectedId ? activeItemRef : undefined}
                 className="ev-provider-item"
                 data-active={provider.id === selectedId}
+                title={provider.id}
                 onClick={() => onSelect(provider.id)}
               >
-                <div className="ev-provider-item-head">
+                <div className="ev-provider-sidebar-head">
                   <span className="ev-dot" data-stage={provider.configured ? "done" : "idle"} />
-                  <strong className="ev-truncate">{provider.name}</strong>
-                  <span className="ev-mono ev-inline-muted ev-truncate">{provider.id}</span>
+                  <strong className="ev-truncate ev-flex-1">{provider.name}</strong>
+                  <span className="ev-inline-muted ev-num">{provider.modelCount}</span>
                 </div>
                 <div className="ev-provider-item-badges">
-                  <span className="eevee-badge" data-tone={isCustom ? "info" : "neutral"}>
-                    {isCustom ? t("providers.badge.custom") : t("providers.badge.builtin")}
+                  <span className="ev-provider-item-meta ev-truncate">
+                    {formatAuthMeta(provider, t)}
                   </span>
+                  {isCustom && (
+                    <span className="eevee-badge" data-tone="info">
+                      {t("providers.badge.custom")}
+                    </span>
+                  )}
                   {!isCustom && provider.hasConfigOverride && (
                     <span className="eevee-badge" data-tone="warning">
                       {t("providers.badge.overridden")}
                     </span>
                   )}
-                  <span className="ev-inline-muted ev-num">
-                    {t("providers.modelCount", { count: provider.modelCount })}
-                  </span>
-                </div>
-                <div className="ev-provider-item-meta ev-truncate">
-                  {formatAuthMeta(provider, t)}
                 </div>
               </button>
             );

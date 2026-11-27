@@ -85,6 +85,14 @@
   min-width: 0;
 }
 
+.ev-provider-sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  width: 100%;
+}
+
 .ev-provider-item-badges {
   display: flex;
   align-items: center;
@@ -625,9 +633,19 @@
 }
 
 .ev-catalog-search {
-  flex: 1 1 200px;
-  max-width: 280px;
-  min-width: 160px;
+  flex: 1 1 180px;
+  max-width: 260px;
+  min-width: 150px;
+}
+
+.ev-provider-model-search {
+  flex: 1 1 160px;
+  min-width: 150px;
+}
+
+.ev-probe-search-field {
+  flex: 1;
+  min-width: 180px;
 }
 
 .ev-probe-section {

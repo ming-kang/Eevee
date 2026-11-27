@@ -2,6 +2,8 @@ import { Separator } from "@earendil-works/elanor-react";
 import type { ModelInfo, ModelProfile } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { useI18n } from "../../lib/i18n.ts";
+import { showToast } from "../../lib/toasts.ts";
 import { useAbortableAsync } from "../../lib/useAbortableAsync.ts";
 import { invalidateEngineModelsCache } from "../../lib/useEngineSettings.ts";
 import { ModelCatalogSection } from "./models/ModelCatalogSection.tsx";
@@ -13,13 +15,13 @@ import {
 } from "./models/ModelProfilesSection.tsx";
 
 export function ModelsTab() {
+  const { t } = useI18n();
   const [allModels, setAllModels] = useState<ModelInfo[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const [profiles, setProfiles] = useState<IndexedProfile[]>([]);
   const [notes, setNotes] = useState("");
   const [savingProfiles, setSavingProfiles] = useState(false);
-  const [savedNotice, setSavedNotice] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
   const { run: runLoad } = useAbortableAsync();
@@ -65,25 +67,21 @@ export function ModelsTab() {
 
   const addProfile = () => {
     setProfiles((prev) => [...prev, createNextIndexedProfile(allModels, prev.length)]);
-    setSavedNotice(false);
   };
 
   const updateProfile = (uid: number, next: ModelProfile) => {
     setProfiles((prev) =>
       prev.map((item) => (item.uid === uid ? { ...item, profile: next } : item)),
     );
-    setSavedNotice(false);
   };
 
   const removeProfile = (uid: number) => {
     setProfiles((prev) => prev.filter((item) => item.uid !== uid));
-    setSavedNotice(false);
   };
 
   const saveProfiles = async () => {
     setSavingProfiles(true);
     setError(undefined);
-    setSavedNotice(false);
     try {
       const res = await api.putModelProfiles({
         profiles: profiles.map((item) => item.profile),
@@ -91,7 +89,7 @@ export function ModelsTab() {
       });
       setProfiles(wrapProfiles(res.profiles));
       setNotes(res.notes ?? "");
-      setSavedNotice(true);
+      showToast(t("common.saved"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -100,7 +98,7 @@ export function ModelsTab() {
   };
 
   return (
-    <div className="ev-settings-section" style={{ gap: 22 }}>
+    <div className="ev-settings-stack">
       {error && <div className="ev-error-banner">{error}</div>}
 
       <ModelProfilesSection
@@ -108,14 +106,10 @@ export function ModelsTab() {
         profiles={profiles}
         notes={notes}
         saving={savingProfiles}
-        savedNotice={savedNotice}
         onAddProfile={addProfile}
         onUpdateProfile={updateProfile}
         onRemoveProfile={removeProfile}
-        onNotesChange={(value) => {
-          setNotes(value);
-          setSavedNotice(false);
-        }}
+        onNotesChange={setNotes}
         onSave={() => void saveProfiles()}
       />
 

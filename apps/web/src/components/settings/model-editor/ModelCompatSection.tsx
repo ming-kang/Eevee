@@ -1,5 +1,5 @@
 import { ChevronRightIcon } from "@earendil-works/elanor-icons-react";
-import { Field, Input, Switch, Text, TextArea } from "@earendil-works/elanor-react";
+import { Field, Input, Switch, TextArea } from "@earendil-works/elanor-react";
 import type { CompatFieldInfo } from "@eevee/protocol";
 import { type Dispatch, useState } from "react";
 import { useI18n } from "../../../lib/i18n.ts";
@@ -11,31 +11,19 @@ import {
 } from "./state.ts";
 
 export type ModelCompatSectionProps = {
-  readonly effectiveApi: string;
   readonly compatFields: readonly CompatFieldInfo[];
   readonly draft: ModelEditorDraft;
   readonly dispatch: Dispatch<ModelEditorAction>;
 };
 
-export function ModelCompatSection({
-  effectiveApi,
-  compatFields,
-  draft,
-  dispatch,
-}: ModelCompatSectionProps) {
+export function ModelCompatSection({ compatFields, draft, dispatch }: ModelCompatSectionProps) {
   const { t } = useI18n();
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   return (
     <section className="ev-editor-section">
       <div className="ev-editor-section-title">{t("modelEditor.compat.title")}</div>
-      {compatFields.length === 0 ? (
-        <Text className="ev-inline-hint">
-          {effectiveApi
-            ? t("modelEditor.compat.emptyForApi", { api: effectiveApi })
-            : t("modelEditor.compat.selectApiFirst")}
-        </Text>
-      ) : (
+      {compatFields.length > 0 && (
         <div className="ev-compat-grid">
           {compatFields.map((field) => {
             const value = draft.compatValues[field.key];

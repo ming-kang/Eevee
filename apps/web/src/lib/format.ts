@@ -73,19 +73,6 @@ export function workerStatusLabel(status: string): string {
   }
 }
 
-export function workerStatusTone(status: string): "info" | "positive" | "warning" | "neutral" {
-  switch (status) {
-    case "running":
-      return "info";
-    case "idle":
-      return "positive";
-    case "queued":
-      return "warning";
-    default:
-      return "neutral";
-  }
-}
-
 export function isTaskActive(status: BackgroundTaskStatus): boolean {
   return isActiveTaskStatus(status);
 }

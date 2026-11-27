@@ -1,5 +1,5 @@
 import { CloseIcon, DownloadIcon, UploadIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Heading, IconButton, Text, TextArea } from "@earendil-works/elanor-react";
+import { Button, Heading, IconButton, TextArea } from "@earendil-works/elanor-react";
 import { useState } from "react";
 import { useI18n } from "../../../lib/i18n.ts";
 import { parseImportJson } from "./codec.ts";
@@ -88,11 +88,6 @@ export function McpJsonPanel({
         </div>
       </div>
       {error && <div className="ev-error-banner">{error}</div>}
-      <Text className="ev-inline-hint">
-        {t("mcp.json.hintPrefix")}
-        <span className="ev-mono">{'{ "mcpServers": { ... } }'}</span>
-        {t(isProject ? "mcp.json.hintSuffixProject" : "mcp.json.hintSuffixGlobal")}
-      </Text>
       <TextArea
         monospace
         rows={9}

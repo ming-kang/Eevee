@@ -4,19 +4,38 @@ import {
   RightPanelCloseIcon,
   RightPanelOpenIcon,
 } from "@earendil-works/elanor-icons-react";
-import { Button, Heading, IconButton } from "@earendil-works/elanor-react";
+import { Button, IconButton } from "@earendil-works/elanor-react";
 import type { ProjectId, ProjectSummary, WorkerId } from "@eevee/protocol";
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { BrandLogo } from "./components/BrandLogo.tsx";
 import { ChatPage } from "./components/ChatPage.tsx";
-import { CommandPalette, type PaletteItem } from "./components/CommandPalette.tsx";
+import { CommandPalette } from "./components/CommandPalette.tsx";
 import { LoginView } from "./components/LoginView.tsx";
 import { MemoryPage } from "./components/MemoryPage.tsx";
 import { OverviewPage } from "./components/OverviewPage.tsx";
-import { DeleteProjectModal, EditProjectModal } from "./components/ProjectDialogs.tsx";
 import { ProjectModal } from "./components/ProjectModal.tsx";
 import { RightRail } from "./components/RightRail.tsx";
 import { Sash } from "./components/Sash.tsx";
-import { SettingsView } from "./components/SettingsView.tsx";
+
+const SettingsView = lazy(() =>
+  import("./components/SettingsView.tsx").then((m) => ({ default: m.SettingsView })),
+);
+const EditProjectModal = lazy(() =>
+  import("./components/ProjectDialogs.tsx").then((m) => ({ default: m.EditProjectModal })),
+);
+const DeleteProjectModal = lazy(() =>
+  import("./components/ProjectDialogs.tsx").then((m) => ({ default: m.DeleteProjectModal })),
+);
+
 import { ShortcutSheet } from "./components/ShortcutSheet.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { ToastHost } from "./components/ToastHost.tsx";
@@ -24,6 +43,7 @@ import { UsagePage } from "./components/UsagePage.tsx";
 import { useProjectBoards } from "./lib/hooks.ts";
 import { useI18n } from "./lib/i18n.ts";
 import { useShellLayout } from "./lib/layout.ts";
+import { buildPaletteItems } from "./lib/palette-items.ts";
 import {
   navigate,
   type ProjectSubView,
@@ -135,7 +155,7 @@ export function App() {
     deletingProject !== undefined;
 
   useShortcutLayer({
-    id: "app-command-palette-toggle",
+    id: "app-global-shortcuts",
     active:
       authenticated &&
       !shortcutsOpen &&
@@ -144,9 +164,17 @@ export function App() {
       deletingProject === undefined,
     priority: SHORTCUT_PRIORITY.GLOBAL,
     onKeyDown: (event) => {
-      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") {
+      const mod = event.metaKey || event.ctrlKey;
+      if (mod && !event.altKey && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setPaletteOpen((prev) => !prev);
+        return true;
+      }
+      if (mod && !event.altKey && event.key === ",") {
+        event.preventDefault();
+        setPaletteOpen(false);
+        if (route.name === "control") closeControl();
+        else openControl("general");
         return true;
       }
       return false;
@@ -212,91 +240,47 @@ export function App() {
 
   const themeLabel = t(`sidebar.theme.${theme.preference}` as const);
 
-  const paletteItems = useMemo<PaletteItem[]>(() => {
-    const mod = modLabel();
-    const list: PaletteItem[] = [
-      {
-        id: "nav:overview",
-        group: t("palette.group.nav"),
-        label: t("palette.overview"),
-        run: openOverview,
-      },
-      {
-        id: "act:new-project",
-        group: t("palette.group.actions"),
-        label: t("palette.newProject"),
-        run: () => setCreateOpen(true),
-      },
-      {
-        id: "act:settings",
-        group: t("palette.group.actions"),
-        label: t("palette.openSettings"),
-        run: () => openControl("general"),
-      },
-      {
-        id: "act:theme",
-        group: t("palette.group.actions"),
-        label: t("palette.cycleTheme", { theme: themeLabel }),
-        run: theme.cycle,
-      },
-      {
-        id: "act:shortcuts",
-        group: t("palette.group.actions"),
-        label: t("palette.openShortcuts"),
-        keys: ["?"],
-        run: () => setShortcutsOpen(true),
-      },
-      {
-        id: "act:toggle-side",
-        group: t("palette.group.actions"),
-        label: t("palette.toggleSide"),
-        keys: [mod, "B"],
-        run: layout.toggleSide,
-      },
-    ];
-
-    for (const p of projects) {
-      const summary = deriveBoardSummary(boards[p.id]);
-      list.push({
-        id: `proj:${p.id}`,
-        group: t("palette.group.projects"),
-        label: p.title,
-        meta: p.id,
-        stage: summary.stage,
-        run: () => openProject(p.id, "chat"),
-      });
-      const b = boards[p.id];
-      for (const w of b?.workers ?? []) {
-        if (w.status === "closed") continue;
-        list.push({
-          id: `worker:${p.id}:${w.id}`,
-          group: t("palette.group.workers"),
-          label: `${w.id} · ${w.name}`,
-          meta: p.title,
-          stage: w.status === "running" ? "working" : w.status === "queued" ? "queued" : "idle",
-          run: () => openProject(p.id, "chat", w.id),
-        });
-      }
-    }
-    return list;
-  }, [
-    projects,
-    boards,
-    openOverview,
-    openControl,
-    openProject,
-    theme.cycle,
-    themeLabel,
-    layout,
-    t,
-  ]);
+  const paletteItems = useMemo(
+    () =>
+      buildPaletteItems({
+        projects,
+        boards,
+        activeProject,
+        themeLabel,
+        t,
+        onOpenOverview: openOverview,
+        onOpenProject: openProject,
+        onNewProject: () => setCreateOpen(true),
+        onOpenControl: openControl,
+        onCycleTheme: theme.cycle,
+        onOpenShortcuts: () => setShortcutsOpen(true),
+        onToggleSide: layout.toggleSide,
+        onToggleRail: layout.toggleRail,
+      }),
+    [
+      projects,
+      boards,
+      activeProject,
+      themeLabel,
+      t,
+      openOverview,
+      openProject,
+      openControl,
+      theme.cycle,
+      layout.toggleSide,
+      layout.toggleRail,
+    ],
+  );
 
   if (auth.kind === "loading") {
     return (
       <div className="ev-login-page">
-        <Heading level={2} size={5}>
-          {t("app.connecting")}
-        </Heading>
+        <div className="ev-connecting">
+          <div className="ev-landing-logo">
+            <BrandLogo size={22} />
+          </div>
+          <span className="ev-inline-muted">{t("app.connecting")}</span>
+        </div>
       </div>
     );
   }
@@ -402,6 +386,7 @@ export function App() {
               onRetryProjects={() => void projectsStore.reload()}
               onNewProject={() => setCreateOpen(true)}
               onOpenProject={(pid, wid) => openProject(pid, "chat", wid)}
+              onOpenQuestion={openQuestion}
             />
           ) : surfaceRoute.view === "memory" ? (
             <MemoryPage
@@ -433,13 +418,9 @@ export function App() {
             />
           )}
           {projectsStore.error && surfaceRoute.name === "project" && activeProject && (
-            <div style={{ padding: "8px 20px 12px" }}>
-              <div
-                className="ev-error-banner"
-                role="alert"
-                style={{ display: "flex", alignItems: "center", gap: 10 }}
-              >
-                <span style={{ flex: 1 }}>
+            <div className="ev-page-banner">
+              <div className="ev-error-banner ev-error-row" role="alert">
+                <span className="ev-flex-1">
                   {t("app.projectsRefreshError", { error: projectsStore.error })}
                 </span>
                 <Button
@@ -504,11 +485,13 @@ export function App() {
       />
 
       {route.name === "control" && (
-        <SettingsView
-          section={route.section}
-          onSelectSection={(sec) => openControl(sec)}
-          onClose={closeControl}
-        />
+        <Suspense fallback={null}>
+          <SettingsView
+            section={route.section}
+            onSelectSection={(sec) => openControl(sec)}
+            onClose={closeControl}
+          />
+        </Suspense>
       )}
 
       <CommandPalette
@@ -528,22 +511,30 @@ export function App() {
         }}
       />
 
-      <EditProjectModal
-        project={editingProject}
-        onClose={() => setEditingProject(undefined)}
-        onUpdated={projectsStore.upsertProject}
-      />
+      {editingProject && (
+        <Suspense fallback={null}>
+          <EditProjectModal
+            project={editingProject}
+            onClose={() => setEditingProject(undefined)}
+            onUpdated={projectsStore.upsertProject}
+          />
+        </Suspense>
+      )}
 
-      <DeleteProjectModal
-        project={deletingProject}
-        onClose={() => setDeletingProject(undefined)}
-        onDeleted={(id) => {
-          projectsStore.removeProject(id);
-          if (surfaceRoute.name === "project" && surfaceRoute.pid === id) {
-            navigate({ name: "overview" });
-          }
-        }}
-      />
+      {deletingProject && (
+        <Suspense fallback={null}>
+          <DeleteProjectModal
+            project={deletingProject}
+            onClose={() => setDeletingProject(undefined)}
+            onDeleted={(id) => {
+              projectsStore.removeProject(id);
+              if (surfaceRoute.name === "project" && surfaceRoute.pid === id) {
+                navigate({ name: "overview" });
+              }
+            }}
+          />
+        </Suspense>
+      )}
 
       <ToastHost />
     </div>

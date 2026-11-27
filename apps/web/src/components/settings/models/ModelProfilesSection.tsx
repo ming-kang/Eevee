@@ -15,7 +15,7 @@ import {
   type ThinkingLevel,
 } from "@eevee/protocol";
 import { useId, useMemo } from "react";
-import { t, useI18n } from "../../../lib/i18n.ts";
+import { useI18n } from "../../../lib/i18n.ts";
 import { SmokeTestResult } from "../SmokeTestResult.tsx";
 import { useModelSmokeTests } from "../useModelSmokeTests.ts";
 
@@ -43,7 +43,7 @@ export function createNextIndexedProfile(
         provider: first?.provider ?? "openai",
         modelId: first?.id ?? "gpt-4o",
       },
-      description: t("models.defaultProfileDescription"),
+      description: "",
     },
   };
 }
@@ -77,7 +77,6 @@ export type ModelProfilesSectionProps = {
   readonly profiles: readonly IndexedProfile[];
   readonly notes: string;
   readonly saving: boolean;
-  readonly savedNotice: boolean;
   readonly onAddProfile: () => void;
   readonly onUpdateProfile: (uid: number, next: ModelProfile) => void;
   readonly onRemoveProfile: (uid: number) => void;
@@ -90,7 +89,6 @@ export function ModelProfilesSection({
   profiles,
   notes,
   saving,
-  savedNotice,
   onAddProfile,
   onUpdateProfile,
   onRemoveProfile,
@@ -137,7 +135,7 @@ export function ModelProfilesSection({
         <Heading level={2} size={5}>
           {translate("models.profilesTitle")}
         </Heading>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="ev-inline-actions">
           <Button
             hierarchy="secondary"
             density="compact"
@@ -149,11 +147,6 @@ export function ModelProfilesSection({
           <Button hierarchy="primary" density="compact" pending={saving} onClick={onSave}>
             {translate("common.save")}
           </Button>
-          {savedNotice && (
-            <span className="eevee-badge" data-tone="positive">
-              {translate("common.saved")}
-            </span>
-          )}
         </div>
       </div>
 
@@ -294,6 +287,7 @@ export function ModelProfilesSection({
               <Input
                 type="text"
                 value={profile.description}
+                placeholder={translate("models.defaultProfileDescription")}
                 onValueChange={(value) => onUpdateProfile(uid, { ...profile, description: value })}
               />
             </Field.Root>
@@ -318,7 +312,7 @@ export function ModelProfilesSection({
         );
       })}
 
-      <Field.Root style={{ width: "100%" }}>
+      <Field.Root>
         <Field.Label>{translate("models.notesLabel")}</Field.Label>
         <TextArea
           rows={3}

@@ -11,12 +11,12 @@ import {
   KeyboardIcon,
   LightModeIcon,
   LogoutIcon,
+  SettingsIcon,
   SubdirectoryArrowRightIcon,
 } from "@earendil-works/elanor-icons-react";
 import { IconButton, Menu } from "@earendil-works/elanor-react";
 import type { BoardViewPayload, ProjectId, ProjectSummary, WorkerId } from "@eevee/protocol";
 import { useMemo, useState } from "react";
-import { workerStatusLabel } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
 import type { Route } from "../lib/router.ts";
 import { modLabel } from "../lib/shortcuts.ts";
@@ -118,7 +118,7 @@ export function Sidebar({
           <BrandLogo size={20} />
           <span>Eevee</span>
         </button>
-        <span style={{ flex: 1 }} />
+        <span className="ev-flex-1" />
         <button
           type="button"
           className="ev-kbd-pill"
@@ -244,9 +244,7 @@ export function Sidebar({
                 onClick={() => onOpenProject(activeProject.id, "chat")}
               >
                 <HubIcon width={15} height={15} className="ev-nav-row-icon" />
-                <span className="ev-truncate" style={{ flex: 1 }}>
-                  {t("sidebar.router")}
-                </span>
+                <span className="ev-truncate ev-flex-1">{t("sidebar.router")}</span>
               </button>
             </div>
 
@@ -299,16 +297,23 @@ export function Sidebar({
                         }
                         onClick={() => onOpenProject(activeProject.id, "chat", worker.id)}
                       >
-                        <div className="ev-worker-row-main">
-                          <span className="ev-truncate ev-worker-row-title">
-                            {ticket ? ticket.title : worker.name}
-                          </span>
-                          <span className="ev-truncate ev-worker-row-sub">
-                            <span className="ev-mono">{worker.id}</span>
-                            {" · "}
-                            {ticket ? worker.name : workerStatusLabel(worker.status)}
-                          </span>
-                        </div>
+                        {ticket ? (
+                          <div className="ev-worker-row-main">
+                            <span className="ev-truncate ev-worker-row-title">{ticket.title}</span>
+                            <span className="ev-truncate ev-worker-row-sub">
+                              <span className="ev-mono">{worker.id}</span>
+                              {" · "}
+                              {worker.name}
+                            </span>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="ev-truncate ev-worker-row-title ev-flex-1">
+                              {worker.name}
+                            </span>
+                            <span className="ev-mono ev-worker-row-id">{worker.id}</span>
+                          </>
+                        )}
                         <span className="ev-dot" data-stage={workerStage(worker)} />
                       </button>
                     </div>
@@ -345,15 +350,10 @@ export function Sidebar({
                               title={`${worker.name} (${worker.id})`}
                               onClick={() => onOpenProject(activeProject.id, "chat", worker.id)}
                             >
-                              <div className="ev-worker-row-main">
-                                <span className="ev-truncate ev-worker-row-title">
-                                  {worker.name}
-                                </span>
-                                <span className="ev-truncate ev-worker-row-sub ev-mono">
-                                  {worker.id}
-                                </span>
-                              </div>
-                              <span className="ev-dot" data-stage="done" />
+                              <span className="ev-truncate ev-worker-row-title ev-flex-1">
+                                {worker.name}
+                              </span>
+                              <span className="ev-mono ev-worker-row-id">{worker.id}</span>
                             </button>
                           </div>
                         );
@@ -379,7 +379,7 @@ export function Sidebar({
 
           <div className="ev-side-list">
             {projects.length === 0 ? (
-              <div className="ev-side-empty">{t("sidebar.noProjectsHint")}</div>
+              <div className="ev-side-empty">{t("sidebar.noProjects")}</div>
             ) : (
               projects.map((project) => {
                 const summary = deriveBoardSummary(boards[project.id]);
@@ -391,9 +391,7 @@ export function Sidebar({
                       title={project.workspaces.join(" · ")}
                       onClick={() => onOpenProject(project.id, "chat")}
                     >
-                      <span className="ev-truncate" style={{ flex: 1 }}>
-                        {project.title}
-                      </span>
+                      <span className="ev-truncate ev-flex-1">{project.title}</span>
                       {summary.stage !== "idle" && (
                         <span className="ev-dot" data-stage={summary.stage} />
                       )}
@@ -410,9 +408,11 @@ export function Sidebar({
         <button
           type="button"
           className="ev-nav-row-btn ev-side-footer-settings"
+          title={`${t("sidebar.settings")} (${modLabel()} ,)`}
           onClick={onOpenControl}
         >
-          {t("sidebar.settings")}
+          <SettingsIcon width={15} height={15} className="ev-nav-row-icon" />
+          <span className="ev-truncate">{t("sidebar.settings")}</span>
         </button>
         <IconButton
           aria-label={t("sidebar.shortcuts")}

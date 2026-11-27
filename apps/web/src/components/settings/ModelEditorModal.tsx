@@ -1,5 +1,5 @@
 import { ExperimentIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Modal, Text } from "@earendil-works/elanor-react";
+import { Button, Modal } from "@earendil-works/elanor-react";
 import type { CompatFieldInfo, ProviderDetail, ThinkingLevel } from "@eevee/protocol";
 import { type FormEvent, useReducer, useState } from "react";
 import { api } from "../../lib/api.ts";
@@ -122,21 +122,22 @@ export function ModelEditorModal({
                     dispatch={dispatch}
                   />
 
-                  <section className="ev-editor-section">
-                    <div className="ev-editor-section-title">
-                      {t("modelEditor.thinkingSection")}
-                    </div>
-                    <ThinkingLevelsEditor
-                      value={draft.thinkingLevels}
-                      onChange={(thinkingLevels) =>
-                        dispatch({ type: "patch", patch: { thinkingLevels } })
-                      }
-                      reasoning={draft.reasoning}
-                      showInheritedBadges={!isCustom}
-                    />
-                  </section>
+                  {draft.reasoning && (
+                    <section className="ev-editor-section">
+                      <div className="ev-editor-section-title">
+                        {t("modelEditor.thinkingSection")}
+                      </div>
+                      <ThinkingLevelsEditor
+                        value={draft.thinkingLevels}
+                        onChange={(thinkingLevels) =>
+                          dispatch({ type: "patch", patch: { thinkingLevels } })
+                        }
+                        showInheritedBadges={!isCustom}
+                      />
+                    </section>
+                  )}
 
-                  {isCustom && (
+                  {isCustom && !isCreate && (
                     <ModelBuiltinMatcher
                       providerId={target.providerId}
                       model={model}
@@ -147,18 +148,17 @@ export function ModelEditorModal({
                     />
                   )}
 
-                  <ModelCompatSection
-                    effectiveApi={effectiveApi}
-                    compatFields={compatFields}
-                    draft={draft}
-                    dispatch={dispatch}
-                  />
+                  {effectiveApi && (
+                    <ModelCompatSection
+                      compatFields={compatFields}
+                      draft={draft}
+                      dispatch={dispatch}
+                    />
+                  )}
 
-                  <section className="ev-editor-section">
-                    <div className="ev-editor-section-title">{t("modelEditor.smokeSection")}</div>
-                    {!model ? (
-                      <Text className="ev-inline-hint">{t("modelEditor.smokeSaveFirstHint")}</Text>
-                    ) : (
+                  {model && (
+                    <section className="ev-editor-section">
+                      <div className="ev-editor-section-title">{t("modelEditor.smokeSection")}</div>
                       <div className="ev-smoke-controls">
                         <select
                           className="ev-select"
@@ -194,10 +194,10 @@ export function ModelEditorModal({
                           {t("modelEditor.smokeTestButton")}
                         </Button>
                       </div>
-                    )}
-                    {smoke?.error && <div className="ev-error-banner">{smoke.error}</div>}
-                    {smoke?.result && <SmokeTestResult result={smoke.result} />}
-                  </section>
+                      {smoke?.error && <div className="ev-error-banner">{smoke.error}</div>}
+                      {smoke?.result && <SmokeTestResult result={smoke.result} />}
+                    </section>
+                  )}
                 </div>
               </Modal.Body>
               <Modal.Actions className="ev-editor-actions">

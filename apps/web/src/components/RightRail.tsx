@@ -136,10 +136,12 @@ export function RightRail({
                           <div className="ev-truncate ev-rail-item-title">{ticket.title}</div>
                           <div className="ev-rail-ticket-meta">
                             <span className="ev-chip-id">{ticket.id}</span>
-                            <span className="ev-truncate ev-rail-item-sub">
-                              <span className="ev-mono">{ticket.workerId}</span>
-                              {owner ? ` · ${owner.name}` : ""}
-                            </span>
+                            {!filterWorkerId && (
+                              <span className="ev-truncate ev-rail-item-sub">
+                                <span className="ev-mono">{ticket.workerId}</span>
+                                {owner ? ` · ${owner.name}` : ""}
+                              </span>
+                            )}
                           </div>
                           {ticket.note && (
                             <div className="ev-truncate ev-rail-ticket-note" title={ticket.note}>
@@ -186,9 +188,14 @@ export function RightRail({
                             <div className="ev-rail-ticket-meta">
                               <span className="ev-chip-id">{ticket.id}</span>
                               <span className="ev-truncate ev-rail-item-sub-sm">
-                                <span className="ev-mono">{ticket.workerId}</span>
-                                {owner ? ` · ${owner.name}` : ""}
-                                {` · ${ticket.status}`}
+                                {!filterWorkerId && (
+                                  <>
+                                    <span className="ev-mono">{ticket.workerId}</span>
+                                    {owner ? ` · ${owner.name}` : ""}
+                                    {" · "}
+                                  </>
+                                )}
+                                {ticket.status}
                               </span>
                             </div>
                             {ticket.note && (

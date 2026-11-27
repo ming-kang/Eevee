@@ -148,9 +148,12 @@ export function EditProjectModal({
                   {t("project.edit.tab.general")}
                 </SegmentedControl.Item>
                 <SegmentedControl.Item value="tools">
-                  {hasToolOverrides
-                    ? t("project.edit.tab.toolsOverridden")
-                    : t("project.edit.tab.tools")}
+                  <span className="ev-tab-with-dot">
+                    {t("project.edit.tab.tools")}
+                    {hasToolOverrides && (
+                      <span className="ev-tool-override-dot" aria-hidden="true" />
+                    )}
+                  </span>
                 </SegmentedControl.Item>
                 <SegmentedControl.Item value="skills">
                   {t("project.edit.tab.skills")}
@@ -197,7 +200,7 @@ export function EditProjectModal({
                   ) : (
                     <div className="ev-form-stack">
                       {globalStatus !== "ready" && (
-                        <div className="ev-tool-group-hint">
+                        <div className="ev-inline-hint">
                           {globalStatus === "loading"
                             ? t("project.edit.loadingGlobal")
                             : t("project.edit.globalUnavailable")}
@@ -237,9 +240,6 @@ export function EditProjectModal({
                 </>
               ) : (
                 <>
-                  <span className="ev-project-edit-note">
-                    {draft.dirty ? t("project.edit.unsavedNote") : t("project.edit.instantNote")}
-                  </span>
                   {draft.dirty && (
                     <Button
                       type="button"

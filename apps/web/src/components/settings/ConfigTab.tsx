@@ -1,4 +1,4 @@
-import { DownloadIcon, UploadIcon } from "@earendil-works/elanor-icons-react";
+import { CodeIcon, DownloadIcon, UploadIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Field, Heading, Input, Separator, TextArea } from "@earendil-works/elanor-react";
 import {
   ConfigBundleSchema,
@@ -10,6 +10,8 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api.ts";
 import { useI18n } from "../../lib/i18n.ts";
+import { SHORTCUT_PRIORITY, useShortcutLayer } from "../../lib/shortcut-stack.ts";
+import { showToast } from "../../lib/toasts.ts";
 import { useAbortableAsync } from "../../lib/useAbortableAsync.ts";
 import {
   refreshEngineSettingsAndModels,
@@ -83,18 +85,16 @@ export function ConfigTab() {
   const { availableModels, refresh: refreshSharedModels } = useEngineSettingsAndModels(true);
   const [form, setForm] = useState<ConfigFormState>(INITIAL_FORM_STATE);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
 
+  const [transferOpen, setTransferOpen] = useState(false);
   const [bundleJson, setBundleJson] = useState("");
   const [importing, setImporting] = useState(false);
-  const [notice, setNotice] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
 
   const { run: runLoad } = useAbortableAsync();
 
   const patchForm = (patch: Partial<ConfigFormState>) => {
     setForm((prev) => ({ ...prev, ...patch }));
-    setSaved(false);
   };
 
   const load = useCallback(async () => {
@@ -113,28 +113,42 @@ export function ConfigTab() {
     void load();
   }, [load]);
 
-  const saveSettings = async () => {
+  const saveSettings = useCallback(async () => {
+    if (saving) return;
     setSaving(true);
-    setSaved(false);
     setError(undefined);
     try {
       const updated = await api.putSettings(buildEngineSettingsFromForm(form));
       setCachedEngineSettings(updated);
-      setSaved(true);
+      showToast(t("common.saved"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
-  };
+  }, [form, saving, t]);
+
+  useShortcutLayer({
+    id: "config-tab-save",
+    active: true,
+    priority: SHORTCUT_PRIORITY.OVERLAY,
+    onKeyDown: (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void saveSettings();
+        return true;
+      }
+      return false;
+    },
+  });
 
   const handleExport = async () => {
     setError(undefined);
-    setNotice(undefined);
+    setTransferOpen(true);
     try {
       const bundle = await api.exportConfig();
       setBundleJson(JSON.stringify(bundle, null, 2));
-      setNotice(t("config.exportedNotice"));
+      showToast(t("config.exportedNotice"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -143,13 +157,13 @@ export function ConfigTab() {
   const handleImport = async () => {
     setImporting(true);
     setError(undefined);
-    setNotice(undefined);
     try {
       const parsed = parseWithSchema(ConfigBundleSchema, JSON.parse(bundleJson), "ConfigBundle");
       await api.importConfig(parsed);
       await load();
       await refreshEngineSettingsAndModels(true);
-      setNotice(t("config.importedNotice"));
+      setTransferOpen(false);
+      showToast(t("config.importedNotice"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -158,93 +172,148 @@ export function ConfigTab() {
   };
 
   return (
-    <div className="ev-settings-section" style={{ gap: 22 }}>
-      {error && <div className="ev-error-banner">{error}</div>}
-      {notice && <div className="ev-info-banner">{notice}</div>}
-
-      <div className="ev-settings-section">
+    <div className="ev-settings-stack ev-settings-narrow">
+      <div className="ev-settings-head">
         <Heading level={2} size={5}>
           {t("config.runPolicyTitle")}
         </Heading>
+        <div className="ev-inline-actions">
+          <Button
+            hierarchy="secondary"
+            density="compact"
+            iconStart={<CodeIcon width={15} height={15} />}
+            onClick={() => setTransferOpen((prev) => !prev)}
+          >
+            {t("config.transferTitle")}
+          </Button>
+          <Button
+            hierarchy="primary"
+            density="compact"
+            pending={saving}
+            onClick={() => void saveSettings()}
+          >
+            {t("common.save")}
+          </Button>
+        </div>
+      </div>
+
+      {error && <div className="ev-error-banner">{error}</div>}
+
+      {transferOpen && (
         <div className="ev-settings-card">
-          <div className="ev-settings-grid-2">
-            <Field.Root>
-              <Field.Label>{t("config.maxActiveWorkers")}</Field.Label>
-              <Input
-                type="text"
-                value={form.maxActiveWorkers}
-                onValueChange={(maxActiveWorkers) => patchForm({ maxActiveWorkers })}
-              />
-            </Field.Root>
-            <Field.Root>
-              <Field.Label>{t("config.backgroundAfterMs")}</Field.Label>
-              <Input
-                type="text"
-                value={form.backgroundAfterMs}
-                onValueChange={(backgroundAfterMs) => patchForm({ backgroundAfterMs })}
-              />
-            </Field.Root>
-            <Field.Root>
-              <Field.Label>{t("config.routerContextTokens")}</Field.Label>
-              <Input
-                type="text"
-                value={form.routerContextTokens}
-                onValueChange={(routerContextTokens) => patchForm({ routerContextTokens })}
-              />
-            </Field.Root>
-            <Field.Root>
-              <Field.Label>{t("config.idleHibernateMs")}</Field.Label>
-              <Input
-                type="text"
-                value={form.idleHibernateMs}
-                onValueChange={(idleHibernateMs) => patchForm({ idleHibernateMs })}
-              />
-            </Field.Root>
+          <div className="ev-settings-head">
+            <Heading level={3} size={6}>
+              {t("config.transferTitle")}
+            </Heading>
+            <div className="ev-inline-actions">
+              <Button
+                hierarchy="secondary"
+                density="compact"
+                iconStart={<DownloadIcon width={15} height={15} />}
+                onClick={() => void handleExport()}
+              >
+                {t("config.export")}
+              </Button>
+              <Button
+                hierarchy="primary"
+                density="compact"
+                iconStart={<UploadIcon width={15} height={15} />}
+                disabled={bundleJson.trim().length === 0}
+                pending={importing}
+                onClick={() => void handleImport()}
+              >
+                {t("config.import")}
+              </Button>
+            </div>
           </div>
+          <TextArea
+            monospace
+            rows={10}
+            value={bundleJson}
+            onValueChange={setBundleJson}
+            placeholder="ConfigBundle JSON"
+          />
+        </div>
+      )}
 
-          <Separator />
+      <div className="ev-settings-card">
+        <div className="ev-settings-grid-2">
+          <Field.Root>
+            <Field.Label>{t("config.maxActiveWorkers")}</Field.Label>
+            <Input
+              type="text"
+              value={form.maxActiveWorkers}
+              onValueChange={(maxActiveWorkers) => patchForm({ maxActiveWorkers })}
+            />
+          </Field.Root>
+          <Field.Root>
+            <Field.Label>{t("config.backgroundAfterMs")}</Field.Label>
+            <Input
+              type="text"
+              value={form.backgroundAfterMs}
+              onValueChange={(backgroundAfterMs) => patchForm({ backgroundAfterMs })}
+            />
+          </Field.Root>
+          <Field.Root>
+            <Field.Label>{t("config.routerContextTokens")}</Field.Label>
+            <Input
+              type="text"
+              value={form.routerContextTokens}
+              onValueChange={(routerContextTokens) => patchForm({ routerContextTokens })}
+            />
+          </Field.Root>
+          <Field.Root>
+            <Field.Label>{t("config.idleHibernateMs")}</Field.Label>
+            <Input
+              type="text"
+              value={form.idleHibernateMs}
+              onValueChange={(idleHibernateMs) => patchForm({ idleHibernateMs })}
+            />
+          </Field.Root>
+        </div>
 
-          <div className="ev-settings-grid-3">
-            <Field.Root>
-              <Field.Label>{t("config.routerModel")}</Field.Label>
-              <ModelChoiceMenu
-                value={form.routerModel}
-                models={availableModels}
-                placeholder={t("modelMenu.choose")}
-                variant="field"
-                ariaLabel={t("config.routerModel")}
-                onOpen={() => void refreshSharedModels(false)}
-                onChange={(routerModel) => patchForm({ routerModel })}
-              />
-            </Field.Root>
-            <Field.Root>
-              <Field.Label>{t("config.workerModel")}</Field.Label>
-              <ModelChoiceMenu
-                value={form.workerModel}
-                models={availableModels}
-                placeholder={t("modelMenu.followRouter")}
-                clearLabel={t("modelMenu.followRouter")}
-                variant="field"
-                ariaLabel={t("config.workerModel")}
-                onOpen={() => void refreshSharedModels(false)}
-                onChange={(workerModel) => patchForm({ workerModel })}
-              />
-            </Field.Root>
-            <Field.Root>
-              <Field.Label>{t("config.dreamerModel")}</Field.Label>
-              <ModelChoiceMenu
-                value={form.dreamerModel}
-                models={availableModels}
-                placeholder={t("modelMenu.disabled")}
-                clearLabel={t("modelMenu.disabled")}
-                variant="field"
-                align="end"
-                ariaLabel={t("config.dreamerModel")}
-                onOpen={() => void refreshSharedModels(false)}
-                onChange={(dreamerModel) => patchForm({ dreamerModel })}
-              />
-            </Field.Root>
-          </div>
+        <Separator />
+
+        <div className="ev-settings-grid-3">
+          <Field.Root>
+            <Field.Label>{t("config.routerModel")}</Field.Label>
+            <ModelChoiceMenu
+              value={form.routerModel}
+              models={availableModels}
+              placeholder={t("modelMenu.choose")}
+              variant="field"
+              ariaLabel={t("config.routerModel")}
+              onOpen={() => void refreshSharedModels(false)}
+              onChange={(routerModel) => patchForm({ routerModel })}
+            />
+          </Field.Root>
+          <Field.Root>
+            <Field.Label>{t("config.workerModel")}</Field.Label>
+            <ModelChoiceMenu
+              value={form.workerModel}
+              models={availableModels}
+              placeholder={t("modelMenu.followRouter")}
+              clearLabel={t("modelMenu.followRouter")}
+              variant="field"
+              ariaLabel={t("config.workerModel")}
+              onOpen={() => void refreshSharedModels(false)}
+              onChange={(workerModel) => patchForm({ workerModel })}
+            />
+          </Field.Root>
+          <Field.Root>
+            <Field.Label>{t("config.dreamerModel")}</Field.Label>
+            <ModelChoiceMenu
+              value={form.dreamerModel}
+              models={availableModels}
+              placeholder={t("modelMenu.disabled")}
+              clearLabel={t("modelMenu.disabled")}
+              variant="field"
+              align="end"
+              ariaLabel={t("config.dreamerModel")}
+              onOpen={() => void refreshSharedModels(false)}
+              onChange={(dreamerModel) => patchForm({ dreamerModel })}
+            />
+          </Field.Root>
         </div>
       </div>
 
@@ -260,60 +329,7 @@ export function ConfigTab() {
             inlineBudget={form.inlineBudget}
             onInlineBudgetChange={(inlineBudget) => patchForm({ inlineBudget })}
           />
-          <Separator />
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Button
-              hierarchy="primary"
-              density="compact"
-              pending={saving}
-              onClick={() => void saveSettings()}
-            >
-              {t("common.save")}
-            </Button>
-            {saved && (
-              <span className="eevee-badge" data-tone="positive">
-                {t("common.saved")}
-              </span>
-            )}
-          </div>
         </div>
-      </div>
-
-      <Separator />
-
-      <div className="ev-settings-section">
-        <div className="ev-settings-head">
-          <Heading level={2} size={5}>
-            {t("config.transferTitle")}
-          </Heading>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Button
-              hierarchy="secondary"
-              density="compact"
-              iconStart={<DownloadIcon width={15} height={15} />}
-              onClick={() => void handleExport()}
-            >
-              {t("config.export")}
-            </Button>
-            <Button
-              hierarchy="primary"
-              density="compact"
-              iconStart={<UploadIcon width={15} height={15} />}
-              disabled={bundleJson.trim().length === 0}
-              pending={importing}
-              onClick={() => void handleImport()}
-            >
-              {t("config.import")}
-            </Button>
-          </div>
-        </div>
-        <TextArea
-          monospace
-          rows={10}
-          value={bundleJson}
-          onValueChange={setBundleJson}
-          placeholder="ConfigBundle JSON"
-        />
       </div>
     </div>
   );

@@ -1,9 +1,10 @@
 import { RefreshIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Heading, Input, Table } from "@earendil-works/elanor-react";
+import { Button, Heading, SegmentedControl, Table } from "@earendil-works/elanor-react";
 import type { ModelInfo } from "@eevee/protocol";
 import { useState } from "react";
 import { formatTokens } from "../../../lib/format.ts";
 import { useI18n } from "../../../lib/i18n.ts";
+import { SearchField } from "../../SearchField.tsx";
 
 const DISPLAY_LIMIT = 100;
 
@@ -19,11 +20,11 @@ export function ModelCatalogSection({
   onRefresh,
 }: ModelCatalogSectionProps) {
   const { t } = useI18n();
-  const [onlyAvailable, setOnlyAvailable] = useState(true);
+  const [scope, setScope] = useState<"available" | "all">("available");
   const [filter, setFilter] = useState("");
   const [showAllModels, setShowAllModels] = useState(false);
 
-  const scopedModels = onlyAvailable ? allModels.filter((m) => m.available) : allModels;
+  const scopedModels = scope === "available" ? allModels.filter((m) => m.available) : allModels;
   const visibleModels = scopedModels.filter((m) => {
     const q = filter.trim().toLowerCase();
     if (!q) return true;
@@ -39,21 +40,27 @@ export function ModelCatalogSection({
           <span className="ev-num ev-heading-count">{visibleModels.length}</span>
         </Heading>
         <div className="ev-catalog-toolbar">
-          <div className="ev-catalog-search">
-            <Input
-              type="text"
-              value={filter}
-              onValueChange={setFilter}
-              placeholder={t("models.filterPlaceholder")}
-            />
-          </div>
-          <Button
-            hierarchy="secondary"
+          <SearchField
+            size="compact"
+            className="ev-catalog-search"
+            value={filter}
+            onChange={setFilter}
+            placeholder={t("models.filterPlaceholder")}
+            clearOnEscape
+          />
+          <SegmentedControl.Root
             density="compact"
-            onClick={() => setOnlyAvailable((prev) => !prev)}
+            value={[scope]}
+            onValueChange={(vals) => {
+              const next = vals[0];
+              if (next === "available" || next === "all") setScope(next);
+            }}
           >
-            {t(onlyAvailable ? "models.onlyAvailable" : "models.all")}
-          </Button>
+            <SegmentedControl.Item value="available">
+              {t("models.onlyAvailable")}
+            </SegmentedControl.Item>
+            <SegmentedControl.Item value="all">{t("models.all")}</SegmentedControl.Item>
+          </SegmentedControl.Root>
           <Button
             hierarchy="secondary"
             density="compact"
@@ -80,11 +87,8 @@ export function ModelCatalogSection({
           <Table.Body>
             {visibleModels.length === 0 ? (
               <Table.Row>
-                <Table.Cell
-                  colSpan={5}
-                  style={{ color: "var(--ev-fg-subtle)", textAlign: "center", paddingBlock: 24 }}
-                >
-                  {t(onlyAvailable ? "models.emptyAvailable" : "models.emptyMatch")}
+                <Table.Cell colSpan={5} className="ev-table-empty">
+                  {t(scope === "available" ? "models.emptyAvailable" : "models.emptyMatch")}
                 </Table.Cell>
               </Table.Row>
             ) : (
@@ -92,13 +96,10 @@ export function ModelCatalogSection({
                 <Table.Row key={`${model.provider}/${model.id}`}>
                   <Table.Cell>
                     <div className="ev-model-cell">
-                      <span className="ev-mono">
-                        {model.provider}/{model.id}
-                      </span>
-                      {model.name !== model.id && (
-                        <span className="ev-inline-muted">{model.name}</span>
-                      )}
                       <div className="ev-model-badges">
+                        <span className="ev-mono">
+                          {model.provider}/{model.id}
+                        </span>
                         {model.isCustom && (
                           <span className="eevee-badge" data-tone="info">
                             {t("models.badge.custom")}
@@ -114,6 +115,9 @@ export function ModelCatalogSection({
                         )}
                         {model.reasoning && <span className="eevee-badge">reasoning</span>}
                       </div>
+                      {model.name !== model.id && (
+                        <span className="ev-inline-muted">{model.name}</span>
+                      )}
                     </div>
                   </Table.Cell>
                   <Table.Cell>
@@ -138,7 +142,7 @@ export function ModelCatalogSection({
                   <Table.Cell align="end">
                     <span
                       className="eevee-badge"
-                      data-tone={model.available ? "positive" : "neutral"}
+                      data-tone={model.available ? "positive" : undefined}
                     >
                       {t(
                         model.available
@@ -162,8 +166,7 @@ export function ModelCatalogSection({
               : t("models.showingLimited", { limit: DISPLAY_LIMIT, count: visibleModels.length })}
           </span>
           <Button
-            type="button"
-            hierarchy="secondary"
+            hierarchy="tertiary"
             density="compact"
             onClick={() => setShowAllModels((prev) => !prev)}
           >

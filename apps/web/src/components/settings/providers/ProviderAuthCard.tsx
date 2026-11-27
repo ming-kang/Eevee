@@ -169,20 +169,19 @@ export function ProviderAuthCard({
           <Heading level={3} size={5}>
             {detail.name}
           </Heading>
-          <span className="ev-mono ev-inline-muted">{detail.id}</span>
-          <span className="eevee-badge" data-tone={detail.kind === "custom" ? "info" : "neutral"}>
-            {detail.kind === "custom" ? t("providers.badge.custom") : t("providers.badge.builtin")}
-          </span>
+          {detail.name.toLowerCase() !== detail.id.toLowerCase() && (
+            <span className="ev-mono ev-inline-muted">{detail.id}</span>
+          )}
+          {detail.kind === "custom" && (
+            <span className="eevee-badge" data-tone="info">
+              {t("providers.badge.custom")}
+            </span>
+          )}
           {detail.kind !== "custom" && detail.hasConfigOverride && (
             <span className="eevee-badge" data-tone="warning">
               {t("providers.badge.overridden")}
             </span>
           )}
-          <span className="eevee-badge" data-tone={detail.configured ? "positive" : "neutral"}>
-            {detail.configured
-              ? t("providers.badge.configured")
-              : t("providers.badge.notConfigured")}
-          </span>
         </div>
         <div className="ev-inline-actions">
           {detail.kind === "custom" && (
@@ -221,10 +220,7 @@ export function ProviderAuthCard({
       </div>
 
       <div className="ev-auth-summary">
-        <span>
-          {t("providers.auth.statusLabel")}
-          <strong>{formatAuthMeta(detail, t)}</strong>
-        </span>
+        <span>{formatAuthMeta(detail, t)}</span>
         {detail.authExpiresAt !== undefined && (
           <span className="ev-inline-muted ev-num">
             {t("providers.auth.expiresAtLabel")}

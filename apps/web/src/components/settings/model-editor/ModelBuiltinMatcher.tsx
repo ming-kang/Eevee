@@ -99,7 +99,7 @@ export function ModelBuiltinMatcher({
           {matchOpen ? t("modelEditor.matcher.collapse") : t("modelEditor.matcher.expand")}
         </Button>
       </div>
-      {isCreate && <Text className="ev-inline-hint">{t("modelEditor.matcher.saveFirstHint")}</Text>}
+
       {matchOpen && !isCreate && (
         <div className="ev-match-panel">
           <div className="ev-match-search">

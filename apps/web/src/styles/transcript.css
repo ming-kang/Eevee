@@ -35,6 +35,23 @@
   margin-bottom: 6px;
 }
 
+.ev-landing-title {
+  margin: 0;
+}
+
+.ev-landing-workspaces {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.ev-ws-chip-icon {
+  flex-shrink: 0;
+  color: var(--ev-fg-subtle);
+}
+
 .ev-ws-chip {
   display: inline-flex;
   align-items: center;
@@ -555,9 +572,9 @@
   padding: 12px 12px 10px 14px;
 }
 
-.ev-composer-form.compact {
-  padding: 9px 10px 8px 12px;
-  gap: 6px;
+.ev-composer-bar-group {
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .ev-composer-textarea {
@@ -669,10 +686,40 @@
   overflow-y: auto;
 }
 
+.ev-qcard-tabs {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.ev-qcard-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .ev-qcard-question {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   font-size: 0.9375rem;
   font-weight: 500;
   line-height: 1.5;
+}
+
+.ev-qcard-num {
+  color: var(--ev-fg-subtle);
+  flex: none;
+}
+
+.ev-qopt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ev-qopt-other {
+  color: var(--ev-fg-muted);
+  padding-left: 34px;
 }
 
 .ev-qopt {
@@ -768,10 +815,39 @@
   font-size: 0.8125rem;
 }
 
+.ev-qstrip-btn {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+}
+
+.ev-qstrip-options {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  flex-wrap: wrap;
+  padding-bottom: 2px;
+}
+
 .ev-queued-dock-title {
   font-size: 0.75rem;
   color: var(--ev-fg-subtle);
   font-weight: 500;
+}
+
+.ev-queued-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .ev-composer-form.dragging {

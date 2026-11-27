@@ -23,7 +23,6 @@ export type TranscriptViewProps = {
   readonly onOpenWorker?: (workerId: WorkerId) => void;
   readonly findOpen?: boolean;
   readonly onCloseFind?: () => void;
-  readonly compact?: boolean;
 };
 
 export function TranscriptView({
@@ -36,7 +35,6 @@ export function TranscriptView({
   onOpenWorker,
   findOpen = false,
   onCloseFind,
-  compact = false,
 }: TranscriptViewProps) {
   const { t } = useI18n();
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -127,16 +125,9 @@ export function TranscriptView({
         />
       )}
 
-      {!compact && (
-        <ConversationOutline entries={outline} activeIndex={activeOutline} onPick={jumpToKey} />
-      )}
+      <ConversationOutline entries={outline} activeIndex={activeOutline} onPick={jumpToKey} />
 
-      <div
-        ref={scrollRef}
-        className="ev-transcript-scroll"
-        style={compact ? { padding: "14px 16px 24px" } : undefined}
-        onScroll={handleScroll}
-      >
+      <div ref={scrollRef} className="ev-transcript-scroll" onScroll={handleScroll}>
         <div className="ev-transcript-inner">
           {hasMoreOlder && (
             <div style={{ display: "flex", justifyContent: "center" }}>

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
 import { formatCost, formatTokens } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
+import { useAbortableAsync } from "../lib/useAbortableAsync.ts";
 import { ProjectHeader } from "./ProjectHeader.tsx";
 
 export function UsagePage({
@@ -20,20 +21,24 @@ export function UsagePage({
   const [usage, setUsage] = useState<ProjectUsageResponse | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const { run: runLoadUsage } = useAbortableAsync();
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(undefined);
     try {
-      setUsage(await api.getProjectUsage(project.id));
+      const next = await runLoadUsage((signal) => api.getProjectUsage(project.id, signal));
+      if (!next) return;
+      setUsage(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [project.id]);
+  }, [project.id, runLoadUsage]);
 
   useEffect(() => {
+    setUsage(undefined);
     void load();
   }, [load]);
 
@@ -60,7 +65,7 @@ export function UsagePage({
       : "0%";
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+    <section className="ev-page">
       <ProjectHeader
         project={project}
         view="usage"
@@ -101,12 +106,12 @@ export function UsagePage({
             </div>
           </div>
 
-          <Heading level={2} size={6} style={{ margin: "4px 0 0" }}>
+          <Heading level={2} size={6} className="ev-section-subtitle">
             {t("usage.byModel")}
           </Heading>
 
           {rows.length === 0 ? (
-            <div className="ev-inline-hint">{loading ? t("common.loading") : t("usage.empty")}</div>
+            <div className="ev-empty-box">{loading ? t("common.loading") : t("usage.empty")}</div>
           ) : (
             <Table.Container className="ev-table-frame">
               <Table.Root>

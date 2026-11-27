@@ -24,14 +24,9 @@ export function ConversationDock({
         <div className="ev-queued-dock">
           <span className="ev-queued-dock-title">{t("chat.queued", { count: inbox.length })}</span>
           {inbox.map((item) => (
-            <div
-              key={item.id}
-              style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}
-            >
+            <div key={item.id} className="ev-queued-row">
               <span className="ev-chip-id">{item.mode}</span>
-              <span className="ev-truncate" style={{ flex: 1 }}>
-                {item.text}
-              </span>
+              <span className="ev-truncate ev-flex-1">{item.text}</span>
             </div>
           ))}
         </div>

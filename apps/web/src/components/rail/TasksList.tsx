@@ -97,8 +97,12 @@ export function TasksList({
                 <div className="ev-mono ev-truncate ev-task-cmd">{effectiveTask.command}</div>
                 <div className="ev-task-sub">
                   <span className="ev-chip-id">{effectiveTask.id}</span>
-                  <span className="ev-mono">{worker.id}</span>
-                  <span>·</span>
+                  {!filterWorkerId && (
+                    <>
+                      <span className="ev-mono">{worker.id}</span>
+                      <span>·</span>
+                    </>
+                  )}
                   <span>{taskStatusLabel(effectiveTask.status, effectiveTask.exitCode)}</span>
                   <span>·</span>
                   <span className="ev-num">{formatRelativeTime(effectiveTask.startedAt)}</span>
@@ -135,7 +139,7 @@ export function TasksList({
                 taskKey={key}
                 task={effectiveTask}
                 onTaskUpdate={handleTaskUpdate}
-                onOpenWorker={onOpenWorker}
+                onOpenWorker={worker.id === activeWorkerId ? undefined : onOpenWorker}
               />
             )}
           </div>

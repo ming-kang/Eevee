@@ -2,7 +2,7 @@ import { FolderIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Heading } from "@earendil-works/elanor-react";
 import type { BoardViewPayload, ProjectSummary, WorkerId } from "@eevee/protocol";
 import { useEffect, useMemo, useState } from "react";
-import { formatRelativeTime, shortPath, workerStatusLabel } from "../lib/format.ts";
+import { shortPath } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
 import { useConversationPanel } from "../lib/useConversationPanel.ts";
 import { openBoardQuestions } from "../lib/workspace-nav.ts";
@@ -100,25 +100,19 @@ export function ChatPage({
 
       {activeWorker && (
         <div className="ev-worker-meta-bar">
-          <span>{workerStatusLabel(activeWorker.status)}</span>
-          <span aria-hidden="true">·</span>
           <span className="ev-mono ev-truncate">{workerModelLabel ?? t("rail.defaultModel")}</span>
           <span aria-hidden="true">·</span>
           <span className="ev-mono ev-truncate" title={activeWorker.cwd}>
             {shortPath(activeWorker.cwd)}
           </span>
-          <span aria-hidden="true">·</span>
-          <span className="ev-num">{formatRelativeTime(activeWorker.createdAt)}</span>
         </div>
       )}
 
       {isWorker && openQuestions.length > 0 && (
         <div className="ev-router-question-banner">
           <span className="ev-dot" data-stage="answer" />
-          <span className="ev-truncate" style={{ flex: 1 }}>
-            {firstQuestionText
-              ? `${t("chat.workerRouterQuestion")}：${firstQuestionText}`
-              : t("chat.workerRouterQuestion")}
+          <span className="ev-truncate ev-flex-1">
+            {firstQuestionText || t("chat.workerRouterQuestion")}
           </span>
           <Button type="button" hierarchy="secondary" density="compact" onClick={onOpenQuestion}>
             {t("chat.answerQuestion")}
@@ -127,14 +121,14 @@ export function ChatPage({
       )}
 
       {conv.error && !missingWorker && (
-        <div style={{ padding: "8px 20px 0" }}>
+        <div className="ev-page-banner">
           <div className="ev-error-banner">{t("chat.streamError", { error: conv.error })}</div>
         </div>
       )}
 
       {missingWorker ? (
         <div className="ev-landing-hero">
-          <Heading level={2} size={5} style={{ margin: 0 }}>
+          <Heading level={2} size={5} className="ev-landing-title">
             {t("chat.workerNotFound")}
           </Heading>
           <Button type="button" hierarchy="secondary" density="compact" onClick={onOpenRouter}>
@@ -146,26 +140,14 @@ export function ChatPage({
           <div className="ev-landing-logo">
             <BrandLogo size={24} />
           </div>
-          <Heading level={2} size={4} style={{ margin: 0 }}>
+          <Heading level={2} size={4} className="ev-landing-title">
             {project.title}
           </Heading>
           {project.workspaces.length > 0 && (
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                justifyContent: "center",
-                gap: 6,
-                marginTop: 4,
-              }}
-            >
+            <div className="ev-landing-workspaces">
               {project.workspaces.map((ws) => (
                 <span key={ws} className="ev-ws-chip" title={ws}>
-                  <FolderIcon
-                    width={13}
-                    height={13}
-                    style={{ flexShrink: 0, color: "var(--ev-fg-subtle)" }}
-                  />
+                  <FolderIcon width={13} height={13} className="ev-ws-chip-icon" />
                   <span className="ev-truncate">{shortPath(ws)}</span>
                 </span>
               ))}
@@ -221,7 +203,7 @@ export function ChatPage({
                 busy={conv.live.busy}
                 hasRunFailure={conv.live.runFailure !== undefined}
                 contextUsage={conv.contextUsage}
-                modelLabel={isWorker ? workerModelLabel : conv.agent.modelLabel}
+                modelLabel={isWorker ? undefined : conv.agent.modelLabel}
                 onSend={conv.send}
                 onInterrupt={conv.interrupt}
                 onRetry={conv.retry}

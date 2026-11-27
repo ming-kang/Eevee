@@ -1,8 +1,9 @@
 import { Button, Field, Heading, Input, Switch } from "@earendil-works/elanor-react";
 import { type ProviderDetail, providerBaseUrlPlaceholder } from "@eevee/protocol";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { api } from "../../../lib/api.ts";
 import { useI18n } from "../../../lib/i18n.ts";
+import { showToast } from "../../../lib/toasts.ts";
 import { BaseUrlField } from "../BaseUrlField.tsx";
 import { HeadersEditor } from "../HeadersEditor.tsx";
 import { SecretRevealInput } from "../SecretRevealInput.tsx";
@@ -30,25 +31,16 @@ export function ProviderConfigForm({
   const { t } = useI18n();
   const [draft, setDraft] = useState<ProviderConfigDraft>(() => createProviderConfigDraft(detail));
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
-  const justSavedRef = useRef(false);
 
   useEffect(() => {
     setDraft(createProviderConfigDraft(detail));
     setSaveError(undefined);
-    if (justSavedRef.current) {
-      justSavedRef.current = false;
-      setSaved(true);
-    } else {
-      setSaved(false);
-    }
   }, [detail]);
 
-  const patchDraft = (patch: Partial<ProviderConfigDraft>, resetSaved = true) => {
+  const patchDraft = (patch: Partial<ProviderConfigDraft>, resetError = true) => {
     setDraft((prev) => ({ ...prev, ...patch }));
-    if (resetSaved) {
-      setSaved(false);
+    if (resetError) {
       setSaveError(undefined);
     }
   };
@@ -72,15 +64,13 @@ export function ProviderConfigForm({
     setSaving(true);
     onDetailError(undefined);
     setSaveError(undefined);
-    setSaved(false);
     try {
       const patch = buildProviderPatch(detail, draft);
       if (Object.keys(patch).length > 0) {
         const res = await api.updateProvider(detail.id, patch);
-        justSavedRef.current = true;
         await onSaved(res.provider);
       }
-      setSaved(true);
+      showToast(t("common.saved"));
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -94,11 +84,6 @@ export function ProviderConfigForm({
         <Heading level={3} size={6}>
           {t("providers.config.title")}
         </Heading>
-        {saved && (
-          <span className="eevee-badge" data-tone="positive">
-            {t("common.saved")}
-          </span>
-        )}
       </div>
       <form noValidate onSubmit={(event) => void handleSave(event)} className="ev-form-stack">
         <div className="ev-model-form-grid">

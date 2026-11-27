@@ -18,6 +18,7 @@ export function shortcutGroups(): readonly ShortcutGroup[] {
       group: t("shortcuts.group.nav"),
       rows: [
         { keys: [mod, "K"], desc: t("shortcuts.palette") },
+        { keys: [mod, ","], desc: t("shortcuts.settings") },
         { keys: [mod, "B"], desc: t("shortcuts.toggleSide") },
         { keys: [mod, "Alt", "B"], desc: t("shortcuts.toggleRail") },
         { keys: ["?"], desc: t("shortcuts.sheet") },

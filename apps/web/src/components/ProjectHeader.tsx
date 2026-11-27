@@ -30,6 +30,17 @@ export function ProjectHeader({
       <div className="ev-page-header-lead">
         {worker ? (
           <>
+            <button
+              type="button"
+              className="ev-breadcrumb-link ev-truncate"
+              title={project.title}
+              onClick={() => onSelectView("chat")}
+            >
+              {project.title}
+            </button>
+            <span className="ev-breadcrumb-sep" aria-hidden="true">
+              /
+            </span>
             <span className="ev-chip-id">{worker.id}</span>
             <Heading level={1} size={6} className="ev-page-title" title={worker.cwd}>
               {worker.name}
@@ -71,8 +82,10 @@ export function ProjectHeader({
             key={key}
             type="button"
             className="ev-tab-link"
-            data-active={view === key}
-            aria-current={view === key ? "page" : undefined}
+            data-active={view === key && !(key === "chat" && worker !== undefined)}
+            aria-current={
+              view === key && !(key === "chat" && worker !== undefined) ? "page" : undefined
+            }
             onClick={() => onSelectView(key)}
           >
             {label}

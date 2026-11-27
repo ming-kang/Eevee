@@ -23,37 +23,17 @@ export function ShortcutSheet({
       <Modal.Portal>
         <Modal.Backdrop />
         <Modal.Viewport>
-          <Modal.Popup>
+          <Modal.Popup className="ev-shortcuts-dialog">
             <Modal.Title>{t("shortcuts.title")}</Modal.Title>
             <Modal.Body>
-              <div className="ev-form-stack" style={{ gap: 18 }}>
+              <div className="ev-shortcuts-groups">
                 {groups.map((group) => (
-                  <div key={group.group} className="ev-form-stack" style={{ gap: 6 }}>
-                    <Heading
-                      level={3}
-                      size={6}
-                      style={{
-                        fontSize: "0.75rem",
-                        letterSpacing: "0.06em",
-                        textTransform: "uppercase",
-                        color: "var(--ev-fg-subtle)",
-                      }}
-                    >
+                  <div key={group.group} className="ev-shortcuts-group">
+                    <Heading level={3} size={6} className="ev-shortcuts-heading">
                       {group.group}
                     </Heading>
                     {group.rows.map((row) => (
-                      <div
-                        key={`${group.group}:${row.desc}`}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 16,
-                          padding: "4px 0",
-                          fontSize: "0.9375rem",
-                          width: "100%",
-                        }}
-                      >
+                      <div key={`${group.group}:${row.desc}`} className="ev-shortcuts-row">
                         <span>{row.desc}</span>
                         <KeyboardShortcut>
                           {row.keys.map((k, idx) => (

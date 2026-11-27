@@ -141,9 +141,7 @@ export function CommandPalette({
                         onClick={() => choose(item)}
                       >
                         {item.stage && <span className="ev-dot" data-stage={item.stage} />}
-                        <span className="ev-truncate" style={{ flex: 1 }}>
-                          {item.label}
-                        </span>
+                        <span className="ev-truncate ev-flex-1">{item.label}</span>
                         {item.meta && <span className="ev-mono ev-palette-meta">{item.meta}</span>}
                         {item.keys && (
                           <KeyboardShortcut>
@@ -158,17 +156,6 @@ export function CommandPalette({
                 })
               )}
             </div>
-            <footer className="ev-palette-foot">
-              <span>
-                <kbd className="ev-mono">↑ ↓</kbd> {t("palette.foot.select")}
-              </span>
-              <span>
-                <kbd className="ev-mono">↵</kbd> {t("palette.foot.open")}
-              </span>
-              <span style={{ marginLeft: "auto" }}>
-                <kbd className="ev-mono">Esc</kbd> {t("palette.foot.close")}
-              </span>
-            </footer>
           </Modal.Popup>
         </Modal.Viewport>
       </Modal.Portal>

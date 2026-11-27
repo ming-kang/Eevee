@@ -18,7 +18,6 @@ export type ShellLayoutState = {
   readonly resetRailWidth: () => void;
   readonly toggleSide: () => void;
   readonly toggleRail: () => void;
-  readonly openRail: () => void;
   readonly closeDrawer: () => void;
 };
 
@@ -211,15 +210,6 @@ export function useShellLayout(withRail = true): ShellLayoutState {
     });
   }, []);
 
-  const openRail = useCallback(() => {
-    if (isRailDrawerViewport(window.innerWidth)) {
-      setDrawer("rail");
-      return;
-    }
-    setRailCollapsed(false);
-    writePref("eevee.railCollapsed", "0");
-  }, []);
-
   const closeDrawer = useCallback(() => setDrawer(null), []);
 
   return {
@@ -240,7 +230,6 @@ export function useShellLayout(withRail = true): ShellLayoutState {
     resetRailWidth,
     toggleSide,
     toggleRail,
-    openRail,
     closeDrawer,
   };
 }

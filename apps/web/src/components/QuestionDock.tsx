@@ -57,6 +57,7 @@ export function QuestionCard({
   const currentOther = otherFlags[current.id] ?? items.map(() => false);
   const options = activeItem?.options ?? [];
   const complete = items.every((_, idx) => (currentDraft[idx] ?? "").trim().length > 0);
+  const showHeader = questions.length > 1 || items.length > 1;
 
   const selectOption = (idx: number, option: string) => {
     setDrafts((prev) => {
@@ -123,62 +124,61 @@ export function QuestionCard({
 
   return (
     <form className="ev-qcard" onSubmit={(e) => void handleSubmit(e)} onKeyDown={onKeyDown}>
-      <div className="ev-qcard-head">
-        <span className="ev-dot" data-stage="answer" />
-        <span>{t("question.routerTitle")}</span>
-        <span className="ev-chip-id">{current.id}</span>
-        {questions.length > 1 && (
-          <span style={{ display: "inline-flex", gap: 4, marginLeft: 4 }}>
-            {questions.map((q, idx) => (
-              <button
-                key={q.id}
-                type="button"
-                className="ev-tab-link ev-qcard-tab"
-                data-active={idx === qIndex}
-                onClick={() => setQIndex(idx)}
-              >
-                {q.id}
-              </button>
-            ))}
-          </span>
-        )}
-        <span style={{ flex: 1 }} />
-        {items.length > 1 && (
-          <span className="ev-num" style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-            <IconButton
-              aria-label={t("question.prevItem")}
-              disabled={subIndex === 0}
-              onClick={() => setSubIndex((i) => Math.max(0, i - 1))}
-            >
-              <ChevronLeftIcon width={15} height={15} />
-            </IconButton>
-            <span>
-              {subIndex + 1}/{items.length}
+      {showHeader && (
+        <div className="ev-qcard-head">
+          <span className="ev-dot" data-stage="answer" />
+          {questions.length > 1 ? (
+            <span className="ev-qcard-tabs">
+              {questions.map((q, idx) => (
+                <button
+                  key={q.id}
+                  type="button"
+                  className="ev-tab-link ev-qcard-tab"
+                  data-active={idx === qIndex}
+                  onClick={() => setQIndex(idx)}
+                >
+                  {q.id}
+                </button>
+              ))}
             </span>
-            <IconButton
-              aria-label={t("question.nextItem")}
-              disabled={subIndex >= items.length - 1}
-              onClick={() => setSubIndex((i) => Math.min(items.length - 1, i + 1))}
-            >
-              <ChevronRightIcon width={15} height={15} />
-            </IconButton>
-          </span>
-        )}
-      </div>
+          ) : (
+            <span className="ev-chip-id">{current.id}</span>
+          )}
+          <span className="ev-flex-1" />
+          {items.length > 1 && (
+            <span className="ev-num ev-qcard-stepper">
+              <IconButton
+                aria-label={t("question.prevItem")}
+                disabled={subIndex === 0}
+                onClick={() => setSubIndex((i) => Math.max(0, i - 1))}
+              >
+                <ChevronLeftIcon width={15} height={15} />
+              </IconButton>
+              <span>
+                {subIndex + 1}/{items.length}
+              </span>
+              <IconButton
+                aria-label={t("question.nextItem")}
+                disabled={subIndex >= items.length - 1}
+                onClick={() => setSubIndex((i) => Math.min(items.length - 1, i + 1))}
+              >
+                <ChevronRightIcon width={15} height={15} />
+              </IconButton>
+            </span>
+          )}
+        </div>
+      )}
 
       {activeItem && (
         <div className="ev-qcard-body">
           <div className="ev-qcard-question">
-            {items.length > 1 && (
-              <span className="ev-num" style={{ color: "var(--ev-fg-subtle)", marginRight: 6 }}>
-                {subIndex + 1}.
-              </span>
-            )}
-            {activeItem.question}
+            {!showHeader && <span className="ev-dot" data-stage="answer" />}
+            {items.length > 1 && <span className="ev-num ev-qcard-num">{subIndex + 1}.</span>}
+            <span>{activeItem.question}</span>
           </div>
 
           {options.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <div className="ev-qopt-list">
               {options.map((opt, oi) => {
                 const selected = !currentOther[subIndex] && currentDraft[subIndex] === opt;
                 return (
@@ -192,9 +192,7 @@ export function QuestionCard({
                     <span className="ev-qradio" />
                     <span>{opt}</span>
                     {opt === activeItem.recommended && (
-                      <span className="eevee-badge" style={{ marginLeft: 4 }}>
-                        {t("question.recommended")}
-                      </span>
+                      <span className="eevee-badge">{t("question.recommended")}</span>
                     )}
                     {options.length <= 9 && <span className="ev-qdigit">{oi + 1}</span>}
                   </button>
@@ -213,8 +211,7 @@ export function QuestionCard({
           ) : (
             <button
               type="button"
-              className="ev-qopt"
-              style={{ color: "var(--ev-fg-muted)", paddingLeft: 31 }}
+              className="ev-qopt ev-qopt-other"
               onClick={() => openOther(subIndex)}
             >
               {t("question.otherOption")}
@@ -225,7 +222,7 @@ export function QuestionCard({
 
       <div className="ev-qcard-foot">
         {error && <span className="ev-inline-error">{error}</span>}
-        <span style={{ flex: 1 }} />
+        <span className="ev-flex-1" />
         <Button type="button" hierarchy="tertiary" density="compact" onClick={onLater}>
           {t("question.later")}
         </Button>
@@ -286,23 +283,7 @@ export function QuestionStrip({
   return (
     <div className="ev-qstrip">
       <span className="ev-dot" data-stage="answer" />
-      <button
-        type="button"
-        style={{
-          flex: 1,
-          minWidth: 0,
-          border: 0,
-          background: "transparent",
-          color: "inherit",
-          textAlign: "left",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: 0,
-        }}
-        onClick={onExpand}
-      >
+      <button type="button" className="ev-qstrip-btn" onClick={onExpand}>
         <span className="ev-truncate">{first?.question ?? t("question.pendingFallback")}</span>
         {count > 1 && <span className="ev-count-badge">+{count - 1}</span>}
       </button>
@@ -310,7 +291,7 @@ export function QuestionStrip({
         <ExpandLessIcon width={16} height={16} />
       </IconButton>
       {quickOptions && (
-        <div style={{ display: "flex", gap: 6, width: "100%", flexWrap: "wrap", paddingBottom: 2 }}>
+        <div className="ev-qstrip-options">
           {quickOptions.map((opt) => (
             <Button
               key={opt}

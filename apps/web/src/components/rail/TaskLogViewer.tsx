@@ -1,8 +1,6 @@
 import {
-  CloseIcon,
   KeyboardDoubleArrowDownIcon,
   RefreshIcon,
-  SearchIcon,
   StopIcon,
 } from "@earendil-works/elanor-icons-react";
 import { Button, IconButton, SegmentedControl, Stack } from "@earendil-works/elanor-react";
@@ -10,6 +8,7 @@ import type { BackgroundTaskRecordPayload, ProjectId, WorkerId } from "@eevee/pr
 import { useRef } from "react";
 import { formatBytes, isTaskActive } from "../../lib/format.ts";
 import { useI18n } from "../../lib/i18n.ts";
+import { SearchField } from "../SearchField.tsx";
 import { useTaskOutput } from "./useTaskOutput.ts";
 
 export function TaskLogViewer({
@@ -25,7 +24,7 @@ export function TaskLogViewer({
   readonly taskKey: string;
   readonly task: BackgroundTaskRecordPayload;
   readonly onTaskUpdate: (taskKey: string, task: BackgroundTaskRecordPayload) => void;
-  readonly onOpenWorker: (workerId: WorkerId) => void;
+  readonly onOpenWorker?: (workerId: WorkerId) => void;
 }) {
   const { t } = useI18n();
   const filterInputRef = useRef<HTMLInputElement | null>(null);
@@ -46,7 +45,7 @@ export function TaskLogViewer({
           <SegmentedControl.Item value="head">{t("rail.tasks.modeHead")}</SegmentedControl.Item>
         </SegmentedControl.Root>
 
-        <Stack direction="row" gap="xxSmall" align="center" style={{ flexWrap: "wrap" }}>
+        <Stack direction="row" gap="xxSmall" align="center" className="ev-wrap-row">
           <button
             type="button"
             className="ev-follow-btn"
@@ -74,9 +73,11 @@ export function TaskLogViewer({
             <RefreshIcon width={15} height={15} />
           </IconButton>
 
-          <Button hierarchy="secondary" density="compact" onClick={() => onOpenWorker(workerId)}>
-            {t("transcript.openWorker", { workerId })}
-          </Button>
+          {onOpenWorker && (
+            <Button hierarchy="secondary" density="compact" onClick={() => onOpenWorker(workerId)}>
+              {t("transcript.openWorker", { workerId })}
+            </Button>
+          )}
 
           {(task.status === "queued" || task.status === "running" || task.status === "stopping") &&
             (task.status === "stopping" || log.killing ? (
@@ -106,43 +107,24 @@ export function TaskLogViewer({
         </Stack>
       </div>
 
-      <div className="ev-task-filter">
-        <SearchIcon width={13} height={13} />
-        <input
-          ref={filterInputRef}
-          className="ev-raw-input"
-          type="text"
-          value={log.filter}
-          onChange={(event) => log.setFilter(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return;
-            if (event.key === "Enter") {
-              event.preventDefault();
-              log.applyFilterImmediate();
-            } else if (event.key === "Escape" && log.filter !== "") {
-              event.preventDefault();
-              event.stopPropagation();
-              log.clearFilter();
-            }
-          }}
-          placeholder={t("rail.tasks.filterPlaceholder")}
-          aria-label={t("rail.tasks.filterLabel")}
-        />
-        {log.filter !== "" && (
-          <button
-            type="button"
-            className="ev-task-clear-btn"
-            aria-label={t("rail.tasks.clearFilter")}
-            title={t("rail.tasks.clearFilter")}
-            onClick={() => {
-              log.clearFilter();
-              filterInputRef.current?.focus();
-            }}
-          >
-            <CloseIcon width={12} height={12} />
-          </button>
-        )}
-      </div>
+      <SearchField
+        ref={filterInputRef}
+        size="compact"
+        value={log.filter}
+        onChange={(next) => {
+          if (next === "") log.clearFilter();
+          else log.setFilter(next);
+        }}
+        placeholder={t("rail.tasks.filterPlaceholder")}
+        ariaLabel={t("rail.tasks.filterLabel")}
+        clearOnEscape
+        onKeyDown={(event) => {
+          if (!event.nativeEvent.isComposing && event.key === "Enter") {
+            event.preventDefault();
+            log.applyFilterImmediate();
+          }
+        }}
+      />
 
       {log.error && <div className="ev-error-banner">{log.error}</div>}
       {task.error && !log.error && <div className="ev-error-banner">{task.error}</div>}
@@ -182,13 +164,13 @@ export function TaskLogViewer({
               <>
                 {log.readMode === "head" ? t("rail.tasks.headWindow") : t("rail.tasks.tailWindow")}
                 {log.output.totalBytes !== undefined
-                  ? ` · ${t("rail.tasks.totalBytes", { size: formatBytes(log.output.totalBytes) })}`
+                  ? ` · ${formatBytes(log.output.totalBytes)}`
                   : ""}
               </>
             ) : log.output.totalBytes !== undefined ? (
-              t("rail.tasks.totalBytes", { size: formatBytes(log.output.totalBytes) })
+              formatBytes(log.output.totalBytes)
             ) : null}
-            {task.logTruncated === true ? ` · ${t("rail.tasks.bgLogTruncated")}` : ""}
+            {task.logTruncated === true ? ` · ${t("rail.tasks.truncated")}` : ""}
           </span>
           {log.streaming && isTaskActive(task.status) && (
             <span className="ev-task-stream-state">

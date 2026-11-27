@@ -37,18 +37,11 @@ function serverFormReducer(state: ServerFormState, action: ServerFormAction): Se
 export type McpServerFormProps = {
   readonly initialForm: ServerFormState;
   readonly isProject: boolean;
-  readonly isGlobalOverrideTarget: boolean;
   readonly onSubmit: (form: ServerFormState) => Promise<void>;
   readonly onCancel: () => void;
 };
 
-export function McpServerForm({
-  initialForm,
-  isProject,
-  isGlobalOverrideTarget,
-  onSubmit,
-  onCancel,
-}: McpServerFormProps) {
+export function McpServerForm({ initialForm, isProject, onSubmit, onCancel }: McpServerFormProps) {
   const { t } = useI18n();
   const idPrefix = useId();
   const [form, dispatch] = useReducer(serverFormReducer, initialForm);
@@ -89,10 +82,6 @@ export function McpServerForm({
           <CloseIcon width={16} height={16} />
         </IconButton>
       </div>
-
-      {isProject && form.mode === "edit" && isGlobalOverrideTarget && (
-        <div className="ev-inline-hint">{t("mcp.form.overrideHint", { name: form.name })}</div>
-      )}
 
       {error && <div className="ev-error-banner">{error}</div>}
 
@@ -254,7 +243,6 @@ export function McpServerForm({
                 rows={form.envRows}
                 disabled={saving}
                 itemLabel={t("mcp.form.envItemLabel")}
-                emptyText={t("mcp.form.envEmpty")}
                 addLabel={t("mcp.form.envAdd")}
                 keyPlaceholder="ENV_NAME"
                 valuePlaceholder={t("mcp.form.valuePlaceholder")}
@@ -281,7 +269,6 @@ export function McpServerForm({
                 rows={form.headerRows}
                 disabled={saving}
                 itemLabel="Header"
-                emptyText={t("mcp.form.headersEmpty")}
                 addLabel={t("mcp.form.headersAdd")}
                 valuePlaceholder={t("mcp.form.valuePlaceholder")}
                 onChange={(headerRows) => patchForm({ headerRows })}

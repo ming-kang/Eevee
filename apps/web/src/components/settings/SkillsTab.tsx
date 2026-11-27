@@ -1,11 +1,5 @@
-import {
-  CloseIcon,
-  RefreshIcon,
-  SearchIcon,
-  UndoIcon,
-  WarningIcon,
-} from "@earendil-works/elanor-icons-react";
-import { Button, Heading, SegmentedControl, Text } from "@earendil-works/elanor-react";
+import { RefreshIcon, UndoIcon, WarningIcon } from "@earendil-works/elanor-icons-react";
+import { Button, Heading, SegmentedControl } from "@earendil-works/elanor-react";
 import type {
   SkillDiagnostic,
   SkillEntry,
@@ -15,9 +9,11 @@ import type {
 } from "@eevee/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { shortPath } from "../../lib/format.ts";
 import { type LocaleKey, useI18n } from "../../lib/i18n.ts";
 import { showToast } from "../../lib/toasts.ts";
 import { useAbortableAsync } from "../../lib/useAbortableAsync.ts";
+import { SearchField } from "../SearchField.tsx";
 
 type ProjectSkillChoice = SkillTriggerMode | "inherit";
 
@@ -182,33 +178,31 @@ export function SkillsTab({
         <div className="ev-skill-head-title">
           <Heading level={compact ? 3 : 2} size={compact ? 6 : 5}>
             Skills
+            <span className="ev-num ev-heading-count">{summary.total}</span>
           </Heading>
-          <span className="eevee-badge ev-num">
-            {t("skills.totalCount", { count: summary.total })}
-          </span>
-          {summary.total > 0 && (
-            <span className="ev-inline-muted ev-num">
-              {t("skills.summaryCounts", {
-                model: summary.model,
-                user: summary.user,
-                disabled: summary.disabled,
-              })}
-            </span>
-          )}
           {projectId && projectOverrideCount > 0 && (
             <span className="eevee-badge ev-num" data-tone="warning">
               {t("skills.projectOverrideCount", { count: projectOverrideCount })}
             </span>
           )}
         </div>
-        <div className="ev-inline-actions">
-          {projectId && (
+        <div className="ev-catalog-toolbar">
+          <SearchField
+            size="compact"
+            className="ev-catalog-search"
+            value={query}
+            onChange={setQuery}
+            placeholder={t("skills.searchPlaceholder")}
+            ariaLabel={t("skills.searchLabel")}
+            clearOnEscape
+          />
+          {projectId && projectOverrideCount > 0 && (
             <Button
               type="button"
               hierarchy="secondary"
               density="compact"
               iconStart={<UndoIcon width={14} height={14} />}
-              disabled={projectOverrideCount === 0 || pendingSkill !== undefined}
+              disabled={pendingSkill !== undefined}
               pending={resetting}
               onClick={() => void handleResetProjectOverrides()}
             >
@@ -225,30 +219,6 @@ export function SkillsTab({
           >
             {t("common.refresh")}
           </Button>
-        </div>
-      </div>
-
-      <div className="ev-skill-toolbar">
-        <div className="ev-probe-search">
-          <SearchIcon width={14} height={14} />
-          <input
-            className="ev-raw-input"
-            type="text"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t("skills.searchPlaceholder")}
-            aria-label={t("skills.searchLabel")}
-          />
-          {query !== "" && (
-            <button
-              type="button"
-              className="ev-task-clear-btn"
-              aria-label={t("skills.clearSearch")}
-              onClick={() => setQuery("")}
-            >
-              <CloseIcon width={12} height={12} />
-            </button>
-          )}
         </div>
       </div>
 
@@ -281,18 +251,14 @@ export function SkillsTab({
       )}
 
       {loading && data === undefined ? (
-        <div className="ev-settings-card" style={{ alignItems: "center", padding: "24px 16px" }}>
-          <Text style={{ color: "var(--ev-fg-subtle)", margin: 0 }}>{t("skills.loading")}</Text>
-        </div>
+        <div className="ev-empty-box">{t("skills.loading")}</div>
       ) : filteredSkills.length === 0 ? (
-        <div className="ev-settings-card" style={{ alignItems: "center", padding: "24px 16px" }}>
-          <Text style={{ color: "var(--ev-fg-subtle)", margin: 0 }}>
-            {skills.length === 0
-              ? projectId
-                ? t("skills.emptyProject")
-                : t("skills.emptyGlobal")
-              : t("skills.emptyMatch")}
-          </Text>
+        <div className="ev-empty-box">
+          {skills.length === 0
+            ? projectId
+              ? t("skills.emptyProject")
+              : t("skills.emptyGlobal")
+            : t("skills.emptyMatch")}
         </div>
       ) : (
         <div className="ev-settings-list">
@@ -311,37 +277,30 @@ export function SkillsTab({
                   <div className="ev-skill-info">
                     <div className="ev-skill-title-row">
                       <strong className="ev-mono">{skill.name}</strong>
-                      <span
-                        className="eevee-badge"
-                        data-tone={skill.source === "workspace" ? "info" : undefined}
-                        title={skill.path}
-                      >
-                        {sourceLabel}
-                      </span>
+                      {projectId && (
+                        <span
+                          className="eevee-badge"
+                          data-tone={skill.source === "workspace" ? "info" : undefined}
+                          title={skill.path}
+                        >
+                          {sourceLabel}
+                        </span>
+                      )}
                       {skill.disableModelInvocation && (
                         <span className="eevee-badge" title={t("skills.frontmatterUserOnlyTitle")}>
                           {t("skills.frontmatterUserOnly")}
                         </span>
                       )}
-                      {!projectId && skill.globalOverride !== undefined && (
-                        <span className="eevee-badge" data-tone="info">
+                      {((!projectId && skill.globalOverride !== undefined) ||
+                        (projectId && skill.projectOverride !== undefined)) && (
+                        <span className="eevee-badge" data-tone={projectId ? "warning" : "info"}>
                           {t("skills.overridden")}
                         </span>
                       )}
-                      {projectId && skill.projectOverride !== undefined && (
-                        <span className="eevee-badge" data-tone="warning">
-                          {t("skills.projectOverride")}
-                        </span>
-                      )}
-                      {projectId &&
-                        skill.projectOverride === undefined &&
-                        skill.globalOverride !== undefined && (
-                          <span className="eevee-badge">{t("skills.inheritsGlobalOverride")}</span>
-                        )}
                     </div>
                     {skill.description && <div className="ev-skill-desc">{skill.description}</div>}
                     <div className="ev-skill-path ev-mono ev-truncate" title={skill.path}>
-                      {skill.path}
+                      {shortPath(skill.path)}
                     </div>
                   </div>
 
@@ -380,16 +339,6 @@ export function SkillsTab({
                         {t("skills.mode.disabled")}
                       </SegmentedControl.Item>
                     </SegmentedControl.Root>
-                    {projectId && (
-                      <span className="ev-inline-muted">
-                        {t(
-                          skill.projectOverride === undefined
-                            ? "skills.inheritingMode"
-                            : "skills.parentPolicyMode",
-                          { mode: inheritedModeLabel },
-                        )}
-                      </span>
-                    )}
                   </div>
                 </div>
               </div>

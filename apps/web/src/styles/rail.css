@@ -195,61 +195,6 @@
   gap: 6px;
 }
 
-.ev-task-filter {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  border-radius: 7px;
-  border: var(--ev-hairline) solid var(--ev-border);
-  background: var(--ev-surface-2);
-  padding: 0 6px 0 9px;
-  color: var(--ev-fg-subtle);
-  transition:
-    border-color var(--ev-dur-fast) var(--ev-ease-out),
-    background-color var(--ev-dur-fast) var(--ev-ease-out),
-    box-shadow var(--ev-dur-fast) var(--ev-ease-out);
-}
-
-.ev-task-filter:focus-within {
-  border-color: var(--ev-accent);
-  background: var(--ev-surface);
-  box-shadow: var(--ev-focus-ring);
-}
-
-.ev-task-filter input {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--ev-fg);
-  font-size: 0.8125rem;
-  outline: none;
-}
-
-.ev-task-filter input::placeholder {
-  color: var(--ev-fg-subtle);
-}
-
-.ev-task-clear-btn {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--ev-fg-subtle);
-  cursor: pointer;
-  flex: none;
-}
-
-.ev-task-clear-btn:hover {
-  background: var(--ev-hover);
-  color: var(--ev-fg);
-}
-
 .ev-follow-btn {
   display: inline-flex;
   align-items: center;

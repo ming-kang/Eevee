@@ -3,13 +3,13 @@ import {
   CloudDownloadIcon,
   EditIcon,
   ExperimentIcon,
-  SearchIcon,
 } from "@earendil-works/elanor-icons-react";
 import { Button, Heading, Text } from "@earendil-works/elanor-react";
 import type { ProviderDetail } from "@eevee/protocol";
 import { useState } from "react";
 import { formatTokens } from "../../../lib/format.ts";
 import { useI18n } from "../../../lib/i18n.ts";
+import { SearchField } from "../../SearchField.tsx";
 import type { ModelEditorTarget } from "../model-editor/state.ts";
 import { SmokeTestResult } from "../SmokeTestResult.tsx";
 import { modelSmokeKey, useModelSmokeTests } from "../useModelSmokeTests.ts";
@@ -50,15 +50,14 @@ export function ProviderModelsList({
           </span>
         </Heading>
         <div className="ev-provider-models-toolbar">
-          <div className="ev-probe-search" style={{ minWidth: 160 }}>
-            <SearchIcon width={14} height={14} />
-            <input
-              className="ev-raw-input"
-              value={modelFilter}
-              placeholder={t("providers.models.filterPlaceholder")}
-              onChange={(event) => setModelFilter(event.target.value)}
-            />
-          </div>
+          <SearchField
+            size="compact"
+            className="ev-provider-model-search"
+            value={modelFilter}
+            onChange={setModelFilter}
+            placeholder={t("providers.models.filterPlaceholder")}
+            clearOnEscape
+          />
           <Button
             type="button"
             hierarchy="secondary"
@@ -104,7 +103,9 @@ export function ProviderModelsList({
                     <div className="ev-provider-item-head">
                       <span className="ev-dot" data-stage={model.available ? "done" : "idle"} />
                       <strong>{model.name}</strong>
-                      <span className="ev-mono ev-inline-muted">{model.id}</span>
+                      {model.name !== model.id && (
+                        <span className="ev-mono ev-inline-muted">{model.id}</span>
+                      )}
                       {model.isCustom && (
                         <span className="eevee-badge" data-tone="info">
                           {t("providers.badge.custom")}
@@ -121,14 +122,7 @@ export function ProviderModelsList({
                     <div className="ev-provider-model-meta">
                       <span className="ev-mono">{model.api}</span>
                       <span className="ev-num">
-                        {t("providers.models.contextWindow", {
-                          tokens: formatTokens(model.contextWindow),
-                        })}
-                      </span>
-                      <span className="ev-num">
-                        {t("providers.models.maxTokens", {
-                          tokens: formatTokens(model.maxTokens),
-                        })}
+                        {formatTokens(model.contextWindow)} / {formatTokens(model.maxTokens)}
                       </span>
                       {model.supportedThinkingLevels.length > 0 && (
                         <span className="ev-thinking-pills">

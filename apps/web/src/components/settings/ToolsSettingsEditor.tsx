@@ -120,9 +120,6 @@ function ToolGrid({
     <fieldset className="ev-tool-group" aria-label={label}>
       <div className="ev-tool-group-head">
         <span className="ev-tool-group-title">{label}</span>
-        {variant === "project" && (
-          <span className="ev-tool-group-hint">{translate("tools.overrideDotHint")}</span>
-        )}
       </div>
       <div className="ev-tool-grid">
         {tools.map((name) => {
@@ -290,14 +287,13 @@ export function ToolsSettingsEditor({
         onToggle={toggleTool}
       />
 
-      {project && (
+      {project && hasOverrides && (
         <div className="ev-tools-editor-footer">
-          <span>{translate("tools.inheritNote")}</span>
           <Button
             type="button"
-            hierarchy="secondary"
+            hierarchy="tertiary"
             density="compact"
-            disabled={disabled || !hasOverrides}
+            disabled={disabled}
             onClick={resetOverrides}
           >
             {translate("tools.resetToGlobal")}

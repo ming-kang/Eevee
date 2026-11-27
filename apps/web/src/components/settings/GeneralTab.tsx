@@ -12,14 +12,12 @@ import { CODE_SIZE_BOUNDS, UI_SIZE_BOUNDS, useTypography } from "../../lib/typog
 
 function FontSizeStepper({
   label,
-  hint,
   value,
   min,
   max,
   onChange,
 }: {
   readonly label: string;
-  readonly hint: string;
   readonly value: number;
   readonly min: number;
   readonly max: number;
@@ -28,10 +26,7 @@ function FontSizeStepper({
   const { t } = useI18n();
   return (
     <div className="ev-pref-row">
-      <div className="ev-pref-copy">
-        <div className="ev-pref-label">{label}</div>
-        <div className="ev-pref-hint">{hint}</div>
-      </div>
+      <div className="ev-pref-label">{label}</div>
       <div className="ev-stepper">
         <IconButton
           aria-label={t("general.decrease")}
@@ -63,17 +58,14 @@ export function GeneralTab() {
     typography.codeSize === CODE_SIZE_BOUNDS.default;
 
   return (
-    <div className="ev-settings-section" style={{ gap: 22 }}>
+    <div className="ev-settings-stack ev-settings-narrow">
       <div className="ev-settings-section">
         <Heading level={2} size={5}>
           {t("general.appearanceTitle")}
         </Heading>
         <div className="ev-settings-card">
           <div className="ev-pref-row">
-            <div className="ev-pref-copy">
-              <div className="ev-pref-label">{t("general.language")}</div>
-              <div className="ev-pref-hint">{t("general.languageHint")}</div>
-            </div>
+            <div className="ev-pref-label">{t("general.language")}</div>
             <SegmentedControl.Root
               density="compact"
               value={[locale]}
@@ -90,10 +82,7 @@ export function GeneralTab() {
           <Separator />
 
           <div className="ev-pref-row">
-            <div className="ev-pref-copy">
-              <div className="ev-pref-label">{t("general.theme")}</div>
-              <div className="ev-pref-hint">{t("general.themeHint")}</div>
-            </div>
+            <div className="ev-pref-label">{t("general.theme")}</div>
             <SegmentedControl.Root
               density="compact"
               value={[theme.preference]}
@@ -130,7 +119,6 @@ export function GeneralTab() {
         <div className="ev-settings-card">
           <FontSizeStepper
             label={t("general.uiSize")}
-            hint={t("general.uiSizeHint", { min: UI_SIZE_BOUNDS.min, max: UI_SIZE_BOUNDS.max })}
             value={typography.uiSize}
             min={UI_SIZE_BOUNDS.min}
             max={UI_SIZE_BOUNDS.max}
@@ -139,10 +127,6 @@ export function GeneralTab() {
           <Separator />
           <FontSizeStepper
             label={t("general.codeSize")}
-            hint={t("general.codeSizeHint", {
-              min: CODE_SIZE_BOUNDS.min,
-              max: CODE_SIZE_BOUNDS.max,
-            })}
             value={typography.codeSize}
             min={CODE_SIZE_BOUNDS.min}
             max={CODE_SIZE_BOUNDS.max}

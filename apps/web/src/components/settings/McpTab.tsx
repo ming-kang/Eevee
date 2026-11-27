@@ -1,5 +1,5 @@
 import { AddIcon, CodeIcon, RefreshIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Heading, Text } from "@earendil-works/elanor-react";
+import { Button, Heading } from "@earendil-works/elanor-react";
 import type { McpServerSnapshotPayload } from "@eevee/protocol";
 import { useState } from "react";
 import { useI18n } from "../../lib/i18n.ts";
@@ -180,10 +180,8 @@ function McpTabContent({
         <div className="ev-skill-head-title">
           <Heading level={compact ? 3 : 2} size={compact ? 6 : 5}>
             MCP
+            <span className="ev-num ev-heading-count">{scope.statuses.length}</span>
           </Heading>
-          <span className="eevee-badge ev-num">
-            {t("mcp.serverCount", { count: scope.statuses.length })}
-          </span>
           {isProject && projectConfigCount > 0 && (
             <span className="eevee-badge ev-num" data-tone="warning">
               {t("mcp.projectConfigCount", { count: projectConfigCount })}
@@ -239,22 +237,15 @@ function McpTabContent({
         <McpServerForm
           initialForm={formState}
           isProject={isProject}
-          isGlobalOverrideTarget={Object.hasOwn(scope.globalServers, formState.name)}
           onSubmit={handleFormSubmit}
           onCancel={() => setFormState(undefined)}
         />
       )}
 
       {scope.loading && scope.statuses.length === 0 ? (
-        <div className="ev-settings-card" style={{ alignItems: "center", padding: "24px 16px" }}>
-          <Text style={{ color: "var(--ev-fg-subtle)", margin: 0 }}>{t("mcp.loading")}</Text>
-        </div>
+        <div className="ev-empty-box">{t("mcp.loading")}</div>
       ) : scope.statuses.length === 0 ? (
-        <div className="ev-settings-card" style={{ alignItems: "center", padding: "24px 16px" }}>
-          <Text style={{ color: "var(--ev-fg-subtle)", margin: 0 }}>
-            {t(isProject ? "mcp.emptyProject" : "mcp.emptyGlobal")}
-          </Text>
-        </div>
+        <div className="ev-empty-box">{t(isProject ? "mcp.emptyProject" : "mcp.emptyGlobal")}</div>
       ) : (
         <div className="ev-settings-list">
           {scope.statuses.map((srv) => (

@@ -1,8 +1,9 @@
-import { KeyIcon, SearchIcon } from "@earendil-works/elanor-icons-react";
+import { KeyIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Field, Text } from "@earendil-works/elanor-react";
 import { type BuiltinProviderCatalogItem, providerBaseUrlPlaceholder } from "@eevee/protocol";
 import type { Dispatch, FormEvent } from "react";
 import { useI18n } from "../../../lib/i18n.ts";
+import { SearchField } from "../../SearchField.tsx";
 import { BaseUrlField } from "../BaseUrlField.tsx";
 import { HeadersEditor } from "../HeadersEditor.tsx";
 import { SecretRevealInput } from "../SecretRevealInput.tsx";
@@ -42,17 +43,13 @@ export function AddBuiltinProviderForm({
   return (
     <div className="ev-catalog-picker">
       <div className="ev-catalog-list-pane">
-        <div className="ev-probe-search">
-          <SearchIcon width={14} height={14} />
-          <input
-            className="ev-raw-input"
-            value={draft.filter}
-            placeholder={t("providers.builtin.searchPlaceholder")}
-            onChange={(event) =>
-              dispatch({ type: "patchBuiltin", patch: { filter: event.target.value } })
-            }
-          />
-        </div>
+        <SearchField
+          size="compact"
+          value={draft.filter}
+          onChange={(filter) => dispatch({ type: "patchBuiltin", patch: { filter } })}
+          placeholder={t("providers.builtin.searchPlaceholder")}
+          clearOnEscape
+        />
         <div className="ev-catalog-list">
           {loadingCatalog && builtinProviders.length === 0 ? (
             <Text className="ev-inline-hint">{t("providers.builtin.loadingCatalog")}</Text>

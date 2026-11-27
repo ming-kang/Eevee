@@ -142,31 +142,32 @@ export function McpServerRow({
             <span className="eevee-badge" data-tone={meta.tone}>
               {meta.label}
             </span>
-            {isProject && scope && (
+            {isProject && scope && server.scope !== "global" && (
               <span className="eevee-badge" data-tone={scope.tone}>
                 {scope.label}
               </span>
             )}
-            <span className="eevee-badge">{transport}</span>
-            <span className="eevee-badge">{exposure}</span>
-            <span className="eevee-badge ev-num">{server.toolCount} tools</span>
-            {server.hasResources && (
-              <span className="eevee-badge" data-tone="info">
-                Resources
-              </span>
-            )}
           </div>
-          {(server.description || previewTarget) && (
-            <div className="ev-mcp-row-sub">
-              {server.description && <span>{server.description}</span>}
-              {server.description && previewTarget && <span>·</span>}
-              {previewTarget && (
+          <div className="ev-mcp-row-sub">
+            <span className="ev-mono">
+              {transport} · {exposure}
+              {server.hasResources ? " · resources" : ""}
+            </span>
+            {previewTarget && (
+              <>
+                <span>·</span>
                 <span className="ev-mono ev-truncate" title={previewTarget}>
                   {previewTarget}
                 </span>
-              )}
-            </div>
-          )}
+              </>
+            )}
+            {server.description && (
+              <>
+                <span>·</span>
+                <span className="ev-truncate">{server.description}</span>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="ev-mcp-row-controls">

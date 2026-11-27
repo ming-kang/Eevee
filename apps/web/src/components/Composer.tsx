@@ -1,6 +1,5 @@
 import {
   AttachFileIcon,
-  DescriptionIcon,
   RefreshIcon,
   SendIcon,
   StopIcon,
@@ -12,87 +11,28 @@ import {
   MAX_MESSAGE_ATTACHMENTS,
   type MessageAttachment,
   type ModelChoice,
-  type SkillEntry,
   type WhenBusy,
-  type WorkspaceFile,
 } from "@eevee/protocol";
 import {
-  type ClipboardEvent,
-  type DragEvent,
   type FormEvent,
   type KeyboardEvent,
   type SyntheticEvent,
-  useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
-import { api } from "../lib/api.ts";
-import {
-  type AttachmentValidationIssue,
-  type DraftAttachment,
-  getDraftAttachments,
-  readFilesAsDraftAttachments,
-  restoreFailedAttachments,
-  setDraftAttachments,
-  toProtocolAttachments,
-} from "../lib/attachments.ts";
-import {
-  draftStorageKey,
-  restoreFailedDraft,
-  restoreFailedDraftToStorage,
-} from "../lib/composer-draft.ts";
+import { toProtocolAttachments } from "../lib/attachments.ts";
 import { formatBytes, formatTokens } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
-import {
-  applyMentionAutocomplete,
-  extractMentionToken,
-  filterBoardMentions,
-} from "../lib/mention-autocomplete.ts";
-import {
-  applySkillAutocomplete,
-  extractSkillAutocompleteToken,
-  filterAutocompleteSkills,
-} from "../lib/skill-autocomplete.ts";
 import { showToast } from "../lib/toasts.ts";
 import type { ContextUsage } from "../lib/transcript.ts";
 import { updateGlobalRouterModel, useEngineSettingsAndModels } from "../lib/useEngineSettings.ts";
 import { AttachmentLightbox, type LightboxImage } from "./AttachmentLightbox.tsx";
 import { AttachmentPills } from "./AttachmentPills.tsx";
+import { ComposerAutocompleteMenu } from "./composer/ComposerAutocompleteMenu.tsx";
+import { useComposerAutocomplete } from "./composer/useComposerAutocomplete.ts";
+import { useComposerDraft } from "./composer/useComposerDraft.ts";
 import { ModelChoiceMenu } from "./ModelChoiceMenu.tsx";
-
-const SKILLS_CACHE_TTL_MS = 4000;
-const MENTION_FETCH_DEBOUNCE_MS = 120;
-
-type CachedSkills = {
-  readonly skills: readonly SkillEntry[];
-  readonly fetchedAt: number;
-};
-
-const skillsCache = new Map<string, CachedSkills>();
-
-type MentionOption =
-  | {
-      readonly kind: "file";
-      readonly key: string;
-      readonly value: string;
-      readonly file: WorkspaceFile;
-    }
-  | {
-      readonly kind: "worker";
-      readonly key: string;
-      readonly value: string;
-      readonly label: string;
-      readonly status: string;
-    }
-  | {
-      readonly kind: "ticket";
-      readonly key: string;
-      readonly value: string;
-      readonly label: string;
-      readonly status: string;
-    };
 
 export type ComposerProps = {
   readonly draftKey: string;
@@ -102,7 +42,6 @@ export type ComposerProps = {
   readonly busy: boolean;
   readonly hasRunFailure: boolean;
   readonly disabled?: boolean;
-  readonly compact?: boolean;
   readonly contextUsage?: ContextUsage;
   readonly modelLabel?: string;
   readonly onSend: (
@@ -122,7 +61,6 @@ export function Composer({
   busy,
   hasRunFailure,
   disabled = false,
-  compact = false,
   contextUsage,
   modelLabel,
   onSend,
@@ -130,427 +68,75 @@ export function Composer({
   onRetry,
 }: ComposerProps) {
   const { t } = useI18n();
-  const isRouterComposer = activeRef === "router" && !compact;
+  const isRouterComposer = activeRef === "router";
   const {
     settings: globalSettings,
     availableModels,
     refresh: refreshModels,
   } = useEngineSettingsAndModels(isRouterComposer);
 
-  const [text, setText] = useState(() => {
-    try {
-      return window.localStorage.getItem(draftStorageKey(draftKey)) ?? "";
-    } catch {
-      return "";
-    }
-  });
-  const [attachments, setAttachmentsState] = useState<readonly DraftAttachment[]>(() =>
-    getDraftAttachments(draftKey),
-  );
-  const textRef = useRef(text);
-  textRef.current = text;
-  const attachmentsRef = useRef(attachments);
-  attachmentsRef.current = attachments;
-  const draftKeyRef = useRef(draftKey);
-  draftKeyRef.current = draftKey;
-  const mountedRef = useRef(true);
-
+  const draft = useComposerDraft(draftKey, disabled);
   const [whenBusy, setWhenBusy] = useState<WhenBusy>("followUp");
   const [submitting, setSubmitting] = useState(false);
   const [switchingModel, setSwitchingModel] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
-  const [cursorOffset, setCursorOffset] = useState(() => text.length);
-  const [dismissedSkillKey, setDismissedSkillKey] = useState<string | undefined>(undefined);
-  const [dismissedMentionKey, setDismissedMentionKey] = useState<string | undefined>(undefined);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [dragging, setDragging] = useState(false);
+  const [cursorOffset, setCursorOffset] = useState(() => draft.text.length);
   const [lightboxImage, setLightboxImage] = useState<LightboxImage | undefined>(undefined);
 
-  const dragDepthRef = useRef(0);
   const formRef = useRef<HTMLFormElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const shouldScrollOptionRef = useRef(false);
 
-  const cacheKey = projectId ?? "__global__";
-  const inflightKeyRef = useRef<string | undefined>(undefined);
-  const skillsAbortRef = useRef<AbortController | undefined>(undefined);
-  const [skills, setSkills] = useState<readonly SkillEntry[]>(
-    () => skillsCache.get(cacheKey)?.skills ?? [],
-  );
-  const [loadingSkills, setLoadingSkills] = useState(false);
-  const [skillsError, setSkillsError] = useState<string | undefined>(undefined);
-
-  const mentionAbortRef = useRef<AbortController | undefined>(undefined);
-  const [mentionFiles, setMentionFiles] = useState<readonly WorkspaceFile[]>([]);
-  const [loadingMentions, setLoadingMentions] = useState(false);
-
-  const updateAttachments = useCallback((next: readonly DraftAttachment[]) => {
-    attachmentsRef.current = next;
-    setAttachmentsState(next);
-    setDraftAttachments(draftKeyRef.current, next);
-  }, []);
-
-  useEffect(() => {
-    draftKeyRef.current = draftKey;
-    let nextDraft = "";
-    try {
-      nextDraft = window.localStorage.getItem(draftStorageKey(draftKey)) ?? "";
-    } catch {
-      nextDraft = "";
-    }
-    const nextAttachments = getDraftAttachments(draftKey);
-    textRef.current = nextDraft;
-    attachmentsRef.current = nextAttachments;
-    setText(nextDraft);
-    setAttachmentsState(nextAttachments);
-    setCursorOffset(nextDraft.length);
-    setDismissedSkillKey(undefined);
-    setDismissedMentionKey(undefined);
-    setError(undefined);
-  }, [draftKey]);
-
-  useEffect(() => {
-    skillsAbortRef.current?.abort();
-    inflightKeyRef.current = undefined;
-    setLoadingSkills(false);
-    setSkillsError(undefined);
-    setSkills(skillsCache.get(cacheKey)?.skills ?? []);
-  }, [cacheKey]);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      skillsAbortRef.current?.abort();
-      mentionAbortRef.current?.abort();
-    };
-  }, []);
-
-  const updateText = useCallback(
-    (next: string) => {
-      textRef.current = next;
-      setText(next);
-      try {
-        const key = draftStorageKey(draftKey);
-        if (next) window.localStorage.setItem(key, next);
-        else window.localStorage.removeItem(key);
-      } catch {}
+  const autocomplete = useComposerAutocomplete({
+    projectId,
+    board,
+    text: draft.text,
+    cursorOffset,
+    disabled,
+    formRef,
+    textareaRef,
+    onReplaceText: (nextText, nextCursor) => {
+      draft.updateText(nextText);
+      setCursorOffset(nextCursor);
     },
-    [draftKey],
-  );
+  });
+
+  const resetAutocompleteDismissed = autocomplete.resetDismissed;
+  const draftTextRef = draft.textRef;
+  useEffect(() => {
+    void draftKey;
+    setCursorOffset(draftTextRef.current.length);
+    resetAutocompleteDismissed();
+    setError(undefined);
+  }, [draftKey, draftTextRef, resetAutocompleteDismissed]);
 
   useEffect(() => {
-    void text;
+    void draft.text;
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, compact ? 130 : 200)}px`;
-  }, [text, compact]);
-
-  const skillToken = useMemo(
-    () => extractSkillAutocompleteToken(text, cursorOffset),
-    [text, cursorOffset],
-  );
-  const skillTokenKey = skillToken
-    ? `${skillToken.start}:${skillToken.end}:${skillToken.query}`
-    : undefined;
-  const skillPopoverOpen =
-    !disabled && skillToken !== undefined && skillTokenKey !== dismissedSkillKey;
-
-  const mentionToken = useMemo(
-    () => (skillPopoverOpen ? undefined : extractMentionToken(text, cursorOffset)),
-    [skillPopoverOpen, text, cursorOffset],
-  );
-  const mentionTokenKey = mentionToken
-    ? `${mentionToken.start}:${mentionToken.end}:${mentionToken.rawQuery}`
-    : undefined;
-  const mentionPopoverOpen =
-    !disabled &&
-    !skillPopoverOpen &&
-    mentionToken !== undefined &&
-    mentionTokenKey !== dismissedMentionKey;
-
-  useEffect(() => {
-    if (!skillToken || disabled) return;
-    const cached = skillsCache.get(cacheKey);
-    const fresh = cached !== undefined && Date.now() - cached.fetchedAt < SKILLS_CACHE_TTL_MS;
-    if (fresh) {
-      setSkills((prev) => (prev === cached.skills ? prev : cached.skills));
-      return;
-    }
-    if (inflightKeyRef.current === cacheKey) return;
-
-    skillsAbortRef.current?.abort();
-    const controller = new AbortController();
-    skillsAbortRef.current = controller;
-    inflightKeyRef.current = cacheKey;
-    if (cached === undefined) setLoadingSkills(true);
-    setSkillsError(undefined);
-
-    const request = projectId
-      ? api.skills(projectId).list(controller.signal)
-      : api.listSkills(controller.signal);
-
-    void request
-      .then((res) => {
-        if (controller.signal.aborted) return;
-        skillsCache.set(cacheKey, { skills: res.skills, fetchedAt: Date.now() });
-        setSkills(res.skills);
-      })
-      .catch((err: unknown) => {
-        if (controller.signal.aborted) return;
-        setSkillsError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          if (inflightKeyRef.current === cacheKey) inflightKeyRef.current = undefined;
-          setLoadingSkills(false);
-        }
-      });
-  }, [skillToken, disabled, cacheKey, projectId]);
-
-  const mentionQuery = mentionToken?.query;
-  const mentionScope = mentionToken?.scope;
-
-  useEffect(() => {
-    mentionAbortRef.current?.abort();
-    if (
-      !mentionPopoverOpen ||
-      mentionQuery === undefined ||
-      !projectId ||
-      mentionScope === "workers" ||
-      mentionScope === "tickets"
-    ) {
-      setMentionFiles([]);
-      setLoadingMentions(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    mentionAbortRef.current = controller;
-    setLoadingMentions(true);
-    const timer = window.setTimeout(() => {
-      void api
-        .listProjectFiles(projectId, { q: mentionQuery, limit: 24, signal: controller.signal })
-        .then((res) => {
-          if (controller.signal.aborted) return;
-          setMentionFiles(res.files);
-        })
-        .catch(() => {
-          if (!controller.signal.aborted) setMentionFiles([]);
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setLoadingMentions(false);
-        });
-    }, MENTION_FETCH_DEBOUNCE_MS);
-
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [mentionPopoverOpen, mentionQuery, mentionScope, projectId]);
-
-  const matchingSkills = useMemo(
-    () => (skillToken ? filterAutocompleteSkills(skills, skillToken.query) : []),
-    [skills, skillToken],
-  );
-
-  const mentionOptions = useMemo<MentionOption[]>(() => {
-    if (!mentionToken) return [];
-    const out: MentionOption[] = [];
-    const { workers, tickets } = filterBoardMentions(board, mentionToken.query, mentionToken.scope);
-    for (const file of mentionFiles) {
-      out.push({
-        kind: "file",
-        key: `file:${file.workspace}:${file.path}`,
-        value: file.label,
-        file,
-      });
-    }
-    for (const worker of workers) {
-      out.push({
-        kind: "worker",
-        key: `worker:${worker.id}`,
-        value: worker.id,
-        label: `${worker.id} · ${worker.name}`,
-        status: worker.status,
-      });
-    }
-    for (const ticket of tickets) {
-      out.push({
-        kind: "ticket",
-        key: `ticket:${ticket.id}`,
-        value: ticket.id,
-        label: `${ticket.id} · ${ticket.title}`,
-        status: ticket.status,
-      });
-    }
-    return out;
-  }, [mentionToken, mentionFiles, board]);
-
-  const activeListLength = skillPopoverOpen
-    ? matchingSkills.length
-    : mentionPopoverOpen
-      ? mentionOptions.length
-      : 0;
-  const safeIndex = activeListLength === 0 ? 0 : Math.min(activeIndex, activeListLength - 1);
-
-  useEffect(() => {
-    void skillTokenKey;
-    void mentionTokenKey;
-    shouldScrollOptionRef.current = true;
-    setActiveIndex(0);
-  }, [skillTokenKey, mentionTokenKey]);
-
-  useEffect(() => {
-    if ((!skillPopoverOpen && !mentionPopoverOpen) || !shouldScrollOptionRef.current) return;
-    shouldScrollOptionRef.current = false;
-    optionRefs.current[safeIndex]?.scrollIntoView({ block: "nearest" });
-  }, [skillPopoverOpen, mentionPopoverOpen, safeIndex]);
-
-  useEffect(() => {
-    if (!skillPopoverOpen && !mentionPopoverOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Node && formRef.current?.contains(event.target)) return;
-      if (skillPopoverOpen && skillTokenKey) setDismissedSkillKey(skillTokenKey);
-      if (mentionPopoverOpen && mentionTokenKey) setDismissedMentionKey(mentionTokenKey);
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, [skillPopoverOpen, mentionPopoverOpen, skillTokenKey, mentionTokenKey]);
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [draft.text]);
 
   const syncCursor = (event: SyntheticEvent<HTMLTextAreaElement>) => {
     const pos = event.currentTarget.selectionStart;
     if (typeof pos === "number") setCursorOffset(pos);
   };
 
-  const selectSkill = (skill: SkillEntry) => {
-    if (!skillToken) return;
-    const { nextText, nextCursor } = applySkillAutocomplete(text, skillToken, skill.name);
-    setDismissedSkillKey(undefined);
-    updateText(nextText);
-    setCursorOffset(nextCursor);
-    window.requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(nextCursor, nextCursor);
-    });
-  };
-
-  const selectMention = (option: MentionOption) => {
-    if (!mentionToken) return;
-    const { nextText, nextCursor } = applyMentionAutocomplete(text, mentionToken, option.value);
-    setDismissedMentionKey(undefined);
-    updateText(nextText);
-    setCursorOffset(nextCursor);
-    window.requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(nextCursor, nextCursor);
-    });
-  };
-
-  const reportAttachmentIssues = useCallback(
-    (issues: readonly AttachmentValidationIssue[]) => {
-      for (const issue of issues) {
-        if (issue.kind === "too_many") {
-          showToast(t("composer.attachment.tooMany", { max: issue.max }), "danger");
-        } else if (issue.kind === "too_large") {
-          showToast(
-            t("composer.attachment.tooLarge", {
-              name: issue.name,
-              max: formatBytes(issue.maxBytes),
-            }),
-            "danger",
-          );
-        } else {
-          showToast(t("composer.attachment.readError", { name: issue.name }), "danger");
-        }
-      }
-    },
-    [t],
-  );
-
-  const appendFiles = useCallback(
-    async (files: FileList | readonly File[]) => {
-      if (disabled || files.length === 0) return;
-      const result = await readFilesAsDraftAttachments(files, attachmentsRef.current.length);
-      if (!mountedRef.current) return;
-      if (result.attachments.length > 0) {
-        updateAttachments([...attachmentsRef.current, ...result.attachments]);
-      }
-      if (result.issues.length > 0) {
-        reportAttachmentIssues(result.issues);
-      }
-    },
-    [disabled, updateAttachments, reportAttachmentIssues],
-  );
-
-  const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = event.clipboardData?.items;
-    if (!items) return;
-    const pastedFiles: File[] = [];
-    for (const item of Array.from(items)) {
-      if (item.kind === "file") {
-        const file = item.getAsFile();
-        if (file) pastedFiles.push(file);
-      }
-    }
-    if (pastedFiles.length > 0) {
-      event.preventDefault();
-      void appendFiles(pastedFiles);
-    }
-  };
-
-  const handleDragEnter = (event: DragEvent<HTMLFormElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return;
-    event.preventDefault();
-    dragDepthRef.current += 1;
-    setDragging(true);
-  };
-
-  const handleDragOver = (event: DragEvent<HTMLFormElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-  };
-
-  const handleDragLeave = (event: DragEvent<HTMLFormElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return;
-    event.preventDefault();
-    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-    if (dragDepthRef.current === 0) setDragging(false);
-  };
-
-  const handleDrop = (event: DragEvent<HTMLFormElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return;
-    event.preventDefault();
-    dragDepthRef.current = 0;
-    setDragging(false);
-    if (event.dataTransfer.files.length > 0) {
-      void appendFiles(event.dataTransfer.files);
-    }
-  };
-
   const submit = async (overrideMode?: WhenBusy) => {
-    const trimmed = text.trim();
-    const pendingAttachments = attachmentsRef.current;
+    const trimmed = draft.text.trim();
+    const pendingAttachments = draft.attachmentsRef.current;
     if ((trimmed.length === 0 && pendingAttachments.length === 0) || submitting || disabled) return;
-    const submittedText = text;
+    const submittedText = draft.text;
     const submittedDraftKey = draftKey;
     const submittedAttachments = pendingAttachments;
 
     setSubmitting(true);
     setError(undefined);
-    updateText("");
-    updateAttachments([]);
+    draft.updateText("");
+    draft.updateAttachments([]);
     setCursorOffset(0);
-    setDismissedSkillKey(undefined);
-    setDismissedMentionKey(undefined);
+    autocomplete.resetDismissed();
 
     try {
       await onSend(
@@ -559,29 +145,19 @@ export function Composer({
         submittedAttachments.length > 0 ? toProtocolAttachments(submittedAttachments) : undefined,
       );
     } catch (err) {
-      if (mountedRef.current && draftKeyRef.current === submittedDraftKey) {
+      const outcome = draft.restoreSubmitted(
+        submittedDraftKey,
+        submittedText,
+        submittedAttachments,
+      );
+      if (outcome.restoredCurrent) {
         setError(err instanceof Error ? err.message : String(err));
-        const wasEmpty = textRef.current === "";
-        const restored = restoreFailedDraft(submittedText, textRef.current);
-        updateText(restored);
-        if (submittedAttachments.length > 0) {
-          const restoredAtts = restoreFailedAttachments(submittedDraftKey, submittedAttachments);
-          attachmentsRef.current = restoredAtts;
-          setAttachmentsState(restoredAtts);
-        }
-        if (wasEmpty) {
-          setCursorOffset(restored.length);
-        }
-      } else {
-        try {
-          restoreFailedDraftToStorage(window.localStorage, submittedDraftKey, submittedText);
-        } catch {}
-        if (submittedAttachments.length > 0) {
-          restoreFailedAttachments(submittedDraftKey, submittedAttachments);
+        if (outcome.cursorToEnd !== undefined) {
+          setCursorOffset(outcome.cursorToEnd);
         }
       }
     } finally {
-      if (mountedRef.current) {
+      if (draft.mountedRef.current) {
         setSubmitting(false);
       }
     }
@@ -594,66 +170,7 @@ export function Composer({
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
-
-    if (skillPopoverOpen) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        setDismissedSkillKey(skillTokenKey);
-        return;
-      }
-      if (matchingSkills.length > 0) {
-        if (event.key === "ArrowDown") {
-          event.preventDefault();
-          shouldScrollOptionRef.current = true;
-          setActiveIndex((prev) => (prev + 1) % matchingSkills.length);
-          return;
-        }
-        if (event.key === "ArrowUp") {
-          event.preventDefault();
-          shouldScrollOptionRef.current = true;
-          setActiveIndex((prev) => (prev - 1 + matchingSkills.length) % matchingSkills.length);
-          return;
-        }
-        if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
-          event.preventDefault();
-          event.stopPropagation();
-          const chosen = matchingSkills[safeIndex];
-          if (chosen) selectSkill(chosen);
-          return;
-        }
-      }
-    }
-
-    if (mentionPopoverOpen) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        setDismissedMentionKey(mentionTokenKey);
-        return;
-      }
-      if (mentionOptions.length > 0) {
-        if (event.key === "ArrowDown") {
-          event.preventDefault();
-          shouldScrollOptionRef.current = true;
-          setActiveIndex((prev) => (prev + 1) % mentionOptions.length);
-          return;
-        }
-        if (event.key === "ArrowUp") {
-          event.preventDefault();
-          shouldScrollOptionRef.current = true;
-          setActiveIndex((prev) => (prev - 1 + mentionOptions.length) % mentionOptions.length);
-          return;
-        }
-        if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
-          event.preventDefault();
-          event.stopPropagation();
-          const chosen = mentionOptions[safeIndex];
-          if (chosen) selectMention(chosen);
-          return;
-        }
-      }
-    }
+    if (autocomplete.handleKeyDown(event)) return;
 
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -683,7 +200,7 @@ export function Composer({
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), "danger");
     } finally {
-      if (mountedRef.current) setSwitchingModel(false);
+      if (draft.mountedRef.current) setSwitchingModel(false);
     }
   };
 
@@ -694,148 +211,42 @@ export function Composer({
         : t("composer.placeholder.router")
       : t("composer.placeholder.worker", { ref: activeRef });
 
-  const canSend = (text.trim().length > 0 || attachments.length > 0) && !submitting && !disabled;
+  const canSend =
+    (draft.text.trim().length > 0 || draft.attachments.length > 0) && !submitting && !disabled;
 
   return (
     <>
       <form
         ref={formRef}
-        className={`ev-composer-form${compact ? " compact" : ""}${dragging ? " dragging" : ""}`}
+        className={`ev-composer-form${draft.dragging ? " dragging" : ""}`}
         onSubmit={handleSubmit}
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        onDragEnter={draft.handleDragEnter}
+        onDragOver={draft.handleDragOver}
+        onDragLeave={draft.handleDragLeave}
+        onDrop={draft.handleDrop}
       >
-        {dragging && (
-          <div className="ev-composer-drop-overlay">
-            {t("composer.dropHint", { max: MAX_MESSAGE_ATTACHMENTS })}
-          </div>
-        )}
+        {draft.dragging && <div className="ev-composer-drop-overlay">{t("composer.dropHint")}</div>}
 
-        {skillPopoverOpen && (
-          <div
-            className="ev-skill-autocomplete"
-            role="listbox"
-            aria-label={t("composer.skill.title")}
-          >
-            <div className="ev-skill-ac-head">
-              <span>{t("composer.skill.title")}</span>
-              <span className="ev-skill-ac-keys ev-mono">↑↓ · Tab/↵ · Esc</span>
-            </div>
-            {loadingSkills && skills.length === 0 ? (
-              <div className="ev-skill-ac-empty">{t("composer.skill.loading")}</div>
-            ) : skillsError && skills.length === 0 ? (
-              <div className="ev-skill-ac-empty ev-inline-error">{skillsError}</div>
-            ) : matchingSkills.length === 0 ? (
-              <div className="ev-skill-ac-empty">{t("composer.skill.empty")}</div>
-            ) : (
-              <div className="ev-skill-ac-list">
-                {matchingSkills.map((skill, idx) => (
-                  <button
-                    key={`${skill.name}:${skill.path}`}
-                    ref={(el) => {
-                      optionRefs.current[idx] = el;
-                    }}
-                    type="button"
-                    role="option"
-                    aria-selected={idx === safeIndex}
-                    className="ev-skill-ac-item"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onMouseEnter={() => setActiveIndex(idx)}
-                    onClick={() => selectSkill(skill)}
-                  >
-                    <div className="ev-skill-ac-row">
-                      <span className="ev-mono ev-skill-ac-name">/skill:{skill.name}</span>
-                      {skill.effectiveMode === "user" && (
-                        <span className="eevee-badge" data-tone="warning">
-                          {t("composer.skill.userOnly")}
-                        </span>
-                      )}
-                      <span
-                        className="eevee-badge"
-                        data-tone={skill.source === "workspace" ? "info" : undefined}
-                      >
-                        {skill.source === "workspace"
-                          ? t("composer.skill.workspace")
-                          : t("composer.skill.global")}
-                      </span>
-                    </div>
-                    {skill.description && (
-                      <div className="ev-skill-ac-desc ev-truncate">{skill.description}</div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {mentionPopoverOpen && (
-          <div
-            className="ev-skill-autocomplete"
-            role="listbox"
-            aria-label={t("composer.mention.title")}
-          >
-            <div className="ev-skill-ac-head">
-              <span>{t("composer.mention.title")}</span>
-              <span className="ev-skill-ac-keys ev-mono">↑↓ · Tab/↵ · Esc</span>
-            </div>
-            {loadingMentions && mentionOptions.length === 0 ? (
-              <div className="ev-skill-ac-empty">{t("composer.mention.loading")}</div>
-            ) : mentionOptions.length === 0 ? (
-              <div className="ev-skill-ac-empty">{t("composer.mention.empty")}</div>
-            ) : (
-              <div className="ev-skill-ac-list">
-                {mentionOptions.map((option, idx) => (
-                  <button
-                    key={option.key}
-                    ref={(el) => {
-                      optionRefs.current[idx] = el;
-                    }}
-                    type="button"
-                    role="option"
-                    aria-selected={idx === safeIndex}
-                    className="ev-skill-ac-item"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onMouseEnter={() => setActiveIndex(idx)}
-                    onClick={() => selectMention(option)}
-                  >
-                    {option.kind === "file" ? (
-                      <div className="ev-skill-ac-row">
-                        <DescriptionIcon width={13} height={13} className="ev-attachment-icon" />
-                        <span className="ev-mono ev-skill-ac-name ev-truncate">
-                          {option.file.name}
-                        </span>
-                        {option.file.dir && (
-                          <span className="ev-skill-ac-desc ev-truncate">{option.file.dir}</span>
-                        )}
-                        <span className="ev-attachment-size ev-num" style={{ marginLeft: "auto" }}>
-                          {formatBytes(option.file.size)}
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="ev-skill-ac-row">
-                        <span className="ev-chip-id">@{option.value}</span>
-                        <span className="ev-truncate ev-skill-ac-name">{option.label}</span>
-                        <span className="eevee-badge" style={{ marginLeft: "auto" }}>
-                          {option.kind === "worker"
-                            ? t("composer.mention.group.workers")
-                            : t("composer.mention.group.tickets")}
-                        </span>
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        <ComposerAutocompleteMenu
+          skillPopoverOpen={autocomplete.skillPopoverOpen}
+          mentionPopoverOpen={autocomplete.mentionPopoverOpen}
+          skills={autocomplete.skills}
+          matchingSkills={autocomplete.matchingSkills}
+          loadingSkills={autocomplete.loadingSkills}
+          skillsError={autocomplete.skillsError}
+          mentionOptions={autocomplete.mentionOptions}
+          loadingMentions={autocomplete.loadingMentions}
+          safeIndex={autocomplete.safeIndex}
+          optionRefs={autocomplete.optionRefs}
+          onHoverIndex={autocomplete.setActiveIndex}
+          onSelectSkill={autocomplete.selectSkill}
+          onSelectMention={autocomplete.selectMention}
+        />
 
         {error && <div className="ev-error-banner">{error}</div>}
 
         <AttachmentPills
-          attachments={attachments}
+          attachments={draft.attachments}
           onPreview={(att) =>
             att.previewUrl
               ? setLightboxImage({
@@ -845,23 +256,25 @@ export function Composer({
                 })
               : undefined
           }
-          onRemove={(id) => updateAttachments(attachments.filter((item) => item.id !== id))}
+          onRemove={(id) =>
+            draft.updateAttachments(draft.attachments.filter((item) => item.id !== id))
+          }
         />
 
         <textarea
           ref={textareaRef}
           className="ev-composer-textarea"
-          rows={compact ? 1 : 2}
-          value={text}
+          rows={2}
+          value={draft.text}
           disabled={disabled}
           placeholder={placeholder}
           onChange={(event) => {
             const nextValue = event.target.value;
             const pos = event.target.selectionStart;
-            updateText(nextValue);
+            draft.updateText(nextValue);
             if (typeof pos === "number") setCursorOffset(pos);
           }}
-          onPaste={handlePaste}
+          onPaste={draft.handlePaste}
           onClick={syncCursor}
           onKeyUp={syncCursor}
           onSelect={syncCursor}
@@ -876,24 +289,19 @@ export function Composer({
           hidden
           onChange={(event) => {
             if (event.target.files && event.target.files.length > 0) {
-              void appendFiles(event.target.files);
+              void draft.appendFiles(event.target.files);
             }
             event.target.value = "";
           }}
         />
 
         <div className="ev-composer-bar">
-          <Stack
-            direction="row"
-            gap="xSmall"
-            align="center"
-            style={{ flexWrap: "wrap", minWidth: 0 }}
-          >
+          <Stack direction="row" gap="xSmall" align="center" className="ev-composer-bar-group">
             <IconButton
               type="button"
               aria-label={t("composer.attach")}
               title={t("composer.attach")}
-              disabled={disabled || attachments.length >= MAX_MESSAGE_ATTACHMENTS}
+              disabled={disabled || draft.attachments.length >= MAX_MESSAGE_ATTACHMENTS}
               onClick={() => fileInputRef.current?.click()}
             >
               <AttachFileIcon width={16} height={16} />
@@ -917,7 +325,7 @@ export function Composer({
               </SegmentedControl.Root>
             )}
 
-            {isRouterComposer ? (
+            {isRouterComposer && (
               <ModelChoiceMenu
                 value={globalSettings?.models?.router}
                 models={availableModels}
@@ -930,13 +338,10 @@ export function Composer({
                 onOpen={() => void refreshModels(false)}
                 onChange={(next) => void handleRouterModelChange(next)}
               />
-            ) : (
-              !compact &&
-              modelLabel && <span className="ev-mono ev-composer-meta">{modelLabel}</span>
             )}
           </Stack>
 
-          <Stack direction="row" gap="xSmall" align="center" style={{ marginLeft: "auto" }}>
+          <Stack direction="row" gap="xSmall" align="center" className="ev-push-end">
             {contextUsage && (
               <span
                 className="ev-mono ev-num ev-composer-meta"

@@ -1,25 +1,18 @@
-import { AddIcon, SearchIcon } from "@earendil-works/elanor-icons-react";
-import { Button, EmptyState, Heading } from "@earendil-works/elanor-react";
+import { AddIcon } from "@earendil-works/elanor-icons-react";
+import { Button, Heading } from "@earendil-works/elanor-react";
 import type { BoardViewPayload, ProjectId, ProjectSummary, WorkerId } from "@eevee/protocol";
 import { useMemo, useState } from "react";
 import { formatRelativeTime } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
-import type { VisualStage } from "../lib/transcript.ts";
-
-type TriageCard = {
-  readonly key: string;
-  readonly lane: "pending" | "running" | "done";
-  readonly projectId: ProjectId;
-  readonly projectTitle: string;
-  readonly chip?: string;
-  readonly title: string;
-  readonly context?: string;
-  readonly stage: VisualStage;
-  readonly stageLabel: string;
-  readonly actionLabel: string;
-  readonly at?: number;
-  readonly workerId?: WorkerId;
-};
+import {
+  buildOverviewItems,
+  filterOverviewItems,
+  type OverviewItem,
+  type OverviewLane,
+} from "../lib/overview.ts";
+import { deriveBoardSummary } from "../lib/transcript.ts";
+import { BrandLogo } from "./BrandLogo.tsx";
+import { SearchField } from "./SearchField.tsx";
 
 export function OverviewPage({
   projects,
@@ -29,6 +22,7 @@ export function OverviewPage({
   onRetryProjects,
   onNewProject,
   onOpenProject,
+  onOpenQuestion,
 }: {
   readonly projects: readonly ProjectSummary[];
   readonly boards: Readonly<Record<string, BoardViewPayload>>;
@@ -37,140 +31,102 @@ export function OverviewPage({
   readonly onRetryProjects?: () => void;
   readonly onNewProject: () => void;
   readonly onOpenProject: (pid: ProjectId, workerId?: WorkerId) => void;
+  readonly onOpenQuestion: (pid: ProjectId) => void;
 }) {
   const { t } = useI18n();
   const [projectFilter, setProjectFilter] = useState<string>("");
-  const [laneFilter, setLaneFilter] = useState<"all" | "pending" | "running" | "done">("all");
+  const [laneFilter, setLaneFilter] = useState<"all" | OverviewLane>("all");
   const [query, setQuery] = useState("");
 
-  const cards = useMemo<TriageCard[]>(() => {
-    const out: TriageCard[] = [];
-    const targetProjects = projectFilter
-      ? projects.filter((p) => p.id === projectFilter)
-      : projects;
-
-    for (const project of targetProjects) {
-      const board = boards[project.id];
-      if (!board) continue;
-      const ticketsById = new Map(board.tickets.map((t) => [t.id, t]));
-
-      for (const q of board.questions) {
-        if (q.answeredAt !== undefined || q.withdrawnAt !== undefined) continue;
-        out.push({
-          key: `${project.id}:q:${q.id}`,
-          lane: "pending",
-          projectId: project.id,
-          projectTitle: project.title,
-          chip: q.id,
-          title: t("overview.routerAsking"),
-          context: q.items[0]?.question,
-          stage: "answer",
-          stageLabel: t("overview.stage.answer"),
-          actionLabel: t("overview.action.answer"),
-          at: q.askedAt,
-        });
-      }
-
-      for (const worker of board.workers) {
-        const ticket = worker.activeTicketId ? ticketsById.get(worker.activeTicketId) : undefined;
-        if (worker.status === "running" || worker.status === "queued") {
-          out.push({
-            key: `${project.id}:w:${worker.id}`,
-            lane: "running",
-            projectId: project.id,
-            projectTitle: project.title,
-            chip: ticket?.id ?? worker.id,
-            title: ticket?.title ?? `${worker.id} · ${worker.name}`,
-            context:
-              worker.activeTaskCount > 0
-                ? t("overview.activeTasksCount", { count: worker.activeTaskCount })
-                : `${worker.id} · ${worker.name}`,
-            stage: worker.status === "queued" ? "queued" : "working",
-            stageLabel:
-              worker.status === "queued" ? t("overview.stage.queued") : t("overview.stage.working"),
-            actionLabel: t("overview.action.observe"),
-            at: worker.createdAt,
-            workerId: worker.id,
-          });
-        }
-      }
-
-      for (const ticket of board.tickets) {
-        if (ticket.status === "done") {
-          out.push({
-            key: `${project.id}:t:${ticket.id}`,
-            lane: "done",
-            projectId: project.id,
-            projectTitle: project.title,
-            chip: ticket.id,
-            title: ticket.title,
-            ...(ticket.note ? { context: ticket.note } : {}),
-            stage: "done",
-            stageLabel: t("overview.stage.done"),
-            actionLabel: t("overview.action.view"),
-            at: ticket.closedAt ?? ticket.createdAt,
-            workerId: ticket.workerId,
-          });
-        }
-      }
-    }
-
-    return out.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
-  }, [projects, boards, projectFilter, t]);
-
-  const matches = (card: TriageCard) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return `${card.title} ${card.projectTitle} ${card.chip ?? ""} ${card.context ?? ""}`
-      .toLowerCase()
-      .includes(q);
-  };
-
-  const pending = cards.filter((c) => c.lane === "pending" && matches(c));
-  const running = cards.filter((c) => c.lane === "running" && matches(c));
-  const done = cards.filter((c) => c.lane === "done" && matches(c));
-  const showProjectName = projectFilter === "" && projects.length > 1;
-
-  const renderCard = (card: TriageCard) => (
-    <button
-      key={card.key}
-      type="button"
-      className="ev-triage-card"
-      onClick={() => onOpenProject(card.projectId, card.workerId)}
-    >
-      <div className="ev-triage-title">
-        {card.chip && (
-          <span className="ev-chip-id" style={{ marginRight: 6 }}>
-            {card.chip}
-          </span>
-        )}
-        {card.title}
-      </div>
-      {card.context && <div className="ev-triage-context">{card.context}</div>}
-      <div className="ev-triage-meta">
-        <span className="ev-dot" data-stage={card.stage} />
-        <span className="ev-triage-stage">{card.stageLabel}</span>
-        {showProjectName && (
-          <>
-            <span>·</span>
-            <span className="ev-truncate">{card.projectTitle}</span>
-          </>
-        )}
-        <span style={{ flex: 1 }} />
-        {card.at && <span className="ev-num">{formatRelativeTime(card.at)}</span>}
-        <span className="ev-triage-action">{card.actionLabel}</span>
-      </div>
-    </button>
+  const items = useMemo(
+    () => buildOverviewItems(projects, boards, projectFilter, t("sidebar.questionRow")),
+    [projects, boards, projectFilter, t],
   );
 
+  const { pending, running, done } = useMemo(
+    () => filterOverviewItems(items, query),
+    [items, query],
+  );
+
+  const totalFiltered = pending.length + running.length + done.length;
+  const showProjectName = projectFilter === "" && projects.length > 1;
+  const showFilterBar = items.length > 0 || query.trim() !== "";
+
+  const openItem = (item: OverviewItem) => {
+    if (item.lane === "pending") onOpenQuestion(item.projectId);
+    else onOpenProject(item.projectId, item.workerId);
+  };
+
+  const renderGroup = (
+    lane: OverviewLane,
+    label: string,
+    groupItems: readonly OverviewItem[],
+    emptyLabel: string,
+    limit?: number,
+  ) => {
+    const selected = laneFilter === lane;
+    if (!selected && (laneFilter !== "all" || groupItems.length === 0)) return null;
+    const shown = limit ? groupItems.slice(0, limit) : groupItems;
+
+    return (
+      <section className="ev-inbox-group" aria-label={label}>
+        <div className="ev-inbox-group-head">
+          <span>{label}</span>
+          <span
+            className="ev-count-badge"
+            data-tone={lane === "pending" && groupItems.length > 0 ? "warning" : undefined}
+          >
+            {groupItems.length}
+          </span>
+        </div>
+
+        {shown.length === 0 ? (
+          <div className="ev-inbox-empty">{emptyLabel}</div>
+        ) : (
+          <div className="ev-inbox-list">
+            {shown.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className="ev-inbox-row"
+                onClick={() => openItem(item)}
+              >
+                <span className="ev-dot" data-stage={item.stage} />
+                <span className="ev-chip-id">{item.chip}</span>
+                <span className="ev-inbox-row-main">
+                  <span className="ev-truncate ev-inbox-row-title">{item.title}</span>
+                  {item.note && <span className="ev-truncate ev-inbox-row-note">{item.note}</span>}
+                </span>
+                <span className="ev-inbox-row-meta">
+                  {item.queued && <span className="eevee-badge">{t("status.worker.queued")}</span>}
+                  {item.activeTaskCount !== undefined && item.activeTaskCount > 0 && (
+                    <span className="eevee-badge ev-num">
+                      {t("overview.activeTasksCount", { count: item.activeTaskCount })}
+                    </span>
+                  )}
+                  {showProjectName && (
+                    <span className="ev-truncate ev-inbox-row-project">{item.projectTitle}</span>
+                  )}
+                  {item.at && (
+                    <span className="ev-num ev-inbox-row-time">{formatRelativeTime(item.at)}</span>
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  };
+
   return (
-    <section style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+    <section className="ev-page">
       <header className="ev-page-header">
         <Heading level={1} size={6} className="ev-page-title">
           {t("overview.title")}
         </Heading>
-        <span style={{ flex: 1 }} />
-        {projects.length > 1 && (
+        <span className="ev-flex-1" />
+        {projects.length > 1 && (showFilterBar || projectFilter !== "") && (
           <select
             aria-label={t("overview.filterProject")}
             className="ev-select"
@@ -185,24 +141,22 @@ export function OverviewPage({
             ))}
           </select>
         )}
-        <Button
-          hierarchy="primary"
-          density="compact"
-          iconStart={<AddIcon width={15} height={15} />}
-          onClick={onNewProject}
-        >
-          {t("overview.newProject")}
-        </Button>
+        {(projects.length > 0 || projectsError) && (
+          <Button
+            hierarchy="primary"
+            density="compact"
+            iconStart={<AddIcon width={15} height={15} />}
+            onClick={onNewProject}
+          >
+            {t("overview.newProject")}
+          </Button>
+        )}
       </header>
 
       {projectsError && (
-        <div style={{ padding: "12px 20px 0" }}>
-          <div
-            className="ev-error-banner"
-            role="alert"
-            style={{ display: "flex", alignItems: "center", gap: 10 }}
-          >
-            <span style={{ flex: 1 }}>{t("overview.loadError", { error: projectsError })}</span>
+        <div className="ev-page-banner">
+          <div className="ev-error-banner ev-error-row" role="alert">
+            <span className="ev-flex-1">{t("overview.loadError", { error: projectsError })}</span>
             {onRetryProjects && (
               <Button
                 type="button"
@@ -222,135 +176,104 @@ export function OverviewPage({
         projectsError ? null : projectsLoading ? (
           <div className="ev-overview-loading">{t("overview.loadingProjects")}</div>
         ) : (
-          <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 24 }}>
-            <EmptyState.Root>
-              <EmptyState.Body>
-                <EmptyState.Copy>
-                  <EmptyState.Title level={2}>{t("overview.emptyTitle")}</EmptyState.Title>
-                </EmptyState.Copy>
-                <EmptyState.Actions>
-                  <Button
-                    hierarchy="primary"
-                    iconStart={<AddIcon width={16} height={16} />}
-                    onClick={onNewProject}
-                  >
-                    {t("overview.newProject")}
-                  </Button>
-                </EmptyState.Actions>
-              </EmptyState.Body>
-            </EmptyState.Root>
+          <div className="ev-overview-empty">
+            <div className="ev-landing-logo">
+              <BrandLogo size={24} />
+            </div>
+            <Heading level={2} size={5} className="ev-overview-empty-title">
+              {t("overview.emptyTitle")}
+            </Heading>
+            <Button
+              hierarchy="primary"
+              iconStart={<AddIcon width={16} height={16} />}
+              onClick={onNewProject}
+            >
+              {t("overview.newProject")}
+            </Button>
           </div>
         )
       ) : (
         <>
-          <div className="ev-overview-bar">
-            <fieldset
-              className="ev-lane-pills"
-              aria-label={t("overview.filterLane")}
-              style={{ border: 0, margin: 0 }}
-            >
-              {(
-                [
-                  ["all", t("overview.lane.all"), pending.length + running.length + done.length],
-                  ["pending", t("overview.lane.pending"), pending.length],
-                  ["running", t("overview.lane.running"), running.length],
-                  ["done", t("overview.lane.done"), done.length],
-                ] as const
-              ).map(([key, label, count]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className="ev-lane-pill"
-                  aria-pressed={laneFilter === key}
-                  onClick={() => setLaneFilter(key)}
-                >
-                  <span>{label}</span>
-                  <span className="ev-num" style={{ color: "var(--ev-fg-subtle)" }}>
-                    {count}
-                  </span>
-                </button>
-              ))}
-            </fieldset>
+          {showFilterBar && (
+            <div className="ev-overview-bar">
+              <fieldset className="ev-lane-pills" aria-label={t("overview.filterLane")}>
+                {(
+                  [
+                    ["all", t("overview.lane.all"), totalFiltered],
+                    ["pending", t("overview.lane.pending"), pending.length],
+                    ["running", t("overview.lane.running"), running.length],
+                    ["done", t("overview.lane.done"), done.length],
+                  ] as const
+                ).map(([key, label, count]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className="ev-lane-pill"
+                    aria-pressed={laneFilter === key}
+                    onClick={() => setLaneFilter(key)}
+                  >
+                    <span>{label}</span>
+                    <span className="ev-num ev-lane-pill-count">{count}</span>
+                  </button>
+                ))}
+              </fieldset>
 
-            <div className="ev-overview-search">
-              <SearchIcon width={15} height={15} />
-              <input
-                className="ev-raw-input"
-                type="search"
+              <SearchField
+                className="ev-overview-search"
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={setQuery}
                 placeholder={t("overview.searchPlaceholder")}
-                aria-label={t("overview.searchLabel")}
+                ariaLabel={t("overview.searchLabel")}
+                clearOnEscape
               />
             </div>
-          </div>
+          )}
 
-          <div className={`ev-overview-grid${laneFilter !== "all" ? " single" : ""}`}>
-            {(laneFilter === "all" || laneFilter === "pending") && (
-              <section className="ev-lane">
-                <div className="ev-lane-head">
-                  <span>{t("overview.lane.pending")}</span>
-                  <span
-                    className="ev-count-badge"
-                    data-tone={pending.length > 0 ? "warning" : undefined}
-                  >
-                    {pending.length}
-                  </span>
+          {totalFiltered === 0 && laneFilter === "all" ? (
+            <div className="ev-overview-empty">
+              <span className="ev-overview-quiet">
+                {query.trim() ? t("palette.empty") : t("overview.allClear")}
+              </span>
+              {!query.trim() && (
+                <div className="ev-overview-projects">
+                  {projects.map((project) => {
+                    const summary = deriveBoardSummary(boards[project.id]);
+                    return (
+                      <button
+                        key={project.id}
+                        type="button"
+                        className="ev-project-pill"
+                        onClick={() => onOpenProject(project.id)}
+                      >
+                        {summary.stage !== "idle" && (
+                          <span className="ev-dot" data-stage={summary.stage} />
+                        )}
+                        <span className="ev-truncate">{project.title}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="ev-lane-scroll">
-                  {pending.length === 0 ? (
-                    <div className="ev-lane-empty">{t("overview.emptyPending")}</div>
-                  ) : (
-                    pending.map(renderCard)
-                  )}
-                </div>
-              </section>
-            )}
-
-            {(laneFilter === "all" || laneFilter === "running" || laneFilter === "done") && (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 14,
-                  minHeight: 0,
-                  overflowY: "auto",
-                }}
-              >
-                {(laneFilter === "all" || laneFilter === "running") && (
-                  <section className="ev-lane" style={{ flex: "0 1 auto" }}>
-                    <div className="ev-lane-head">
-                      <span>{t("overview.lane.running")}</span>
-                      <span className="ev-count-badge">{running.length}</span>
-                    </div>
-                    <div className="ev-lane-scroll">
-                      {running.length === 0 ? (
-                        <div className="ev-lane-empty">{t("overview.emptyRunning")}</div>
-                      ) : (
-                        running.map(renderCard)
-                      )}
-                    </div>
-                  </section>
+              )}
+            </div>
+          ) : (
+            <div className="ev-page-scroll">
+              <div className="ev-page-narrow ev-inbox-groups">
+                {renderGroup(
+                  "pending",
+                  t("overview.lane.pending"),
+                  pending,
+                  t("overview.emptyPending"),
                 )}
-
-                {(laneFilter === "all" || laneFilter === "done") && (
-                  <section className="ev-lane" style={{ flex: "0 1 auto" }}>
-                    <div className="ev-lane-head">
-                      <span>{t("overview.lane.done")}</span>
-                      <span className="ev-count-badge">{done.length}</span>
-                    </div>
-                    <div className="ev-lane-scroll">
-                      {done.length === 0 ? (
-                        <div className="ev-lane-empty">{t("overview.emptyDone")}</div>
-                      ) : (
-                        done.slice(0, 20).map(renderCard)
-                      )}
-                    </div>
-                  </section>
+                {renderGroup(
+                  "running",
+                  t("overview.lane.running"),
+                  running,
+                  t("overview.emptyRunning"),
                 )}
+                {renderGroup("done", t("overview.lane.done"), done, t("overview.emptyDone"), 20)}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </>
       )}
     </section>
