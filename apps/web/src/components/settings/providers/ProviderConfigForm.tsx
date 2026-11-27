@@ -1,10 +1,10 @@
 import { Button, Field, Heading, Input, Switch } from "@earendil-works/elanor-react";
-import type { ProviderDetail } from "@eevee/protocol";
+import { type ProviderDetail, providerBaseUrlPlaceholder } from "@eevee/protocol";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "../../../lib/api.ts";
 import { BaseUrlField } from "../BaseUrlField.tsx";
 import { HeadersEditor } from "../HeadersEditor.tsx";
-import { baseUrlPlaceholder } from "../provider-utils.ts";
+import { SecretRevealInput } from "../SecretRevealInput.tsx";
 import {
   buildProviderPatch,
   createProviderConfigDraft,
@@ -127,7 +127,7 @@ export function ProviderConfigForm({
           baseUrl={draft.baseUrl}
           onValueChange={(baseUrl) => patchDraft({ baseUrl })}
           api={effectiveConfigApi}
-          placeholder={detail.baseUrl ?? baseUrlPlaceholder(effectiveConfigApi)}
+          placeholder={detail.baseUrl ?? providerBaseUrlPlaceholder(effectiveConfigApi)}
           previewBaseUrl={effectiveBaseUrl}
           fallbackNote={fallbackNote}
           previewPrefix="有效请求 URL："
@@ -136,49 +136,42 @@ export function ProviderConfigForm({
 
         <Field.Root>
           <Field.Label>models.json 中的 apiKey（支持 $ENV_VAR / !cmd）</Field.Label>
-          <div className="ev-key-input-row">
-            <Input
-              type={draft.revealApiKey ? "text" : "password"}
-              value={draft.apiKey}
-              disabled={draft.clearApiKey}
-              onValueChange={(apiKey) =>
-                patchDraft({
-                  apiKey,
-                  apiKeyTouched: true,
-                  clearApiKey: false,
-                })
-              }
-              placeholder={
-                detail.config?.hasApiKey && !detail.config?.apiKeyRef
-                  ? "已设置密钥（留空保持不变，或输入新值覆盖）"
-                  : "留空则使用 auth.json 或环境变量"
-              }
-            />
-            <Button
-              type="button"
-              hierarchy="secondary"
-              density="compact"
-              onClick={() => patchDraft({ revealApiKey: !draft.revealApiKey }, false)}
-            >
-              {draft.revealApiKey ? "隐藏" : "显示"}
-            </Button>
-            {detail.config?.hasApiKey && (
-              <Button
-                type="button"
-                hierarchy={draft.clearApiKey ? "primary" : "secondary"}
-                density="compact"
-                onClick={() =>
-                  patchDraft({
-                    clearApiKey: !draft.clearApiKey,
-                    apiKey: "",
-                    apiKeyTouched: true,
-                  })
-                }
-              >
-                {draft.clearApiKey ? "已标记清除" : "清除 apiKey"}
-              </Button>
-            )}
-          </div>
+          <SecretRevealInput
+            value={draft.apiKey}
+            disabled={draft.clearApiKey}
+            revealed={draft.revealApiKey}
+            onValueChange={(apiKey) =>
+              patchDraft({
+                apiKey,
+                apiKeyTouched: true,
+                clearApiKey: false,
+              })
+            }
+            onRevealedChange={(revealApiKey) => patchDraft({ revealApiKey }, false)}
+            placeholder={
+              detail.config?.hasApiKey && !detail.config?.apiKeyRef
+                ? "已设置密钥（留空保持不变，或输入新值覆盖）"
+                : "留空则使用 auth.json 或环境变量"
+            }
+            extraActions={
+              detail.config?.hasApiKey ? (
+                <Button
+                  type="button"
+                  hierarchy={draft.clearApiKey ? "primary" : "secondary"}
+                  density="compact"
+                  onClick={() =>
+                    patchDraft({
+                      clearApiKey: !draft.clearApiKey,
+                      apiKey: "",
+                      apiKeyTouched: true,
+                    })
+                  }
+                >
+                  {draft.clearApiKey ? "已标记清除" : "清除 apiKey"}
+                </Button>
+              ) : undefined
+            }
+          />
         </Field.Root>
 
         <div className="ev-toggle-field">

@@ -10,7 +10,32 @@ import {
 } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { useAbortableAsync } from "../../lib/useAbortableAsync.ts";
 import { resolveToolsSettings, ToolsSettingsEditor } from "./ToolsSettingsEditor.tsx";
+
+export type ConfigFormState = {
+  readonly maxActiveWorkers: string;
+  readonly backgroundAfterMs: string;
+  readonly routerContextTokens: string;
+  readonly idleHibernateMs: string;
+  readonly routerModel: string;
+  readonly workerModel: string;
+  readonly dreamerModel: string;
+  readonly tools: ToolsSettings | undefined;
+  readonly inlineBudget: string;
+};
+
+const INITIAL_FORM_STATE: ConfigFormState = {
+  maxActiveWorkers: "3",
+  backgroundAfterMs: "30000",
+  routerContextTokens: "80000",
+  idleHibernateMs: "600000",
+  routerModel: "",
+  workerModel: "",
+  dreamerModel: "",
+  tools: undefined,
+  inlineBudget: "",
+};
 
 function formatChoice(choice: ModelChoice | undefined): string {
   if (!choice) return "";
@@ -40,16 +65,46 @@ function parseChoice(raw: string): ModelChoice | undefined {
   return { provider, modelId: rest };
 }
 
+export function configFormFromSettings(settings: EngineSettings): ConfigFormState {
+  return {
+    maxActiveWorkers: String(settings.maxActiveWorkers ?? 3),
+    backgroundAfterMs: String(settings.backgroundAfterMs ?? 30_000),
+    routerContextTokens: String(settings.routerContextTokens ?? 80_000),
+    idleHibernateMs: String(settings.idleHibernateMs ?? 600_000),
+    routerModel: formatChoice(settings.models?.router),
+    workerModel: formatChoice(settings.models?.worker),
+    dreamerModel: formatChoice(settings.models?.dreamer),
+    tools: settings.tools,
+    inlineBudget: String(settings.tools?.codemode?.inlineBudget ?? ""),
+  };
+}
+
+export function buildEngineSettingsFromForm(form: ConfigFormState): EngineSettings {
+  const router = parseChoice(form.routerModel);
+  const worker = parseChoice(form.workerModel);
+  const dreamer = parseChoice(form.dreamerModel);
+  const models =
+    router || worker || dreamer
+      ? {
+          ...(router ? { router } : {}),
+          ...(worker ? { worker } : {}),
+          ...(dreamer ? { dreamer } : {}),
+        }
+      : undefined;
+
+  const nextTools = resolveToolsSettings(form.tools, form.inlineBudget, "global");
+  return {
+    maxActiveWorkers: Number(form.maxActiveWorkers),
+    backgroundAfterMs: Number(form.backgroundAfterMs),
+    routerContextTokens: Number(form.routerContextTokens),
+    idleHibernateMs: Number(form.idleHibernateMs),
+    ...(models ? { models } : {}),
+    ...(nextTools ? { tools: nextTools } : {}),
+  };
+}
+
 export function ConfigTab() {
-  const [maxActiveWorkers, setMaxActiveWorkers] = useState("3");
-  const [backgroundAfterMs, setBackgroundAfterMs] = useState("30000");
-  const [routerContextTokens, setRouterContextTokens] = useState("80000");
-  const [idleHibernateMs, setIdleHibernateMs] = useState("600000");
-  const [routerModel, setRouterModel] = useState("");
-  const [workerModel, setWorkerModel] = useState("");
-  const [dreamerModel, setDreamerModel] = useState("");
-  const [tools, setTools] = useState<ToolsSettings | undefined>(undefined);
-  const [inlineBudget, setInlineBudget] = useState("");
+  const [form, setForm] = useState<ConfigFormState>(INITIAL_FORM_STATE);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -58,23 +113,23 @@ export function ConfigTab() {
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
 
+  const { run: runLoad } = useAbortableAsync();
+
+  const patchForm = (patch: Partial<ConfigFormState>) => {
+    setForm((prev) => ({ ...prev, ...patch }));
+    setSaved(false);
+  };
+
   const load = useCallback(async () => {
     setError(undefined);
     try {
-      const settings = await api.getSettings();
-      setMaxActiveWorkers(String(settings.maxActiveWorkers ?? 3));
-      setBackgroundAfterMs(String(settings.backgroundAfterMs ?? 30_000));
-      setRouterContextTokens(String(settings.routerContextTokens ?? 80_000));
-      setIdleHibernateMs(String(settings.idleHibernateMs ?? 600_000));
-      setRouterModel(formatChoice(settings.models?.router));
-      setWorkerModel(formatChoice(settings.models?.worker));
-      setDreamerModel(formatChoice(settings.models?.dreamer));
-      setTools(settings.tools);
-      setInlineBudget(String(settings.tools?.codemode?.inlineBudget ?? ""));
+      const settings = await runLoad((signal) => api.getSettings(signal));
+      if (!settings) return;
+      setForm(configFormFromSettings(settings));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, []);
+  }, [runLoad]);
 
   useEffect(() => {
     void load();
@@ -85,28 +140,7 @@ export function ConfigTab() {
     setSaved(false);
     setError(undefined);
     try {
-      const router = parseChoice(routerModel);
-      const worker = parseChoice(workerModel);
-      const dreamer = parseChoice(dreamerModel);
-      const models =
-        router || worker || dreamer
-          ? {
-              ...(router ? { router } : {}),
-              ...(worker ? { worker } : {}),
-              ...(dreamer ? { dreamer } : {}),
-            }
-          : undefined;
-
-      const nextTools = resolveToolsSettings(tools, inlineBudget, "global");
-      const next: EngineSettings = {
-        maxActiveWorkers: Number(maxActiveWorkers),
-        backgroundAfterMs: Number(backgroundAfterMs),
-        routerContextTokens: Number(routerContextTokens),
-        idleHibernateMs: Number(idleHibernateMs),
-        ...(models ? { models } : {}),
-        ...(nextTools ? { tools: nextTools } : {}),
-      };
-      await api.putSettings(next);
+      await api.putSettings(buildEngineSettingsFromForm(form));
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -163,23 +197,35 @@ export function ConfigTab() {
           <div className="ev-settings-grid-2">
             <Field.Root>
               <Field.Label>并发 Worker 上限</Field.Label>
-              <Input type="text" value={maxActiveWorkers} onValueChange={setMaxActiveWorkers} />
+              <Input
+                type="text"
+                value={form.maxActiveWorkers}
+                onValueChange={(maxActiveWorkers) => patchForm({ maxActiveWorkers })}
+              />
             </Field.Root>
             <Field.Root>
               <Field.Label>命令转后台阈值 (ms)</Field.Label>
-              <Input type="text" value={backgroundAfterMs} onValueChange={setBackgroundAfterMs} />
+              <Input
+                type="text"
+                value={form.backgroundAfterMs}
+                onValueChange={(backgroundAfterMs) => patchForm({ backgroundAfterMs })}
+              />
             </Field.Root>
             <Field.Root>
               <Field.Label>Router 记忆阈值 (tokens)</Field.Label>
               <Input
                 type="text"
-                value={routerContextTokens}
-                onValueChange={setRouterContextTokens}
+                value={form.routerContextTokens}
+                onValueChange={(routerContextTokens) => patchForm({ routerContextTokens })}
               />
             </Field.Root>
             <Field.Root>
               <Field.Label>空闲休眠 (ms)</Field.Label>
-              <Input type="text" value={idleHibernateMs} onValueChange={setIdleHibernateMs} />
+              <Input
+                type="text"
+                value={form.idleHibernateMs}
+                onValueChange={(idleHibernateMs) => patchForm({ idleHibernateMs })}
+              />
             </Field.Root>
           </div>
 
@@ -190,8 +236,8 @@ export function ConfigTab() {
               <Field.Label>Router 模型</Field.Label>
               <Input
                 type="text"
-                value={routerModel}
-                onValueChange={setRouterModel}
+                value={form.routerModel}
+                onValueChange={(routerModel) => patchForm({ routerModel })}
                 placeholder="provider/model"
               />
             </Field.Root>
@@ -199,8 +245,8 @@ export function ConfigTab() {
               <Field.Label>Worker 模型</Field.Label>
               <Input
                 type="text"
-                value={workerModel}
-                onValueChange={setWorkerModel}
+                value={form.workerModel}
+                onValueChange={(workerModel) => patchForm({ workerModel })}
                 placeholder="跟随 Router"
               />
             </Field.Root>
@@ -208,8 +254,8 @@ export function ConfigTab() {
               <Field.Label>Dreamer 模型</Field.Label>
               <Input
                 type="text"
-                value={dreamerModel}
-                onValueChange={setDreamerModel}
+                value={form.dreamerModel}
+                onValueChange={(dreamerModel) => patchForm({ dreamerModel })}
                 placeholder="未启用"
               />
             </Field.Root>
@@ -224,10 +270,10 @@ export function ConfigTab() {
         <div className="ev-settings-card">
           <ToolsSettingsEditor
             variant="global"
-            value={tools}
-            onChange={setTools}
-            inlineBudget={inlineBudget}
-            onInlineBudgetChange={setInlineBudget}
+            value={form.tools}
+            onChange={(tools) => patchForm({ tools })}
+            inlineBudget={form.inlineBudget}
+            onInlineBudgetChange={(inlineBudget) => patchForm({ inlineBudget })}
           />
           <Separator />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

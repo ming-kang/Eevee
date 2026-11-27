@@ -1,15 +1,15 @@
-import type {
-  McpServerSnapshotPayload,
-  McpStateResponse,
-  ProjectMcpStateResponse,
+import {
+  isMcpOverrideEntry,
+  type McpServerSnapshotPayload,
+  type McpStateResponse,
+  mcpConnectionFieldsMatch,
+  normalizeMcpExposure,
+  type ProjectMcpStateResponse,
 } from "@eevee/protocol";
 import { mergeProjectOverridePatch } from "../mcp-helpers.ts";
 import {
   buildConfigFromForm,
-  connectionFieldsMatch,
   getExplicitToolExposure,
-  isOverrideEntry,
-  normalizeExposure,
   normalizeServerMap,
   type ServerFormState,
 } from "./codec.ts";
@@ -72,10 +72,14 @@ export function buildScopedServerPayload(opts: {
     const existingProject = projectServers[serverName];
     if (
       globalEntry &&
-      (existingProject === undefined || isOverrideEntry(existingProject)) &&
-      connectionFieldsMatch(fullConfig, globalEntry)
+      (existingProject === undefined || isMcpOverrideEntry(existingProject)) &&
+      mcpConnectionFieldsMatch(fullConfig, globalEntry) &&
+      (globalEntry.timeout === undefined || fullConfig.timeout !== undefined)
     ) {
       const overrideToolExposure = getExplicitToolExposure(existingProject);
+      const descriptionChanged = fullConfig.description !== globalEntry.description;
+      const timeoutChanged =
+        fullConfig.timeout !== undefined && fullConfig.timeout !== globalEntry.timeout;
       return {
         enabled: form.enabled,
         exposure: form.exposure,
@@ -83,6 +87,12 @@ export function buildScopedServerPayload(opts: {
           router: form.roleRouter,
           worker: form.roleWorker,
         },
+        ...(descriptionChanged
+          ? {
+              description: typeof fullConfig.description === "string" ? fullConfig.description : "",
+            }
+          : {}),
+        ...(timeoutChanged ? { timeout: fullConfig.timeout } : {}),
         ...(Object.keys(overrideToolExposure).length > 0
           ? { toolExposure: overrideToolExposure }
           : {}),
@@ -126,7 +136,7 @@ export function resolveToolExposureUpdate(opts: {
   if (nextValue === "") {
     delete currentMap[toolName];
   } else {
-    currentMap[toolName] = normalizeExposure(nextValue);
+    currentMap[toolName] = normalizeMcpExposure(nextValue);
   }
 
   const nextConfig = { ...base };
@@ -139,7 +149,7 @@ export function resolveToolExposureUpdate(opts: {
   if (
     isProject &&
     server.scope !== "project" &&
-    isOverrideEntry(nextConfig) &&
+    isMcpOverrideEntry(nextConfig) &&
     Object.keys(nextConfig).length === 0
   ) {
     return Object.hasOwn(projectServers, server.name) ? { action: "delete" } : { action: "noop" };

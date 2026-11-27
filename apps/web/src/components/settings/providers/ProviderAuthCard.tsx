@@ -4,6 +4,7 @@ import type { ProviderDetail } from "@eevee/protocol";
 import { useState } from "react";
 import { api } from "../../../lib/api.ts";
 import { formatTime } from "../../../lib/format.ts";
+import { ConfirmModal } from "../../ConfirmModal.tsx";
 import { formatAuthMeta } from "../provider-utils.ts";
 import type { UseProviderOAuthResult } from "./useProviderOAuth.ts";
 
@@ -107,6 +108,8 @@ export function ProviderAuthCard({
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [savingKey, setSavingKey] = useState(false);
   const [deletingProvider, setDeletingProvider] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | undefined>(undefined);
 
   const saveApiKey = async () => {
     const trimmed = apiKeyInput.trim();
@@ -135,19 +138,20 @@ export function ProviderAuthCard({
     }
   };
 
+  const isCustom = detail.kind === "custom";
+
   const handleDeleteOrRevertProvider = async () => {
-    const isCustom = detail.kind === "custom";
-    const confirmText = isCustom
-      ? `确定删除自定义 Provider「${detail.id}」及其所有配置与模型？`
-      : `确定还原内置 Provider「${detail.id}」的所有 models.json 覆盖与自定义模型？`;
-    if (!window.confirm(confirmText)) return;
     setDeletingProvider(true);
+    setConfirmError(undefined);
     onDetailError(undefined);
     try {
       await api.deleteProvider(detail.id);
+      setConfirmOpen(false);
       await onRefresh(isCustom ? undefined : detail.id);
     } catch (err) {
-      onDetailError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setConfirmError(message);
+      onDetailError(message);
     } finally {
       setDeletingProvider(false);
     }
@@ -183,7 +187,10 @@ export function ProviderAuthCard({
               density="compact"
               iconStart={<DeleteIcon width={14} height={14} />}
               pending={deletingProvider}
-              onClick={() => void handleDeleteOrRevertProvider()}
+              onClick={() => {
+                setConfirmError(undefined);
+                setConfirmOpen(true);
+              }}
             >
               删除自定义 Provider
             </Button>
@@ -196,7 +203,10 @@ export function ProviderAuthCard({
               density="compact"
               iconStart={<UndoIcon width={14} height={14} />}
               pending={deletingProvider}
-              onClick={() => void handleDeleteOrRevertProvider()}
+              onClick={() => {
+                setConfirmError(undefined);
+                setConfirmOpen(true);
+              }}
             >
               还原内置覆盖
             </Button>
@@ -276,6 +286,24 @@ export function ProviderAuthCard({
           </Button>
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={
+          isCustom ? `删除自定义 Provider「${detail.id}」？` : `还原内置 Provider「${detail.id}」？`
+        }
+        description={
+          isCustom
+            ? `确定删除自定义 Provider「${detail.id}」及其所有配置与模型？`
+            : `确定还原内置 Provider「${detail.id}」的所有 models.json 覆盖与自定义模型？`
+        }
+        confirmLabel={isCustom ? "确认删除" : "确认还原"}
+        tone="danger"
+        pending={deletingProvider}
+        error={confirmError}
+        onConfirm={handleDeleteOrRevertProvider}
+      />
     </div>
   );
 }

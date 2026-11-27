@@ -3,6 +3,7 @@ import { Button, Modal, Text } from "@earendil-works/elanor-react";
 import type { CompatFieldInfo, ProviderDetail, ThinkingLevel } from "@eevee/protocol";
 import { type FormEvent, useReducer, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { ConfirmModal } from "../ConfirmModal.tsx";
 import { ModelBasicSection } from "./model-editor/ModelBasicSection.tsx";
 import { ModelBuiltinMatcher } from "./model-editor/ModelBuiltinMatcher.tsx";
 import { ModelCompatSection } from "./model-editor/ModelCompatSection.tsx";
@@ -42,6 +43,8 @@ export function ModelEditorModal({
 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
 
   const effectiveApi = (draft.apiValue.trim() || model?.api || target.providerApi || "").trim();
@@ -68,18 +71,15 @@ export function ModelEditorModal({
 
   const removeModel = async () => {
     if (!model) return;
-    const label = model.isCustom
-      ? `删除模型「${model.id}」？`
-      : `还原「${model.id}」的内置默认配置？`;
-    if (!window.confirm(label)) return;
     setDeleting(true);
-    setError(undefined);
+    setConfirmError(undefined);
     try {
       const response = await api.deleteProviderModel(target.providerId, model.id);
       onProviderChanged(response.provider);
+      setConfirmOpen(false);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setConfirmError(err instanceof Error ? err.message : String(err));
       setDeleting(false);
     }
   };
@@ -95,7 +95,7 @@ export function ModelEditorModal({
   const title = isCreate ? "新增模型" : `编辑模型 · ${model.id}`;
 
   return (
-    <Modal.Root open onOpenChange={(open) => !open && onClose()}>
+    <Modal.Root open onOpenChange={(open) => !open && !confirmOpen && !deleting && onClose()}>
       <Modal.Portal>
         <Modal.Backdrop />
         <Modal.Viewport>
@@ -200,7 +200,10 @@ export function ModelEditorModal({
                       semantic="negative"
                       density="compact"
                       pending={deleting}
-                      onClick={() => void removeModel()}
+                      onClick={() => {
+                        setConfirmError(undefined);
+                        setConfirmOpen(true);
+                      }}
                     >
                       删除模型
                     </Button>
@@ -212,7 +215,10 @@ export function ModelEditorModal({
                       semantic="negative"
                       density="compact"
                       pending={deleting}
-                      onClick={() => void removeModel()}
+                      onClick={() => {
+                        setConfirmError(undefined);
+                        setConfirmOpen(true);
+                      }}
                     >
                       还原内置默认
                     </Button>
@@ -230,6 +236,27 @@ export function ModelEditorModal({
                 </Button>
               </Modal.Actions>
             </form>
+            {model && (
+              <ConfirmModal
+                open={confirmOpen}
+                onOpenChange={setConfirmOpen}
+                title={
+                  model.isCustom
+                    ? `删除模型「${model.id}」？`
+                    : `还原「${model.id}」的内置默认配置？`
+                }
+                description={
+                  model.isCustom
+                    ? "确认后将从 models.json 中删除该自定义模型配置。"
+                    : "确认后将清除 models.json 中对该内置模型的覆盖配置并恢复默认值。"
+                }
+                confirmLabel={model.isCustom ? "确认删除" : "确认还原"}
+                tone="danger"
+                pending={deleting}
+                error={confirmError}
+                onConfirm={removeModel}
+              />
+            )}
           </Modal.Popup>
         </Modal.Viewport>
       </Modal.Portal>

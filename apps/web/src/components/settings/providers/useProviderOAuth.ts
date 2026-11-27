@@ -1,7 +1,7 @@
 import type { LoginAuthEvent, LoginPromptEvent, LoginStreamEvent } from "@eevee/protocol";
 import { useCallback, useRef, useState } from "react";
 import { api } from "../../../lib/api.ts";
-import { useAbortableStream } from "../useAbortableStream.ts";
+import { useAbortableSessionStream } from "../useAbortableStream.ts";
 
 export type IndexedAuthEvent = {
   readonly id: number;
@@ -18,6 +18,42 @@ export type ActiveProviderLogin = {
   readonly done?: string;
   readonly error?: string;
 };
+
+export function createActiveProviderLogin(
+  providerId: string,
+  sessionId: string,
+): ActiveProviderLogin {
+  return { providerId, sessionId, authEvents: [] };
+}
+
+export function applyProviderOAuthEvent(
+  prev: ActiveProviderLogin | undefined,
+  sessionId: string,
+  event: LoginStreamEvent,
+): ActiveProviderLogin | undefined {
+  if (!prev || prev.sessionId !== sessionId) return prev;
+  switch (event.type) {
+    case "auth":
+      return {
+        ...prev,
+        authEvents: [...prev.authEvents, { id: nextAuthEventId++, event: event.event }],
+      };
+    case "prompt":
+      return { ...prev, prompt: event.prompt };
+    case "complete":
+      return { ...prev, prompt: undefined, done: `${event.complete.providerId} 已完成登录` };
+    case "error":
+      return { ...prev, prompt: undefined, error: event.error.message };
+  }
+}
+
+export function markProviderOAuthUnexpectedEnd(
+  prev: ActiveProviderLogin | undefined,
+  sessionId: string,
+): ActiveProviderLogin | undefined {
+  if (!prev || prev.sessionId !== sessionId) return prev;
+  return { ...prev, prompt: undefined, error: "OAuth 授权流意外中断" };
+}
 
 export type UseProviderOAuthOptions = {
   readonly onComplete: (providerId: string) => Promise<void>;
@@ -39,108 +75,84 @@ export function useProviderOAuth({
   onError,
   onSelectProvider,
 }: UseProviderOAuthOptions): UseProviderOAuthResult {
-  const { abort, run } = useAbortableStream();
+  const { abort, callbacksRef, runSession } = useAbortableSessionStream({
+    onComplete,
+    onError,
+    onSelectProvider,
+  });
   const [login, setLogin] = useState<ActiveProviderLogin | undefined>(undefined);
   const [promptInput, setPromptInput] = useState("");
 
-  const onCompleteRef = useRef(onComplete);
-  const onErrorRef = useRef(onError);
-  const onSelectProviderRef = useRef(onSelectProvider);
-  onCompleteRef.current = onComplete;
-  onErrorRef.current = onError;
-  onSelectProviderRef.current = onSelectProvider;
+  const loginRef = useRef(login);
+  const promptInputRef = useRef(promptInput);
+  loginRef.current = login;
+  promptInputRef.current = promptInput;
 
   const startOAuth = useCallback(
     async (providerId: string) => {
-      onErrorRef.current(undefined);
-      onSelectProviderRef.current?.(providerId);
-      let activeSessionId: string | undefined;
-      let sawTerminal = false;
+      callbacksRef.current.onError(undefined);
+      callbacksRef.current.onSelectProvider?.(providerId);
 
-      await run<LoginStreamEvent>({
+      await runSession<LoginStreamEvent>({
         open: async ({ signal, isCurrent }) => {
           const started = await api.startProviderLogin(providerId, { type: "oauth" }, signal);
           if (!isCurrent()) return undefined;
-          activeSessionId = started.sessionId;
-          setLogin({ providerId, sessionId: started.sessionId, authEvents: [] });
+          setLogin(createActiveProviderLogin(providerId, started.sessionId));
           setPromptInput("");
-          return api.streamLoginSession(providerId, started.sessionId, { signal });
+          return {
+            sessionId: started.sessionId,
+            stream: api.streamLoginSession(providerId, started.sessionId, { signal }),
+          };
         },
-        onEvent: async (event, { isCurrent }) => {
+        isTerminal: (event) => event.type === "complete" || event.type === "error",
+        onEvent: async (event, { sessionId, isCurrent, callbacks }) => {
           if (!isCurrent()) return;
-          if (event.type === "auth") {
-            setLogin((prev) =>
-              prev && prev.sessionId === activeSessionId
-                ? {
-                    ...prev,
-                    authEvents: [...prev.authEvents, { id: nextAuthEventId++, event: event.event }],
-                  }
-                : prev,
-            );
-          } else if (event.type === "prompt") {
-            setLogin((prev) =>
-              prev && prev.sessionId === activeSessionId ? { ...prev, prompt: event.prompt } : prev,
-            );
+          setLogin((prev) => applyProviderOAuthEvent(prev, sessionId, event));
+          if (event.type === "prompt") {
             setPromptInput(
               event.prompt.type === "select" ? (event.prompt.options[0]?.id ?? "") : "",
             );
           } else if (event.type === "complete") {
-            sawTerminal = true;
-            setLogin((prev) =>
-              prev && prev.sessionId === activeSessionId
-                ? { ...prev, prompt: undefined, done: `${event.complete.providerId} 已完成登录` }
-                : prev,
-            );
-            await onCompleteRef.current(providerId);
-          } else if (event.type === "error") {
-            sawTerminal = true;
-            setLogin((prev) =>
-              prev && prev.sessionId === activeSessionId
-                ? { ...prev, prompt: undefined, error: event.error.message }
-                : prev,
-            );
+            await callbacks.onComplete(providerId);
           }
         },
-        onEnd: () => {
-          if (!sawTerminal && activeSessionId) {
-            setLogin((prev) =>
-              prev && prev.sessionId === activeSessionId
-                ? { ...prev, prompt: undefined, error: "OAuth 授权流意外中断" }
-                : prev,
-            );
-          }
+        onUnexpectedEnd: ({ sessionId }) => {
+          setLogin((prev) => markProviderOAuthUnexpectedEnd(prev, sessionId));
         },
-        onError: (err) => {
-          onErrorRef.current(err instanceof Error ? err.message : String(err));
+        onError: (err, { callbacks }) => {
+          callbacks.onError(err instanceof Error ? err.message : String(err));
         },
       });
     },
-    [run],
+    [callbacksRef, runSession],
   );
 
   const submitPrompt = useCallback(async () => {
-    if (!login?.prompt) return;
+    const active = loginRef.current;
+    if (!active?.prompt) return;
     try {
-      await api.submitLoginInput(login.providerId, login.sessionId, {
-        promptId: login.prompt.promptId,
-        value: promptInput,
+      await api.submitLoginInput(active.providerId, active.sessionId, {
+        promptId: active.prompt.promptId,
+        value: promptInputRef.current,
       });
-      setLogin((prev) => (prev ? { ...prev, prompt: undefined } : prev));
+      setLogin((prev) =>
+        prev && prev.sessionId === active.sessionId ? { ...prev, prompt: undefined } : prev,
+      );
       setPromptInput("");
     } catch (err) {
-      onErrorRef.current(err instanceof Error ? err.message : String(err));
+      callbacksRef.current.onError(err instanceof Error ? err.message : String(err));
     }
-  }, [login, promptInput]);
+  }, [callbacksRef]);
 
   const cancelLogin = useCallback(async () => {
-    if (!login) return;
-    const active = login;
+    const active = loginRef.current;
+    if (!active) return;
     abort();
     setLogin(undefined);
     if (!active.done && !active.error) {
       await api.cancelLoginSession(active.providerId, active.sessionId).catch(() => undefined);
     }
-  }, [abort, login]);
+  }, [abort]);
 
   return {
     login,

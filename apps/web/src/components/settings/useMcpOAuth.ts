@@ -2,7 +2,7 @@ import type { McpOAuthEvent } from "@eevee/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
 import { showToast } from "../../lib/toasts.ts";
-import { useAbortableStream } from "./useAbortableStream.ts";
+import { useAbortableSessionStream } from "./useAbortableStream.ts";
 
 export type OAuthProgressEntry = {
   readonly id: number;
@@ -23,6 +23,51 @@ export type OAuthUiSession = {
   readonly done: boolean;
   readonly error?: string;
 };
+
+export function createOAuthUiSession(serverName: string, sessionId: string): OAuthUiSession {
+  return {
+    serverName,
+    sessionId,
+    progress: [],
+    redirectInput: "",
+    submittingInput: false,
+    done: false,
+  };
+}
+
+export function applyMcpOAuthEvent(
+  prev: OAuthUiSession | undefined,
+  sessionId: string,
+  event: McpOAuthEvent,
+): OAuthUiSession | undefined {
+  if (!prev || prev.sessionId !== sessionId) return prev;
+  switch (event.type) {
+    case "auth_url":
+      return {
+        ...prev,
+        authUrl: event.url,
+        redirectHint: event.redirectUrl,
+        instructions: event.instructions,
+      };
+    case "progress":
+      return {
+        ...prev,
+        progress: [...prev.progress, { id: nextOAuthProgressId++, message: event.message }],
+      };
+    case "complete":
+      return { ...prev, done: true };
+    case "error":
+      return { ...prev, error: event.message };
+  }
+}
+
+export function markMcpOAuthUnexpectedEnd(
+  prev: OAuthUiSession | undefined,
+  sessionId: string,
+): OAuthUiSession | undefined {
+  if (!prev || prev.sessionId !== sessionId) return prev;
+  return { ...prev, error: "OAuth 授权流意外中断" };
+}
 
 export type UseMcpOAuthOptions = {
   readonly projectId?: string;
@@ -47,15 +92,13 @@ export function useMcpOAuth({
   onError,
 }: UseMcpOAuthOptions): UseMcpOAuthResult {
   const client = useMemo(() => api.mcp(projectId), [projectId]);
-  const { abort, run } = useAbortableStream();
+  const { abort, callbacksRef, runSession } = useAbortableSessionStream({ onRefresh, onError });
   const [oauthSession, setOauthSession] = useState<OAuthUiSession | undefined>(undefined);
   const [oauthMutatingServers, setOauthMutatingServers] = useState<Record<string, boolean>>({});
 
   const activeClientRef = useRef(client);
-  const onRefreshRef = useRef(onRefresh);
-  const onErrorRef = useRef(onError);
-  onRefreshRef.current = onRefresh;
-  onErrorRef.current = onError;
+  const oauthSessionRef = useRef(oauthSession);
+  oauthSessionRef.current = oauthSession;
 
   useEffect(() => {
     activeClientRef.current = client;
@@ -66,12 +109,12 @@ export function useMcpOAuth({
 
   const dismissOAuth = useCallback(
     (serverName?: string) => {
-      if (serverName === undefined || oauthSession?.serverName === serverName) {
+      if (serverName === undefined || oauthSessionRef.current?.serverName === serverName) {
         abort();
         setOauthSession(undefined);
       }
     },
-    [abort, oauthSession],
+    [abort],
   );
 
   const setOAuthRedirectInput = useCallback((value: string) => {
@@ -80,99 +123,62 @@ export function useMcpOAuth({
 
   const startOAuth = useCallback(
     async (serverName: string) => {
-      onErrorRef.current(undefined);
-      let startedSessionId: string | undefined;
-      let sawTerminal = false;
+      callbacksRef.current.onError(undefined);
 
-      await run<McpOAuthEvent>({
+      await runSession<McpOAuthEvent>({
         open: async ({ signal, isCurrent }) => {
           const started = await client.startOAuth(serverName, signal);
           if (!isCurrent() || activeClientRef.current !== client) return undefined;
-          startedSessionId = started.sessionId;
-          setOauthSession({
-            serverName,
+          setOauthSession(createOAuthUiSession(serverName, started.sessionId));
+          return {
             sessionId: started.sessionId,
-            progress: [],
-            redirectInput: "",
-            submittingInput: false,
-            done: false,
-          });
-          return client.streamOAuth(serverName, started.sessionId, { signal });
+            stream: client.streamOAuth(serverName, started.sessionId, { signal }),
+          };
         },
-        onEvent: async (ev, { isCurrent }) => {
+        isTerminal: (ev) => ev.type === "complete" || ev.type === "error",
+        onEvent: async (ev, { sessionId, isCurrent, callbacks }) => {
           if (activeClientRef.current !== client) return;
-          if (ev.type === "auth_url") {
-            setOauthSession((prev) =>
-              prev && prev.sessionId === startedSessionId
-                ? {
-                    ...prev,
-                    authUrl: ev.url,
-                    redirectHint: ev.redirectUrl,
-                    instructions: ev.instructions,
-                  }
-                : prev,
-            );
-          } else if (ev.type === "progress") {
-            setOauthSession((prev) =>
-              prev && prev.sessionId === startedSessionId
-                ? {
-                    ...prev,
-                    progress: [
-                      ...prev.progress,
-                      { id: nextOAuthProgressId++, message: ev.message },
-                    ],
-                  }
-                : prev,
-            );
-          } else if (ev.type === "complete") {
-            sawTerminal = true;
-            setOauthSession((prev) =>
-              prev && prev.sessionId === startedSessionId ? { ...prev, done: true } : prev,
-            );
+          if (ev.type === "error" && !isCurrent()) return;
+          setOauthSession((prev) => applyMcpOAuthEvent(prev, sessionId, ev));
+          if (ev.type === "complete") {
             showToast(`${serverName} OAuth 登录成功`);
-            await onRefreshRef.current();
-          } else if (ev.type === "error") {
-            sawTerminal = true;
-            if (!isCurrent()) return;
-            setOauthSession((prev) =>
-              prev && prev.sessionId === startedSessionId ? { ...prev, error: ev.message } : prev,
-            );
+            await callbacks.onRefresh();
           }
         },
-        onEnd: () => {
-          if (!sawTerminal && startedSessionId && activeClientRef.current === client) {
-            setOauthSession((prev) =>
-              prev && prev.sessionId === startedSessionId
-                ? { ...prev, error: "OAuth 授权流意外中断" }
-                : prev,
-            );
-          }
+        onUnexpectedEnd: ({ sessionId }) => {
+          if (activeClientRef.current !== client) return;
+          setOauthSession((prev) => markMcpOAuthUnexpectedEnd(prev, sessionId));
         },
-        onError: (err) => {
+        onError: (err, { callbacks }) => {
           if (activeClientRef.current !== client) return;
           const msg = err instanceof Error ? err.message : String(err);
           setOauthSession((prev) =>
             prev && prev.serverName === serverName ? { ...prev, error: msg } : prev,
           );
-          onErrorRef.current(msg);
+          callbacks.onError(msg);
         },
       });
     },
-    [client, run],
+    [callbacksRef, client, runSession],
   );
 
   const submitOAuthRedirect = useCallback(async () => {
-    if (!oauthSession) return;
-    const redirectUrl = oauthSession.redirectInput.trim();
+    const active = oauthSessionRef.current;
+    if (!active) return;
+    const redirectUrl = active.redirectInput.trim();
     if (!redirectUrl) return;
-    setOauthSession((prev) => (prev ? { ...prev, submittingInput: true, error: undefined } : prev));
+    setOauthSession((prev) =>
+      prev && prev.sessionId === active.sessionId
+        ? { ...prev, submittingInput: true, error: undefined }
+        : prev,
+    );
     try {
-      await client.submitOAuthInput(oauthSession.serverName, oauthSession.sessionId, {
+      await client.submitOAuthInput(active.serverName, active.sessionId, {
         redirectUrl,
       });
       if (activeClientRef.current !== client) return;
       setOauthSession((prev) =>
-        prev && prev.sessionId === oauthSession.sessionId
+        prev && prev.sessionId === active.sessionId
           ? {
               ...prev,
               submittingInput: false,
@@ -187,7 +193,7 @@ export function useMcpOAuth({
     } catch (err) {
       if (activeClientRef.current !== client) return;
       setOauthSession((prev) =>
-        prev && prev.sessionId === oauthSession.sessionId
+        prev && prev.sessionId === active.sessionId
           ? {
               ...prev,
               submittingInput: false,
@@ -196,22 +202,22 @@ export function useMcpOAuth({
           : prev,
       );
     }
-  }, [client, oauthSession]);
+  }, [client]);
 
   const cancelOAuth = useCallback(async () => {
-    if (!oauthSession) return;
-    const active = oauthSession;
+    const active = oauthSessionRef.current;
+    if (!active) return;
     abort();
     setOauthSession(undefined);
     if (!active.done && !active.error) {
       await client.cancelOAuth(active.serverName, active.sessionId).catch(() => undefined);
     }
-  }, [abort, client, oauthSession]);
+  }, [abort, client]);
 
   const logoutOAuth = useCallback(
     async (serverName: string) => {
       setOauthMutatingServers((prev) => ({ ...prev, [serverName]: true }));
-      onErrorRef.current(undefined);
+      callbacksRef.current.onError(undefined);
       try {
         await client.logoutOAuth(serverName);
         if (activeClientRef.current !== client) return;
@@ -222,12 +228,12 @@ export function useMcpOAuth({
           }
           return prev;
         });
-        await onRefreshRef.current();
+        await callbacksRef.current.onRefresh();
         if (activeClientRef.current !== client) return;
         showToast(`已清除「${serverName}」的 OAuth 凭据`);
       } catch (err) {
         if (activeClientRef.current === client) {
-          onErrorRef.current(err instanceof Error ? err.message : String(err));
+          callbacksRef.current.onError(err instanceof Error ? err.message : String(err));
         }
       } finally {
         if (activeClientRef.current === client) {
@@ -239,7 +245,7 @@ export function useMcpOAuth({
         }
       }
     },
-    [abort, client],
+    [abort, callbacksRef, client],
   );
 
   return {

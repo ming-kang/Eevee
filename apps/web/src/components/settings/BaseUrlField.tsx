@@ -1,6 +1,6 @@
 import { Field, Input, Text } from "@earendil-works/elanor-react";
-import type { ConnectionNote } from "@eevee/protocol";
-import { baseUrlPlaceholder, describeConnectionUrl, validateBaseUrl } from "./provider-utils.ts";
+import { type ConnectionNote, providerBaseUrlPlaceholder } from "@eevee/protocol";
+import { describeConnectionUrl, validateBaseUrl } from "./provider-utils.ts";
 
 export type BaseUrlPreviewProps = {
   readonly api?: string;
@@ -68,7 +68,7 @@ export function BaseUrlField({
         value={baseUrl}
         disabled={disabled}
         onValueChange={onValueChange}
-        placeholder={placeholder ?? baseUrlPlaceholder(api)}
+        placeholder={placeholder ?? providerBaseUrlPlaceholder(api)}
       />
       {!hidePreview && (
         <BaseUrlPreview

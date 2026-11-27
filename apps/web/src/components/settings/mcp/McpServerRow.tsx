@@ -8,7 +8,11 @@ import {
   UndoIcon,
 } from "@earendil-works/elanor-icons-react";
 import { Button, Checkbox, Switch } from "@earendil-works/elanor-react";
-import type { McpLogsResponse, McpServerSnapshotPayload } from "@eevee/protocol";
+import {
+  isMcpHttpConfig,
+  type McpLogsResponse,
+  type McpServerSnapshotPayload,
+} from "@eevee/protocol";
 import { useEffect, useId, useRef, useState } from "react";
 import type { OAuthUiSession } from "../useMcpOAuth.ts";
 import {
@@ -117,8 +121,7 @@ export function McpServerRow({
 
   const meta = statusMeta(server.status);
   const scope = scopeBadge(server.scope);
-  const transport =
-    server.transport ?? (typeof effectiveConfig?.url === "string" ? "http" : "stdio");
+  const transport = server.transport ?? (isMcpHttpConfig(effectiveConfig) ? "http" : "stdio");
   const exposure = server.exposure ?? DEFAULT_EXPOSURE;
   const roleRouter = server.roles?.router !== false;
   const roleWorker = server.roles?.worker !== false;

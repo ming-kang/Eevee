@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
 import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
 import { showToast } from "../lib/toasts.ts";
+import { useAbortableAsync } from "../lib/useAbortableAsync.ts";
 import { ProjectHeader } from "./ProjectHeader.tsx";
 
 export function MemoryPage({
@@ -21,25 +22,21 @@ export function MemoryPage({
   const [text, setText] = useState(project.memory ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const { run: runLoadMemory } = useAbortableAsync();
 
   useEffect(() => {
-    let active = true;
     setError(undefined);
-    void api
-      .getProjectMemory(project.id)
+    void runLoadMemory((signal) => api.getProjectMemory(project.id, signal))
       .then((res) => {
-        if (!active) return;
+        if (!res) return;
         const val = res.memory ?? "";
         setSavedText(val);
         setText(val);
       })
       .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : String(err));
+        setError(err instanceof Error ? err.message : String(err));
       });
-    return () => {
-      active = false;
-    };
-  }, [project.id]);
+  }, [project.id, runLoadMemory]);
 
   const dirty = text !== savedText;
 

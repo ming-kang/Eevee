@@ -1,16 +1,22 @@
 import {
+  DEFAULT_MCP_EXPOSURE,
+  isMcpHttpConfig,
   MCP_EXPOSURES,
+  MCP_SERVER_NAME_RE,
   type McpExposure,
-  McpExposureSchema,
   type McpServerSnapshotPayload,
   type McpServerStatusPayload,
-  validateWithSchema,
+  mcpConnectionFieldsMatch,
+  normalizeMcpExposure,
 } from "@eevee/protocol";
-import { deepEqualJson, isRecord } from "../../../lib/object.ts";
+import { isRecord } from "../../../lib/object.ts";
 import { type HeaderRow, headersToRows, rowsToHeaders } from "../header-rows.ts";
 
-export const SERVER_NAME_RE = /^[A-Za-z0-9_-]+$/;
-export const DEFAULT_EXPOSURE: McpExposure = "codemode";
+export {
+  DEFAULT_MCP_EXPOSURE as DEFAULT_EXPOSURE,
+  mcpConnectionFieldsMatch as connectionFieldsMatch,
+  normalizeMcpExposure as normalizeExposure,
+};
 
 const EXPOSURE_LABELS: Readonly<Record<McpExposure, string>> = {
   codemode: "codemode（默认 · 代码沙盒调用）",
@@ -91,26 +97,15 @@ function asStringMap(value: unknown): Record<string, string> | undefined {
   return out;
 }
 
-export function normalizeExposure(value: unknown): McpExposure {
-  if (value === "codemode-deferred") return "codemode";
-  const parsed = validateWithSchema(McpExposureSchema, value);
-  return parsed.ok ? parsed.value : DEFAULT_EXPOSURE;
-}
-
 export function getExplicitToolExposure(
   config: Record<string, unknown> | undefined,
 ): Record<string, McpExposure> {
   if (!config || !isRecord(config.toolExposure)) return {};
   const out: Record<string, McpExposure> = {};
   for (const [tool, raw] of Object.entries(config.toolExposure)) {
-    if (typeof raw === "string") out[tool] = normalizeExposure(raw);
+    if (typeof raw === "string") out[tool] = normalizeMcpExposure(raw);
   }
   return out;
-}
-
-export function isOverrideEntry(config: Record<string, unknown> | undefined): boolean {
-  if (!config) return false;
-  return config.command === undefined && config.url === undefined && config.type === undefined;
 }
 
 export function statusMeta(status: McpServerStatusPayload): {
@@ -164,7 +159,7 @@ export function createBlankForm(): ServerFormState {
     url: "",
     headerRows: [],
     timeoutText: "",
-    exposure: DEFAULT_EXPOSURE,
+    exposure: DEFAULT_MCP_EXPOSURE,
     roleRouter: true,
     roleWorker: true,
     oauthClientId: "",
@@ -185,9 +180,8 @@ export function formFromConfig(
   snapshot: McpServerSnapshotPayload | undefined,
 ): ServerFormState {
   const isHttp =
-    typeof config?.url === "string" ||
-    config?.type === "http" ||
-    (config?.command === undefined && snapshot?.transport === "http");
+    isMcpHttpConfig(config) ||
+    (config?.command === undefined && config?.type === undefined && snapshot?.transport === "http");
   const roles = isRecord(config?.roles) ? config.roles : undefined;
   const oauth = isRecord(config?.oauth) ? config.oauth : undefined;
   const reg = asString(oauth?.clientRegistration);
@@ -210,8 +204,8 @@ export function formFromConfig(
     timeoutText: asNumber(config?.timeout) !== undefined ? String(config?.timeout) : "",
     exposure:
       config?.exposure !== undefined
-        ? normalizeExposure(config.exposure)
-        : (snapshot?.exposure ?? DEFAULT_EXPOSURE),
+        ? normalizeMcpExposure(config.exposure)
+        : (snapshot?.exposure ?? DEFAULT_MCP_EXPOSURE),
     roleRouter:
       roles?.router !== undefined ? roles.router !== false : (snapshot?.roles?.router ?? true),
     roleWorker:
@@ -234,7 +228,7 @@ export function validateServerName(rawName: string): string {
   if (!serverName) {
     throw new Error("请填写服务名称。");
   }
-  if (!SERVER_NAME_RE.test(serverName)) {
+  if (!MCP_SERVER_NAME_RE.test(serverName)) {
     throw new Error("服务名称只能包含字母、数字、下划线（_）和连字符（-）。");
   }
   return serverName;
@@ -325,27 +319,6 @@ export function buildConfigFromForm(
     ...(headers ? { headers } : {}),
     ...(Object.keys(oauth).length > 0 ? { oauth } : {}),
   };
-}
-
-export function connectionFieldsMatch(
-  candidate: Record<string, unknown>,
-  globalEntry: Record<string, unknown>,
-): boolean {
-  const keys = [
-    "command",
-    "args",
-    "cwd",
-    "env",
-    "url",
-    "headers",
-    "oauth",
-    "timeout",
-    "description",
-  ];
-  const candidateTransport = typeof candidate.url === "string" ? "http" : "stdio";
-  const globalTransport = typeof globalEntry.url === "string" ? "http" : "stdio";
-  if (candidateTransport !== globalTransport) return false;
-  return keys.every((key) => deepEqualJson(candidate[key], globalEntry[key]));
 }
 
 export function targetSummary(config: Record<string, unknown> | undefined): string | undefined {

@@ -15,7 +15,9 @@ import {
 } from "../src/components/settings/model-editor/state.ts";
 import {
   defaultThinkingLevels,
+  describeConnectionUrl,
   toImportModelPayload,
+  validateBaseUrl,
 } from "../src/components/settings/provider-utils.ts";
 import {
   buildBuiltinOverrideRequest,
@@ -429,4 +431,26 @@ test("add-provider payload builders produce typed UpsertProviderRequest payloads
     headers: { "X-Team": "core" },
     models: [{ id: "qwen-max", name: "Qwen Max", contextWindow: 32768 }],
   });
+});
+
+test("validateBaseUrl and describeConnectionUrl delegate cleanly to @eevee/protocol with localized messages", () => {
+  assert.equal(validateBaseUrl(""), "Base URL 不能为空");
+  assert.equal(validateBaseUrl(" https://api.example.com "), "Base URL 首尾不能有空白字符");
+  assert.equal(validateBaseUrl("not-a-url"), "Base URL 必须是完整的绝对 URL");
+  assert.equal(validateBaseUrl("ftp://example.com"), "Base URL 必须使用 http 或 https");
+  assert.equal(validateBaseUrl("https://user:pass@example.com"), "Base URL 不能包含用户名或密码");
+  assert.equal(validateBaseUrl("https://example.com?x=1"), "Base URL 不能包含查询参数或锚点");
+  assert.equal(validateBaseUrl("https://api.example.com/v1"), undefined);
+
+  assert.deepEqual(describeConnectionUrl("openai-completions", "https://api.example.com/v1"), {
+    text: "https://api.example.com/v1/models",
+  });
+  assert.deepEqual(describeConnectionUrl("anthropic-messages", "https://api.anthropic.com"), {
+    text: "https://api.anthropic.com/v1/models",
+  });
+  assert.deepEqual(describeConnectionUrl("openai-completions", "https://proxy.example.com/v1/v1"), {
+    text: "https://proxy.example.com/v1/v1/models",
+    warning: true,
+  });
+  assert.equal(describeConnectionUrl("openai-completions", "invalid"), undefined);
 });

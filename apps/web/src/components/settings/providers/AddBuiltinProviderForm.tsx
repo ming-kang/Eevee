@@ -1,10 +1,10 @@
 import { KeyIcon, SearchIcon } from "@earendil-works/elanor-icons-react";
-import { Button, Field, Input, Text } from "@earendil-works/elanor-react";
-import type { BuiltinProviderCatalogItem } from "@eevee/protocol";
+import { Button, Field, Text } from "@earendil-works/elanor-react";
+import { type BuiltinProviderCatalogItem, providerBaseUrlPlaceholder } from "@eevee/protocol";
 import type { Dispatch, FormEvent } from "react";
 import { BaseUrlField } from "../BaseUrlField.tsx";
 import { HeadersEditor } from "../HeadersEditor.tsx";
-import { baseUrlPlaceholder } from "../provider-utils.ts";
+import { SecretRevealInput } from "../SecretRevealInput.tsx";
 import type { AddProviderAction, BuiltinProviderDraft } from "./add-provider-state.ts";
 
 export type AddBuiltinProviderFormProps = {
@@ -114,29 +114,17 @@ export function AddBuiltinProviderForm({
               {selectedBuiltin.authMethods.apiKey && (
                 <Field.Root>
                   <Field.Label>API Key</Field.Label>
-                  <div className="ev-key-input-row">
-                    <Input
-                      type={draft.revealKey ? "text" : "password"}
-                      value={draft.apiKey}
-                      onValueChange={(apiKey) =>
-                        dispatch({ type: "patchBuiltin", patch: { apiKey } })
-                      }
-                      placeholder="输入 API Key（或 $ENV_VAR / !cmd）"
-                    />
-                    <Button
-                      type="button"
-                      hierarchy="secondary"
-                      density="compact"
-                      onClick={() =>
-                        dispatch({
-                          type: "patchBuiltin",
-                          patch: { revealKey: !draft.revealKey },
-                        })
-                      }
-                    >
-                      {draft.revealKey ? "隐藏" : "显示"}
-                    </Button>
-                  </div>
+                  <SecretRevealInput
+                    value={draft.apiKey}
+                    revealed={draft.revealKey}
+                    onValueChange={(apiKey) =>
+                      dispatch({ type: "patchBuiltin", patch: { apiKey } })
+                    }
+                    onRevealedChange={(revealKey) =>
+                      dispatch({ type: "patchBuiltin", patch: { revealKey } })
+                    }
+                    placeholder="输入 API Key（或 $ENV_VAR / !cmd）"
+                  />
                 </Field.Root>
               )}
               {selectedBuiltin.authMethods.oauth && (
@@ -162,7 +150,9 @@ export function AddBuiltinProviderForm({
                 baseUrl={draft.baseUrl}
                 onValueChange={(baseUrl) => dispatch({ type: "patchBuiltin", patch: { baseUrl } })}
                 api={selectedBuiltin.apis[0]}
-                placeholder={selectedBuiltin.baseUrl ?? baseUrlPlaceholder(selectedBuiltin.apis[0])}
+                placeholder={
+                  selectedBuiltin.baseUrl ?? providerBaseUrlPlaceholder(selectedBuiltin.apis[0])
+                }
                 previewPrefix="请求 URL 预览："
                 warningText=" 检测到可能的 /v1 重复"
               />

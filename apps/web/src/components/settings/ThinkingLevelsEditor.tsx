@@ -1,6 +1,6 @@
 import { Input, Switch, Text } from "@earendil-works/elanor-react";
-import type { ThinkingLevel, ThinkingLevelConfig } from "@eevee/protocol";
-import { setThinkingRule, THINKING_LEVELS } from "./provider-utils.ts";
+import { THINKING_LEVELS, type ThinkingLevel, type ThinkingLevelConfig } from "@eevee/protocol";
+import { setThinkingRule } from "./provider-utils.ts";
 
 export function ThinkingLevelsEditor({
   value,

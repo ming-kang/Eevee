@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { type RefObject, useCallback, useEffect, useRef } from "react";
 
 export type AbortableStreamContext = {
   readonly signal: AbortSignal;
@@ -62,4 +62,95 @@ export function useAbortableStream(): UseAbortableStreamResult {
   }, []);
 
   return { abort, run };
+}
+
+export type AbortableSessionContext<TCallbacks> = AbortableStreamContext & {
+  readonly sessionId: string;
+  readonly callbacks: TCallbacks;
+};
+
+export type OpenedAbortableSession<TEvent> = {
+  readonly sessionId: string;
+  readonly stream: AsyncIterable<TEvent>;
+};
+
+export type RunAbortableSessionOptions<TEvent, TCallbacks> = {
+  readonly open: (
+    ctx: AbortableStreamContext & { readonly callbacks: TCallbacks },
+  ) => Promise<OpenedAbortableSession<TEvent> | undefined>;
+  readonly onEvent: (
+    event: TEvent,
+    ctx: AbortableSessionContext<TCallbacks>,
+  ) => void | Promise<void>;
+  readonly isTerminal: (event: TEvent) => boolean;
+  readonly onUnexpectedEnd?: (ctx: AbortableSessionContext<TCallbacks>) => void;
+  readonly onError?: (
+    error: unknown,
+    ctx: AbortableStreamContext & {
+      readonly sessionId?: string;
+      readonly callbacks: TCallbacks;
+    },
+  ) => void;
+};
+
+export type UseAbortableSessionStreamResult<TCallbacks> = {
+  readonly abort: () => void;
+  readonly callbacksRef: RefObject<TCallbacks>;
+  readonly runSession: <TEvent>(
+    options: RunAbortableSessionOptions<TEvent, TCallbacks>,
+  ) => Promise<void>;
+};
+
+export function useAbortableSessionStream<TCallbacks>(
+  callbacks: TCallbacks,
+): UseAbortableSessionStreamResult<TCallbacks> {
+  const { abort, run } = useAbortableStream();
+  const callbacksRef = useRef(callbacks);
+  callbacksRef.current = callbacks;
+
+  const runSession = useCallback(
+    async <TEvent>(options: RunAbortableSessionOptions<TEvent, TCallbacks>) => {
+      let startedSessionId: string | undefined;
+      let sawTerminal = false;
+
+      await run<TEvent>({
+        open: async (ctx) => {
+          const opened = await options.open({ ...ctx, callbacks: callbacksRef.current });
+          if (!opened || !ctx.isCurrent()) return undefined;
+          startedSessionId = opened.sessionId;
+          return opened.stream;
+        },
+        onEvent: async (event, ctx) => {
+          if (options.isTerminal(event)) {
+            sawTerminal = true;
+          }
+          if (!startedSessionId || !ctx.isCurrent()) return;
+          await options.onEvent(event, {
+            ...ctx,
+            sessionId: startedSessionId,
+            callbacks: callbacksRef.current,
+          });
+        },
+        onEnd: (ctx) => {
+          if (!sawTerminal && startedSessionId && ctx.isCurrent()) {
+            options.onUnexpectedEnd?.({
+              ...ctx,
+              sessionId: startedSessionId,
+              callbacks: callbacksRef.current,
+            });
+          }
+        },
+        onError: (err, ctx) => {
+          options.onError?.(err, {
+            ...ctx,
+            sessionId: startedSessionId,
+            callbacks: callbacksRef.current,
+          });
+        },
+      });
+    },
+    [run],
+  );
+
+  return { abort, callbacksRef, runSession };
 }

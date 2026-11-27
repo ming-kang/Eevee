@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { McpServerSnapshotPayload } from "@eevee/protocol";
+import {
+  isMcpOverrideEntry,
+  McpServerOverrideSchema,
+  type McpServerSnapshotPayload,
+  validateWithSchema,
+} from "@eevee/protocol";
 import {
   buildConfigFromForm,
   connectionFieldsMatch,
@@ -268,7 +273,7 @@ test("parseImportJson accepts wrapped and direct maps and rejects malformed JSON
   assert.throws(() => parseImportJson('{"mcpServers":{"gh":"bad"}}'), /配置必须是 JSON 对象/);
 });
 
-test("connectionFieldsMatch compares transport and connection fields while ignoring toggles", () => {
+test("connectionFieldsMatch compares transport and connection fields while ignoring overrideable fields", () => {
   const globalEntry = {
     command: "npx",
     args: ["-y", "server"],
@@ -276,6 +281,8 @@ test("connectionFieldsMatch compares transport and connection fields while ignor
     enabled: true,
     exposure: "codemode",
     roles: { router: true, worker: true },
+    description: "Global description",
+    timeout: 15,
   };
   const candidateSame = {
     command: "npx",
@@ -285,6 +292,8 @@ test("connectionFieldsMatch compares transport and connection fields while ignor
     enabled: false,
     exposure: "hidden",
     roles: { router: false, worker: false },
+    description: "Project override description",
+    timeout: 45,
   };
   assert.equal(connectionFieldsMatch(candidateSame, globalEntry), true);
 
@@ -295,10 +304,17 @@ test("connectionFieldsMatch compares transport and connection fields while ignor
   assert.equal(connectionFieldsMatch({ url: "https://example.com/mcp" }, globalEntry), false);
   assert.equal(
     connectionFieldsMatch(
-      { url: "https://example.com/mcp", timeout: 10 },
-      { url: "https://example.com/mcp", timeout: 20 },
+      { url: "https://example.com/mcp", headers: { Authorization: "Bearer a" } },
+      { url: "https://example.com/mcp", headers: { Authorization: "Bearer b" } },
     ),
     false,
+  );
+  assert.equal(
+    connectionFieldsMatch(
+      { url: "https://example.com/mcp", timeout: 10, description: "a" },
+      { url: "https://example.com/mcp", timeout: 20, description: "b" },
+    ),
+    true,
   );
 });
 
@@ -333,6 +349,85 @@ test("scoped payload, override patching, tool exposure updates, and state normal
       toolExposure: { search: "direct" },
     },
   );
+
+  const overrideWithDescAndTimeout = buildScopedServerPayload({
+    isProject: true,
+    serverName: "gh",
+    form: {
+      ...editOverrideForm,
+      description: "Project GH",
+      timeoutText: "45",
+    },
+    globalServers,
+    projectServers: { gh: { toolExposure: { search: "direct" } } },
+    effectiveServers: globalServers,
+  });
+  assert.deepEqual(overrideWithDescAndTimeout, {
+    enabled: false,
+    exposure: "hidden",
+    roles: { router: true, worker: true },
+    description: "Project GH",
+    timeout: 45,
+    toolExposure: { search: "direct" },
+  });
+  assert.equal(isMcpOverrideEntry(overrideWithDescAndTimeout), true);
+  assert.equal(validateWithSchema(McpServerOverrideSchema, overrideWithDescAndTimeout).ok, true);
+
+  const globalWithMeta = {
+    gh: {
+      ...globalServers.gh,
+      description: "Global GH",
+      timeout: 30,
+    },
+  };
+  const unchangedMetaOverride = buildScopedServerPayload({
+    isProject: true,
+    serverName: "gh",
+    form: {
+      ...formFromConfig("gh", globalWithMeta.gh, makeSnapshot({ name: "gh" })),
+      enabled: false,
+    },
+    globalServers: globalWithMeta,
+    projectServers: {},
+    effectiveServers: globalWithMeta,
+  });
+  assert.deepEqual(unchangedMetaOverride, {
+    enabled: false,
+    exposure: "codemode",
+    roles: { router: true, worker: true },
+  });
+
+  const clearedDescOverride = buildScopedServerPayload({
+    isProject: true,
+    serverName: "gh",
+    form: {
+      ...formFromConfig("gh", globalWithMeta.gh, makeSnapshot({ name: "gh" })),
+      description: "",
+    },
+    globalServers: globalWithMeta,
+    projectServers: {},
+    effectiveServers: globalWithMeta,
+  });
+  assert.deepEqual(clearedDescOverride, {
+    enabled: true,
+    exposure: "codemode",
+    roles: { router: true, worker: true },
+    description: "",
+  });
+
+  const clearedTimeoutShadow = buildScopedServerPayload({
+    isProject: true,
+    serverName: "gh",
+    form: {
+      ...formFromConfig("gh", globalWithMeta.gh, makeSnapshot({ name: "gh" })),
+      timeoutText: "",
+    },
+    globalServers: globalWithMeta,
+    projectServers: {},
+    effectiveServers: globalWithMeta,
+  });
+  assert.equal(clearedTimeoutShadow.command, "npx");
+  assert.equal(clearedTimeoutShadow.timeout, undefined);
 
   const editFullForm = { ...editOverrideForm, command: "gh-mcp" };
   const fullPayload = buildScopedServerPayload({

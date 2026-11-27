@@ -1,10 +1,11 @@
 import { CloudDownloadIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Field, Input, Switch, Text } from "@earendil-works/elanor-react";
+import { providerBaseUrlPlaceholder } from "@eevee/protocol";
 import type { Dispatch, FormEvent } from "react";
 import { BaseUrlField, BaseUrlPreview } from "../BaseUrlField.tsx";
 import { HeadersEditor } from "../HeadersEditor.tsx";
 import { ModelProbeSelector } from "../ModelProbeSelector.tsx";
-import { baseUrlPlaceholder } from "../provider-utils.ts";
+import { SecretRevealInput } from "../SecretRevealInput.tsx";
 import type {
   AddProviderAction,
   CustomProviderDraft,
@@ -74,7 +75,7 @@ export function AddCustomProviderForm({
             baseUrl={draft.baseUrl}
             onValueChange={(baseUrl) => dispatch({ type: "patchCustom", patch: { baseUrl } })}
             api={draft.api}
-            placeholder={baseUrlPlaceholder(draft.api)}
+            placeholder={providerBaseUrlPlaceholder(draft.api)}
             hidePreview
           />
         </div>
@@ -90,24 +91,15 @@ export function AddCustomProviderForm({
         <div className="ev-editor-section-title">鉴权与请求头</div>
         <Field.Root>
           <Field.Label>API Key（支持明文、$ENV_VAR 或 !cmd）</Field.Label>
-          <div className="ev-key-input-row">
-            <Input
-              type={draft.revealKey ? "text" : "password"}
-              value={draft.apiKey}
-              onValueChange={(apiKey) => dispatch({ type: "patchCustom", patch: { apiKey } })}
-              placeholder="sk-... 或 $MY_API_KEY 或 !op read ..."
-            />
-            <Button
-              type="button"
-              hierarchy="secondary"
-              density="compact"
-              onClick={() =>
-                dispatch({ type: "patchCustom", patch: { revealKey: !draft.revealKey } })
-              }
-            >
-              {draft.revealKey ? "隐藏" : "显示"}
-            </Button>
-          </div>
+          <SecretRevealInput
+            value={draft.apiKey}
+            revealed={draft.revealKey}
+            onValueChange={(apiKey) => dispatch({ type: "patchCustom", patch: { apiKey } })}
+            onRevealedChange={(revealKey) =>
+              dispatch({ type: "patchCustom", patch: { revealKey } })
+            }
+            placeholder="sk-... 或 $MY_API_KEY 或 !op read ..."
+          />
         </Field.Root>
         <div className="ev-toggle-field">
           <span>通过 Authorization: Bearer 请求头传递 API Key（authHeader）</span>

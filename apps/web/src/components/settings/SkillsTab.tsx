@@ -16,6 +16,7 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
 import { showToast } from "../../lib/toasts.ts";
+import { useAbortableAsync } from "../../lib/useAbortableAsync.ts";
 
 type ProjectSkillChoice = SkillTriggerMode | "inherit";
 
@@ -77,37 +78,28 @@ export function SkillsTab({
   const [resetting, setResetting] = useState(false);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
-  const abortRef = useRef<AbortController | undefined>(undefined);
+  const { run: runLoad } = useAbortableAsync();
   const activeClientRef = useRef(client);
   activeClientRef.current = client;
 
   const load = useCallback(async () => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
     setLoading(true);
     setError(undefined);
     try {
-      const res = await client.list(controller.signal);
-      if (!controller.signal.aborted && activeClientRef.current === client) {
-        setData(res);
-      }
+      const res = await runLoad((signal) => client.list(signal));
+      if (!res || activeClientRef.current !== client) return;
+      setData(res);
+      setLoading(false);
     } catch (err) {
-      if (!controller.signal.aborted && activeClientRef.current === client) {
+      if (activeClientRef.current === client) {
         setError(err instanceof Error ? err.message : String(err));
-      }
-    } finally {
-      if (!controller.signal.aborted && activeClientRef.current === client) {
         setLoading(false);
       }
     }
-  }, [client]);
+  }, [client, runLoad]);
 
   useEffect(() => {
     void load();
-    return () => {
-      abortRef.current?.abort();
-    };
   }, [load]);
 
   const skills = data?.skills ?? [];

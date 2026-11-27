@@ -9,6 +9,7 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
 import { showToast } from "../../lib/toasts.ts";
+import { useAbortableAsync } from "../../lib/useAbortableAsync.ts";
 import { AddProviderModal } from "./AddProviderModal.tsx";
 import { ModelEditorModal, type ModelEditorTarget } from "./ModelEditorModal.tsx";
 import { ProbeModelsModal } from "./ProbeModelsModal.tsx";
@@ -39,39 +40,40 @@ export function ProvidersTab() {
   const [detail, setDetail] = useState<ProviderDetail | undefined>(undefined);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | undefined>(undefined);
-  const detailAbortRef = useRef<AbortController | undefined>(undefined);
+  const { run: runLoadDetail } = useAbortableAsync();
+  const { run: runRefreshAll } = useAbortableAsync();
 
   const [addOpen, setAddOpen] = useState(false);
   const [editorTarget, setEditorTarget] = useState<ModelEditorTarget | undefined>(undefined);
   const [probeProviderId, setProbeProviderId] = useState<string | undefined>(undefined);
 
-  const loadDetail = useCallback(async (providerId: string) => {
-    detailAbortRef.current?.abort();
-    const controller = new AbortController();
-    detailAbortRef.current = controller;
-    setLoadingDetail(true);
-    setDetailError(undefined);
-    try {
-      const res = await api.getProviderDetail(providerId, controller.signal);
-      setDetail(res.provider);
-    } catch (err) {
-      if (!controller.signal.aborted) {
+  const loadDetail = useCallback(
+    async (providerId: string) => {
+      setLoadingDetail(true);
+      setDetailError(undefined);
+      try {
+        const res = await runLoadDetail((signal) => api.getProviderDetail(providerId, signal));
+        if (!res) return;
+        setDetail(res.provider);
+        setLoadingDetail(false);
+      } catch (err) {
         setDetailError(err instanceof Error ? err.message : String(err));
+        setLoadingDetail(false);
       }
-    } finally {
-      if (!controller.signal.aborted) setLoadingDetail(false);
-    }
-  }, []);
+    },
+    [runLoadDetail],
+  );
 
   const refreshAll = useCallback(
     async (preferredId?: string) => {
       setLoading(true);
       setError(undefined);
       try {
-        const [providersRes, catalogRes] = await Promise.all([
-          api.listProviders(),
-          api.getProviderCatalog(),
-        ]);
+        const res = await runRefreshAll((signal) =>
+          Promise.all([api.listProviders(signal), api.getProviderCatalog(signal)]),
+        );
+        if (!res) return;
+        const [providersRes, catalogRes] = res;
         setProviders(providersRes.providers);
         setDiagnostics(providersRes.diagnostics ?? []);
         setCatalog(catalogRes);
@@ -85,6 +87,7 @@ export function ProvidersTab() {
               : (providersRes.providers.find((item) => item.configured)?.id ??
                 providersRes.providers[0]?.id);
         setSelectedId(targetId);
+        setLoading(false);
         if (targetId) {
           await loadDetail(targetId);
         } else {
@@ -92,18 +95,14 @@ export function ProvidersTab() {
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
-      } finally {
         setLoading(false);
       }
     },
-    [loadDetail],
+    [loadDetail, runRefreshAll],
   );
 
   useEffect(() => {
     void refreshAll();
-    return () => {
-      detailAbortRef.current?.abort();
-    };
   }, [refreshAll]);
 
   const oauth = useProviderOAuth({

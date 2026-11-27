@@ -11,6 +11,7 @@ import type { ProjectSummary, ToolsSettings } from "@eevee/protocol";
 import { useEffect, useId, useState } from "react";
 import { api } from "../lib/api.ts";
 import { showToast } from "../lib/toasts.ts";
+import { useAbortableAsync } from "../lib/useAbortableAsync.ts";
 import { McpTab } from "./settings/McpTab.tsx";
 import { SkillsTab } from "./settings/SkillsTab.tsx";
 import {
@@ -53,10 +54,13 @@ export function EditProjectModal({
   const [globalStatus, setGlobalStatus] = useState<"loading" | "ready" | "error">("loading");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const { run: runLoadSettings, abort: abortLoadSettings } = useAbortableAsync();
 
   useEffect(() => {
-    if (!project) return;
-    let active = true;
+    if (!project) {
+      abortLoadSettings();
+      return;
+    }
     setActiveTab("general");
     setDraft({
       title: project.title,
@@ -68,22 +72,17 @@ export function EditProjectModal({
     setInheritedTools(undefined);
     setGlobalStatus("loading");
     setError(undefined);
-    void api
-      .getSettings()
+    void runLoadSettings((signal) => api.getSettings(signal))
       .then((settings) => {
-        if (!active) return;
+        if (!settings) return;
         setInheritedTools(settings.tools);
         setGlobalStatus("ready");
       })
       .catch((err: unknown) => {
-        if (!active) return;
         setGlobalStatus("error");
         setError(`全局设置加载失败：${err instanceof Error ? err.message : String(err)}`);
       });
-    return () => {
-      active = false;
-    };
-  }, [project]);
+  }, [project, runLoadSettings, abortLoadSettings]);
 
   const patchDraft = (patch: Partial<Omit<ProjectDraft, "dirty">>) => {
     setDraft((prev) => ({ ...prev, ...patch, dirty: true }));

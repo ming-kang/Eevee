@@ -9,6 +9,7 @@ import {
 } from "@eevee/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../lib/api.ts";
+import { useAbortableAsync } from "../../../lib/useAbortableAsync.ts";
 import { type NormalizedMcpState, normalizeMcpState } from "./scope-helpers.ts";
 
 export type UseMcpScopeResult = {
@@ -33,38 +34,29 @@ export function useMcpScope(projectId?: string): UseMcpScopeResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
 
-  const loadAbortRef = useRef<AbortController | undefined>(undefined);
+  const { run: runLoad } = useAbortableAsync();
   const activeClientRef = useRef(client);
   activeClientRef.current = client;
 
   const reload = useCallback(async () => {
-    loadAbortRef.current?.abort();
-    const controller = new AbortController();
-    loadAbortRef.current = controller;
     setLoading(true);
     setError(undefined);
     try {
-      const res = await client.getState(controller.signal);
-      if (!controller.signal.aborted && activeClientRef.current === client) {
-        setState(normalizeMcpState(res));
-      }
+      const res = await runLoad((signal) => client.getState(signal));
+      if (!res || activeClientRef.current !== client) return;
+      setState(normalizeMcpState(res));
+      setLoading(false);
     } catch (err) {
-      if (!controller.signal.aborted && activeClientRef.current === client) {
+      if (activeClientRef.current === client) {
         setError(err instanceof Error ? err.message : String(err));
-      }
-    } finally {
-      if (!controller.signal.aborted && activeClientRef.current === client) {
         setLoading(false);
       }
     }
-  }, [client]);
+  }, [client, runLoad]);
 
   useEffect(() => {
     setState(normalizeMcpState(undefined));
     void reload();
-    return () => {
-      loadAbortRef.current?.abort();
-    };
   }, [reload]);
 
   const upsertServer = useCallback(

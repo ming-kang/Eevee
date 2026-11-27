@@ -1,22 +1,25 @@
-import type {
-  ImportProviderModelsRequest,
-  ProbedModel,
-  ProviderSummary,
-  ThinkingLevel,
-  ThinkingLevelConfig,
-  ThinkingLevelRule,
+import {
+  type ConnectionNote,
+  describeProviderConnectionNote,
+  type ImportProviderModelsRequest,
+  type ProbedModel,
+  type ProviderSummary,
+  THINKING_LEVELS,
+  type ThinkingLevel,
+  type ThinkingLevelConfig,
+  type ThinkingLevelRule,
+  validateProviderBaseUrl,
 } from "@eevee/protocol";
 import { isRecord } from "../../lib/object.ts";
 
-export const THINKING_LEVELS: readonly ThinkingLevel[] = [
-  "off",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-];
+const BASE_URL_ERROR_MAP: Readonly<Record<string, string>> = {
+  "Base URL is required": "Base URL 不能为空",
+  "Base URL must not have leading or trailing whitespace": "Base URL 首尾不能有空白字符",
+  "Base URL must be an absolute URL": "Base URL 必须是完整的绝对 URL",
+  "Base URL must use http or https": "Base URL 必须使用 http 或 https",
+  "Base URL must not contain credentials": "Base URL 不能包含用户名或密码",
+  "Base URL must not contain a query string or fragment": "Base URL 不能包含查询参数或锚点",
+};
 
 export function defaultThinkingLevels(): ThinkingLevelConfig {
   return {
@@ -120,65 +123,15 @@ export function parseFiniteNumber(text: string, label: string): number {
 }
 
 export function validateBaseUrl(value: string): string | undefined {
-  if (value.trim().length === 0) return "Base URL 不能为空";
-  if (value !== value.trim()) return "Base URL 首尾不能有空白字符";
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return "Base URL 必须是完整的绝对 URL";
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return "Base URL 必须使用 http 或 https";
-  }
-  if (url.username || url.password) return "Base URL 不能包含用户名或密码";
-  if (url.search || url.hash) return "Base URL 不能包含查询参数或锚点";
-  return undefined;
-}
-
-export function baseUrlPlaceholder(api: string | undefined): string {
-  switch (api) {
-    case "anthropic-messages":
-      return "https://api.anthropic.com";
-    case "azure-openai-responses":
-      return "https://RESOURCE.openai.azure.com/openai/v1";
-    case "google-generative-ai":
-      return "https://generativelanguage.googleapis.com/v1beta";
-    case "google-vertex":
-      return "https://REGION-aiplatform.googleapis.com/v1";
-    case "bedrock-converse-stream":
-      return "https://bedrock-runtime.REGION.amazonaws.com";
-    default:
-      return "https://api.example.com/v1";
-  }
+  const err = validateProviderBaseUrl(value);
+  return err === undefined ? undefined : (BASE_URL_ERROR_MAP[err] ?? err);
 }
 
 export function describeConnectionUrl(
   api: string | undefined,
   baseUrl: string | undefined,
-): { readonly text: string; readonly warning?: boolean } | undefined {
-  if (baseUrl === undefined || validateBaseUrl(baseUrl) !== undefined) return undefined;
-  const url = new URL(baseUrl);
-  const path = url.pathname.replace(/\/+$/, "");
-  if (api === "anthropic-messages" && !/\/v1(?:\/anthropic)?$/i.test(path)) {
-    url.pathname = `${path}/v1/models`.replace(/^\/\//, "/");
-  } else {
-    url.pathname = `${path}/models`.replace(/^\/\//, "/");
-  }
-  const doubledV1 = /\/v1\/v1(?:\/|$)/i.test(url.pathname);
-  return {
-    text: url.toString(),
-    ...(doubledV1 ? { warning: true } : {}),
-  };
-}
-
-export function catalogUrlPreview(
-  baseUrl: string | undefined,
-  api: string | undefined,
-): { readonly text: string; readonly warning: boolean } | undefined {
-  const described = describeConnectionUrl(api, baseUrl?.trim());
-  if (!described) return undefined;
-  return { text: described.text, warning: described.warning === true };
+): ConnectionNote | undefined {
+  return describeProviderConnectionNote(baseUrl, api);
 }
 
 export function normalizeHeaderObject(
