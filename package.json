@@ -18,12 +18,15 @@
     "clean": "node scripts/clean.ts",
     "build": "tsc -b tsconfig.build.json && npm run build --workspace=@eevee/web",
     "typecheck": "tsc --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
-    "lint": "biome check .",
+    "lint": "biome check --error-on-warnings .",
     "lint:fix": "biome check --write .",
     "check:deps": "node scripts/check-deps.ts",
     "check:boundaries": "node scripts/check-boundaries.ts",
     "test": "node scripts/test.ts",
-    "check": "npm run check:deps && npm run check:boundaries && npm run typecheck && npm run lint && npm test"
+    "check": "npm run check:deps && npm run check:boundaries && npm run typecheck && npm run lint && npm test",
+    "version:patch": "npm version patch --workspaces --no-git-tag-version --no-workspaces-update && node scripts/sync-versions.ts && npm install --package-lock-only --ignore-scripts",
+    "version:minor": "npm version minor --workspaces --no-git-tag-version --no-workspaces-update && node scripts/sync-versions.ts && npm install --package-lock-only --ignore-scripts",
+    "version:major": "npm version major --workspaces --no-git-tag-version --no-workspaces-update && node scripts/sync-versions.ts && npm install --package-lock-only --ignore-scripts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.8",
