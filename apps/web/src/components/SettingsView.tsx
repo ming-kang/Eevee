@@ -1,7 +1,7 @@
 import { CloseIcon } from "@earendil-works/elanor-icons-react";
 import { Heading, IconButton } from "@earendil-works/elanor-react";
-import { useEffect } from "react";
 import type { SettingsSection } from "../lib/router.ts";
+import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
 import { ConfigTab } from "./settings/ConfigTab.tsx";
 import { McpTab } from "./settings/McpTab.tsx";
 import { ModelsTab } from "./settings/ModelsTab.tsx";
@@ -25,17 +25,20 @@ export function SettingsView({
   readonly onSelectSection: (section: SettingsSection) => void;
   readonly onClose: () => void;
 }) {
-  useEffect(() => {
-    const onEsc = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+  useShortcutLayer({
+    id: "settings-overlay",
+    active: true,
+    priority: SHORTCUT_PRIORITY.OVERLAY,
+    blocksLower: true,
+    onKeyDown: (event) => {
+      if (event.key !== "Escape") return false;
       const target = event.target;
-      if (target instanceof HTMLElement && target.closest("input, textarea, select")) return;
+      if (target instanceof HTMLElement && target.closest("input, textarea, select")) return false;
       event.preventDefault();
       onClose();
-    };
-    window.addEventListener("keydown", onEsc);
-    return () => window.removeEventListener("keydown", onEsc);
-  }, [onClose]);
+      return true;
+    },
+  });
 
   return (
     <div className="ev-control-overlay" role="dialog" aria-modal="true" aria-label="Engine 设置">

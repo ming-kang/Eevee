@@ -23,11 +23,17 @@ type TriageCard = {
 export function OverviewPage({
   projects,
   boards,
+  projectsError,
+  projectsLoading = false,
+  onRetryProjects,
   onNewProject,
   onOpenProject,
 }: {
   readonly projects: readonly ProjectSummary[];
   readonly boards: Readonly<Record<string, BoardViewPayload>>;
+  readonly projectsError?: string;
+  readonly projectsLoading?: boolean;
+  readonly onRetryProjects?: () => void;
   readonly onNewProject: () => void;
   readonly onOpenProject: (pid: ProjectId, workerId?: WorkerId) => void;
 }) {
@@ -207,25 +213,63 @@ export function OverviewPage({
         </Button>
       </header>
 
-      {projects.length === 0 ? (
-        <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 24 }}>
-          <EmptyState.Root>
-            <EmptyState.Body>
-              <EmptyState.Copy>
-                <EmptyState.Title level={2}>暂无项目</EmptyState.Title>
-              </EmptyState.Copy>
-              <EmptyState.Actions>
-                <Button
-                  hierarchy="primary"
-                  iconStart={<AddIcon width={16} height={16} />}
-                  onClick={onNewProject}
-                >
-                  新建项目
-                </Button>
-              </EmptyState.Actions>
-            </EmptyState.Body>
-          </EmptyState.Root>
+      {projectsError && (
+        <div style={{ padding: "12px 20px 0" }}>
+          <div
+            className="ev-error-banner"
+            role="alert"
+            style={{ display: "flex", alignItems: "center", gap: 10 }}
+          >
+            <span style={{ flex: 1 }}>加载项目列表失败：{projectsError}</span>
+            {onRetryProjects && (
+              <Button
+                type="button"
+                hierarchy="secondary"
+                density="compact"
+                pending={projectsLoading}
+                onClick={onRetryProjects}
+              >
+                重试
+              </Button>
+            )}
+          </div>
         </div>
+      )}
+
+      {projects.length === 0 ? (
+        projectsError ? null : projectsLoading ? (
+          <div
+            style={{
+              flex: 1,
+              display: "grid",
+              placeItems: "center",
+              padding: 24,
+              color: "var(--ev-fg-subtle)",
+              fontSize: 13.5,
+            }}
+          >
+            正在加载项目…
+          </div>
+        ) : (
+          <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 24 }}>
+            <EmptyState.Root>
+              <EmptyState.Body>
+                <EmptyState.Copy>
+                  <EmptyState.Title level={2}>暂无项目</EmptyState.Title>
+                </EmptyState.Copy>
+                <EmptyState.Actions>
+                  <Button
+                    hierarchy="primary"
+                    iconStart={<AddIcon width={16} height={16} />}
+                    onClick={onNewProject}
+                  >
+                    新建项目
+                  </Button>
+                </EmptyState.Actions>
+              </EmptyState.Body>
+            </EmptyState.Root>
+          </div>
+        )
       ) : (
         <>
           <div className="ev-overview-bar">

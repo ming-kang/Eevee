@@ -11,8 +11,9 @@ import type {
   WorkerBoardItemPayload,
   WorkerId,
 } from "@eevee/protocol";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { workerStatusLabel } from "../lib/format.ts";
+import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
 import type { VisualStage } from "../lib/transcript.ts";
 import { TasksList } from "./rail/TasksList.tsx";
 import { WorkerPanel } from "./rail/WorkerPanel.tsx";
@@ -57,18 +58,21 @@ export function RightRail({
   const runningTasksCount = workers.reduce((sum, w) => sum + w.activeTaskCount, 0);
   const currentWorker = activeWorkerId ? workers.find((w) => w.id === activeWorkerId) : undefined;
 
-  useEffect(() => {
-    if (!activeWorkerId) return;
-    const onEsc = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      const t = event.target;
-      if (t instanceof HTMLElement && t.closest("input, textarea, [contenteditable]")) return;
+  useShortcutLayer({
+    id: "right-rail-worker",
+    active: activeWorkerId !== undefined,
+    priority: SHORTCUT_PRIORITY.PANEL,
+    onKeyDown: (event) => {
+      if (event.key !== "Escape") return false;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("input, textarea, [contenteditable]")) {
+        return false;
+      }
       event.preventDefault();
       onCloseWorker();
-    };
-    window.addEventListener("keydown", onEsc);
-    return () => window.removeEventListener("keydown", onEsc);
-  }, [activeWorkerId, onCloseWorker]);
+      return true;
+    },
+  });
 
   return (
     <section className="ev-rail-section">

@@ -7,6 +7,7 @@ import { Button, IconButton, Input } from "@earendil-works/elanor-react";
 import type { QuestionRecordPayload } from "@eevee/protocol";
 import { type FormEvent, type KeyboardEvent, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
+import { showToast } from "../lib/toasts.ts";
 
 export function QuestionCard({
   projectId,
@@ -273,6 +274,8 @@ export function QuestionStrip({
     setBusy(true);
     try {
       await api.answerQuestion(projectId, question.id, { answers: [opt] });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err), "danger");
     } finally {
       setBusy(false);
     }

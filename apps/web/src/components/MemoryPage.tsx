@@ -2,6 +2,7 @@ import { Button, TextArea } from "@earendil-works/elanor-react";
 import type { ProjectSummary } from "@eevee/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
+import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
 import { showToast } from "../lib/toasts.ts";
 import { ProjectHeader } from "./ProjectHeader.tsx";
 
@@ -65,16 +66,19 @@ export function MemoryPage({
     }
   }, [dirty, saving, project, text, onProjectUpdated]);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
+  useShortcutLayer({
+    id: "memory-save",
+    active: true,
+    priority: SHORTCUT_PRIORITY.PAGE,
+    onKeyDown: (event) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
         void save();
+        return true;
       }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [save]);
+      return false;
+    },
+  });
 
   return (
     <section style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>

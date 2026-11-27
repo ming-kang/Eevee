@@ -82,7 +82,14 @@ export function AddProviderModal({
           },
         });
       })
-      .catch(() => undefined);
+      .catch((err) => {
+        if (!controller.signal.aborted) {
+          dispatch({
+            type: "setError",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
   }, [catalog, selectedBuiltinId]);
 
   const builtinProviders = catalog?.providers ?? [];

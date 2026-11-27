@@ -8,6 +8,7 @@ import type {
 } from "@eevee/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api.ts";
+import { showToast } from "../../lib/toasts.ts";
 import { AddProviderModal } from "./AddProviderModal.tsx";
 import { ModelEditorModal, type ModelEditorTarget } from "./ModelEditorModal.tsx";
 import { ProbeModelsModal } from "./ProbeModelsModal.tsx";
@@ -128,8 +129,10 @@ export function ProvidersTab() {
       setProviders(providersRes.providers);
       setDiagnostics(providersRes.diagnostics ?? []);
       setCatalog(catalogRes);
-    } catch {
-      return;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      showToast(`刷新 Provider 列表失败：${message}`, "danger");
     }
   };
 

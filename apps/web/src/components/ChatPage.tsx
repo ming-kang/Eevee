@@ -1,10 +1,11 @@
 import { FolderIcon } from "@earendil-works/elanor-icons-react";
 import { Heading } from "@earendil-works/elanor-react";
 import type { BoardViewPayload, ProjectSummary, WhenBusy, WorkerId } from "@eevee/protocol";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.ts";
 import { shortPath } from "../lib/format.ts";
 import { useConversationStream } from "../lib/hooks.ts";
+import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
 import { lastContextUsage, parseAgentDoc, parseInbox, parseLiveDoc } from "../lib/transcript.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
 import { Composer } from "./Composer.tsx";
@@ -50,23 +51,31 @@ export function ChatPage({
     if (openQuestions.length === 0) setLater(false);
   }, [openQuestions.length]);
 
-  // Esc Esc double-tap interrupts active run.
+  const lastEscRef = useRef(0);
+
   useEffect(() => {
-    if (!live.busy) return;
-    let lastEsc = 0;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      const now = Date.now();
-      if (now - lastEsc < 450) {
-        lastEsc = 0;
-        void api.interrupt(project.id, "router");
-      } else {
-        lastEsc = now;
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    void live.busy;
+    void project.id;
+    lastEscRef.current = 0;
   }, [live.busy, project.id]);
+
+  useShortcutLayer({
+    id: "chat-interrupt-esc",
+    active: live.busy,
+    priority: SHORTCUT_PRIORITY.PAGE,
+    onKeyDown: (event) => {
+      if (event.key !== "Escape") return false;
+      const now = Date.now();
+      if (now - lastEscRef.current < 450) {
+        lastEscRef.current = 0;
+        event.preventDefault();
+        void api.interrupt(project.id, "router");
+        return true;
+      }
+      lastEscRef.current = now;
+      return false;
+    },
+  });
 
   const loadedEmpty =
     conv.view !== undefined &&

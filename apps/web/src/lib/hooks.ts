@@ -1,10 +1,11 @@
 import type {
+  AllBoardsStreamEvent,
   BoardViewPayload,
   ConversationRef,
   ConversationViewPayload,
   EntryRecordPayload,
 } from "@eevee/protocol";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.ts";
 
 const DEFAULT_INITIAL_BACKOFF_MS = 600;
@@ -76,56 +77,24 @@ export async function runBackoffStream(
   }
 }
 
-export function useBoardStream(projectId: string | undefined) {
-  const [board, setBoard] = useState<BoardViewPayload | undefined>(undefined);
-  const [error, setError] = useState<string | undefined>(undefined);
-  const [connected, setConnected] = useState(false);
-
-  useEffect(() => {
-    if (!projectId) {
-      setBoard(undefined);
-      setConnected(false);
-      return;
+export function applyAllBoardsEvent(
+  prev: Record<string, BoardViewPayload>,
+  event: AllBoardsStreamEvent,
+): Record<string, BoardViewPayload> {
+  switch (event.type) {
+    case "snapshot":
+      return { ...event.boards };
+    case "board":
+      return { ...prev, [event.projectId]: event.board };
+    case "removed": {
+      if (!Object.hasOwn(prev, event.projectId)) return prev;
+      const next = { ...prev };
+      delete next[event.projectId];
+      return next;
     }
-    const controller = new AbortController();
-    setBoard(undefined);
-    setError(undefined);
-
-    void runBackoffStream(
-      {
-        signal: controller.signal,
-        initialDelayMs: 600,
-        maxDelayMs: 8_000,
-        onError: (err) => {
-          setConnected(false);
-          setError(err instanceof Error ? err.message : String(err));
-        },
-      },
-      async ({ signal, resetBackoff, stop }) => {
-        for await (const event of api.streamBoard(projectId, { signal })) {
-          if (signal.aborted) return;
-          if (event.type === "board") {
-            resetBackoff();
-            setBoard(event.board);
-            setConnected(true);
-            setError(undefined);
-          } else if (event.type === "end") {
-            setConnected(false);
-            if (event.reason === "failed" && event.message) setError(event.message);
-            if (isTerminalStreamEnd(event.reason)) stop();
-            return;
-          }
-        }
-        if (!signal.aborted) setConnected(false);
-      },
-    );
-
-    return () => {
-      controller.abort();
-    };
-  }, [projectId]);
-
-  return { board, connected, error };
+    case "end":
+      return prev;
+  }
 }
 
 export function useConversationStream(
@@ -249,75 +218,39 @@ export function useConversationStream(
   };
 }
 
-export type UseProjectBoardsOptions = {
-  readonly excludeProjectId?: string;
-  readonly activeBoard?: {
-    readonly projectId: string;
-    readonly board?: BoardViewPayload;
-  };
-};
-
-export function useProjectBoards(
-  projectIds: readonly string[],
-  enabled: boolean,
-  options?: UseProjectBoardsOptions,
-) {
+export function useProjectBoards(enabled: boolean): Record<string, BoardViewPayload> {
   const [boards, setBoards] = useState<Record<string, BoardViewPayload>>({});
-  const excludedId = options?.excludeProjectId ?? options?.activeBoard?.projectId;
-  const activeProjectId = options?.activeBoard?.projectId;
-  const activeBoard = options?.activeBoard?.board;
-
-  const allKey = projectIds.join("\0");
-  const streamKey = projectIds.filter((id) => id !== excludedId).join("\0");
 
   useEffect(() => {
-    const allIds = allKey === "" ? [] : allKey.split("\0");
-    const streamIds = streamKey === "" ? [] : streamKey.split("\0");
-    if (!enabled || allIds.length === 0) {
+    if (!enabled) {
       setBoards({});
       return;
     }
 
-    const controllers = streamIds.map((pid) => {
-      const controller = new AbortController();
-      void runBackoffStream(
-        {
-          signal: controller.signal,
-          initialDelayMs: 800,
-          maxDelayMs: 10_000,
-        },
-        async ({ signal, resetBackoff, stop }) => {
-          for await (const event of api.streamBoard(pid, { signal })) {
-            if (signal.aborted) return;
-            if (event.type === "board") {
-              resetBackoff();
-              setBoards((prev) => ({ ...prev, [pid]: event.board }));
-            } else if (event.type === "end") {
-              if (isTerminalStreamEnd(event.reason)) stop();
-              return;
-            }
+    const controller = new AbortController();
+    void runBackoffStream(
+      {
+        signal: controller.signal,
+        initialDelayMs: 800,
+        maxDelayMs: 10_000,
+      },
+      async ({ signal, resetBackoff, stop }) => {
+        for await (const event of api.streamAllBoards({ signal })) {
+          if (signal.aborted) return;
+          if (event.type === "end") {
+            if (isTerminalStreamEnd(event.reason)) stop();
+            return;
           }
-        },
-      );
-      return controller;
-    });
-
-    setBoards((prev) => {
-      const keep = new Set(streamIds);
-      const next: Record<string, BoardViewPayload> = {};
-      for (const [id, b] of Object.entries(prev)) {
-        if (keep.has(id)) next[id] = b;
-      }
-      return next;
-    });
+          resetBackoff();
+          setBoards((prev) => applyAllBoardsEvent(prev, event));
+        }
+      },
+    );
 
     return () => {
-      for (const c of controllers) c.abort();
+      controller.abort();
     };
-  }, [allKey, streamKey, enabled]);
+  }, [enabled]);
 
-  return useMemo(() => {
-    if (!activeProjectId || !activeBoard) return boards;
-    return { ...boards, [activeProjectId]: activeBoard };
-  }, [boards, activeProjectId, activeBoard]);
+  return boards;
 }

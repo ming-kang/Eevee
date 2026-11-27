@@ -4,7 +4,7 @@ import {
   RightPanelCloseIcon,
   RightPanelOpenIcon,
 } from "@earendil-works/elanor-icons-react";
-import { Heading, IconButton } from "@earendil-works/elanor-react";
+import { Button, Heading, IconButton } from "@earendil-works/elanor-react";
 import type { ProjectId, ProjectSummary, WorkerId } from "@eevee/protocol";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatPage } from "./components/ChatPage.tsx";
@@ -21,7 +21,6 @@ import { ShortcutSheet } from "./components/ShortcutSheet.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { ToastHost } from "./components/ToastHost.tsx";
 import { UsagePage } from "./components/UsagePage.tsx";
-import { api, consumeTicketFromHash } from "./lib/api.ts";
 import { useProjectBoards } from "./lib/hooks.ts";
 import { useShellLayout } from "./lib/layout.ts";
 import {
@@ -31,19 +30,21 @@ import {
   type Route,
   type SettingsSection,
 } from "./lib/router.ts";
+import { SHORTCUT_PRIORITY, useShortcutLayer } from "./lib/shortcut-stack.ts";
 import { modLabel } from "./lib/shortcuts.ts";
 import { useTheme } from "./lib/theme.ts";
 import { deriveBoardSummary } from "./lib/transcript.ts";
-
-type AuthState =
-  | { readonly kind: "checking" }
-  | { readonly kind: "unauthenticated"; readonly error?: string }
-  | { readonly kind: "authenticated" };
+import { useAuthSession } from "./lib/useAuthSession.ts";
+import { useProjectsStore } from "./lib/useProjectsStore.ts";
 
 export function App() {
   const theme = useTheme();
-  const [auth, setAuth] = useState<AuthState>({ kind: "checking" });
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const { auth, login, logout } = useAuthSession();
+  const authenticated = auth.kind === "authenticated";
+  const projectsStore = useProjectsStore(authenticated);
+  const { projects } = projectsStore;
+  const boards = useProjectBoards(authenticated);
+
   const [route, setRoute] = useState<Route>(() =>
     typeof window !== "undefined" ? parseRoute(window.location.hash) : { name: "overview" },
   );
@@ -67,58 +68,6 @@ export function App() {
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   }, []);
-
-  useEffect(() => {
-    let active = true;
-    const initAuth = async () => {
-      const ticket = consumeTicketFromHash();
-      if (ticket) {
-        try {
-          await api.createWebSession({ ticket });
-          if (active) setAuth({ kind: "authenticated" });
-          return;
-        } catch (err) {
-          if (active) {
-            setAuth({
-              kind: "unauthenticated",
-              error: `登录链接已失效或已使用：${err instanceof Error ? err.message : String(err)}`,
-            });
-          }
-          return;
-        }
-      }
-      try {
-        const session = await api.getWebSession();
-        if (active) {
-          setAuth(session.authenticated ? { kind: "authenticated" } : { kind: "unauthenticated" });
-        }
-      } catch (err) {
-        if (active) {
-          setAuth({
-            kind: "unauthenticated",
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
-    };
-    void initAuth();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const loadProjects = useCallback(async () => {
-    const res = await api.listProjects();
-    setProjects(res.projects);
-  }, []);
-
-  useEffect(() => {
-    if (auth.kind !== "authenticated") return;
-    void loadProjects();
-  }, [auth.kind, loadProjects]);
-
-  const projectIds = useMemo(() => projects.map((p) => p.id), [projects]);
-  const boards = useProjectBoards(projectIds, auth.kind === "authenticated");
 
   const surfaceRoute: Exclude<Route, { name: "control" }> =
     route.name === "control" ? bgRouteRef.current : route;
@@ -167,31 +116,60 @@ export function App() {
     navigate(bgRouteRef.current);
   }, []);
 
-  // Global keyboard shortcuts.
-  useEffect(() => {
-    if (auth.kind !== "authenticated") return;
-    const onKey = (event: KeyboardEvent) => {
-      const mod = event.metaKey || event.ctrlKey;
-      const lower = event.key.toLowerCase();
-      if (mod && lower === "k") {
+  const modalOpen =
+    paletteOpen ||
+    shortcutsOpen ||
+    createOpen ||
+    editingProject !== undefined ||
+    deletingProject !== undefined;
+
+  useShortcutLayer({
+    id: "app-command-palette-toggle",
+    active:
+      authenticated &&
+      !shortcutsOpen &&
+      !createOpen &&
+      editingProject === undefined &&
+      deletingProject === undefined,
+    priority: SHORTCUT_PRIORITY.GLOBAL,
+    onKeyDown: (event) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setPaletteOpen((prev) => !prev);
-        return;
+        return true;
       }
+      return false;
+    },
+  });
+
+  useShortcutLayer({
+    id: "app-modal-blocker",
+    active: authenticated && modalOpen,
+    priority: SHORTCUT_PRIORITY.MODAL,
+    blocksLower: true,
+  });
+
+  useShortcutLayer({
+    id: "app-background-nav",
+    active: authenticated && route.name !== "control" && !modalOpen,
+    priority: SHORTCUT_PRIORITY.BACKGROUND,
+    onKeyDown: (event) => {
+      const mod = event.metaKey || event.ctrlKey;
+      const lower = event.key.toLowerCase();
       if (mod && !event.altKey && lower === "b") {
         event.preventDefault();
         layout.toggleSide();
-        return;
+        return true;
       }
       if (mod && event.altKey && lower === "b" && withRail) {
         event.preventDefault();
         layout.toggleRail();
-        return;
+        return true;
       }
       if (mod && lower === "f" && surfaceRoute.name === "project" && surfaceRoute.view === "chat") {
         event.preventDefault();
         setFindOpen(true);
-        return;
+        return true;
       }
       if (!mod && !event.altKey && event.key === "?") {
         const target = event.target;
@@ -199,15 +177,15 @@ export function App() {
           target instanceof HTMLElement &&
           target.closest("input, textarea, select, [contenteditable]")
         ) {
-          return;
+          return false;
         }
         event.preventDefault();
         setShortcutsOpen((prev) => !prev);
+        return true;
       }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [auth.kind, layout, withRail, surfaceRoute]);
+      return false;
+    },
+  });
 
   const paletteItems = useMemo<PaletteItem[]>(() => {
     const mod = modLabel();
@@ -278,13 +256,7 @@ export function App() {
     return list;
   }, [projects, boards, openOverview, openControl, openProject, theme, layout]);
 
-  const handleLogout = async () => {
-    await api.logoutWebSession().catch(() => undefined);
-    setProjects([]);
-    setAuth({ kind: "unauthenticated" });
-  };
-
-  if (auth.kind === "checking") {
+  if (auth.kind === "loading") {
     return (
       <div className="ev-login-page">
         <Heading level={2} size={5}>
@@ -294,11 +266,11 @@ export function App() {
     );
   }
 
-  if (auth.kind === "unauthenticated") {
+  if (auth.kind === "login" || auth.kind === "error") {
     return (
       <LoginView
-        initialError={auth.error}
-        onAuthenticated={() => setAuth({ kind: "authenticated" })}
+        initialError={auth.kind === "error" ? auth.error : undefined}
+        onAuthenticated={() => void login()}
       />
     );
   }
@@ -407,7 +379,7 @@ export function App() {
               onOpenControl={() => openControl("providers")}
               onOpenShortcuts={() => setShortcutsOpen(true)}
               onCycleTheme={theme.cycle}
-              onLogout={() => void handleLogout()}
+              onLogout={() => void logout()}
             />
           </div>
         </nav>
@@ -417,6 +389,9 @@ export function App() {
             <OverviewPage
               projects={projects}
               boards={boards}
+              projectsError={projectsStore.error}
+              projectsLoading={projectsStore.loading}
+              onRetryProjects={() => void projectsStore.reload()}
               onNewProject={() => setCreateOpen(true)}
               onOpenProject={(pid, wid) => openProject(pid, "chat", wid)}
             />
@@ -425,9 +400,7 @@ export function App() {
               project={activeProject}
               onSelectView={(v) => openProject(activeProject.id, v)}
               onEditProject={() => setEditingProject(activeProject)}
-              onProjectUpdated={(updated) =>
-                setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
-              }
+              onProjectUpdated={projectsStore.upsertProject}
             />
           ) : surfaceRoute.view === "usage" ? (
             <UsagePage
@@ -446,6 +419,26 @@ export function App() {
               onEditProject={() => setEditingProject(activeProject)}
               onOpenWorker={(wid) => openProject(activeProject.id, "chat", wid)}
             />
+          )}
+          {projectsStore.error && surfaceRoute.name === "project" && activeProject && (
+            <div style={{ padding: "8px 20px 12px" }}>
+              <div
+                className="ev-error-banner"
+                role="alert"
+                style={{ display: "flex", alignItems: "center", gap: 10 }}
+              >
+                <span style={{ flex: 1 }}>刷新项目列表失败：{projectsStore.error}</span>
+                <Button
+                  type="button"
+                  hierarchy="secondary"
+                  density="compact"
+                  pending={projectsStore.loading}
+                  onClick={() => void projectsStore.reload()}
+                >
+                  重试
+                </Button>
+              </div>
+            </div>
           )}
         </main>
 
@@ -519,7 +512,7 @@ export function App() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         onCreated={(created) => {
-          setProjects((prev) => [created, ...prev]);
+          projectsStore.upsertProject(created);
           openProject(created.id, "chat");
         }}
       />
@@ -527,16 +520,14 @@ export function App() {
       <EditProjectModal
         project={editingProject}
         onClose={() => setEditingProject(undefined)}
-        onUpdated={(updated) =>
-          setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
-        }
+        onUpdated={projectsStore.upsertProject}
       />
 
       <DeleteProjectModal
         project={deletingProject}
         onClose={() => setDeletingProject(undefined)}
         onDeleted={(id) => {
-          setProjects((prev) => prev.filter((p) => p.id !== id));
+          projectsStore.removeProject(id);
           if (surfaceRoute.name === "project" && surfaceRoute.pid === id) {
             navigate({ name: "overview" });
           }
