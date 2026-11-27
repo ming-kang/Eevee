@@ -271,6 +271,151 @@ function filterBounds(
   };
 }
 
+export type ByteRangeSource = {
+  readonly totalBytes: number;
+  readonly availableStart?: number;
+  readonly availableEnd?: number;
+  readRange(start: number, end: number): Uint8Array | Promise<Uint8Array>;
+};
+
+type SlicePlan =
+  | {
+      readonly kind: "window";
+      readonly window: OutputWindow;
+      readonly lo: number;
+      readonly hi: number;
+      readonly availableStart: number;
+      readonly availableEnd: number;
+      readonly totalBytes: number;
+    }
+  | {
+      readonly kind: "filter";
+      readonly matcher: (line: string) => boolean;
+      readonly bounds: ReturnType<typeof filterBounds>;
+      readonly lo: number;
+      readonly hi: number;
+      readonly availableStart: number;
+      readonly availableEnd: number;
+      readonly totalBytes: number;
+      readonly scanTruncated: boolean;
+      readonly maxBytes: number;
+      readonly contextLines: number;
+    };
+
+function planByteRangeSlice(
+  source: Pick<ByteRangeSource, "totalBytes" | "availableStart" | "availableEnd">,
+  options: OutputReadOptions,
+): SlicePlan {
+  const matcher = validateOutputReadOptions(options);
+  const availableStart = source.availableStart ?? 0;
+  const availableEnd = source.availableEnd ?? source.totalBytes;
+  if (matcher !== undefined) {
+    const bounds = filterBounds(source.totalBytes, options);
+    const lo = Math.max(bounds.scanStart, availableStart);
+    const hi = Math.max(lo, Math.min(bounds.scanEnd, availableEnd));
+    return {
+      kind: "filter",
+      matcher,
+      bounds,
+      lo,
+      hi,
+      availableStart,
+      availableEnd,
+      totalBytes: source.totalBytes,
+      scanTruncated: bounds.scanTruncated || bounds.scanStart < availableStart,
+      maxBytes: clampReadBytes(options.bytes),
+      contextLines: options.contextLines ?? 0,
+    };
+  }
+  const window = outputWindow(source.totalBytes, options);
+  const lo = Math.max(window.start, availableStart);
+  const hi = Math.max(lo, Math.min(window.end, availableEnd));
+  return {
+    kind: "window",
+    window,
+    lo,
+    hi,
+    availableStart,
+    availableEnd,
+    totalBytes: source.totalBytes,
+  };
+}
+
+function finalizeWindowSlice(
+  data: Uint8Array,
+  plan: Extract<SlicePlan, { readonly kind: "window" }>,
+): OutputSlice {
+  const rangeEnd = plan.lo + data.length;
+  const start = plan.lo <= plan.availableStart ? 0 : alignUtf8Start(data, 0);
+  let end = rangeEnd >= plan.availableEnd ? data.length : alignUtf8End(data, data.length);
+  if (end < start) end = start;
+  const endByte = plan.lo + end;
+  const truncated =
+    plan.window.start < plan.availableStart ||
+    (plan.window.mode !== "head" && plan.window.start > plan.window.floor) ||
+    endByte < plan.totalBytes;
+  return {
+    text: Buffer.from(data.subarray(start, end)).toString("utf8"),
+    totalBytes: plan.totalBytes,
+    truncated,
+    fromByte: plan.lo + start,
+    endByte,
+  };
+}
+
+function createFilterScanner(plan: Extract<SlicePlan, { readonly kind: "filter" }>) {
+  const collector = createFilterCollector(
+    plan.matcher,
+    plan.maxBytes,
+    plan.bounds.mode,
+    plan.contextLines,
+  );
+  const decoder = new TextDecoder();
+  let pos = plan.lo;
+  let actualStart = plan.lo;
+  let actualEnd = plan.lo;
+  let firstChunk = true;
+  let pending = "";
+
+  const pushChunk = (chunk: Uint8Array) => {
+    if (chunk.length === 0) return;
+    let view = chunk;
+    if (firstChunk) {
+      firstChunk = false;
+      if (pos > plan.availableStart) {
+        const offset = alignUtf8Start(view, 0);
+        if (offset > 0) {
+          actualStart += offset;
+          view = view.subarray(offset);
+        }
+      }
+    }
+    pos += chunk.length;
+    if (pos >= plan.hi && plan.hi < plan.availableEnd) {
+      const aligned = alignUtf8End(view, view.length);
+      actualEnd = pos - (view.length - aligned);
+      view = view.subarray(0, aligned);
+    } else {
+      actualEnd = pos;
+    }
+    pending += decoder.decode(view, { stream: true });
+    let nl = pending.indexOf("\n");
+    while (nl !== -1) {
+      collector.feedLine(pending.slice(0, nl));
+      pending = pending.slice(nl + 1);
+      nl = pending.indexOf("\n");
+    }
+  };
+
+  const finish = (): OutputSlice => {
+    pending += decoder.decode();
+    if (pending.length > 0) collector.feedLine(pending);
+    return collector.finish(plan.totalBytes, actualStart, actualEnd, plan.scanTruncated);
+  };
+
+  return { pushChunk, finish };
+}
+
 /**
  * Slice `retained`, which covers bytes `[fromByte, fromByte + retained.length)` of a stream
  * `totalBytes` long, to the requested window on codepoint boundaries.
@@ -281,52 +426,23 @@ export function sliceRetainedOutput(
   totalBytes: number,
   options: OutputReadOptions = {},
 ): OutputSlice {
-  const matcher = validateOutputReadOptions(options);
-  if (matcher !== undefined) {
-    const bounds = filterBounds(totalBytes, options);
-    const retainedEnd = fromByte + retained.length;
-    const lo = Math.max(bounds.scanStart, fromByte);
-    const hi = Math.min(bounds.scanEnd, retainedEnd);
-    const start = lo <= fromByte ? 0 : alignUtf8Start(retained, lo - fromByte);
-    let end = hi >= retainedEnd ? retained.length : alignUtf8End(retained, hi - fromByte);
-    if (end < start) end = start;
-    const actualStart = fromByte + start;
-    const actualEnd = fromByte + end;
-    const scanTruncated = bounds.scanTruncated || bounds.scanStart < fromByte;
-    const collector = createFilterCollector(
-      matcher,
-      clampReadBytes(options.bytes),
-      bounds.mode,
-      options.contextLines ?? 0,
+  const plan = planByteRangeSlice(
+    { totalBytes, availableStart: fromByte, availableEnd: fromByte + retained.length },
+    options,
+  );
+  const readSync = (start: number, end: number) =>
+    retained.subarray(start - fromByte, end - fromByte);
+  if (plan.kind === "window") {
+    return finalizeWindowSlice(
+      plan.hi > plan.lo ? readSync(plan.lo, plan.hi) : new Uint8Array(0),
+      plan,
     );
-    const text = Buffer.from(retained.subarray(start, end)).toString("utf8");
-    if (text.length > 0) {
-      const lines = text.split("\n");
-      if (lines.at(-1) === "") lines.pop();
-      for (const line of lines) collector.feedLine(line);
-    }
-    return collector.finish(totalBytes, actualStart, actualEnd, scanTruncated);
   }
-
-  const window = outputWindow(totalBytes, options);
-  const retainedEnd = fromByte + retained.length;
-  const lo = Math.max(window.start, fromByte);
-  const hi = Math.min(window.end, retainedEnd);
-  const start = lo <= fromByte ? 0 : alignUtf8Start(retained, lo - fromByte);
-  let end = hi >= retainedEnd ? retained.length : alignUtf8End(retained, hi - fromByte);
-  if (end < start) end = start;
-  const endByte = fromByte + end;
-  const truncated =
-    window.start < fromByte ||
-    (window.mode !== "head" && window.start > window.floor) ||
-    endByte < totalBytes;
-  return {
-    text: Buffer.from(retained.subarray(start, end)).toString("utf8"),
-    totalBytes,
-    truncated,
-    fromByte: fromByte + start,
-    endByte,
-  };
+  const scanner = createFilterScanner(plan);
+  if (plan.hi > plan.lo) {
+    scanner.pushChunk(readSync(plan.lo, plan.hi));
+  }
+  return scanner.finish();
 }
 
 export function sliceOutputText(text: string, options: OutputReadOptions = {}): OutputSlice {
@@ -343,76 +459,47 @@ export function utf8Tail(text: string, maxBytes: number): { text: string; fromBy
   return { text: bytes.subarray(start).toString("utf8"), fromByte: start };
 }
 
+export async function sliceByteRange(
+  source: ByteRangeSource,
+  options: OutputReadOptions = {},
+): Promise<OutputSlice> {
+  const plan = planByteRangeSlice(source, options);
+  if (plan.kind === "window") {
+    const data = plan.hi > plan.lo ? await source.readRange(plan.lo, plan.hi) : new Uint8Array(0);
+    return finalizeWindowSlice(data, plan);
+  }
+  const scanner = createFilterScanner(plan);
+  let pos = plan.lo;
+  while (pos < plan.hi) {
+    const nextEnd = Math.min(plan.hi, pos + FILTER_CHUNK_BYTES);
+    const chunk = await source.readRange(pos, nextEnd);
+    if (chunk.length === 0) break;
+    scanner.pushChunk(chunk);
+    pos += chunk.length;
+  }
+  return scanner.finish();
+}
+
 export async function readOutputFileSlice(
   filePath: string,
   options: OutputReadOptions = {},
 ): Promise<OutputSlice> {
-  const matcher = validateOutputReadOptions(options);
   const handle = await open(filePath, "r");
   try {
     const size = (await handle.stat()).size;
-    if (matcher !== undefined) {
-      const bounds = filterBounds(size, options);
-      const collector = createFilterCollector(
-        matcher,
-        clampReadBytes(options.bytes),
-        bounds.mode,
-        options.contextLines ?? 0,
-      );
-      if (bounds.scanEnd <= bounds.scanStart) {
-        return collector.finish(size, bounds.scanStart, bounds.scanStart, bounds.scanTruncated);
-      }
-      const chunk = Buffer.alloc(FILTER_CHUNK_BYTES);
-      const decoder = new TextDecoder();
-      let pos = bounds.scanStart;
-      let actualStart = bounds.scanStart;
-      let firstChunk = true;
-      let pending = "";
-      while (pos < bounds.scanEnd) {
-        const toRead = Math.min(chunk.length, bounds.scanEnd - pos);
-        const { bytesRead } = await handle.read(chunk, 0, toRead, pos);
-        if (bytesRead <= 0) break;
-        let view = chunk.subarray(0, bytesRead);
-        if (firstChunk) {
-          firstChunk = false;
-          if (pos > 0) {
-            const offset = alignUtf8Start(view, 0);
-            if (offset > 0) {
-              actualStart += offset;
-              view = view.subarray(offset);
-            }
-          }
-        }
-        pos += bytesRead;
-        pending += decoder.decode(view, { stream: true });
-        let nl = pending.indexOf("\n");
-        while (nl !== -1) {
-          collector.feedLine(pending.slice(0, nl));
-          pending = pending.slice(nl + 1);
-          nl = pending.indexOf("\n");
-        }
-      }
-      pending += decoder.decode();
-      if (pending.length > 0) collector.feedLine(pending);
-      return collector.finish(size, actualStart, pos, bounds.scanTruncated);
-    }
-
-    const window = outputWindow(size, options);
-    const length = Math.max(0, window.end - window.start);
-    const buffer = Buffer.alloc(length);
-    const { bytesRead } = await handle.read(buffer, 0, length, window.start);
-    const data = buffer.subarray(0, bytesRead);
-    const start = alignUtf8Start(data, 0);
-    const end = Math.max(start, alignUtf8End(data, data.length));
-    const endByte = window.start + end;
-    const truncated = (window.mode !== "head" && window.start > window.floor) || endByte < size;
-    return {
-      text: data.subarray(start, end).toString("utf8"),
-      totalBytes: size,
-      truncated,
-      fromByte: window.start + start,
-      endByte,
-    };
+    return await sliceByteRange(
+      {
+        totalBytes: size,
+        readRange: async (start, end) => {
+          const length = Math.max(0, end - start);
+          if (length === 0) return new Uint8Array(0);
+          const buffer = Buffer.alloc(length);
+          const { bytesRead } = await handle.read(buffer, 0, length, start);
+          return buffer.subarray(0, bytesRead);
+        },
+      },
+      options,
+    );
   } finally {
     await handle.close();
   }

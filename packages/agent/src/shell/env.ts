@@ -9,7 +9,7 @@ import {
 } from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv, type NodeWatchOptions } from "@earendil-works/pi-durable/env/node";
 import { type BashShellConfig, resolveBashShell } from "./discovery.ts";
-import { normalizePosixBashCommand } from "./normalize.ts";
+import { type NormalizeCommandResult, normalizePosixBashCommand } from "./normalize.ts";
 
 export type ManagedExecutionEnvOptions = {
   readonly cwd: string;
@@ -20,6 +20,25 @@ export type ManagedExecutionEnvOptions = {
   readonly execEnv?: ExecutionEnv;
 };
 
+const managedPlatforms = new WeakMap<ExecutionEnv, NodeJS.Platform>();
+const preNormalizedOptions = new WeakSet<ShellExecOptions>();
+
+export function normalizeCommandForEnv(
+  env: ExecutionEnv,
+  command: string,
+  platform?: NodeJS.Platform,
+): NormalizeCommandResult {
+  return normalizePosixBashCommand(
+    command,
+    platform ?? managedPlatforms.get(env) ?? process.platform,
+  );
+}
+
+export function markExecOptionsNormalized(options: ShellExecOptions): ShellExecOptions {
+  preNormalizedOptions.add(options);
+  return options;
+}
+
 class ManagedExecutionEnv extends NodeExecutionEnv {
   readonly #platform: NodeJS.Platform;
   readonly #explicitShellPath: string | undefined;
@@ -27,7 +46,7 @@ class ManagedExecutionEnv extends NodeExecutionEnv {
   readonly #watch: NodeWatchOptions | undefined;
   readonly #execEnv: ExecutionEnv | undefined;
   #resolvedBash: Promise<BashShellConfig | undefined> | undefined;
-  #shellDelegate: NodeExecutionEnv | undefined;
+  #wslDelegate: NodeExecutionEnv | undefined;
 
   constructor(options: ManagedExecutionEnvOptions) {
     super({
@@ -41,6 +60,7 @@ class ManagedExecutionEnv extends NodeExecutionEnv {
     this.#shellEnv = options.shellEnv;
     this.#watch = options.watch;
     this.#execEnv = options.execEnv;
+    managedPlatforms.set(this, this.#platform);
   }
 
   #resolveBash(): Promise<BashShellConfig | undefined> {
@@ -63,7 +83,10 @@ class ManagedExecutionEnv extends NodeExecutionEnv {
       return super.exec(command, options, context);
     }
 
-    const effectiveCommand = normalizePosixBashCommand(command, this.#platform).command;
+    const effectiveCommand =
+      options !== undefined && preNormalizedOptions.has(options)
+        ? command
+        : normalizePosixBashCommand(command, this.#platform).command;
 
     if (this.#execEnv !== undefined) {
       return this.#execEnv.exec(effectiveCommand, options, context);
@@ -86,23 +109,28 @@ class ManagedExecutionEnv extends NodeExecutionEnv {
       return super.exec(effectiveCommand, options, context);
     }
 
-    if (this.#shellDelegate === undefined) {
-      this.#shellDelegate = new NodeExecutionEnv({
+    if (resolved.commandTransport === "argv") {
+      return super.exec([resolved.shell, ...resolved.args, effectiveCommand], options, context);
+    }
+
+    // Legacy WSL reads commands via stdin (-s), which argv execution cannot express.
+    if (this.#wslDelegate === undefined) {
+      this.#wslDelegate = new NodeExecutionEnv({
         cwd: this.cwd,
         shellPath: resolved.shell,
         ...(this.#shellEnv === undefined ? {} : { shellEnv: this.#shellEnv }),
         ...(this.#watch === undefined ? {} : { watch: this.#watch }),
       });
     } else {
-      this.#shellDelegate.cwd = this.cwd;
+      this.#wslDelegate.cwd = this.cwd;
     }
 
-    return this.#shellDelegate.exec(effectiveCommand, options, context);
+    return this.#wslDelegate.exec(effectiveCommand, options, context);
   }
 
   override async cleanup(context: Context): Promise<void> {
     await super.cleanup(context);
-    await this.#shellDelegate?.cleanup(context);
+    await this.#wslDelegate?.cleanup(context);
     await this.#execEnv?.cleanup(context);
   }
 }

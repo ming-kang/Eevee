@@ -22,6 +22,7 @@ import {
   readOutputFileSlice,
   sliceOutputText,
   sliceRetainedOutput,
+  startCommand,
   TASK_NOTIFICATION_ENTRY_KIND,
   TASK_READ_DEFAULT_BYTES,
   TASK_READ_MAX_BYTES,
@@ -906,7 +907,7 @@ test("log cap enforces truncate and fail policies and surfaces log errors", asyn
     assert.equal(rec.logError, undefined);
     assert.ok(rec.logPath);
     const disk = await readFile(rec.logPath, "utf8");
-    assert.ok(disk.includes("[output truncated at 20 MiB limit]"), disk);
+    assert.ok(disk.includes("[output truncated at 80B limit]"), disk);
     await conv.waitForIdle(BACKGROUND_CONTEXT);
     const entries = await conversationEntries(conv);
     const note = entries.find((e) => e.kind === TASK_NOTIFICATION_ENTRY_KIND);
@@ -1362,11 +1363,13 @@ test("TaskManager.readOutput reads pre-retained disk bytes when a running task h
       command: "stream-lots",
       rewrittenNul: false,
       settled: false,
+      ready: Promise.resolve(),
       killed: false,
       done: new Promise(() => {}),
       output: () => ({ text: retainedPart, totalBytes, droppedBytes }),
       onOutput: () => () => {},
       kill: () => {},
+      detachCancel: () => {},
     };
     manager.attach(convId, taskId, running);
 
@@ -1413,6 +1416,55 @@ test("TaskManager.readOutput reads pre-retained disk bytes when a running task h
     assert.equal(fallbackHead.text, "");
   } finally {
     manager.killAll();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("startCommand separates kill(reason) from detachCancel() and settles ready on immediate errors", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "eevee-tasks-kill-ready-"));
+  const env = new NodeExecutionEnv({ cwd: dir });
+  try {
+    env.exec = async () => err(new ExecutionError("spawn_error", "fast fail"));
+    const immediate = startCommand(env, { command: "fast-fail" });
+    await immediate.ready;
+    assert.equal(immediate.settled, true);
+    assert.deepEqual(await immediate.done, {
+      kind: "error",
+      code: "spawn_error",
+      message: "fast fail",
+    });
+
+    env.exec = (_cmd, _opts, context) =>
+      new Promise((resolve) => {
+        context.abortSignal?.addEventListener(
+          "abort",
+          () => resolve(err(new ExecutionError("aborted", "aborted"))),
+          { once: true },
+        );
+      });
+
+    const detached = startCommand(env, { command: "stay-open" });
+    await detached.ready;
+    assert.equal(detached.settled, false);
+    detached.detachCancel();
+    assert.deepEqual(await detached.done, {
+      kind: "error",
+      code: "aborted",
+      message: "aborted",
+    });
+    assert.equal(detached.killed, false);
+
+    const userKilled = startCommand(env, { command: "stay-open" });
+    await userKilled.ready;
+    userKilled.kill("user");
+    assert.deepEqual(await userKilled.done, {
+      kind: "error",
+      code: "aborted",
+      message: "aborted",
+    });
+    assert.equal(userKilled.killed, true);
+    assert.equal(userKilled.killReason, "user");
+  } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });

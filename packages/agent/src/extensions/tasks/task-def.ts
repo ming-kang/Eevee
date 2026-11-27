@@ -1,4 +1,13 @@
-import { type ConversationId, defineTask, type Task, type Tx } from "@earendil-works/pi-durable";
+import type { Context } from "@earendil-works/chord/context";
+import {
+  type ConversationHandle,
+  type ConversationId,
+  defineTask,
+  type JsonObject,
+  type Task,
+  type TaskRuntime,
+  type Tx,
+} from "@earendil-works/pi-durable";
 import {
   type BackgroundTaskRecord,
   describeTaskOutcome,
@@ -28,6 +37,17 @@ const TERMINAL_COMPLETED = {
   status: "terminal",
   outcome: { status: "completed", result: null },
 } as const;
+const TERMINAL_ABORTED = {
+  status: "terminal",
+  outcome: { status: "aborted" },
+} as const;
+
+type TerminalState = typeof TERMINAL_COMPLETED | typeof TERMINAL_ABORTED;
+
+type TerminalNotification = {
+  readonly tail: string;
+  readonly data: JsonObject;
+};
 
 function signalAborted(signal: AbortSignal): Promise<void> {
   return signal.aborted
@@ -96,6 +116,50 @@ async function evictFinishedTasks(
   return toEvict;
 }
 
+async function commitTerminalState(
+  runtime: TaskRuntime<BackgroundShellInput, BackgroundShellCheckpoint, null, object>,
+  context: Context,
+  manager: TaskManager,
+  options: {
+    readonly taskId: string;
+    readonly terminalState: TerminalState;
+    readonly conv?: ConversationHandle;
+    readonly updateDoc: (doc: BackgroundTaskRecord) => TerminalNotification | undefined;
+  },
+): Promise<void> {
+  const { taskId, terminalState, conv, updateDoc } = options;
+  const conversationId = runtime.conversationId;
+  let evicted: EvictedTask[] = [];
+  await runtime.commit(async (tx) => {
+    const doc = await tx.doc(TaskRecordDoc, conversationId, taskId, null);
+    if (isTaskActiveStatus(doc.status)) {
+      const notice = updateDoc(doc);
+      if (notice !== undefined && conv !== undefined) {
+        await conv.submit(tx, {
+          type: "input",
+          content: buildCompletionNotice({ ...doc }, notice.tail),
+          whenBusy: "steer",
+          onAbort: "keep",
+          requestId: `eevee.task.done:${taskId}`,
+          entry: {
+            kind: TASK_NOTIFICATION_ENTRY_KIND,
+            data: notice.data,
+          },
+        });
+      }
+    }
+    evicted = await evictFinishedTasks(tx, conversationId, manager.maxFinishedPerConversation);
+    return evicted.length === 0 ? terminalState : undefined;
+  }, context);
+
+  if (evicted.length > 0) {
+    for (const item of evicted) {
+      await manager.evict(conversationId, item.id, item.logPath);
+    }
+    await runtime.commit(() => terminalState, context);
+  }
+}
+
 export type BackgroundShellTask = Task<
   BackgroundShellInput,
   BackgroundShellCheckpoint,
@@ -121,40 +185,20 @@ export function createBackgroundShellTask(manager: TaskManager): BackgroundShell
             return;
           }
           const conv = await runtime.conversation(conversationId, context);
-          let evicted: EvictedTask[] = [];
-          await runtime.commit(async (tx) => {
-            const doc = await tx.doc(TaskRecordDoc, conversationId, taskId, null);
-            if (isTaskActiveStatus(doc.status)) {
+          await commitTerminalState(runtime, context, manager, {
+            taskId,
+            terminalState: TERMINAL_COMPLETED,
+            ...(conv === undefined ? {} : { conv }),
+            updateDoc: (doc) => {
               doc.status = "interrupted";
               doc.error = "Interrupted by host restart";
               doc.endedAt = runtime.now();
-              if (conv !== undefined) {
-                await conv.submit(tx, {
-                  type: "input",
-                  content: buildCompletionNotice({ ...doc }, ""),
-                  whenBusy: "steer",
-                  onAbort: "keep",
-                  requestId: `eevee.task.done:${taskId}`,
-                  entry: {
-                    kind: TASK_NOTIFICATION_ENTRY_KIND,
-                    data: { taskId, status: "interrupted", command },
-                  },
-                });
-              }
-              evicted = await evictFinishedTasks(
-                tx,
-                conversationId,
-                manager.maxFinishedPerConversation,
-              );
-            }
-            return evicted.length === 0 ? TERMINAL_COMPLETED : undefined;
-          }, context);
-          if (evicted.length > 0) {
-            for (const item of evicted) {
-              await manager.evict(conversationId, item.id, item.logPath);
-            }
-            await runtime.commit(() => TERMINAL_COMPLETED, context);
-          }
+              return {
+                tail: "",
+                data: { taskId, status: "interrupted", command },
+              };
+            },
+          });
           return;
         }
 
@@ -168,7 +212,7 @@ export function createBackgroundShellTask(manager: TaskManager): BackgroundShell
         if (raced.kind === "signal") {
           // A close leaves the task active to recover as "interrupted" on reopen;
           // an abort mark runs the abort handler next.
-          running.kill(false);
+          running.detachCancel();
           await running.done;
           manager.delete(conversationId, taskId);
           await manager.finishLog(conversationId, taskId);
@@ -214,10 +258,11 @@ export function createBackgroundShellTask(manager: TaskManager): BackgroundShell
         }
 
         const conv = shouldNotify ? await runtime.conversation(conversationId, context) : undefined;
-        let evicted: EvictedTask[] = [];
-        await runtime.commit(async (tx) => {
-          const doc = await tx.doc(TaskRecordDoc, conversationId, taskId, null);
-          if (isTaskActiveStatus(doc.status)) {
+        await commitTerminalState(runtime, context, manager, {
+          taskId,
+          terminalState: TERMINAL_COMPLETED,
+          ...(conv === undefined ? {} : { conv }),
+          updateDoc: (doc) => {
             doc.status = nextStatus;
             doc.endedAt = runtime.now();
             if (exitCode !== undefined) doc.exitCode = exitCode;
@@ -226,42 +271,20 @@ export function createBackgroundShellTask(manager: TaskManager): BackgroundShell
             if (logStatus.logTruncated) doc.logTruncated = true;
             if (logStatus.logError !== undefined) doc.logError = logStatus.logError;
 
-            if (shouldNotify && conv !== undefined) {
-              await conv.submit(tx, {
-                type: "input",
-                content: buildCompletionNotice({ ...doc }, tail),
-                whenBusy: "steer",
-                onAbort: "keep",
-                requestId: `eevee.task.done:${taskId}`,
-                entry: {
-                  kind: TASK_NOTIFICATION_ENTRY_KIND,
-                  data: {
-                    taskId,
-                    status: nextStatus,
-                    command,
-                    ...(exitCode === undefined ? {} : { exitCode }),
-                    ...(error === undefined ? {} : { error }),
-                    ...(cancelReason === undefined ? {} : { cancelReason }),
-                  },
-                },
-              });
-            }
-
-            evicted = await evictFinishedTasks(
-              tx,
-              conversationId,
-              manager.maxFinishedPerConversation,
-            );
-          }
-          return evicted.length === 0 ? TERMINAL_COMPLETED : undefined;
-        }, context);
-
-        if (evicted.length > 0) {
-          for (const item of evicted) {
-            await manager.evict(conversationId, item.id, item.logPath);
-          }
-          await runtime.commit(() => TERMINAL_COMPLETED, context);
-        }
+            if (!shouldNotify) return undefined;
+            return {
+              tail,
+              data: {
+                taskId,
+                status: nextStatus,
+                command,
+                ...(exitCode === undefined ? {} : { exitCode }),
+                ...(error === undefined ? {} : { error }),
+                ...(cancelReason === undefined ? {} : { cancelReason }),
+              },
+            };
+          },
+        });
       },
     },
     abort: async (task, runtime, context) => {
@@ -277,30 +300,18 @@ export function createBackgroundShellTask(manager: TaskManager): BackgroundShell
       }
       await manager.finishLog(conversationId, taskId, "\n[cancelled]\n");
       const logStatus = manager.logStatus(conversationId, taskId);
-      let evicted: EvictedTask[] = [];
-      await runtime.commit(async (tx) => {
-        const doc = await tx.doc(TaskRecordDoc, conversationId, taskId, null);
-        if (isTaskActiveStatus(doc.status)) {
+      await commitTerminalState(runtime, context, manager, {
+        taskId,
+        terminalState: TERMINAL_ABORTED,
+        updateDoc: (doc) => {
           doc.status = "cancelled";
           doc.cancelReason = doc.cancelReason ?? killReason;
           doc.endedAt = runtime.now();
           if (logStatus.logTruncated) doc.logTruncated = true;
           if (logStatus.logError !== undefined) doc.logError = logStatus.logError;
-        }
-        evicted = await evictFinishedTasks(tx, conversationId, manager.maxFinishedPerConversation);
-        return evicted.length === 0
-          ? { status: "terminal", outcome: { status: "aborted" } }
-          : undefined;
-      }, context);
-      if (evicted.length > 0) {
-        for (const item of evicted) {
-          await manager.evict(conversationId, item.id, item.logPath);
-        }
-        await runtime.commit(
-          () => ({ status: "terminal", outcome: { status: "aborted" } }),
-          context,
-        );
-      }
+          return undefined;
+        },
+      });
     },
   });
 }

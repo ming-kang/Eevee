@@ -20,8 +20,8 @@ import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { arr, bool, num, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import { getToolPromptMeta, withToolPromptMeta } from "../../context/tool-meta.ts";
 import { errorMessage } from "../../shared/guards.ts";
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from "../../shared/truncate.ts";
-import { type ResolvedPowerShell, resolvePowerShell } from "../../shell/index.ts";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize } from "../../shared/truncate.ts";
+import type { ResolvedPowerShell } from "../../shell/index.ts";
 import {
   type BackgroundTaskRecord,
   describeTaskOutcome,
@@ -35,6 +35,7 @@ import {
   TasksBoardDoc,
 } from "./docs.ts";
 import {
+  MAX_FILTER_SCAN_BYTES,
   TASK_FILTER_MAX_CONTEXT_LINES,
   TASK_READ_DEFAULT_BYTES,
   TASK_READ_MAX_BYTES,
@@ -75,6 +76,35 @@ function textResult(text: string, isError = false): ToolExecutionResult {
   };
 }
 
+function abortedResult(api: ToolExecutionApi): ToolExecutionResult {
+  const retained = api.retainedOutput();
+  return {
+    isError: true,
+    diagnostics: [{ severity: "error", code: "aborted", message: "Command aborted" }],
+    structuredOutput: {
+      output: retained.text,
+      truncated: retained.truncated,
+    },
+  };
+}
+
+function backgroundStartedResult(
+  taskId: string,
+  output: string,
+  truncated: boolean,
+  text: string,
+): ToolExecutionResult {
+  return {
+    output: [{ type: "text", text }],
+    structuredOutput: {
+      output,
+      truncated,
+      taskId,
+      status: "running",
+    },
+  };
+}
+
 function timeoutMessage(timeout: number | undefined): string | undefined {
   if (timeout === undefined) return undefined;
   if (!Number.isFinite(timeout) || timeout <= 0) {
@@ -95,6 +125,214 @@ function clampFinishedLimit(limit: number | undefined): number {
 
 function formatTaskSummaryLine(record: BackgroundTaskRecord): string {
   return `- ${record.id} [${describeTaskOutcome(record)}]: ${record.command}`;
+}
+
+type TasksToolArgs = {
+  readonly action: "list" | "read" | "kill";
+  readonly taskId?: string;
+  readonly status?: "all" | "active" | "finished";
+  readonly limit?: number;
+  readonly mode?: "head" | "tail";
+  readonly bytes?: number;
+  readonly sinceBytes?: number;
+  readonly endByte?: number;
+  readonly filter?: string;
+  readonly contextLines?: number;
+};
+
+function listTasksResult(
+  records: readonly BackgroundTaskRecord[],
+  statusFilter: "all" | "active" | "finished",
+  rawLimit: number | undefined,
+): ToolExecutionResult {
+  const finishedLimit = clampFinishedLimit(rawLimit);
+  const active = records.filter((record) => isTaskActiveStatus(record.status));
+  const finished = records.filter((record) => isTaskTerminalStatus(record.status));
+  const shownFinished = finishedLimit === 0 ? [] : finished.slice(-finishedLimit);
+  const shown =
+    statusFilter === "active"
+      ? active
+      : statusFilter === "finished"
+        ? shownFinished
+        : [...active, ...shownFinished];
+  const omittedFinished = statusFilter === "active" ? 0 : finished.length - shownFinished.length;
+
+  let text: string;
+  if (shown.length === 0) {
+    text =
+      statusFilter === "active" && finished.length > 0
+        ? `No active background tasks (${finished.length} finished).`
+        : "No background tasks.";
+  } else {
+    const summary =
+      omittedFinished > 0
+        ? ` (${shown.length} shown; ${omittedFinished} older finished omitted)`
+        : ` (${shown.length})`;
+    text =
+      `Background tasks${summary}:\n` +
+      shown
+        .map((record) => `${record.id}\t${describeTaskOutcome(record)}\t${record.command}`)
+        .join("\n");
+  }
+  return {
+    output: [{ type: "text", text }],
+    structuredOutput: {
+      tasks: shown,
+      ...(omittedFinished > 0 ? { omittedFinished } : {}),
+    },
+  };
+}
+
+function resolveTargetTask(
+  records: readonly BackgroundTaskRecord[],
+  action: "read" | "kill",
+  rawTaskId: string | undefined,
+): BackgroundTaskRecord | ToolExecutionResult {
+  if (rawTaskId === undefined || rawTaskId.trim() === "") {
+    return textResult(`tasks ${action} requires a taskId`, true);
+  }
+  const resolution = resolveTaskId(records, rawTaskId);
+  if (resolution.kind === "not_found") {
+    const hint =
+      records.length === 0
+        ? " (no background tasks in this conversation)"
+        : `. Available tasks:\n${records.slice(-5).map(formatTaskSummaryLine).join("\n")}`;
+    return textResult(`Unknown task ${rawTaskId}${hint}`, true);
+  }
+  if (resolution.kind === "ambiguous") {
+    return textResult(
+      `Ambiguous task id "${rawTaskId}"; matches: ${resolution.matches.map((m) => m.id).join(", ")}`,
+      true,
+    );
+  }
+  return resolution.record;
+}
+
+async function readTaskResult(
+  manager: TaskManager,
+  conversationId: ConversationId,
+  record: BackgroundTaskRecord,
+  args: TasksToolArgs,
+): Promise<ToolExecutionResult> {
+  let slice: Awaited<ReturnType<TaskManager["readOutput"]>>;
+  try {
+    slice = await manager.readOutput(conversationId, record.id, record, {
+      ...(args.mode === undefined ? {} : { mode: args.mode }),
+      ...(args.bytes === undefined ? {} : { bytes: args.bytes }),
+      ...(args.sinceBytes === undefined ? {} : { sinceBytes: args.sinceBytes }),
+      ...(args.endByte === undefined ? {} : { endByte: args.endByte }),
+      ...(args.filter === undefined ? {} : { filter: args.filter }),
+      ...(args.contextLines === undefined ? {} : { contextLines: args.contextLines }),
+    });
+  } catch (error) {
+    return textResult(errorMessage(error), true);
+  }
+
+  const lines = [`task ${record.id} — ${describeTaskOutcome(record)}`];
+  if (record.logError !== undefined) lines.push(`Log warning: ${record.logError}`);
+  if (record.logTruncated === true) {
+    lines.push("Note: full output log was truncated at the size limit.");
+  }
+  if (args.filter !== undefined && args.filter !== "") {
+    lines.push(
+      `matched ${slice.matchedLines ?? 0} of ${slice.totalMatchedLines ?? 0} lines in bytes ${slice.fromByte}..${slice.endByte} of ${slice.totalBytes}` +
+        (slice.scanTruncated ? ` (scan capped at ${formatSize(MAX_FILTER_SCAN_BYTES)})` : ""),
+      slice.text === "" ? "(no matching lines)" : slice.text,
+    );
+  } else if (slice.totalBytes === 0) {
+    lines.push("(no output recorded)");
+  } else {
+    lines.push(
+      `bytes ${slice.fromByte}..${slice.endByte} of ${slice.totalBytes}` +
+        (slice.truncated ? " (truncated)" : ""),
+      slice.text === "" ? "(empty)" : slice.text,
+    );
+  }
+  lines.push(`next sinceBytes: ${slice.endByte}`);
+  return {
+    output: [{ type: "text", text: lines.join("\n") }],
+    structuredOutput: {
+      taskId: record.id,
+      status: record.status,
+      output: slice.text,
+      fromByte: slice.fromByte,
+      endByte: slice.endByte,
+      totalBytes: slice.totalBytes,
+      truncated: slice.truncated,
+      sinceBytes: slice.endByte,
+      ...(slice.matchedLines === undefined ? {} : { matchedLines: slice.matchedLines }),
+      ...(slice.totalMatchedLines === undefined
+        ? {}
+        : { totalMatchedLines: slice.totalMatchedLines }),
+      ...(slice.scanTruncated === undefined ? {} : { scanTruncated: slice.scanTruncated }),
+      ...(record.logPath === undefined ? {} : { logPath: record.logPath }),
+    },
+  };
+}
+
+async function killTaskResult(
+  manager: TaskManager,
+  api: ToolExecutionApi,
+  record: BackgroundTaskRecord,
+  context: Context,
+): Promise<ToolExecutionResult> {
+  const taskId = record.id;
+  if (!isTaskActiveStatus(record.status)) {
+    return textResult(`task ${taskId} already ${describeTaskOutcome(record)}`, true);
+  }
+  await api.commit(async (tx) => {
+    const doc = await tx.doc(TaskRecordDoc, api.conversationId, taskId, null);
+    if (doc.status === "queued" || doc.status === "running") {
+      doc.status = "stopping";
+    }
+  }, context);
+
+  const hadLive = manager.kill(api.conversationId, taskId, "tool");
+  if (!hadLive) {
+    // The process is already gone; mark the record so a still-live durable
+    // task ends quietly instead of reporting an interruption.
+    await api.commit(async (tx) => {
+      const doc = await tx.doc(TaskRecordDoc, api.conversationId, taskId, null);
+      if (isTaskActiveStatus(doc.status)) {
+        doc.status = "cancelled";
+        doc.cancelReason = "tool";
+        doc.endedAt = api.now();
+      }
+    }, context);
+  }
+  let status: string = "cancelled";
+  if (record.durableTaskId !== undefined) {
+    await api.waitForTask(record.durableTaskId as TaskId, context).catch(() => undefined);
+    const after = await api.snapshot(TaskRecordDoc, api.conversationId, taskId, context);
+    status = after?.status ?? status;
+  }
+  return {
+    output: [{ type: "text", text: `task ${taskId}: ${status}` }],
+    structuredOutput: { taskId, status },
+  };
+}
+
+async function findLatestCompaction(
+  api: {
+    entries(
+      query: { readonly order?: "ascending" | "descending" },
+      limit: number,
+      cursor: Cursor | undefined,
+      context: Context,
+    ): Promise<{ readonly items: readonly EntryRecord[]; readonly next?: Cursor }>;
+  },
+  context: Context,
+): Promise<EntryRecord | undefined> {
+  let cursor: Cursor | undefined;
+  do {
+    const page = await api.entries({ order: "descending" }, COMPACTION_SCAN_PAGE, cursor, context);
+    for (const entry of page.items) {
+      if (CompactionEntry.is(entry)) return entry;
+      if (ResetEntry.is(entry)) return undefined;
+    }
+    cursor = page.next;
+  } while (cursor !== undefined);
+  return undefined;
 }
 
 type AbortRace = {
@@ -159,7 +397,7 @@ export function createTasksExtension(options: TasksExtensionOptions = {}) {
     return undefined;
   }
 
-  async function adopt(
+  async function adoptCommand(
     api: ToolExecutionApi,
     running: RunningCommand,
     shell: TaskShell,
@@ -198,7 +436,7 @@ export function createTasksExtension(options: TasksExtensionOptions = {}) {
       }, context);
     } catch (error) {
       if (attachedTaskId !== undefined) manager.delete(api.conversationId, attachedTaskId, false);
-      running.kill(false);
+      running.detachCancel();
       throw error;
     }
   }
@@ -249,106 +487,32 @@ export function createTasksExtension(options: TasksExtensionOptions = {}) {
     };
   }
 
-  async function executeShell(
-    shell: TaskShell,
-    args: ShellArgs,
+  async function runBackground(
     api: ToolExecutionApi,
+    running: RunningCommand,
+    shell: TaskShell,
+    command: string,
     context: Context,
   ): Promise<ToolExecutionResult> {
-    const env: ExecutionEnv | undefined = api.env;
-    if (env === undefined) {
-      return textResult(
-        "This tool needs a workspace environment, which this conversation does not have.",
-        true,
-      );
-    }
-    const invalid = timeoutMessage(args.timeout);
-    if (invalid !== undefined) return textResult(invalid, true);
+    const adopted = await adoptCommand(api, running, shell, command, context);
+    return backgroundStartedResult(
+      adopted.taskId,
+      "",
+      false,
+      `Started background task ${adopted.taskId}. You will be notified when it finishes; inspect its output meanwhile with tasks({ action: "read", taskId: "${adopted.taskId}" }).`,
+    );
+  }
 
-    const extraEnv = options.env?.();
-    let resolvedPowerShell: ResolvedPowerShell | undefined;
-    if (shell === "powershell") {
-      resolvedPowerShell =
-        options.resolvePowerShell !== undefined
-          ? await options.resolvePowerShell()
-          : await resolvePowerShell(
-              extraEnv === undefined ? {} : { env: { ...process.env, ...extraEnv } },
-            );
-      if (resolvedPowerShell === undefined) {
-        return textResult(
-          "PowerShell executable (pwsh or powershell) is unavailable on this system.",
-          true,
-        );
-      }
-    }
-
-    if (args.background === true) {
-      const admissionError = await checkAdmission(api, context);
-      if (admissionError !== undefined) return textResult(admissionError, true);
-    }
-
-    const running = startCommand(env, {
-      shell,
-      command: args.command,
-      cwd: env.cwd,
-      ...(extraEnv === undefined ? {} : { env: extraEnv }),
-      ...(args.timeout === undefined ? {} : { timeoutSeconds: args.timeout }),
-      ...(resolvedPowerShell === undefined ? {} : { powerShell: resolvedPowerShell }),
-      ...(args.background === true
-        ? {}
-        : { spill: { afterBytes: DEFAULT_MAX_BYTES, afterLines: DEFAULT_MAX_LINES } }),
-    });
-    if (running.rewrittenNul) {
-      api.diagnostic({
-        severity: "info",
-        code: "normalized_nul_redirect",
-        message: "Normalized Windows CMD nul redirection to /dev/null for POSIX bash.",
-      });
-    }
-    const detach = running.onOutput((chunk) => {
-      try {
-        api.output(chunk);
-      } catch {
-        // The invocation may have ended while detached output still arrives.
-      }
-    });
+  async function runForeground(
+    api: ToolExecutionApi,
+    running: RunningCommand,
+    shell: TaskShell,
+    command: string,
+    timeoutSeconds: number | undefined,
+    context: Context,
+  ): Promise<ToolExecutionResult> {
     const abortRace = abortedBy(context.abortSignal);
     try {
-      if (args.background === true) {
-        await Promise.resolve();
-        await Promise.resolve();
-        if (running.settled) {
-          return finishedResult(await running.done, args.timeout, api);
-        }
-        if (context.abortSignal?.aborted) {
-          running.kill(false);
-          await running.done;
-          return {
-            isError: true,
-            diagnostics: [{ severity: "error", code: "aborted", message: "Command aborted" }],
-            structuredOutput: {
-              output: api.retainedOutput().text,
-              truncated: api.retainedOutput().truncated,
-            },
-          };
-        }
-        const adopted = await adopt(api, running, shell, args.command, context);
-        return {
-          output: [
-            {
-              type: "text",
-              text: `Started background task ${adopted.taskId}. You will be notified when it finishes; inspect its output meanwhile with tasks({ action: "read", taskId: "${adopted.taskId}" }).`,
-            },
-          ],
-          structuredOutput: {
-            output: "",
-            truncated: false,
-            taskId: adopted.taskId,
-            status: "running",
-          },
-        };
-      }
-
       const afterMs = backgroundAfterMs();
       const handoff =
         afterMs === undefined
@@ -367,50 +531,101 @@ export function createTasksExtension(options: TasksExtensionOptions = {}) {
       ]);
 
       if (raced.kind === "done") {
-        return finishedResult(raced.outcome, args.timeout, api);
+        return finishedResult(raced.outcome, timeoutSeconds, api);
       }
       if (raced.kind === "aborted") {
-        running.kill(false);
+        running.detachCancel();
         await running.done;
-        return {
-          isError: true,
-          diagnostics: [{ severity: "error", code: "aborted", message: "Command aborted" }],
-          structuredOutput: {
-            output: api.retainedOutput().text,
-            truncated: api.retainedOutput().truncated,
-          },
-        };
+        return abortedResult(api);
       }
       if (running.settled) {
-        return finishedResult(await running.done, args.timeout, api);
+        return finishedResult(await running.done, timeoutSeconds, api);
       }
       const admissionError = await checkAdmission(api, context);
       if (admissionError !== undefined) {
-        running.kill(false);
+        running.detachCancel();
         await running.done;
         return textResult(admissionError, true);
       }
-      const adopted = await adopt(api, running, shell, args.command, context);
+      const adopted = await adoptCommand(api, running, shell, command, context);
       const retained = api.retainedOutput();
       const notice =
         `Still running after ${afterMs}ms; moved to background task ${adopted.taskId}. ` +
         `You will be notified when it finishes; inspect output with tasks({ action: "read", taskId: "${adopted.taskId}" }).`;
-      return {
-        output: [
-          {
-            type: "text",
-            text: retained.text === "" ? notice : `${retained.text}\n${notice}`,
-          },
-        ],
-        structuredOutput: {
-          output: retained.text,
-          truncated: retained.truncated,
-          taskId: adopted.taskId,
-          status: "running",
-        },
-      };
+      return backgroundStartedResult(
+        adopted.taskId,
+        retained.text,
+        retained.truncated,
+        retained.text === "" ? notice : `${retained.text}\n${notice}`,
+      );
     } finally {
       abortRace?.dispose();
+    }
+  }
+
+  async function executeShell(
+    shell: TaskShell,
+    args: ShellArgs,
+    api: ToolExecutionApi,
+    context: Context,
+  ): Promise<ToolExecutionResult> {
+    const env: ExecutionEnv | undefined = api.env;
+    if (env === undefined) {
+      return textResult(
+        "This tool needs a workspace environment, which this conversation does not have.",
+        true,
+      );
+    }
+    const invalid = timeoutMessage(args.timeout);
+    if (invalid !== undefined) return textResult(invalid, true);
+
+    if (args.background === true) {
+      const admissionError = await checkAdmission(api, context);
+      if (admissionError !== undefined) return textResult(admissionError, true);
+    }
+
+    const extraEnv = options.env?.();
+    const running = startCommand(env, {
+      shell,
+      command: args.command,
+      cwd: env.cwd,
+      ...(extraEnv === undefined ? {} : { env: extraEnv }),
+      ...(args.timeout === undefined ? {} : { timeoutSeconds: args.timeout }),
+      ...(options.resolvePowerShell === undefined
+        ? {}
+        : { resolvePowerShell: options.resolvePowerShell }),
+      ...(args.background === true
+        ? {}
+        : { spill: { afterBytes: DEFAULT_MAX_BYTES, afterLines: DEFAULT_MAX_LINES } }),
+    });
+    if (running.rewrittenNul) {
+      api.diagnostic({
+        severity: "info",
+        code: "normalized_nul_redirect",
+        message: "Normalized Windows CMD nul redirection to /dev/null for POSIX bash.",
+      });
+    }
+    const detach = running.onOutput((chunk) => {
+      try {
+        api.output(chunk);
+      } catch {
+        // The invocation may have ended while detached output still arrives.
+      }
+    });
+    try {
+      await running.ready;
+      if (running.settled) {
+        return finishedResult(await running.done, args.timeout, api);
+      }
+      if (context.abortSignal?.aborted) {
+        running.detachCancel();
+        await running.done;
+        return abortedResult(api);
+      }
+      return args.background === true
+        ? await runBackground(api, running, shell, args.command, context)
+        : await runForeground(api, running, shell, args.command, args.timeout, context);
+    } finally {
       detach();
     }
   }
@@ -577,163 +792,14 @@ export function createTasksExtension(options: TasksExtensionOptions = {}) {
       ),
       execute: async (args, api, context): Promise<ToolExecutionResult> => {
         const records = await listConversationTasks(api, api.conversationId, context);
-
         if (args.action === "list") {
-          const statusFilter = args.status ?? "all";
-          const finishedLimit = clampFinishedLimit(args.limit);
-          const active = records.filter((record) => isTaskActiveStatus(record.status));
-          const finished = records.filter((record) => isTaskTerminalStatus(record.status));
-          const shownFinished = finishedLimit === 0 ? [] : finished.slice(-finishedLimit);
-          const shown =
-            statusFilter === "active"
-              ? active
-              : statusFilter === "finished"
-                ? shownFinished
-                : [...active, ...shownFinished];
-          const omittedFinished =
-            statusFilter === "active" ? 0 : finished.length - shownFinished.length;
-
-          let text: string;
-          if (shown.length === 0) {
-            text =
-              statusFilter === "active" && finished.length > 0
-                ? `No active background tasks (${finished.length} finished).`
-                : "No background tasks.";
-          } else {
-            const summary =
-              omittedFinished > 0
-                ? ` (${shown.length} shown; ${omittedFinished} older finished omitted)`
-                : ` (${shown.length})`;
-            text =
-              `Background tasks${summary}:\n` +
-              shown
-                .map((record) => `${record.id}\t${describeTaskOutcome(record)}\t${record.command}`)
-                .join("\n");
-          }
-          return {
-            output: [{ type: "text", text }],
-            structuredOutput: {
-              tasks: shown,
-              ...(omittedFinished > 0 ? { omittedFinished } : {}),
-            },
-          };
+          return listTasksResult(records, args.status ?? "all", args.limit);
         }
-
-        const rawTaskId = args.taskId;
-        if (rawTaskId === undefined || rawTaskId.trim() === "") {
-          return textResult(`tasks ${args.action} requires a taskId`, true);
-        }
-        const resolution = resolveTaskId(records, rawTaskId);
-        if (resolution.kind === "not_found") {
-          const hint =
-            records.length === 0
-              ? " (no background tasks in this conversation)"
-              : `. Available tasks:\n${records.slice(-5).map(formatTaskSummaryLine).join("\n")}`;
-          return textResult(`Unknown task ${rawTaskId}${hint}`, true);
-        }
-        if (resolution.kind === "ambiguous") {
-          return textResult(
-            `Ambiguous task id "${rawTaskId}"; matches: ${resolution.matches.map((m) => m.id).join(", ")}`,
-            true,
-          );
-        }
-
-        const record = resolution.record;
-        const taskId = record.id;
-
-        if (args.action === "read") {
-          let slice: Awaited<ReturnType<TaskManager["readOutput"]>>;
-          try {
-            slice = await manager.readOutput(api.conversationId, taskId, record, {
-              ...(args.mode === undefined ? {} : { mode: args.mode }),
-              ...(args.bytes === undefined ? {} : { bytes: args.bytes }),
-              ...(args.sinceBytes === undefined ? {} : { sinceBytes: args.sinceBytes }),
-              ...(args.endByte === undefined ? {} : { endByte: args.endByte }),
-              ...(args.filter === undefined ? {} : { filter: args.filter }),
-              ...(args.contextLines === undefined ? {} : { contextLines: args.contextLines }),
-            });
-          } catch (error) {
-            return textResult(errorMessage(error), true);
-          }
-
-          const lines = [`task ${record.id} — ${describeTaskOutcome(record)}`];
-          if (record.logError !== undefined) {
-            lines.push(`Log warning: ${record.logError}`);
-          }
-          if (record.logTruncated === true) {
-            lines.push("Note: full output log was truncated at the size limit.");
-          }
-          if (args.filter !== undefined && args.filter !== "") {
-            lines.push(
-              `matched ${slice.matchedLines ?? 0} of ${slice.totalMatchedLines ?? 0} lines in bytes ${slice.fromByte}..${slice.endByte} of ${slice.totalBytes}` +
-                (slice.scanTruncated ? " (scan capped at 20 MiB)" : ""),
-              slice.text === "" ? "(no matching lines)" : slice.text,
-            );
-          } else if (slice.totalBytes === 0) {
-            lines.push("(no output recorded)");
-          } else {
-            lines.push(
-              `bytes ${slice.fromByte}..${slice.endByte} of ${slice.totalBytes}` +
-                (slice.truncated ? " (truncated)" : ""),
-              slice.text === "" ? "(empty)" : slice.text,
-            );
-          }
-          lines.push(`next sinceBytes: ${slice.endByte}`);
-          return {
-            output: [{ type: "text", text: lines.join("\n") }],
-            structuredOutput: {
-              taskId: record.id,
-              status: record.status,
-              output: slice.text,
-              fromByte: slice.fromByte,
-              endByte: slice.endByte,
-              totalBytes: slice.totalBytes,
-              truncated: slice.truncated,
-              sinceBytes: slice.endByte,
-              ...(slice.matchedLines === undefined ? {} : { matchedLines: slice.matchedLines }),
-              ...(slice.totalMatchedLines === undefined
-                ? {}
-                : { totalMatchedLines: slice.totalMatchedLines }),
-              ...(slice.scanTruncated === undefined ? {} : { scanTruncated: slice.scanTruncated }),
-              ...(record.logPath === undefined ? {} : { logPath: record.logPath }),
-            },
-          };
-        }
-
-        if (!isTaskActiveStatus(record.status)) {
-          return textResult(`task ${record.id} already ${describeTaskOutcome(record)}`, true);
-        }
-
-        await api.commit(async (tx) => {
-          const doc = await tx.doc(TaskRecordDoc, api.conversationId, taskId, null);
-          if (doc.status === "queued" || doc.status === "running") {
-            doc.status = "stopping";
-          }
-        }, context);
-
-        const hadLive = manager.kill(api.conversationId, taskId, "tool");
-        if (!hadLive) {
-          // The process is already gone; mark the record so a still-live durable
-          // task ends quietly instead of reporting an interruption.
-          await api.commit(async (tx) => {
-            const doc = await tx.doc(TaskRecordDoc, api.conversationId, taskId, null);
-            if (isTaskActiveStatus(doc.status)) {
-              doc.status = "cancelled";
-              doc.cancelReason = "tool";
-              doc.endedAt = api.now();
-            }
-          }, context);
-        }
-        let status: string = "cancelled";
-        if (record.durableTaskId !== undefined) {
-          await api.waitForTask(record.durableTaskId as TaskId, context).catch(() => undefined);
-          const after = await api.snapshot(TaskRecordDoc, api.conversationId, taskId, context);
-          status = after?.status ?? status;
-        }
-        return {
-          output: [{ type: "text", text: `task ${taskId}: ${status}` }],
-          structuredOutput: { taskId, status },
-        };
+        const resolved = resolveTargetTask(records, args.action, args.taskId);
+        if (!("id" in resolved)) return resolved;
+        return args.action === "read"
+          ? readTaskResult(manager, api.conversationId, resolved, args)
+          : killTaskResult(manager, api, resolved, context);
       },
     }),
     {
@@ -745,34 +811,6 @@ export function createTasksExtension(options: TasksExtensionOptions = {}) {
       ],
     },
   );
-
-  async function findLatestCompaction(
-    api: {
-      entries(
-        query: { readonly order?: "ascending" | "descending" },
-        limit: number,
-        cursor: Cursor | undefined,
-        context: Context,
-      ): Promise<{ readonly items: readonly EntryRecord[]; readonly next?: Cursor }>;
-    },
-    context: Context,
-  ): Promise<EntryRecord | undefined> {
-    let cursor: Cursor | undefined;
-    do {
-      const page = await api.entries(
-        { order: "descending" },
-        COMPACTION_SCAN_PAGE,
-        cursor,
-        context,
-      );
-      for (const entry of page.items) {
-        if (CompactionEntry.is(entry)) return entry;
-        if (ResetEntry.is(entry)) return undefined;
-      }
-      cursor = page.next;
-    } while (cursor !== undefined);
-    return undefined;
-  }
 
   return defineExtension<ToolRegistration>({
     name: TASKS_EXTENSION,

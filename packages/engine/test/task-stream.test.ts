@@ -147,6 +147,7 @@ test("subscribeWorkerTaskStream reports onEnd('failed', message) when processBoa
     command: "echo hi",
     rewrittenNul: false,
     settled: false,
+    ready: Promise.resolve(),
     killed: false,
     done: new Promise(() => {}),
     output: () => ({
@@ -159,6 +160,7 @@ test("subscribeWorkerTaskStream reports onEnd('failed', message) when processBoa
       return () => listeners.delete(listener);
     },
     kill: () => {},
+    detachCancel: () => {},
   };
   manager.attach(convId, "task-1", running);
 
@@ -210,11 +212,13 @@ test("handleTaskStream forwards end reason='failed' and message over SSE", async
     command: "echo sse",
     rewrittenNul: false,
     settled: false,
+    ready: Promise.resolve(),
     killed: false,
     done: new Promise(() => {}),
     output: () => ({ text: "initial\n", totalBytes: 8, droppedBytes: 0 }),
     onOutput: () => () => {},
     kill: () => {},
+    detachCancel: () => {},
   };
   manager.attach(convId, "task-1", running);
 
@@ -292,6 +296,7 @@ test("subscribeWorkerTaskStream with head mode catches up [endByte, live.totalBy
     command: "emit-many",
     rewrittenNul: false,
     settled: false,
+    ready: Promise.resolve(),
     killed: false,
     done: new Promise(() => {}),
     output: () => ({
@@ -304,6 +309,7 @@ test("subscribeWorkerTaskStream with head mode catches up [endByte, live.totalBy
       return () => listeners.delete(listener);
     },
     kill: () => {},
+    detachCancel: () => {},
   };
   manager.attach(convId, "task-1", running);
 
@@ -398,6 +404,7 @@ test("subscribeWorkerTaskStream with head mode catches up pre-retained disk byte
       command: "stream-big",
       rewrittenNul: false,
       settled: false,
+      ready: Promise.resolve(),
       killed: false,
       done: new Promise(() => {}),
       output: () => ({
@@ -410,6 +417,7 @@ test("subscribeWorkerTaskStream with head mode catches up pre-retained disk byte
         return () => listeners.delete(listener);
       },
       kill: () => {},
+      detachCancel: () => {},
     };
     manager.attach(convId, "task-1", running);
 

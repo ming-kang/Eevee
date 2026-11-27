@@ -6,13 +6,16 @@ import { utf8ByteLength } from "@earendil-works/chord/output";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import type {
   ExecutionEnv,
+  ExecutionError,
+  Result,
+  ShellExecOptions,
   ShellExecResult,
   ShellSpillOptions,
 } from "@earendil-works/pi-durable/env";
 import { errorMessage } from "../../shared/guards.ts";
-import { alignUtf8Start, utf8HeadBytes } from "../../shared/truncate.ts";
+import { alignUtf8Start, formatSize, utf8HeadBytes } from "../../shared/truncate.ts";
 import { type ResolvedPowerShell, resolvePowerShell } from "../../shell/discovery.ts";
-import { normalizePosixBashCommand } from "../../shell/normalize.ts";
+import { markExecOptionsNormalized, normalizeCommandForEnv } from "../../shell/env.ts";
 import type { BackgroundTaskRecord } from "./docs.ts";
 import {
   clampReadBytes,
@@ -70,6 +73,7 @@ export type RunningCommand = {
   readonly cwd?: string;
   readonly rewrittenNul: boolean;
   readonly settled: boolean;
+  readonly ready: Promise<void>;
   /** Set only by an explicit kill request, never by a shutdown cancellation. */
   readonly killed: boolean;
   readonly killReason?: TaskKillReason;
@@ -77,7 +81,8 @@ export type RunningCommand = {
   output(): CommandOutput;
   /** Listen to live chunks; earlier chunks are not replayed. Returns a detach. */
   onOutput(listener: (chunk: string) => void): () => void;
-  kill(reason?: TaskKillReason | boolean): void;
+  kill(reason: TaskKillReason): void;
+  detachCancel(): void;
 };
 
 /**
@@ -114,12 +119,17 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
     }
   };
 
+  let resolveReady!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    resolveReady = resolve;
+  });
+
   const normalized =
     shell === "bash"
-      ? normalizePosixBashCommand(options.command, options.platform)
+      ? normalizeCommandForEnv(env, options.command, options.platform)
       : { command: options.command, rewrittenNul: false };
 
-  const execOptions = {
+  const execOptions: ShellExecOptions = {
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
     env: options.env ?? {},
     ...(options.inheritEnv === undefined ? {} : { inheritEnv: options.inheritEnv }),
@@ -127,6 +137,9 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
     ...(options.spill === undefined ? {} : { spill: options.spill }),
     onOutput: (text: string) => push(text),
   };
+  if (shell === "bash") {
+    markExecOptionsNormalized(execOptions);
+  }
 
   const toOutcome = (
     result:
@@ -152,16 +165,48 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
     };
   };
 
+  const runExec = (target: string | readonly string[]): Promise<CommandOutcome> => {
+    let execPromise: Promise<Result<ShellExecResult, ExecutionError>>;
+    try {
+      execPromise = env.exec(target, execOptions, context);
+    } catch (error) {
+      settled = true;
+      resolveReady();
+      return Promise.resolve({
+        kind: "error",
+        code: "unknown",
+        message: errorMessage(error),
+      });
+    }
+    const outcomePromise = execPromise.then(
+      (result) => {
+        const outcome = toOutcome(result);
+        resolveReady();
+        return outcome;
+      },
+      (error) => {
+        settled = true;
+        resolveReady();
+        return {
+          kind: "error",
+          code: "unknown",
+          message: errorMessage(error),
+        } satisfies CommandOutcome;
+      },
+    );
+    void Promise.resolve().then(resolveReady);
+    return outcomePromise;
+  };
+
   const startExec = (): Promise<CommandOutcome> => {
     if (shell === "bash") {
-      return env.exec(normalized.command, execOptions, context).then(toOutcome);
+      return runExec(normalized.command);
     }
     if (options.powerShell !== undefined) {
-      const argv = [
+      return runExec([
         options.powerShell.executable,
         ...options.powerShell.buildArgs(options.command),
-      ];
-      return env.exec(argv, execOptions, context).then(toOutcome);
+      ]);
     }
     const resolvePs =
       options.resolvePowerShell ??
@@ -173,23 +218,25 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
     return resolvePs().then((ps) => {
       if (context.abortSignal?.aborted) {
         settled = true;
+        resolveReady();
         return { kind: "error", code: "aborted", message: "aborted" } satisfies CommandOutcome;
       }
       if (ps === undefined) {
         settled = true;
+        resolveReady();
         return {
           kind: "error",
           code: "shell_unavailable",
           message: "PowerShell executable (pwsh or powershell) is unavailable on this system.",
         } satisfies CommandOutcome;
       }
-      const argv = [ps.executable, ...ps.buildArgs(options.command)];
-      return env.exec(argv, execOptions, context).then(toOutcome);
+      return runExec([ps.executable, ...ps.buildArgs(options.command)]);
     });
   };
 
   const done = startExec().catch((error): CommandOutcome => {
     settled = true;
+    resolveReady();
     return {
       kind: "error",
       code: "unknown",
@@ -205,6 +252,7 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
     get settled() {
       return settled;
     },
+    ready,
     get killed() {
       return killed;
     },
@@ -223,18 +271,13 @@ export function startCommand(env: ExecutionEnv, options: StartCommandOptions): R
         listeners.delete(listener);
       };
     },
-    kill: (reason: TaskKillReason | boolean = "tool") => {
-      if (typeof reason === "boolean") {
-        if (reason) {
-          killed = true;
-          killReason ??= "tool";
-        } else {
-          killReason ??= "abort";
-        }
-      } else {
-        killed = true;
-        killReason ??= reason;
-      }
+    kill: (reason: TaskKillReason) => {
+      killed = true;
+      killReason ??= reason;
+      cancel();
+    },
+    detachCancel: () => {
+      killReason ??= "abort";
       cancel();
     },
   };
@@ -406,11 +449,7 @@ export class TaskManager {
     });
   }
 
-  kill(
-    conversationId: ConversationId,
-    taskId: string,
-    reason: TaskKillReason | boolean = "tool",
-  ): boolean {
+  kill(conversationId: ConversationId, taskId: string, reason: TaskKillReason = "tool"): boolean {
     const running = this.#commands.get(this.#key(conversationId, taskId))?.running;
     if (running === undefined) return false;
     running.kill(reason);
@@ -488,7 +527,9 @@ export class TaskManager {
       state.stopped = true;
       if (this.logOverflowPolicy === "truncate") {
         state.logTruncated = true;
-        if (!stream.destroyed) stream.write("\n[output truncated at 20 MiB limit]\n");
+        if (!stream.destroyed) {
+          stream.write(`\n[output truncated at ${formatSize(this.maxLogBytes)} limit]\n`);
+        }
       } else {
         state.logError = "Output exceeded background log size limit";
         state.overflowFailed = true;
@@ -505,19 +546,21 @@ export class TaskManager {
     writeChunk(snapshot.text);
   }
 
-  async finishLog(conversationId: ConversationId, taskId: string, footer?: string): Promise<void> {
-    const key = this.#key(conversationId, taskId);
+  async #closeSink(
+    key: TaskKey,
+    options?: { readonly footer?: string; readonly timeoutMs?: number },
+  ): Promise<void> {
     const sink = this.#sinks.get(key);
     if (sink === undefined) return;
     this.#sinks.delete(key);
     sink.detach();
+    if (sink.stream.destroyed) return;
     await new Promise<void>((resolve) => {
-      const cleanup = () => {
+      let timer: NodeJS.Timeout | undefined;
+      const done = () => {
+        if (timer !== undefined) clearTimeout(timer);
         sink.stream.off("error", onError);
         sink.stream.off("finish", done);
-      };
-      const done = () => {
-        cleanup();
         resolve();
       };
       const onError = (error: unknown) => {
@@ -525,17 +568,27 @@ export class TaskManager {
         sink.state.stopped = true;
         done();
       };
+      if (options?.timeoutMs !== undefined) {
+        timer = setTimeout(() => {
+          sink.stream.destroy();
+          done();
+        }, options.timeoutMs);
+        timer.unref?.();
+      }
       sink.stream.once("error", onError);
       sink.stream.once("finish", done);
-      if (sink.stream.destroyed) {
-        done();
-        return;
-      }
-      if (footer !== undefined && !sink.state.stopped) {
-        sink.stream.write(footer);
+      if (options?.footer !== undefined && !sink.state.stopped) {
+        sink.stream.write(options.footer);
       }
       sink.stream.end();
     });
+  }
+
+  async finishLog(conversationId: ConversationId, taskId: string, footer?: string): Promise<void> {
+    await this.#closeSink(
+      this.#key(conversationId, taskId),
+      footer === undefined ? undefined : { footer },
+    );
   }
 
   async cleanupLog(logPath: string): Promise<void> {
@@ -596,7 +649,7 @@ export class TaskManager {
   }
 
   killAll(): void {
-    for (const entry of this.#commands.values()) entry.running.kill(false);
+    for (const entry of this.#commands.values()) entry.running.detachCancel();
     this.#commands.clear();
     for (const sink of this.#sinks.values()) {
       sink.detach();
@@ -610,7 +663,7 @@ export class TaskManager {
   async close(graceMs = 3_000): Promise<void> {
     const entries = [...this.#commands.values()];
     for (const entry of entries) {
-      entry.running.kill(false);
+      entry.running.detachCancel();
     }
     if (entries.length > 0) {
       const waitDone = Promise.allSettled(entries.map((entry) => entry.running.done));
@@ -630,35 +683,9 @@ export class TaskManager {
     }
     this.#commands.clear();
 
-    const sinkKeys = [...this.#sinks.keys()];
-    for (const key of sinkKeys) {
-      const sink = this.#sinks.get(key);
-      if (sink === undefined) continue;
-      this.#sinks.delete(key);
-      sink.detach();
-      if (sink.stream.destroyed) continue;
-      await new Promise<void>((resolve) => {
-        let timer: NodeJS.Timeout | undefined;
-        const done = () => {
-          if (timer !== undefined) clearTimeout(timer);
-          sink.stream.off("error", onError);
-          sink.stream.off("finish", done);
-          resolve();
-        };
-        const onError = (error: unknown) => {
-          sink.state.logError ??= errorMessage(error);
-          done();
-        };
-        timer = setTimeout(() => {
-          sink.stream.destroy();
-          done();
-        }, 500);
-        timer.unref?.();
-        sink.stream.once("error", onError);
-        sink.stream.once("finish", done);
-        sink.stream.end();
-      });
-    }
+    await Promise.all(
+      [...this.#sinks.keys()].map((key) => this.#closeSink(key, { timeoutMs: 500 })),
+    );
     this.#memoryLogs.clear();
     this.#logStates.clear();
   }

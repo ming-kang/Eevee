@@ -515,3 +515,27 @@ test("tasks startCommand normalizes win32 nul redirects while preserving logical
     assert.deepEqual(executed, ['echo "2>nul" && cmd 2>/dev/null']);
   });
 });
+
+test("tasks startCommand respects ManagedExecutionEnv platform without double normalization", async () => {
+  await withTempDir(async (dir) => {
+    const recorded: Array<string | readonly string[]> = [];
+    const fakeInner = new NodeExecutionEnv({ cwd: dir });
+    fakeInner.exec = async (command) => {
+      recorded.push(command);
+      return ok({ exitCode: 0 });
+    };
+
+    const winEnv = createManagedExecutionEnv({
+      cwd: dir,
+      platform: "win32",
+      execEnv: fakeInner,
+    });
+    const running = startCommand(winEnv, {
+      command: "echo hi 2>nul",
+    });
+    assert.deepEqual(await running.done, { kind: "exit", exitCode: 0 });
+    assert.equal(running.command, "echo hi 2>nul");
+    assert.equal(running.rewrittenNul, true);
+    assert.deepEqual(recorded, ["echo hi 2>/dev/null"]);
+  });
+});
