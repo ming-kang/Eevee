@@ -2,7 +2,8 @@
 .ev-add-provider-dialog,
 .ev-probe-dialog,
 .ev-project-edit-dialog,
-.ev-project-create-dialog {
+.ev-project-create-dialog,
+.ev-transfer-dialog {
   --ev-dialog-max-w: 960px;
   width: min(var(--ev-dialog-max-w), calc(100vw - 32px));
   max-width: var(--ev-dialog-max-w);
@@ -22,8 +23,9 @@
   --ev-dialog-max-w: 820px;
 }
 
-.ev-project-create-dialog {
-  --ev-dialog-max-w: 620px;
+.ev-project-create-dialog,
+.ev-transfer-dialog {
+  --ev-dialog-max-w: 680px;
 }
 
 .ev-confirm-dialog {
@@ -87,7 +89,8 @@
   .ev-add-provider-dialog,
   .ev-probe-dialog,
   .ev-project-edit-dialog,
-  .ev-project-create-dialog {
+  .ev-project-create-dialog,
+  .ev-transfer-dialog {
     width: calc(100vw - 20px);
     inline-size: calc(100vw - 20px);
     max-block-size: calc(100dvh - 20px);

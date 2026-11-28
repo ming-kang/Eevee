@@ -199,7 +199,7 @@ export function ModelProfilesSection({
             {smoke && !smoke.loading && (smoke.result || smoke.error) && (
               <div className="ev-profile-smoke">
                 {smoke.error && <div className="ev-error-banner">{smoke.error}</div>}
-                {smoke.result && <SmokeTestResult result={smoke.result} />}
+                {smoke.result && <SmokeTestResult result={smoke.result} request={smoke.request} />}
                 <div>
                   <Button
                     type="button"

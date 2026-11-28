@@ -1,22 +1,21 @@
-import { ExperimentIcon } from "@earendil-works/elanor-icons-react";
 import { Button, Modal } from "@earendil-works/elanor-react";
 import type { CompatFieldInfo, ProviderDetail, ThinkingLevel } from "@eevee/protocol";
-import { type FormEvent, useReducer, useState } from "react";
+import { type FormEvent, useMemo, useReducer, useState } from "react";
 import { api } from "../../lib/api.ts";
 import { useI18n } from "../../lib/i18n.ts";
 import { hasSelectableThinkingLevels, thinkingLevelsOfModel } from "../../lib/model-choice.ts";
 import { ConfirmModal } from "../ConfirmModal.tsx";
-import { EvDropdown } from "../EvDropdown.tsx";
 import { ModelBasicSection } from "./model-editor/ModelBasicSection.tsx";
 import { ModelBuiltinMatcher } from "./model-editor/ModelBuiltinMatcher.tsx";
 import { ModelCompatSection } from "./model-editor/ModelCompatSection.tsx";
+import { ModelSmokeSection } from "./model-editor/ModelSmokeSection.tsx";
 import {
   buildModelUpsertRequest,
   createModelEditorDraft,
+  hasModelDraftChanges,
   type ModelEditorTarget,
   modelEditorReducer,
 } from "./model-editor/state.ts";
-import { SmokeTestResult } from "./SmokeTestResult.tsx";
 import { ThinkingLevelsEditor } from "./ThinkingLevelsEditor.tsx";
 import { modelSmokeKey, useModelSmokeTests } from "./useModelSmokeTests.ts";
 
@@ -52,7 +51,7 @@ export function ModelEditorModal({
       ? testLevel
       : smokeThinkingLevels[0];
   const [testTools, setTestTools] = useState(false);
-  const { tests, runTest } = useModelSmokeTests();
+  const { tests, runTest, cancelTest } = useModelSmokeTests();
 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -61,8 +60,16 @@ export function ModelEditorModal({
   const [error, setError] = useState<string | undefined>(undefined);
 
   const effectiveApi = (draft.apiValue.trim() || model?.api || target.providerApi || "").trim();
-  const compatFields = compatSchemas[effectiveApi] ?? [];
-  const smoke = model ? tests[modelSmokeKey(target.providerId, model.id)] : undefined;
+  const compatFields = useMemo(
+    () => compatSchemas[effectiveApi] ?? [],
+    [compatSchemas, effectiveApi],
+  );
+  const smokeKey = model ? modelSmokeKey(target.providerId, model.id) : undefined;
+  const smoke = smokeKey ? tests[smokeKey] : undefined;
+  const hasUnsavedChanges = useMemo(
+    () => (model ? hasModelDraftChanges(target, draft, compatFields) : false),
+    [compatFields, draft, model, target],
+  );
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -168,45 +175,19 @@ export function ModelEditorModal({
                   )}
 
                   {model && (
-                    <section className="ev-editor-section">
-                      <div className="ev-editor-section-title">{t("modelEditor.smokeSection")}</div>
-                      <div className="ev-smoke-controls">
-                        {smokeThinkingLevels.length > 0 && effectiveTestLevel && (
-                          <EvDropdown
-                            density="compact"
-                            className="ev-smoke-thinking-select"
-                            ariaLabel="Thinking"
-                            value={effectiveTestLevel}
-                            options={smokeThinkingLevels.map((level) => ({
-                              value: level,
-                              label: level,
-                            }))}
-                            onChange={(next) => setTestLevel(next as ThinkingLevel)}
-                          />
-                        )}
-                        <label className="ev-check-row">
-                          <input
-                            type="checkbox"
-                            className="ev-native-checkbox"
-                            checked={testTools}
-                            onChange={(event) => setTestTools(event.target.checked)}
-                          />
-                          {t("modelEditor.smokeTestTools")}
-                        </label>
-                        <Button
-                          type="button"
-                          hierarchy="secondary"
-                          density="compact"
-                          iconStart={<ExperimentIcon width={14} height={14} />}
-                          pending={smoke?.loading === true}
-                          onClick={runSmokeTest}
-                        >
-                          {t("modelEditor.smokeTestButton")}
-                        </Button>
-                      </div>
-                      {smoke?.error && <div className="ev-error-banner">{smoke.error}</div>}
-                      {smoke?.result && <SmokeTestResult result={smoke.result} />}
-                    </section>
+                    <ModelSmokeSection
+                      thinkingLevels={smokeThinkingLevels}
+                      selectedLevel={effectiveTestLevel}
+                      onSelectLevel={setTestLevel}
+                      testTools={testTools}
+                      onToggleTestTools={setTestTools}
+                      hasUnsavedChanges={hasUnsavedChanges}
+                      smoke={smoke}
+                      onRun={runSmokeTest}
+                      onCancel={() => {
+                        if (smokeKey) cancelTest(smokeKey);
+                      }}
+                    />
                   )}
                 </div>
               </Modal.Body>

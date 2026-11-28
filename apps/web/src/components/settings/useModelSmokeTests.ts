@@ -4,6 +4,7 @@ import { api } from "../../lib/api.ts";
 
 export type ModelSmokeState = {
   readonly loading: boolean;
+  readonly request?: SmokeTestModelRequest;
   readonly result?: SmokeTestModelResponse;
   readonly error?: string;
 };
@@ -47,17 +48,16 @@ export function useModelSmokeTests(): UseModelSmokeTestsResult {
       abortsRef.current.get(resolvedKey)?.abort();
       const controller = new AbortController();
       abortsRef.current.set(resolvedKey, controller);
-      setTests((prev) => ({ ...prev, [resolvedKey]: { loading: true } }));
+      const request = req ?? {};
+      setTests((prev) => ({ ...prev, [resolvedKey]: { loading: true, request } }));
       try {
-        const result = await api.testProviderModel(
-          providerId,
-          modelId,
-          req ?? {},
-          controller.signal,
-        );
+        const result = await api.testProviderModel(providerId, modelId, request, controller.signal);
         if (!controller.signal.aborted && abortsRef.current.get(resolvedKey) === controller) {
           abortsRef.current.delete(resolvedKey);
-          setTests((prev) => ({ ...prev, [resolvedKey]: { loading: false, result } }));
+          setTests((prev) => ({
+            ...prev,
+            [resolvedKey]: { loading: false, request, result },
+          }));
         }
       } catch (err) {
         if (!controller.signal.aborted && abortsRef.current.get(resolvedKey) === controller) {
@@ -66,6 +66,7 @@ export function useModelSmokeTests(): UseModelSmokeTestsResult {
             ...prev,
             [resolvedKey]: {
               loading: false,
+              request,
               error: err instanceof Error ? err.message : String(err),
             },
           }));

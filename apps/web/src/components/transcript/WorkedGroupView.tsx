@@ -75,7 +75,7 @@ export function WorkedGroupView({
           }
         >
           <ChevronRightIcon width={15} height={15} className="ev-proc-chev" />
-          <span className="ev-truncate">{label}</span>
+          <span className="ev-proc-label">{label}</span>
           {summaryText && <span className="ev-truncate ev-worked-sub">· {summaryText}</span>}
         </button>
         {!open && edits && (

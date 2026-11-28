@@ -12,6 +12,9 @@ import {
   applyCandidateDiffs,
   buildModelUpsertRequest,
   createModelEditorDraft,
+  filterCompatFields,
+  hasModelDraftChanges,
+  isCompatFieldConfigured,
   modelEditorReducer,
 } from "../src/components/settings/model-editor/state.ts";
 import {
@@ -531,4 +534,80 @@ test("createModelEditorDraft preserves explicit custom model api and baseUrl ove
   );
   assert.equal(inherited.apiValue, "");
   assert.equal(inherited.baseUrlValue, "");
+});
+
+test("tri-state compat booleans distinguish default, true, and false and support filtering", () => {
+  const tempField: CompatFieldInfo = {
+    key: "supportsTemperature",
+    kind: "boolean",
+    note: "Whether the model accepts Anthropic temperature.",
+  };
+  const sigField: CompatFieldInfo = {
+    key: "allowEmptySignature",
+    kind: "boolean",
+    note: "Replay empty thinking signatures.",
+  };
+  const affinityField: CompatFieldInfo = {
+    key: "sessionAffinityFormat",
+    kind: "enum",
+    options: ["openrouter"],
+    note: "Session affinity header format.",
+  };
+  const fields: readonly CompatFieldInfo[] = [tempField, sigField, affinityField];
+  const schemas = { "anthropic-messages": [...fields] };
+  const model = makeModelDetail({
+    api: "anthropic-messages",
+    compat: { allowEmptySignature: true },
+  });
+  const target = {
+    providerId: "custom-anthropic",
+    providerApi: "anthropic-messages",
+    model,
+  };
+
+  let draft = createModelEditorDraft(target, schemas);
+  assert.equal(hasModelDraftChanges(target, draft, fields), false);
+  assert.equal(isCompatFieldConfigured(tempField, draft), false);
+  assert.equal(isCompatFieldConfigured(sigField, draft), true);
+  assert.deepEqual(
+    filterCompatFields(fields, "", true, draft).map((f) => f.key),
+    ["allowEmptySignature"],
+  );
+  assert.deepEqual(
+    filterCompatFields(fields, "signature", false, draft).map((f) => f.key),
+    ["allowEmptySignature"],
+  );
+  assert.deepEqual(
+    filterCompatFields(fields, "temperature", false, draft).map((f) => f.key),
+    ["supportsTemperature"],
+  );
+
+  draft = modelEditorReducer(draft, {
+    type: "setCompatBoolean",
+    key: "supportsTemperature",
+    enabled: false,
+  });
+  assert.equal(hasModelDraftChanges(target, draft, fields), true);
+  assert.equal(isCompatFieldConfigured(tempField, draft), true);
+  assert.deepEqual(buildModelUpsertRequest(target, draft, fields), {
+    compat: { allowEmptySignature: true, supportsTemperature: false },
+  });
+
+  draft = modelEditorReducer(draft, {
+    type: "setCompatBoolean",
+    key: "supportsTemperature",
+    enabled: undefined,
+  });
+  assert.equal(hasModelDraftChanges(target, draft, fields), false);
+  assert.equal(isCompatFieldConfigured(tempField, draft), false);
+  assert.deepEqual(buildModelUpsertRequest(target, draft, fields), {});
+
+  draft = modelEditorReducer(draft, {
+    type: "setCompatBoolean",
+    key: "allowEmptySignature",
+    enabled: undefined,
+  });
+  assert.deepEqual(buildModelUpsertRequest(target, draft, fields), {
+    compat: null,
+  });
 });

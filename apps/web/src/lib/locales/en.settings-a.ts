@@ -1,7 +1,7 @@
 import type { ZH_CN_SETTINGS_A } from "./zh-CN.settings-a.ts";
 
 export const EN_SETTINGS_A: Readonly<Record<keyof typeof ZH_CN_SETTINGS_A, string>> = {
-  "tools.invalidInlineBudget": "inlineBudget must be a non-negative integer.",
+  "tools.invalidInlineBudget": "Inline budget must be a non-negative integer.",
   "tools.chipOverriddenTitle": "{name}: {state} (override)",
   "tools.chipInheritedTitle": "{name}: {state} (inherited)",
   "tools.chipGlobalTitle": "{name}: {state}",
@@ -11,11 +11,28 @@ export const EN_SETTINGS_A: Readonly<Record<keyof typeof ZH_CN_SETTINGS_A, strin
   "tools.mode.off": "Off",
   "tools.mode.on": "On",
   "tools.mode.only": "Only",
-  "tools.inlineBudgetProjectTitle": "Blank inherits global",
-  "tools.inlineBudgetGlobalTitle": "Default 3000",
+  "tools.modeHint.inherit": "Inherit global Codemode setting",
+  "tools.modeHint.off": "Disable Codemode sandbox and use standard tool calls only",
+  "tools.modeHint.on": "Keep standard tools and allow batching calls in Codemode scripts",
+  "tools.modeHint.only": "Hide individual tool schemas and invoke tools through Codemode scripts",
+  "tools.inlineBudgetLabel": "Inline budget",
+  "tools.inlineBudgetProjectTitle":
+    "Token budget for tool schemas inlined into Codemode; blank inherits global",
+  "tools.inlineBudgetGlobalTitle":
+    "Token budget for tool schemas inlined into Codemode (default 3000)",
+  "tools.desc.read": "Read file contents",
+  "tools.desc.write": "Create or overwrite files",
+  "tools.desc.edit": "Targeted file text edits",
+  "tools.desc.bash": "Run shell commands",
+  "tools.desc.powershell": "Run PowerShell commands",
+  "tools.desc.tasks": "Inspect and control background tasks",
+  "tools.desc.ls": "List directory entries",
+  "tools.desc.find": "Find files by pattern",
+  "tools.desc.grep": "Search file contents with regex",
+  "tools.desc.tool_search": "Search deferred tools on demand",
   "tools.routerBuiltIn": "Router built-in tools",
   "tools.workerBuiltIn": "Worker built-in tools",
-  "tools.resetToGlobal": "Reset",
+  "tools.resetToGlobal": "Reset defaults",
 
   "skills.mode.model": "Model",
   "skills.mode.user": "User",
@@ -44,6 +61,7 @@ export const EN_SETTINGS_A: Readonly<Record<keyof typeof ZH_CN_SETTINGS_A, strin
   "smoke.connected": "Connected",
   "smoke.failed": "Failed",
   "smoke.totalTime": "{duration}",
+  "smoke.usageDetail": "Input {input} · Output {output} · Total {total}",
 
   "models.catalogTitle": "Model catalog",
   "models.filterPlaceholder": "Filter models…",

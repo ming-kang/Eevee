@@ -400,7 +400,24 @@
   border-radius: 6px;
 }
 
+.ev-proc-label {
+  flex: none;
+  white-space: nowrap;
+}
+
+.ev-proc-trigger > .ev-minus,
+.ev-proc-trigger > .ev-diff-counts {
+  flex: none;
+  white-space: nowrap;
+}
+
+.ev-proc-trigger[aria-expanded="true"] .ev-thinking-preview,
+.ev-proc-trigger[data-panel-open] .ev-thinking-preview {
+  display: none;
+}
+
 .ev-proc-summary-sub {
+  flex: 1 1 auto;
   font-size: 0.8125rem;
   color: var(--ev-fg-subtle);
 }
@@ -422,6 +439,8 @@
 }
 
 .ev-step-name {
+  flex: none;
+  white-space: nowrap;
   color: var(--ev-fg);
 }
 
@@ -601,8 +620,8 @@
 }
 
 .ev-thinking-body {
-  margin: 4px 0 8px 12px;
-  padding-left: 12px;
+  margin: 4px 0 8px 7px;
+  padding-left: 14px;
   border-left: 1px solid var(--ev-separator);
   font-size: 0.875rem;
   color: var(--ev-fg-muted);

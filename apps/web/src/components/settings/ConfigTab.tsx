@@ -1,25 +1,25 @@
-import { CodeIcon, DownloadIcon, UploadIcon } from "@earendil-works/elanor-icons-react";
+import {
+  CodeIcon,
+  ContentCopyIcon,
+  RefreshIcon,
+  UndoIcon,
+  UploadIcon,
+} from "@earendil-works/elanor-icons-react";
 import {
   Button,
   Field,
-  Heading,
   Input,
+  Modal,
   PageHeader,
   Section,
-  Separator,
   TextArea,
 } from "@earendil-works/elanor-react";
-import {
-  ConfigBundleSchema,
-  type EngineSettings,
-  type ModelChoice,
-  parseWithSchema,
-  type ToolsSettings,
-} from "@eevee/protocol";
-import { useCallback, useEffect, useState } from "react";
+import { ConfigBundleSchema, parseWithSchema } from "@eevee/protocol";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../lib/api.ts";
 import { useI18n } from "../../lib/i18n.ts";
 import { SHORTCUT_PRIORITY, useShortcutLayer } from "../../lib/shortcut-stack.ts";
+import { isMacPlatform } from "../../lib/shortcuts.ts";
 import { showToast } from "../../lib/toasts.ts";
 import { useAbortableAsync } from "../../lib/useAbortableAsync.ts";
 import {
@@ -28,76 +28,32 @@ import {
   useEngineSettingsAndModels,
 } from "../../lib/useEngineSettings.ts";
 import { ModelChoiceMenu } from "../ModelChoiceMenu.tsx";
-import { resolveToolsSettings, ToolsSettingsEditor } from "./ToolsSettingsEditor.tsx";
+import {
+  buildEngineSettingsFromForm,
+  type ConfigFormState,
+  configFormFromSettings,
+  formatTokenShorthand,
+  hasConfigFormErrors,
+  INITIAL_CONFIG_FORM_STATE,
+  isConfigFormDirty,
+  validateConfigForm,
+} from "./config-form.ts";
+import { ToolsSettingsEditor } from "./ToolsSettingsEditor.tsx";
 
-export type ConfigFormState = {
-  readonly maxActiveWorkers: string;
-  readonly backgroundAfterMs: string;
-  readonly routerContextTokens: string;
-  readonly idleHibernateMs: string;
-  readonly routerModel: ModelChoice | undefined;
-  readonly workerModel: ModelChoice | undefined;
-  readonly dreamerModel: ModelChoice | undefined;
-  readonly tools: ToolsSettings | undefined;
-  readonly inlineBudget: string;
-};
-
-const INITIAL_FORM_STATE: ConfigFormState = {
-  maxActiveWorkers: "3",
-  backgroundAfterMs: "30000",
-  routerContextTokens: "80000",
-  idleHibernateMs: "600000",
-  routerModel: undefined,
-  workerModel: undefined,
-  dreamerModel: undefined,
-  tools: undefined,
-  inlineBudget: "",
-};
-
-export function configFormFromSettings(settings: EngineSettings): ConfigFormState {
-  return {
-    maxActiveWorkers: String(settings.maxActiveWorkers ?? 3),
-    backgroundAfterMs: String(settings.backgroundAfterMs ?? 30_000),
-    routerContextTokens: String(settings.routerContextTokens ?? 80_000),
-    idleHibernateMs: String(settings.idleHibernateMs ?? 600_000),
-    routerModel: settings.models?.router,
-    workerModel: settings.models?.worker,
-    dreamerModel: settings.models?.dreamer,
-    tools: settings.tools,
-    inlineBudget: String(settings.tools?.codemode?.inlineBudget ?? ""),
-  };
-}
-
-export function buildEngineSettingsFromForm(form: ConfigFormState): EngineSettings {
-  const models =
-    form.routerModel || form.workerModel || form.dreamerModel
-      ? {
-          ...(form.routerModel ? { router: form.routerModel } : {}),
-          ...(form.workerModel ? { worker: form.workerModel } : {}),
-          ...(form.dreamerModel ? { dreamer: form.dreamerModel } : {}),
-        }
-      : undefined;
-
-  const nextTools = resolveToolsSettings(form.tools, form.inlineBudget, "global");
-  return {
-    maxActiveWorkers: Number(form.maxActiveWorkers),
-    backgroundAfterMs: Number(form.backgroundAfterMs),
-    routerContextTokens: Number(form.routerContextTokens),
-    idleHibernateMs: Number(form.idleHibernateMs),
-    ...(models ? { models } : {}),
-    ...(nextTools ? { tools: nextTools } : {}),
-  };
-}
+export { buildEngineSettingsFromForm, type ConfigFormState, configFormFromSettings };
 
 export function ConfigTab() {
   const { t } = useI18n();
   const { availableModels, refresh: refreshSharedModels } = useEngineSettingsAndModels(true);
-  const [form, setForm] = useState<ConfigFormState>(INITIAL_FORM_STATE);
+  const [form, setForm] = useState<ConfigFormState>(INITIAL_CONFIG_FORM_STATE);
+  const [savedForm, setSavedForm] = useState<ConfigFormState>(INITIAL_CONFIG_FORM_STATE);
   const [saving, setSaving] = useState(false);
 
   const [transferOpen, setTransferOpen] = useState(false);
   const [bundleJson, setBundleJson] = useState("");
+  const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [transferError, setTransferError] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
 
   const { run: runLoad } = useAbortableAsync();
@@ -112,7 +68,9 @@ export function ConfigTab() {
       const settings = await runLoad((signal) => api.getSettings(signal));
       if (!settings) return;
       setCachedEngineSettings(settings);
-      setForm(configFormFromSettings(settings));
+      const loaded = configFormFromSettings(settings);
+      setForm(loaded);
+      setSavedForm(loaded);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -122,20 +80,33 @@ export function ConfigTab() {
     void load();
   }, [load]);
 
+  const fieldErrors = useMemo(() => validateConfigForm(form), [form]);
+  const invalid = hasConfigFormErrors(fieldErrors);
+  const dirty = useMemo(() => isConfigFormDirty(form, savedForm), [form, savedForm]);
+  const memoryShorthand = formatTokenShorthand(form.routerContextTokens);
+
   const saveSettings = useCallback(async () => {
-    if (saving) return;
+    if (saving || !dirty || invalid) return;
     setSaving(true);
     setError(undefined);
     try {
       const updated = await api.putSettings(buildEngineSettingsFromForm(form));
       setCachedEngineSettings(updated);
+      const nextSaved = configFormFromSettings(updated);
+      setForm(nextSaved);
+      setSavedForm(nextSaved);
       showToast(t("common.saved"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
-  }, [form, saving, t]);
+  }, [dirty, form, invalid, saving, t]);
+
+  const discardChanges = useCallback(() => {
+    setForm(savedForm);
+    setError(undefined);
+  }, [savedForm]);
 
   useShortcutLayer({
     id: "config-tab-save",
@@ -151,21 +122,41 @@ export function ConfigTab() {
     },
   });
 
-  const handleExport = async () => {
-    setError(undefined);
+  const loadExportBundle = useCallback(
+    async (notify: boolean) => {
+      setExporting(true);
+      setTransferError(undefined);
+      try {
+        const bundle = await api.exportConfig();
+        setBundleJson(JSON.stringify(bundle, null, 2));
+        if (notify) showToast(t("config.exportedNotice"));
+      } catch (err) {
+        setTransferError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setExporting(false);
+      }
+    },
+    [t],
+  );
+
+  const openTransferModal = () => {
     setTransferOpen(true);
+    void loadExportBundle(false);
+  };
+
+  const handleCopyBundle = async () => {
+    if (!bundleJson.trim()) return;
     try {
-      const bundle = await api.exportConfig();
-      setBundleJson(JSON.stringify(bundle, null, 2));
-      showToast(t("config.exportedNotice"));
+      await navigator.clipboard.writeText(bundleJson);
+      showToast(t("transcript.copied"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setTransferError(err instanceof Error ? err.message : String(err));
     }
   };
 
   const handleImport = async () => {
     setImporting(true);
-    setError(undefined);
+    setTransferError(undefined);
     try {
       const parsed = parseWithSchema(ConfigBundleSchema, JSON.parse(bundleJson), "ConfigBundle");
       await api.importConfig(parsed);
@@ -174,7 +165,7 @@ export function ConfigTab() {
       setTransferOpen(false);
       showToast(t("config.importedNotice"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setTransferError(err instanceof Error ? err.message : String(err));
     } finally {
       setImporting(false);
     }
@@ -186,20 +177,32 @@ export function ConfigTab() {
         <PageHeader.Root className="ev-section-header">
           <PageHeader.Row>
             <PageHeader.Title level={2} className="ev-section-title">
-              {t("config.runPolicyTitle")}
+              {t("config.modelsTitle")}
             </PageHeader.Title>
             <PageHeader.Actions>
               <Button
                 hierarchy="secondary"
                 density="compact"
                 iconStart={<CodeIcon width={15} height={15} />}
-                onClick={() => setTransferOpen((prev) => !prev)}
+                onClick={openTransferModal}
               >
                 {t("config.transferTitle")}
               </Button>
+              {dirty && (
+                <Button
+                  hierarchy="tertiary"
+                  density="compact"
+                  iconStart={<UndoIcon width={14} height={14} />}
+                  disabled={saving}
+                  onClick={discardChanges}
+                >
+                  {t("config.discard")}
+                </Button>
+              )}
               <Button
                 hierarchy="primary"
                 density="compact"
+                disabled={!dirty || invalid}
                 pending={saving}
                 onClick={() => void saveSettings()}
               >
@@ -211,81 +214,7 @@ export function ConfigTab() {
 
         {error && <div className="ev-error-banner">{error}</div>}
 
-        {transferOpen && (
-          <div className="ev-settings-card">
-            <div className="ev-settings-head">
-              <Heading level={3} size={6}>
-                {t("config.transferTitle")}
-              </Heading>
-              <div className="ev-inline-actions">
-                <Button
-                  hierarchy="secondary"
-                  density="compact"
-                  iconStart={<DownloadIcon width={15} height={15} />}
-                  onClick={() => void handleExport()}
-                >
-                  {t("config.export")}
-                </Button>
-                <Button
-                  hierarchy="primary"
-                  density="compact"
-                  iconStart={<UploadIcon width={15} height={15} />}
-                  disabled={bundleJson.trim().length === 0}
-                  pending={importing}
-                  onClick={() => void handleImport()}
-                >
-                  {t("config.import")}
-                </Button>
-              </div>
-            </div>
-            <TextArea
-              monospace
-              rows={10}
-              value={bundleJson}
-              onValueChange={setBundleJson}
-              placeholder="ConfigBundle JSON"
-            />
-          </div>
-        )}
-
         <div className="ev-settings-card">
-          <div className="ev-settings-grid-2">
-            <Field.Root>
-              <Field.Label>{t("config.maxActiveWorkers")}</Field.Label>
-              <Input
-                type="text"
-                value={form.maxActiveWorkers}
-                onValueChange={(maxActiveWorkers) => patchForm({ maxActiveWorkers })}
-              />
-            </Field.Root>
-            <Field.Root>
-              <Field.Label>{t("config.backgroundAfterMs")}</Field.Label>
-              <Input
-                type="text"
-                value={form.backgroundAfterMs}
-                onValueChange={(backgroundAfterMs) => patchForm({ backgroundAfterMs })}
-              />
-            </Field.Root>
-            <Field.Root>
-              <Field.Label>{t("config.routerContextTokens")}</Field.Label>
-              <Input
-                type="text"
-                value={form.routerContextTokens}
-                onValueChange={(routerContextTokens) => patchForm({ routerContextTokens })}
-              />
-            </Field.Root>
-            <Field.Root>
-              <Field.Label>{t("config.idleHibernateMs")}</Field.Label>
-              <Input
-                type="text"
-                value={form.idleHibernateMs}
-                onValueChange={(idleHibernateMs) => patchForm({ idleHibernateMs })}
-              />
-            </Field.Root>
-          </div>
-
-          <Separator />
-
           <div className="ev-settings-grid-3">
             <Field.Root>
               <Field.Label>{t("config.routerModel")}</Field.Label>
@@ -334,6 +263,115 @@ export function ConfigTab() {
         <PageHeader.Root className="ev-section-header">
           <PageHeader.Row>
             <PageHeader.Title level={2} className="ev-section-title">
+              {t("config.runPolicyTitle")}
+            </PageHeader.Title>
+          </PageHeader.Row>
+        </PageHeader.Root>
+
+        <div className="ev-settings-card">
+          <div className="ev-settings-grid-2">
+            <Field.Root>
+              <Field.Label>{t("config.maxActiveWorkers")}</Field.Label>
+              <div className="ev-unit-input">
+                <Input
+                  className="ev-unit-input-control"
+                  type="text"
+                  inputMode="numeric"
+                  aria-invalid={fieldErrors.maxActiveWorkers ? true : undefined}
+                  value={form.maxActiveWorkers}
+                  onValueChange={(maxActiveWorkers) => patchForm({ maxActiveWorkers })}
+                />
+                <span className="ev-unit-suffix" aria-hidden="true">
+                  {t("config.unit.workers")}
+                </span>
+              </div>
+              {fieldErrors.maxActiveWorkers ? (
+                <p className="ev-inline-error">{fieldErrors.maxActiveWorkers}</p>
+              ) : (
+                <p className="ev-inline-hint">{t("config.maxActiveWorkersHint")}</p>
+              )}
+            </Field.Root>
+
+            <Field.Root>
+              <Field.Label>{t("config.backgroundAfter")}</Field.Label>
+              <div className="ev-unit-input">
+                <Input
+                  className="ev-unit-input-control"
+                  type="text"
+                  inputMode="decimal"
+                  aria-invalid={fieldErrors.backgroundAfterSec ? true : undefined}
+                  value={form.backgroundAfterSec}
+                  onValueChange={(backgroundAfterSec) => patchForm({ backgroundAfterSec })}
+                />
+                <span className="ev-unit-suffix ev-mono" aria-hidden="true">
+                  s
+                </span>
+              </div>
+              {fieldErrors.backgroundAfterSec ? (
+                <p className="ev-inline-error">{fieldErrors.backgroundAfterSec}</p>
+              ) : (
+                <p className="ev-inline-hint">{t("config.backgroundAfterHint")}</p>
+              )}
+            </Field.Root>
+
+            <Field.Root>
+              <Field.Label>
+                <span className="ev-field-label-row">
+                  <span>{t("config.routerContextTokens")}</span>
+                  {memoryShorthand && (
+                    <span className="ev-field-label-meta ev-mono">{memoryShorthand}</span>
+                  )}
+                </span>
+              </Field.Label>
+              <div className="ev-unit-input">
+                <Input
+                  className="ev-unit-input-control"
+                  type="text"
+                  inputMode="numeric"
+                  aria-invalid={fieldErrors.routerContextTokens ? true : undefined}
+                  value={form.routerContextTokens}
+                  onValueChange={(routerContextTokens) => patchForm({ routerContextTokens })}
+                />
+                <span className="ev-unit-suffix ev-mono" aria-hidden="true">
+                  tokens
+                </span>
+              </div>
+              {fieldErrors.routerContextTokens ? (
+                <p className="ev-inline-error">{fieldErrors.routerContextTokens}</p>
+              ) : (
+                <p className="ev-inline-hint">{t("config.routerContextTokensHint")}</p>
+              )}
+            </Field.Root>
+
+            <Field.Root>
+              <Field.Label>{t("config.idleHibernate")}</Field.Label>
+              <div className="ev-unit-input">
+                <Input
+                  className="ev-unit-input-control"
+                  type="text"
+                  inputMode="decimal"
+                  aria-invalid={fieldErrors.idleHibernateMin ? true : undefined}
+                  value={form.idleHibernateMin}
+                  onValueChange={(idleHibernateMin) => patchForm({ idleHibernateMin })}
+                />
+                <span className="ev-unit-suffix ev-mono" aria-hidden="true">
+                  min
+                </span>
+              </div>
+              {fieldErrors.idleHibernateMin ? (
+                <p className="ev-inline-error">{fieldErrors.idleHibernateMin}</p>
+              ) : (
+                <p className="ev-inline-hint">{t("config.idleHibernateHint")}</p>
+              )}
+            </Field.Root>
+          </div>
+        </div>
+      </Section.Root>
+
+      <Section.Root className="ev-settings-section">
+        <PageHeader.Root className="ev-section-header">
+          <PageHeader.Row>
+            <PageHeader.Title level={2} className="ev-section-title">
               {t("config.toolsTitle")}
             </PageHeader.Title>
           </PageHeader.Row>
@@ -346,10 +384,101 @@ export function ConfigTab() {
               onChange={(tools) => patchForm({ tools })}
               inlineBudget={form.inlineBudget}
               onInlineBudgetChange={(inlineBudget) => patchForm({ inlineBudget })}
+              inlineBudgetError={fieldErrors.inlineBudget}
             />
           </div>
         </Section.Content>
       </Section.Root>
+
+      {dirty && (
+        <div className="ev-sticky-save-bar" role="status" aria-live="polite">
+          <div className="ev-sticky-save-status">
+            <span className="ev-sticky-save-dot" aria-hidden="true" />
+            <span>{t("config.unsavedChanges")}</span>
+          </div>
+          <div className="ev-inline-actions">
+            <Button
+              hierarchy="tertiary"
+              density="compact"
+              disabled={saving}
+              onClick={discardChanges}
+            >
+              {t("config.discard")}
+            </Button>
+            <Button
+              hierarchy="primary"
+              density="compact"
+              disabled={invalid}
+              pending={saving}
+              onClick={() => void saveSettings()}
+            >
+              {t("config.saveWithShortcut", { shortcut: isMacPlatform() ? "⌘S" : "Ctrl+S" })}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <Modal.Root open={transferOpen} onOpenChange={(open) => !importing && setTransferOpen(open)}>
+        <Modal.Portal>
+          <Modal.Backdrop />
+          <Modal.Viewport>
+            <Modal.Popup className="ev-transfer-dialog">
+              <Modal.Title>{t("config.transferTitle")}</Modal.Title>
+              <Modal.Body className="ev-form-stack">
+                {transferError && <div className="ev-error-banner">{transferError}</div>}
+                <div className="ev-settings-head">
+                  <p className="ev-inline-hint">{t("config.transferHint")}</p>
+                  <div className="ev-inline-actions">
+                    <Button
+                      hierarchy="secondary"
+                      density="compact"
+                      iconStart={<ContentCopyIcon width={14} height={14} />}
+                      disabled={bundleJson.trim().length === 0 || exporting}
+                      onClick={() => void handleCopyBundle()}
+                    >
+                      {t("config.copyJson")}
+                    </Button>
+                    <Button
+                      hierarchy="secondary"
+                      density="compact"
+                      iconStart={<RefreshIcon width={14} height={14} />}
+                      pending={exporting}
+                      onClick={() => void loadExportBundle(true)}
+                    >
+                      {t("config.export")}
+                    </Button>
+                  </div>
+                </div>
+                <TextArea
+                  monospace
+                  rows={12}
+                  value={bundleJson}
+                  onValueChange={setBundleJson}
+                  placeholder="ConfigBundle JSON"
+                />
+              </Modal.Body>
+              <Modal.Actions className="ev-editor-actions">
+                <Modal.Close
+                  render={
+                    <Button type="button" hierarchy="secondary" disabled={importing}>
+                      {t("common.close")}
+                    </Button>
+                  }
+                />
+                <Button
+                  hierarchy="primary"
+                  iconStart={<UploadIcon width={15} height={15} />}
+                  disabled={bundleJson.trim().length === 0 || exporting}
+                  pending={importing}
+                  onClick={() => void handleImport()}
+                >
+                  {t("config.import")}
+                </Button>
+              </Modal.Actions>
+            </Modal.Popup>
+          </Modal.Viewport>
+        </Modal.Portal>
+      </Modal.Root>
     </div>
   );
 }

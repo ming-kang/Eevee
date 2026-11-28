@@ -156,6 +156,7 @@
 }
 
 .ev-icon-rail-nav {
+  --semantic-dimension-size-icon: 17px;
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -189,11 +190,27 @@
 }
 
 .ev-icon-rail-btn {
+  --semantic-color-icon-secondary: var(--ev-fg-muted);
   width: 36px;
   height: 36px;
   justify-content: center;
   padding: 0;
   border-radius: 9px;
+  box-shadow: none;
+}
+
+.ev-icon-rail-btn:hover {
+  background: var(--ev-hover);
+  box-shadow: none;
+}
+
+.ev-icon-rail-btn[data-active] {
+  --semantic-color-icon-secondary: var(--ev-accent);
+  background: var(--ev-surface);
+  color: var(--ev-fg);
+  box-shadow:
+    var(--ev-shadow-stroke),
+    0 1px 2px oklch(20% 0.008 72 / calc(0.05 * var(--ev-shadow-strength)));
 }
 
 .ev-icon-rail-tag {

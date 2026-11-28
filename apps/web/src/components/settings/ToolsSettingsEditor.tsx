@@ -4,97 +4,54 @@ import {
   type CodemodeMode,
   ROUTER_TOGGLEABLE_TOOLS,
   type ToolsSettings,
-  WORKER_DEFAULT_DISABLED_TOOLS,
   WORKER_TOGGLEABLE_TOOLS,
 } from "@eevee/protocol";
 import { useId } from "react";
-import { t, useI18n } from "../../lib/i18n.ts";
+import { type LocaleKey, useI18n } from "../../lib/i18n.ts";
 import { EvTooltip } from "../EvTooltip.tsx";
+import {
+  cleanToolsSettings,
+  defaultToolEnabled,
+  hasToolsOverrides,
+  resolveToolsSettings,
+  type ToolRole,
+  type ToolsEditorVariant,
+  validateInlineBudgetInput,
+} from "./tools-settings.ts";
 
-type EditorVariant = "global" | "project";
-type ToolRole = "router" | "worker";
+export { hasToolsOverrides, resolveToolsSettings };
+
 type ProjectCodemodeMode = CodemodeMode | "inherit";
 
 type ToolsSettingsEditorProps = {
-  readonly variant: EditorVariant;
+  readonly variant: ToolsEditorVariant;
   readonly value: ToolsSettings | undefined;
   readonly onChange: (value: ToolsSettings | undefined) => void;
   readonly inheritedTools?: ToolsSettings | undefined;
   readonly inlineBudget: string;
   readonly onInlineBudgetChange: (value: string) => void;
+  readonly inlineBudgetError?: string;
   readonly disabled?: boolean;
 };
 
-function defaultToolEnabled(role: ToolRole, name: string): boolean {
-  return role === "router" || !WORKER_DEFAULT_DISABLED_TOOLS.some((tool) => tool === name);
-}
+const TOOL_DESC_KEYS: Readonly<Record<string, LocaleKey>> = {
+  read: "tools.desc.read",
+  write: "tools.desc.write",
+  edit: "tools.desc.edit",
+  bash: "tools.desc.bash",
+  powershell: "tools.desc.powershell",
+  tasks: "tools.desc.tasks",
+  ls: "tools.desc.ls",
+  find: "tools.desc.find",
+  grep: "tools.desc.grep",
+  tool_search: "tools.desc.tool_search",
+};
 
-function isToggleableTool(role: ToolRole, name: string): boolean {
-  const tools: readonly string[] =
-    role === "router" ? ROUTER_TOGGLEABLE_TOOLS : WORKER_TOGGLEABLE_TOOLS;
-  return tools.includes(name);
-}
-
-function cleanToolMap(
-  role: ToolRole,
-  overrides: Readonly<Record<string, boolean>> | undefined,
-  global: boolean,
-): Record<string, boolean> | undefined {
-  if (!overrides) return undefined;
-  const next: Record<string, boolean> = {};
-  for (const [name, enabled] of Object.entries(overrides)) {
-    if (global && isToggleableTool(role, name) && enabled === defaultToolEnabled(role, name)) {
-      continue;
-    }
-    next[name] = enabled;
-  }
-  return Object.keys(next).length > 0 ? next : undefined;
-}
-
-function cleanToolsSettings(
-  value: ToolsSettings | undefined,
-  global: boolean,
-): ToolsSettings | undefined {
-  if (!value) return undefined;
-  const router = cleanToolMap("router", value.router, global);
-  const worker = cleanToolMap("worker", value.worker, global);
-  const codemode =
-    value.codemode && Object.keys(value.codemode).length > 0 ? { ...value.codemode } : undefined;
-  if (!router && !worker && !codemode) return undefined;
-  return {
-    ...(router ? { router } : {}),
-    ...(worker ? { worker } : {}),
-    ...(codemode ? { codemode } : {}),
-  };
-}
-
-export function hasToolsOverrides(value: ToolsSettings | undefined): boolean {
-  if (!value) return false;
-  return [value.router, value.worker, value.codemode].some(
-    (section) => section !== undefined && Object.keys(section).length > 0,
-  );
-}
-
-export function resolveToolsSettings(
-  value: ToolsSettings | undefined,
-  rawInlineBudget: string,
-  variant: EditorVariant,
-): ToolsSettings | undefined {
-  const trimmed = rawInlineBudget.trim();
-  let inlineBudget: number | undefined;
-  if (trimmed) {
-    if (!/^\d+$/.test(trimmed)) {
-      throw new Error(t("tools.invalidInlineBudget"));
-    }
-    inlineBudget = Number(trimmed);
-    if (!Number.isSafeInteger(inlineBudget)) {
-      throw new Error(t("tools.invalidInlineBudget"));
-    }
-  }
-  const codemode = { ...value?.codemode };
-  if (inlineBudget === undefined) delete codemode.inlineBudget;
-  else codemode.inlineBudget = inlineBudget;
-  return cleanToolsSettings({ ...value, codemode }, variant === "global");
+function modeHintKey(mode: ProjectCodemodeMode): LocaleKey {
+  if (mode === "inherit") return "tools.modeHint.inherit";
+  if (mode === "off") return "tools.modeHint.off";
+  if (mode === "only") return "tools.modeHint.only";
+  return "tools.modeHint.on";
 }
 
 function ToolGrid({
@@ -110,46 +67,56 @@ function ToolGrid({
   readonly toolRole: ToolRole;
   readonly label: string;
   readonly tools: readonly string[];
-  readonly variant: EditorVariant;
+  readonly variant: ToolsEditorVariant;
   readonly value: ToolsSettings | undefined;
   readonly inheritedTools: ToolsSettings | undefined;
   readonly disabled: boolean;
   readonly onToggle: (role: ToolRole, name: string) => void;
 }) {
   const { t: translate } = useI18n();
+  const states = tools.map((name) => {
+    const ownValue = value?.[toolRole]?.[name];
+    const inheritedValue = inheritedTools?.[toolRole]?.[name];
+    const enabled = ownValue ?? inheritedValue ?? defaultToolEnabled(toolRole, name);
+    const overridden = variant === "project" && ownValue !== undefined;
+    return { name, enabled, overridden };
+  });
+  const enabledCount = states.filter((item) => item.enabled).length;
+
   return (
     <fieldset className="ev-tool-group" aria-label={label}>
       <div className="ev-tool-group-head">
         <span className="ev-tool-group-title">{label}</span>
+        <span className="ev-tool-group-count ev-num">
+          {enabledCount} / {tools.length}
+        </span>
       </div>
       <div className="ev-tool-grid">
-        {tools.map((name) => {
-          const ownValue = value?.[toolRole]?.[name];
-          const inheritedValue = inheritedTools?.[toolRole]?.[name];
-          const enabled = ownValue ?? inheritedValue ?? defaultToolEnabled(toolRole, name);
-          const overridden = variant === "project" && ownValue !== undefined;
+        {states.map(({ name, enabled, overridden }) => {
           const state = translate(enabled ? "common.enabled" : "common.disabled");
-          const title = overridden
+          const baseTitle = overridden
             ? translate("tools.chipOverriddenTitle", { name, state })
             : variant === "project"
               ? translate("tools.chipInheritedTitle", { name, state })
               : translate("tools.chipGlobalTitle", { name, state });
+          const descKey = TOOL_DESC_KEYS[name];
+          const tooltip = descKey ? `${baseTitle} · ${translate(descKey)}` : baseTitle;
           return (
-            <EvTooltip key={name} content={title} side="top">
+            <EvTooltip key={name} content={tooltip} side="top">
               <button
                 type="button"
                 className="ev-tool-chip"
                 data-active={enabled}
                 data-overridden={overridden}
                 aria-pressed={enabled}
-                aria-label={title}
+                aria-label={baseTitle}
                 disabled={disabled}
                 onClick={() => onToggle(toolRole, name)}
               >
-                <span className="ev-tool-chip-check" aria-hidden="true">
-                  {enabled && <CheckIcon width={12} height={12} />}
+                <span className="ev-tool-chip-indicator" aria-hidden="true">
+                  {enabled && <CheckIcon width={10} height={10} />}
                 </span>
-                <span>{name}</span>
+                <span className="ev-tool-chip-name">{name}</span>
                 {overridden && <span className="ev-tool-override-dot" aria-hidden="true" />}
               </button>
             </EvTooltip>
@@ -167,6 +134,7 @@ export function ToolsSettingsEditor({
   inheritedTools,
   inlineBudget,
   onInlineBudgetChange,
+  inlineBudgetError,
   disabled = false,
 }: ToolsSettingsEditorProps) {
   const { t: translate } = useI18n();
@@ -177,6 +145,7 @@ export function ToolsSettingsEditor({
   const selectedMode: ProjectCodemodeMode = project ? (ownMode ?? "inherit") : (ownMode ?? "on");
   const effectiveMode = ownMode ?? globalTools.codemode?.mode ?? "on";
   const budgetPlaceholder = String(project ? (globalTools.codemode?.inlineBudget ?? 3000) : 3000);
+  const effectiveBudgetError = inlineBudgetError ?? validateInlineBudgetInput(inlineBudget);
   const hasOverrides = hasToolsOverrides(value) || inlineBudget.trim().length > 0;
   const hasCodemodeOverride = ownMode !== undefined || inlineBudget.trim().length > 0;
 
@@ -191,7 +160,7 @@ export function ToolsSettingsEditor({
 
   const changeMode = (mode: ProjectCodemodeMode) => {
     const codemode = { ...value?.codemode };
-    if (mode === "inherit") delete codemode.mode;
+    if (mode === "inherit" || (!project && mode === "on")) delete codemode.mode;
     else codemode.mode = mode;
     onChange(cleanToolsSettings({ ...value, codemode }, !project));
   };
@@ -203,16 +172,16 @@ export function ToolsSettingsEditor({
 
   return (
     <div className="ev-tools-editor">
-      <div className="ev-tool-group">
-        <div className="ev-tool-group-head">
-          <span className="ev-tool-group-title">{translate("tools.codemodeMode")}</span>
-          {project && hasCodemodeOverride && (
-            <span className="eevee-badge" data-tone="info">
-              {translate("tools.projectOverrideBadge")}
-            </span>
-          )}
-        </div>
-        <div className="ev-codemode-controls">
+      <div className="ev-codemode-row">
+        <div className="ev-tool-group ev-codemode-mode-col">
+          <div className="ev-tool-group-head">
+            <span className="ev-tool-group-title">{translate("tools.codemodeMode")}</span>
+            {project && hasCodemodeOverride && (
+              <span className="eevee-badge" data-tone="info">
+                {translate("tools.projectOverrideBadge")}
+              </span>
+            )}
+          </div>
           <SegmentedControl.Root
             className="ev-codemode-segments"
             density="compact"
@@ -241,31 +210,41 @@ export function ToolsSettingsEditor({
               {translate("tools.mode.only")}
             </SegmentedControl.Item>
           </SegmentedControl.Root>
-          {effectiveMode !== "off" && (
+          <p className="ev-inline-hint">{translate(modeHintKey(selectedMode))}</p>
+        </div>
+
+        {effectiveMode !== "off" && (
+          <div className="ev-inline-budget-field">
             <EvTooltip
               content={translate(
                 project ? "tools.inlineBudgetProjectTitle" : "tools.inlineBudgetGlobalTitle",
               )}
               side="top"
             >
-              <label htmlFor={budgetId} className="ev-inline-budget">
-                <span className="ev-mono">inlineBudget</span>
-                <Input
-                  id={budgetId}
-                  className="ev-inline-budget-input"
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  aria-label="Codemode inlineBudget"
-                  value={inlineBudget}
-                  placeholder={budgetPlaceholder}
-                  disabled={disabled}
-                  onValueChange={onInlineBudgetChange}
-                />
+              <label htmlFor={budgetId} className="ev-tool-group-title ev-inline-budget-label">
+                {translate("tools.inlineBudgetLabel")}
               </label>
             </EvTooltip>
-          )}
-        </div>
+            <div className="ev-unit-input">
+              <Input
+                id={budgetId}
+                className="ev-unit-input-control"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                aria-invalid={effectiveBudgetError ? true : undefined}
+                value={inlineBudget}
+                placeholder={budgetPlaceholder}
+                disabled={disabled}
+                onValueChange={onInlineBudgetChange}
+              />
+              <span className="ev-unit-suffix ev-mono" aria-hidden="true">
+                tokens
+              </span>
+            </div>
+            {effectiveBudgetError && <p className="ev-inline-error">{effectiveBudgetError}</p>}
+          </div>
+        )}
       </div>
 
       <ToolGrid
@@ -289,7 +268,7 @@ export function ToolsSettingsEditor({
         onToggle={toggleTool}
       />
 
-      {project && hasOverrides && (
+      {hasOverrides && (
         <div className="ev-tools-editor-footer">
           <Button
             type="button"

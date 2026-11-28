@@ -79,7 +79,14 @@ function EditDisclosure({
       forceOpen={revealed}
       summary={
         <>
-          <span className={item.status === "run" ? "ev-shimmer" : undefined}>{verb}</span>
+          <span
+            className={mergeClasses(
+              "ev-proc-label",
+              item.status === "run" ? "ev-shimmer" : undefined,
+            )}
+          >
+            {verb}
+          </span>
           <EvTooltip content={item.path} side="top">
             <span className="ev-mono ev-truncate ev-proc-summary-mono">{shortPath(item.path)}</span>
           </EvTooltip>
@@ -259,11 +266,15 @@ function renderDisplayItem(item: DisplayItem, ctx: ItemRenderContext): ReactNode
           live={item.streaming === true}
           summary={
             <>
-              <span className={item.streaming ? "ev-shiny" : undefined}>
+              <span
+                className={mergeClasses("ev-proc-label", item.streaming ? "ev-shiny" : undefined)}
+              >
                 {item.streaming ? t("transcript.thinking.live") : t("transcript.thinking.done")}
               </span>
               {!item.streaming && firstLine && (
-                <span className="ev-truncate ev-proc-summary-sub">{firstLine}</span>
+                <span className="ev-truncate ev-proc-summary-sub ev-thinking-preview">
+                  {firstLine}
+                </span>
               )}
             </>
           }

@@ -84,7 +84,11 @@ export type ModelEditorPatch = Partial<
 export type ModelEditorAction =
   | { readonly type: "reset"; readonly draft: ModelEditorDraft }
   | { readonly type: "patch"; readonly patch: ModelEditorPatch }
-  | { readonly type: "setCompatBoolean"; readonly key: string; readonly enabled: boolean }
+  | {
+      readonly type: "setCompatBoolean";
+      readonly key: string;
+      readonly enabled: boolean | undefined;
+    }
   | { readonly type: "setCompatEnum"; readonly key: string; readonly value: string }
   | { readonly type: "setCompatText"; readonly key: string; readonly value: string }
   | { readonly type: "setAdvancedText"; readonly key: AdvancedKey; readonly value: string }
@@ -101,6 +105,34 @@ export function serializeCompatField(field: CompatFieldInfo, value: unknown): st
   if (field.kind === "stringMap") return formatKeyValueLines(value) || formatJson(value);
   if (field.kind === "json") return formatJson(value);
   return "";
+}
+
+export function isCompatFieldConfigured(
+  field: CompatFieldInfo,
+  draft: Pick<ModelEditorDraft, "compatValues" | "compatText">,
+): boolean {
+  const value = draft.compatValues[field.key];
+  if (field.kind === "boolean") return typeof value === "boolean";
+  if (field.kind === "enum") return typeof value === "string" && value.length > 0;
+  const text = draft.compatText[field.key] ?? serializeCompatField(field, value);
+  return text.trim().length > 0;
+}
+
+export function filterCompatFields(
+  fields: readonly CompatFieldInfo[],
+  query: string,
+  onlyConfigured: boolean,
+  draft: Pick<ModelEditorDraft, "compatValues" | "compatText">,
+): readonly CompatFieldInfo[] {
+  const needle = query.trim().toLowerCase();
+  return fields.filter((field) => {
+    if (onlyConfigured && !isCompatFieldConfigured(field, draft)) return false;
+    if (!needle) return true;
+    return (
+      field.key.toLowerCase().includes(needle) ||
+      (field.note?.toLowerCase().includes(needle) ?? false)
+    );
+  });
 }
 
 function initialAdvancedText(model: ModelDetail | undefined): AdvancedTextState {
@@ -247,7 +279,10 @@ export function modelEditorReducer(
       return {
         ...state,
         compatTouched: { ...state.compatTouched, [action.key]: true },
-        compatValues: { ...state.compatValues, [action.key]: action.enabled },
+        compatValues:
+          action.enabled === undefined
+            ? removeKey(state.compatValues, action.key)
+            : { ...state.compatValues, [action.key]: action.enabled },
       };
     case "setCompatEnum":
       return {
@@ -285,7 +320,7 @@ function buildCompatPayload(
     const raw = draft.compatText[field.key] ?? serializeCompatField(field, next[field.key]);
     if (field.kind === "boolean") {
       if (typeof next[field.key] === "boolean") continue;
-      next[field.key] = false;
+      delete next[field.key];
     } else if (field.kind === "enum") {
       const value = next[field.key];
       if (typeof value === "string" && value) continue;
@@ -305,6 +340,19 @@ function buildCompatPayload(
     }
   }
   return next;
+}
+
+export function hasModelDraftChanges(
+  target: ModelEditorTarget,
+  draft: ModelEditorDraft,
+  compatFields: readonly CompatFieldInfo[],
+): boolean {
+  if (target.model === undefined) return true;
+  try {
+    return Object.keys(buildModelUpsertRequest(target, draft, compatFields)).length > 0;
+  } catch {
+    return true;
+  }
 }
 
 export function buildModelUpsertRequest(
