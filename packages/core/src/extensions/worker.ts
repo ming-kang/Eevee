@@ -133,7 +133,7 @@ export function createWorkerHandoffTask() {
             ? `\n\n[Answer truncated to ${HANDOFF_MAX_CHARS} characters. Use inspect_worker({ workerId: "${worker.id}" }) to read the full reply.]`
             : "";
           const text = answer.length === 0 ? "(empty final reply)" : answer;
-          await root.submit(tx, {
+          await root.admit(tx, {
             type: "input",
             content: `Worker ${worker.name} (${worker.id}) finished:\n\n${text}${truncationHint}`,
             whenBusy: "followUp",
@@ -199,7 +199,7 @@ export function createWorkerExtension(deps: WorkerExtensionDeps = {}) {
             return { error: `Worker ${worker.id} is closed.` };
           }
           const ticketId = worker.activeTicketId;
-          await router.submit(tx, {
+          await router.admit(tx, {
             type: "input",
             content: `Worker ${worker.name} (${worker.id}) sent a message:\n\n${args.message}`,
             whenBusy: "followUp",

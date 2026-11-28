@@ -16,11 +16,11 @@
     "test": "node ../../scripts/test.ts packages/engine"
   },
   "dependencies": {
-    "@earendil-works/chord": "1.6.0",
-    "@earendil-works/pi-ai": "1.6.0",
-    "@earendil-works/pi-durable": "1.6.0",
-    "@earendil-works/pi-mcp": "1.6.0",
-    "@earendil-works/pi-schema": "1.6.0",
+    "@earendil-works/chord": "1.7.0",
+    "@earendil-works/pi-ai": "1.7.0",
+    "@earendil-works/pi-durable": "1.7.0",
+    "@earendil-works/pi-mcp": "1.7.0",
+    "@earendil-works/pi-schema": "1.7.0",
     "@eevee/agent": "0.0.1",
     "@eevee/core": "0.0.1",
     "@eevee/memory": "0.0.1",

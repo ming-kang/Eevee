@@ -160,7 +160,7 @@ export async function answerQuestion(
       },
       answerList,
     );
-    await router.submit(tx, {
+    await router.admit(tx, {
       type: "input",
       content,
       whenBusy: "followUp",

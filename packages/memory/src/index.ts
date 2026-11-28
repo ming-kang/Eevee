@@ -324,6 +324,7 @@ export function createMemoryExtension(options: MemoryExtensionOptions): Extensio
           const opening = await binding.opening?.(api, context);
           const body = `<memory>\n${view.lines.join("\n")}\n</memory>`;
           return {
+            kind: "summary",
             summary: opening ? `${body}\n\n${opening}` : body,
           };
         },

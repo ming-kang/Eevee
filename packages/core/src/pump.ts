@@ -131,7 +131,7 @@ export class ProjectPump {
               draft.pendingStarts.splice(index, 1);
               return false;
             }
-            await conversation.submit(tx, { type: "continue", requestId: start.requestId });
+            await conversation.admit(tx, { type: "continue", requestId: start.requestId });
             draft.pendingStarts.splice(index, 1);
             return true;
           }, this.#context);
@@ -188,7 +188,7 @@ export class ProjectPump {
         const current = await tx.doc(WorkerDoc, worker.id, null);
         if (current.closedAt !== undefined || current.reportedFailure === failure.taskId) return;
         const ticketId = current.activeTicketId;
-        await router.submit(tx, {
+        await router.admit(tx, {
           type: "input",
           content: `Worker ${current.name} (${current.id}) run failed: ${description}`,
           whenBusy: "followUp",

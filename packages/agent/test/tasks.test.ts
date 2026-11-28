@@ -1689,6 +1689,7 @@ test("foreground command settling during handoff checkAdmission or commit return
       name: "test.bash-handoff-spy",
       wraps: [
         {
+          kind: "tool",
           tool: "bash",
           wrap: (base: ToolRegistration) => ({
             ...base,

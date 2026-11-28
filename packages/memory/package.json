@@ -16,9 +16,9 @@
     "test": "node ../../scripts/test.ts packages/memory"
   },
   "dependencies": {
-    "@earendil-works/chord": "1.6.0",
-    "@earendil-works/pi-ai": "1.6.0",
-    "@earendil-works/pi-durable": "1.6.0",
-    "@earendil-works/pi-schema": "1.6.0"
+    "@earendil-works/chord": "1.7.0",
+    "@earendil-works/pi-ai": "1.7.0",
+    "@earendil-works/pi-durable": "1.7.0",
+    "@earendil-works/pi-schema": "1.7.0"
   }
 }

@@ -284,7 +284,7 @@ export function createRouterExtension(deps: RouterExtensionDeps) {
           }
 
           const queued = board.pendingStarts.some((start) => start.workerId === workerId);
-          await conversation.submit(
+          await conversation.admit(
             tx,
             buildWorkerMessageSubmission({
               queued,

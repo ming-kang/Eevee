@@ -136,7 +136,7 @@ async function commitTerminalState(
     if (isTaskActiveStatus(doc.status)) {
       const notice = updateDoc(doc);
       if (notice !== undefined && conv !== undefined) {
-        await conv.submit(tx, {
+        await conv.admit(tx, {
           type: "input",
           content: buildCompletionNotice({ ...doc }, notice.tail),
           whenBusy: "steer",

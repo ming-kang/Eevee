@@ -574,7 +574,7 @@ test("convertMcpResult converts resource links and binary resources and drops to
   const text = outputText(result);
   assert.ok(
     text.includes(
-      '[Resource file:///spec.pdf "Specification" (application/pdf, 2.0KB): read the spec]',
+      '[Resource file:///spec.pdf "Specification" (application/pdf, 2.0KB): read the spec. Read it with read_mcp_resource (server "docs")]',
     ),
   );
   assert.ok(
@@ -604,7 +604,7 @@ test("convertMcpResult converts resource links and binary resources and drops to
   const withoutSaver = await convertMcpResult("docs", "mixed", { content: [binaryBlock] });
   assert.ok(
     outputText(withoutSaver).includes(
-      "[Binary resource file:///data.bin (application/octet-stream, 11B) omitted]",
+      "[binary resource file:///data.bin (application/octet-stream) omitted]",
     ),
   );
   const jsonResource = await convertMcpResult("docs", "mixed", {

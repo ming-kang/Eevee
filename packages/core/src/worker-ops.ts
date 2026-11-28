@@ -123,7 +123,7 @@ export async function commitWorkerSubmission(
     }
     const board = await tx.doc(ProjectBoardDoc);
     const queued = board.pendingStarts.some((start) => start.workerId === workerId);
-    return conversation.submit(tx, buildSubmission({ queued }));
+    return conversation.admit(tx, buildSubmission({ queued }));
   }, context);
   const submission = await harness.submission(submissionId, context);
   if (submission === undefined) throw new Error(`Submission ${submissionId} does not exist`);

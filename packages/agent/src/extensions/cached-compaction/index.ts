@@ -147,7 +147,7 @@ export function createCachedCompactionExtension(options?: CachedCompactionOption
             } catch {
               // A throwing listener must not turn a valid summary into a native re-summarization.
             }
-            return { summary: checkpoint.summary };
+            return { kind: "summary", summary: checkpoint.summary };
           } catch {
             return undefined;
           }

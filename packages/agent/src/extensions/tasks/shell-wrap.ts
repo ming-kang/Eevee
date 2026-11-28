@@ -422,6 +422,7 @@ async function executeShell(
 export function makeShellWrap(shell: TaskShell, deps: ShellWrapDependencies): Wrap {
   const label = shell === "bash" ? "Bash" : "PowerShell";
   return {
+    kind: "tool",
     tool: shell,
     wrap: (base: ToolRegistration): ToolRegistration => {
       const inherited = getToolPromptMeta(base);
