@@ -1,15 +1,15 @@
 import {
   CheckIcon,
+  ChevronRightIcon,
   ExpandMoreIcon,
-  LightbulbIcon,
   SearchIcon,
   StarIcon,
 } from "@earendil-works/elanor-icons-react";
-import { KeyValue } from "@earendil-works/elanor-react";
-import type { ModelChoice, ModelInfo, ModelSlotsOverride, ThinkingLevel } from "@eevee/protocol";
+import type { ModelChoice, ModelInfo, ThinkingLevel } from "@eevee/protocol";
 import {
   type CSSProperties,
   type KeyboardEvent,
+  type MouseEvent,
   useCallback,
   useEffect,
   useId,
@@ -19,21 +19,29 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { type ComputedPopoverPosition, computePopoverPosition } from "../lib/floating.ts";
+import {
+  type ComputedPopoverPosition,
+  type ComputedSubmenuPosition,
+  computePopoverPosition,
+  computeSubmenuPosition,
+  isPointInSafeTriangle,
+  type Point2D,
+} from "../lib/floating.ts";
 import { formatTokens } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
 import {
   findModelInfo,
   groupModelsByProvider,
+  hasSelectableThinkingLevels,
   modelInfoKey,
   readPinnedModelKeys,
   resolvePinnedModels,
   sameModelChoice,
-  supportedThinkingLevelsOf,
+  selectModelWithThinking,
   switchModelChoice,
   thinkingLevelLocaleKey,
+  thinkingLevelsOfModel,
   togglePinnedKey,
-  withThinkingLevel,
   writePinnedModelKeys,
 } from "../lib/model-choice.ts";
 import { SHORTCUT_PRIORITY, useShortcutLayer } from "../lib/shortcut-stack.ts";
@@ -43,7 +51,6 @@ import { ProviderIcon } from "./ProviderIcon.tsx";
 export type ModelChoiceMenuProps = {
   readonly value: ModelChoice | undefined;
   readonly models: readonly ModelInfo[];
-  readonly modelSlots?: ModelSlotsOverride;
   readonly placeholder: string;
   readonly clearLabel?: string;
   readonly placement?: "up" | "down";
@@ -60,30 +67,16 @@ type MenuRow =
   | { readonly kind: "clear"; readonly key: string }
   | { readonly kind: "model"; readonly key: string; readonly model: ModelInfo };
 
-const POPOVER_DESIRED_WIDTH = 380;
+const POPOVER_DESIRED_WIDTH = 360;
+const POPOVER_MAX_WIDTH = 440;
 const POPOVER_ESTIMATED_HEIGHT = 260;
-const DETAIL_CARD_WIDTH = 250;
-const DETAIL_CARD_GAP = 8;
-
-function formatPricePerMillion(value: number | undefined): string {
-  if (value === undefined || !Number.isFinite(value)) return "—";
-  if (value === 0) return "$0";
-  return `$${value < 1 ? value.toFixed(2) : value.toFixed(2).replace(/\.00$/, "")}`;
-}
-
-function assignedRolesForModel(model: ModelInfo, slots: ModelSlotsOverride | undefined): string[] {
-  if (!slots) return [];
-  const roles: string[] = [];
-  if (sameModelChoice(model, slots.router)) roles.push("Router");
-  if (sameModelChoice(model, slots.worker)) roles.push("Worker");
-  if (sameModelChoice(model, slots.dreamer)) roles.push("Dreamer");
-  return roles;
-}
+const SUBMENU_WIDTH = 156;
+const SUBMENU_GAP = 6;
+const SAFE_TRIANGLE_HOLD_MS = 180;
 
 export function ModelChoiceMenu({
   value,
   models,
-  modelSlots,
   placeholder,
   clearLabel,
   placement = "down",
@@ -100,21 +93,30 @@ export function ModelChoiceMenu({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const submenuRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const shouldScrollActiveRef = useRef(false);
+  const activeRowPointerRef = useRef<Point2D | undefined>(undefined);
+  const hoverTimerRef = useRef<number | undefined>(undefined);
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const [submenuFocusIndex, setSubmenuFocusIndex] = useState<number | null>(null);
   const [pinnedKeys, setPinnedKeys] = useState<string[]>(() => readPinnedModelKeys());
   const [position, setPosition] = useState<ComputedPopoverPosition | undefined>(undefined);
-  const [viewportWidth, setViewportWidth] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth : 1280,
+  const [submenuPosition, setSubmenuPosition] = useState<ComputedSubmenuPosition | undefined>(
+    undefined,
   );
+  const [submenuHiddenByScroll, setSubmenuHiddenByScroll] = useState(false);
 
   const currentInfo = useMemo(() => findModelInfo(models, value), [models, value]);
-  const thinkingLevels = useMemo(() => supportedThinkingLevelsOf(models, value), [models, value]);
+  const hasAnyThinkingModel = useMemo(
+    () => models.some((model) => hasSelectableThinkingLevels(model)),
+    [models],
+  );
   const groups = useMemo(() => groupModelsByProvider(models, query), [models, query]);
   const pinnedModels = useMemo(() => resolvePinnedModels(pinnedKeys, models), [pinnedKeys, models]);
 
@@ -139,15 +141,79 @@ export function ModelChoiceMenu({
 
   const safeActiveIndex = flatRows.length === 0 ? 0 : Math.min(activeIndex, flatRows.length - 1);
   const activeRow = flatRows[safeActiveIndex];
-  const inspectedModel = activeRow?.kind === "model" ? activeRow.model : undefined;
+  const activeModel = activeRow?.kind === "model" ? activeRow.model : undefined;
+  const activeThinkingLevels = useMemo(
+    () => (hasSelectableThinkingLevels(activeModel) ? thinkingLevelsOfModel(activeModel) : []),
+    [activeModel],
+  );
 
-  const closeMenu = useCallback((restoreFocus = false) => {
-    setOpen(false);
-    setQuery("");
-    if (restoreFocus) {
-      window.requestAnimationFrame(() => triggerRef.current?.focus());
+  const cancelPendingHover = useCallback(() => {
+    if (hoverTimerRef.current !== undefined) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = undefined;
     }
   }, []);
+
+  const closeMenu = useCallback(
+    (restoreFocus = false) => {
+      cancelPendingHover();
+      activeRowPointerRef.current = undefined;
+      setOpen(false);
+      setQuery("");
+      setSubmenuFocusIndex(null);
+      setSubmenuPosition(undefined);
+      setSubmenuHiddenByScroll(false);
+      if (restoreFocus) {
+        window.requestAnimationFrame(() => triggerRef.current?.focus());
+      }
+    },
+    [cancelPendingHover],
+  );
+
+  useEffect(() => () => cancelPendingHover(), [cancelPendingHover]);
+
+  const updateSubmenuPosition = useCallback(() => {
+    if (!open || activeThinkingLevels.length === 0) {
+      setSubmenuPosition(undefined);
+      setSubmenuHiddenByScroll(false);
+      return;
+    }
+    const popoverEl = popoverRef.current;
+    if (!popoverEl) return;
+    const parentRect = popoverEl.getBoundingClientRect();
+    const rowEl = rowRefs.current[safeActiveIndex];
+    const listEl = listRef.current;
+
+    let rowTop = parentRect.top;
+    if (rowEl && listEl) {
+      const rowRect = rowEl.getBoundingClientRect();
+      const listRect = listEl.getBoundingClientRect();
+      if (rowRect.bottom <= listRect.top + 2 || rowRect.top >= listRect.bottom - 2) {
+        setSubmenuPosition(undefined);
+        setSubmenuHiddenByScroll(true);
+        return;
+      }
+      rowTop = Math.max(listRect.top, Math.min(rowRect.top, listRect.bottom - 32));
+    }
+
+    setSubmenuHiddenByScroll(false);
+    const estimatedHeight = 32 + activeThinkingLevels.length * 32 + 12;
+    setSubmenuPosition(
+      computeSubmenuPosition({
+        parent: {
+          left: parentRect.left,
+          right: parentRect.right,
+          top: parentRect.top,
+          bottom: parentRect.bottom,
+        },
+        rowTop,
+        submenuWidth: SUBMENU_WIDTH,
+        estimatedHeight,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        gap: SUBMENU_GAP,
+      }),
+    );
+  }, [open, activeThinkingLevels.length, safeActiveIndex]);
 
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current;
@@ -155,34 +221,36 @@ export function ModelChoiceMenu({
     const rect = trigger.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return;
     if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
-      setOpen(false);
-      setQuery("");
+      closeMenu(false);
       return;
     }
-    setViewportWidth(window.innerWidth);
     setPosition(
       computePopoverPosition({
         anchor: rect,
         viewport: { width: window.innerWidth, height: window.innerHeight },
         preferredPlacement: placement,
         preferredAlign: align,
-        popoverWidth: Math.max(POPOVER_DESIRED_WIDTH, Math.round(rect.width)),
+        popoverWidth: Math.min(
+          POPOVER_MAX_WIDTH,
+          Math.max(POPOVER_DESIRED_WIDTH, Math.round(rect.width)),
+        ),
         estimatedHeight: POPOVER_ESTIMATED_HEIGHT,
       }),
     );
-  }, [placement, align]);
+  }, [placement, align, closeMenu]);
 
   useLayoutEffect(() => {
     if (!open) {
       setPosition(undefined);
+      setSubmenuPosition(undefined);
       return;
     }
     updatePosition();
     const onScroll = (event: Event) => {
+      const target = event.target;
       if (
-        popoverRef.current &&
-        event.target instanceof Node &&
-        popoverRef.current.contains(event.target)
+        target instanceof Node &&
+        (popoverRef.current?.contains(target) || submenuRef.current?.contains(target))
       ) {
         return;
       }
@@ -213,15 +281,18 @@ export function ModelChoiceMenu({
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (rootRef.current?.contains(target) || popoverRef.current?.contains(target)) {
+      if (
+        rootRef.current?.contains(target) ||
+        popoverRef.current?.contains(target) ||
+        submenuRef.current?.contains(target)
+      ) {
         return;
       }
-      setOpen(false);
-      setQuery("");
+      closeMenu(false);
     };
     window.addEventListener("pointerdown", onPointerDown);
     return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, [open]);
+  }, [open, closeMenu]);
 
   const flatRowsRef = useRef(flatRows);
   flatRowsRef.current = flatRows;
@@ -244,19 +315,24 @@ export function ModelChoiceMenu({
     );
     shouldScrollActiveRef.current = true;
     setActiveIndex(Math.max(0, initial));
+    setSubmenuFocusIndex(null);
   }, [open]);
 
   useEffect(() => {
     void query;
     shouldScrollActiveRef.current = true;
     setActiveIndex(0);
+    setSubmenuFocusIndex(null);
   }, [query]);
 
-  useEffect(() => {
-    if (!open || !isPositioned || !shouldScrollActiveRef.current) return;
-    shouldScrollActiveRef.current = false;
-    rowRefs.current[safeActiveIndex]?.scrollIntoView({ block: "nearest" });
-  }, [open, isPositioned, safeActiveIndex]);
+  useLayoutEffect(() => {
+    if (!open || !position) return;
+    if (shouldScrollActiveRef.current) {
+      shouldScrollActiveRef.current = false;
+      rowRefs.current[safeActiveIndex]?.scrollIntoView({ block: "nearest" });
+    }
+    updateSubmenuPosition();
+  }, [open, position, safeActiveIndex, updateSubmenuPosition]);
 
   const handleToggleOpen = () => {
     if (disabled) return;
@@ -278,9 +354,8 @@ export function ModelChoiceMenu({
     closeMenu(true);
   };
 
-  const handlePickThinking = (level: ThinkingLevel | undefined) => {
-    if (!value) return;
-    onChange(withThinkingLevel(value, level));
+  const handlePickModelThinking = (model: ModelInfo, level: ThinkingLevel) => {
+    onChange(selectModelWithThinking(model, level));
     closeMenu(true);
   };
 
@@ -290,18 +365,114 @@ export function ModelChoiceMenu({
     writePinnedModelKeys(next);
   };
 
+  const activateRow = useCallback(
+    (idx: number) => {
+      cancelPendingHover();
+      setActiveIndex(idx);
+      setSubmenuFocusIndex(null);
+    },
+    [cancelPendingHover],
+  );
+
+  const handleRowPointerMove = (idx: number, event: MouseEvent<HTMLDivElement>) => {
+    const point: Point2D = { x: event.clientX, y: event.clientY };
+    if (idx === safeActiveIndex) {
+      activeRowPointerRef.current = point;
+      cancelPendingHover();
+      return;
+    }
+
+    const submenuEl = submenuRef.current;
+    const origin = activeRowPointerRef.current;
+    if (submenuEl && submenuPosition && origin) {
+      const rect = submenuEl.getBoundingClientRect();
+      if (
+        isPointInSafeTriangle(
+          point,
+          origin,
+          { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+          submenuPosition.side,
+        )
+      ) {
+        cancelPendingHover();
+        hoverTimerRef.current = window.setTimeout(() => {
+          hoverTimerRef.current = undefined;
+          activeRowPointerRef.current = point;
+          setActiveIndex(idx);
+          setSubmenuFocusIndex(null);
+        }, SAFE_TRIANGLE_HOLD_MS);
+        return;
+      }
+    }
+
+    activeRowPointerRef.current = point;
+    activateRow(idx);
+  };
+
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing) return;
+
+    if (submenuFocusIndex !== null && activeModel && activeThinkingLevels.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setSubmenuFocusIndex((prev) => ((prev ?? 0) + 1) % activeThinkingLevels.length);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setSubmenuFocusIndex(
+          (prev) => ((prev ?? 0) - 1 + activeThinkingLevels.length) % activeThinkingLevels.length,
+        );
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setSubmenuFocusIndex(null);
+        return;
+      }
+      if (event.key === "Enter" || event.key === " ") {
+        const chosen = activeThinkingLevels[submenuFocusIndex];
+        if (!chosen) return;
+        event.preventDefault();
+        handlePickModelThinking(activeModel, chosen);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeMenu(true);
+        return;
+      }
+    }
+
     if (event.key === "ArrowDown") {
       if (flatRows.length === 0) return;
       event.preventDefault();
       shouldScrollActiveRef.current = true;
-      setActiveIndex((prev) => (prev + 1) % flatRows.length);
+      activateRow((safeActiveIndex + 1) % flatRows.length);
     } else if (event.key === "ArrowUp") {
       if (flatRows.length === 0) return;
       event.preventDefault();
       shouldScrollActiveRef.current = true;
-      setActiveIndex((prev) => (prev - 1 + flatRows.length) % flatRows.length);
+      activateRow((safeActiveIndex - 1 + flatRows.length) % flatRows.length);
+    } else if (event.key === "ArrowRight") {
+      if (!activeModel || activeThinkingLevels.length === 0) return;
+      const input = event.currentTarget;
+      if (
+        input.selectionStart !== null &&
+        input.selectionEnd !== null &&
+        (input.selectionStart !== input.value.length || input.selectionEnd !== input.value.length)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const effectiveLevel =
+        value?.thinkingLevel ?? (activeThinkingLevels.includes("off") ? "off" : undefined);
+      const selectedIdx =
+        sameModelChoice(activeModel, value) && effectiveLevel !== undefined
+          ? Math.max(0, activeThinkingLevels.indexOf(effectiveLevel))
+          : 0;
+      setSubmenuFocusIndex(selectedIdx);
     } else if (event.key === "Enter") {
       const target = flatRows[safeActiveIndex];
       if (!target) return;
@@ -319,7 +490,8 @@ export function ModelChoiceMenu({
     ? (currentInfo?.name ?? `${value.provider}/${value.modelId}`)
     : placeholder;
   const displayThinking =
-    value && thinkingLevels.length > 0 && value.thinkingLevel
+    value?.thinkingLevel !== undefined &&
+    (currentInfo === undefined || hasSelectableThinkingLevels(currentInfo))
       ? t(thinkingLevelLocaleKey(value.thinkingLevel))
       : undefined;
   const isUnavailable = value !== undefined && models.length > 0 && currentInfo === undefined;
@@ -332,6 +504,8 @@ export function ModelChoiceMenu({
     const key = `${prefix}:${modelInfoKey(model)}`;
     const selected = sameModelChoice(model, value);
     const pinned = pinnedKeys.includes(modelInfoKey(model));
+    const hasThinking = hasSelectableThinkingLevels(model);
+    const isActive = idx === safeActiveIndex;
     return (
       <div
         key={key}
@@ -341,8 +515,9 @@ export function ModelChoiceMenu({
         role="option"
         tabIndex={-1}
         aria-selected={selected}
-        className={`ev-model-menu-row${idx === safeActiveIndex ? " active" : ""}${selected ? " selected" : ""}`}
-        onMouseEnter={() => setActiveIndex(idx)}
+        className={`ev-model-menu-row${isActive ? " active" : ""}${selected ? " selected" : ""}`}
+        onMouseEnter={(event) => handleRowPointerMove(idx, event)}
+        onMouseMove={(event) => handleRowPointerMove(idx, event)}
         onClick={() => handlePickModel(model)}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -352,14 +527,6 @@ export function ModelChoiceMenu({
         }}
       >
         <span className="ev-truncate ev-model-menu-name">{model.name}</span>
-        {model.reasoning && (
-          <LightbulbIcon
-            width={14}
-            height={14}
-            className="ev-model-menu-meta-icon"
-            aria-label={t("modelMenu.reasoning")}
-          />
-        )}
         <span className="ev-model-menu-meta ev-num">{formatTokens(model.contextWindow)}</span>
         <EvTooltip content={pinned ? t("modelMenu.unpin") : t("modelMenu.pin")} side="top">
           <button
@@ -379,6 +546,11 @@ export function ModelChoiceMenu({
         <span className="ev-model-menu-check" aria-hidden="true">
           {selected && <CheckIcon width={15} height={15} />}
         </span>
+        {hasAnyThinkingModel && (
+          <span className="ev-model-menu-chevron" aria-hidden="true">
+            {hasThinking && <ChevronRightIcon width={14} height={14} />}
+          </span>
+        )}
       </div>
     );
   };
@@ -393,34 +565,26 @@ export function ModelChoiceMenu({
       }
     : undefined;
 
-  const canShowDetailCard =
-    position !== undefined &&
-    inspectedModel !== undefined &&
-    viewportWidth >= 820 &&
-    (position.left + position.width + DETAIL_CARD_GAP + DETAIL_CARD_WIDTH <= viewportWidth - 8 ||
-      position.left - DETAIL_CARD_GAP - DETAIL_CARD_WIDTH >= 8);
+  const submenuStyle: CSSProperties | undefined = submenuPosition
+    ? {
+        left: submenuPosition.left,
+        top: submenuPosition.top,
+        width: submenuPosition.width,
+        maxHeight: submenuPosition.maxHeight,
+      }
+    : undefined;
 
-  const detailCardLeft =
-    position && canShowDetailCard
-      ? position.left + position.width + DETAIL_CARD_GAP + DETAIL_CARD_WIDTH <= viewportWidth - 8
-        ? position.left + position.width + DETAIL_CARD_GAP
-        : position.left - DETAIL_CARD_GAP - DETAIL_CARD_WIDTH
-      : undefined;
-
-  const detailCardStyle: CSSProperties | undefined =
-    position && detailCardLeft !== undefined
-      ? {
-          left: detailCardLeft,
-          width: DETAIL_CARD_WIDTH,
-          ...(position.top !== undefined ? { top: position.top } : {}),
-          ...(position.bottom !== undefined ? { bottom: position.bottom } : {}),
-        }
-      : undefined;
-
-  const inspectedRoles = inspectedModel ? assignedRolesForModel(inspectedModel, modelSlots) : [];
-  const inspectedCaps: string[] = [];
-  if (inspectedModel?.reasoning) inspectedCaps.push(t("modelMenu.reasoning"));
-  if (inspectedModel?.input?.includes("image")) inspectedCaps.push(t("modelMenu.vision"));
+  const isActiveModelSelected = activeModel !== undefined && sameModelChoice(activeModel, value);
+  const selectedThinkingLevel = isActiveModelSelected
+    ? (value?.thinkingLevel ?? (activeThinkingLevels.includes("off") ? "off" : undefined))
+    : undefined;
+  const showInlineThinkingFallback =
+    open &&
+    isPositioned &&
+    activeModel !== undefined &&
+    activeThinkingLevels.length > 0 &&
+    submenuPosition === undefined &&
+    !submenuHiddenByScroll;
 
   const popoverNode =
     open && position ? (
@@ -433,37 +597,6 @@ export function ModelChoiceMenu({
           role="dialog"
           aria-label={ariaLabel ?? t("modelMenu.ariaLabel")}
         >
-          {value && thinkingLevels.length > 0 && (
-            <div className="ev-model-thinking-bar">
-              <span className="ev-model-thinking-label">{t("modelMenu.thinking")}</span>
-              <fieldset
-                className="ev-model-thinking-pills"
-                aria-label={t("modelMenu.thinking")}
-                style={{ border: 0, margin: 0, padding: 0 }}
-              >
-                <button
-                  type="button"
-                  className="ev-model-thinking-pill"
-                  aria-pressed={value.thinkingLevel === undefined}
-                  onClick={() => handlePickThinking(undefined)}
-                >
-                  {t("common.default")}
-                </button>
-                {thinkingLevels.map((level) => (
-                  <button
-                    key={level}
-                    type="button"
-                    className="ev-model-thinking-pill ev-mono"
-                    aria-pressed={value.thinkingLevel === level}
-                    onClick={() => handlePickThinking(level)}
-                  >
-                    {t(thinkingLevelLocaleKey(level))}
-                  </button>
-                ))}
-              </fieldset>
-            </div>
-          )}
-
           <div className="ev-model-menu-search">
             <SearchIcon width={15} height={15} />
             <input
@@ -478,7 +611,13 @@ export function ModelChoiceMenu({
             />
           </div>
 
-          <div className="ev-model-menu-list" role="listbox" aria-label={t("modelMenu.model")}>
+          <div
+            ref={listRef}
+            className="ev-model-menu-list"
+            role="listbox"
+            aria-label={t("modelMenu.model")}
+            onScroll={updateSubmenuPosition}
+          >
             {showClear &&
               (() => {
                 const idx = rowCursor++;
@@ -493,7 +632,8 @@ export function ModelChoiceMenu({
                     tabIndex={-1}
                     aria-selected={selected}
                     className={`ev-model-menu-row${idx === safeActiveIndex ? " active" : ""}${selected ? " selected" : ""}`}
-                    onMouseEnter={() => setActiveIndex(idx)}
+                    onMouseEnter={(event) => handleRowPointerMove(idx, event)}
+                    onMouseMove={(event) => handleRowPointerMove(idx, event)}
                     onClick={handleClear}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
@@ -506,6 +646,9 @@ export function ModelChoiceMenu({
                     <span className="ev-model-menu-check" aria-hidden="true">
                       {selected && <CheckIcon width={15} height={15} />}
                     </span>
+                    {hasAnyThinkingModel && (
+                      <span className="ev-model-menu-chevron" aria-hidden="true" />
+                    )}
                   </div>
                 );
               })()}
@@ -531,63 +674,69 @@ export function ModelChoiceMenu({
               <div className="ev-model-menu-empty">{t("modelMenu.empty")}</div>
             )}
           </div>
-        </div>
 
-        {canShowDetailCard && inspectedModel && detailCardStyle && (
-          <aside className="ev-model-detail-card" style={detailCardStyle} aria-hidden="true">
-            <div className="ev-model-detail-head">
-              <ProviderIcon provider={inspectedModel.provider} size={15} />
-              <div className="ev-model-detail-titles">
-                <div className="ev-truncate ev-model-detail-name">{inspectedModel.name}</div>
-                <div className="ev-truncate ev-mono ev-model-detail-id">
-                  {inspectedModel.provider}/{inspectedModel.id}
-                </div>
+          {showInlineThinkingFallback && activeModel && (
+            <div className="ev-model-thinking-footer">
+              <span className="ev-model-thinking-label">{t("modelMenu.thinking")}</span>
+              <div
+                className="ev-model-thinking-pills"
+                role="menu"
+                aria-label={t("modelMenu.thinking")}
+              >
+                {activeThinkingLevels.map((level) => {
+                  const pressed = selectedThinkingLevel === level;
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={pressed}
+                      className="ev-model-thinking-pill ev-mono"
+                      onClick={() => handlePickModelThinking(activeModel, level)}
+                    >
+                      {t(thinkingLevelLocaleKey(level))}
+                    </button>
+                  );
+                })}
               </div>
             </div>
+          )}
+        </div>
 
-            <KeyValue.Grid className="ev-model-detail-kv">
-              <KeyValue.Key>{t("modelMenu.detail.context")}</KeyValue.Key>
-              <KeyValue.Value className="ev-mono ev-num">
-                {formatTokens(inspectedModel.contextWindow)}
-              </KeyValue.Value>
-              {inspectedModel.maxTokens > 0 && (
-                <>
-                  <KeyValue.Key>{t("modelMenu.detail.maxOut")}</KeyValue.Key>
-                  <KeyValue.Value className="ev-mono ev-num">
-                    {formatTokens(inspectedModel.maxTokens)}
-                  </KeyValue.Value>
-                </>
-              )}
-              <KeyValue.Key>{t("modelMenu.detail.inputCost")}</KeyValue.Key>
-              <KeyValue.Value className="ev-mono ev-num">
-                {formatPricePerMillion(inspectedModel.cost.input)}
-              </KeyValue.Value>
-              <KeyValue.Key>{t("modelMenu.detail.outputCost")}</KeyValue.Key>
-              <KeyValue.Value className="ev-mono ev-num">
-                {formatPricePerMillion(inspectedModel.cost.output)}
-              </KeyValue.Value>
-              {inspectedModel.cost.cacheRead > 0 && (
-                <>
-                  <KeyValue.Key>{t("modelMenu.detail.cacheRead")}</KeyValue.Key>
-                  <KeyValue.Value className="ev-mono ev-num">
-                    {formatPricePerMillion(inspectedModel.cost.cacheRead)}
-                  </KeyValue.Value>
-                </>
-              )}
-              {inspectedCaps.length > 0 && (
-                <>
-                  <KeyValue.Key>{t("modelMenu.detail.capabilities")}</KeyValue.Key>
-                  <KeyValue.Value>{inspectedCaps.join(" · ")}</KeyValue.Value>
-                </>
-              )}
-              {inspectedRoles.length > 0 && (
-                <>
-                  <KeyValue.Key>{t("modelMenu.detail.profiles")}</KeyValue.Key>
-                  <KeyValue.Value>{inspectedRoles.join(", ")}</KeyValue.Value>
-                </>
-              )}
-            </KeyValue.Grid>
-          </aside>
+        {activeModel && activeThinkingLevels.length > 0 && submenuPosition && submenuStyle && (
+          <div
+            ref={submenuRef}
+            className={`ev-model-thinking-submenu side-${submenuPosition.side}`}
+            style={submenuStyle}
+            role="menu"
+            aria-label={t("modelMenu.thinking")}
+            onMouseEnter={cancelPendingHover}
+          >
+            <div className="ev-model-thinking-submenu-title">{t("modelMenu.thinking")}</div>
+            <div className="ev-model-thinking-submenu-list">
+              {activeThinkingLevels.map((level, optionIdx) => {
+                const selected = selectedThinkingLevel === level;
+                const focused = submenuFocusIndex === optionIdx;
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    className={`ev-model-thinking-option ev-mono${focused ? " active" : ""}${selected ? " selected" : ""}`}
+                    onMouseEnter={() => setSubmenuFocusIndex(optionIdx)}
+                    onMouseLeave={() => setSubmenuFocusIndex(null)}
+                    onClick={() => handlePickModelThinking(activeModel, level)}
+                  >
+                    <span className="ev-truncate">{t(thinkingLevelLocaleKey(level))}</span>
+                    <span className="ev-model-menu-check" aria-hidden="true">
+                      {selected && <CheckIcon width={14} height={14} />}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         )}
       </>
     ) : null;

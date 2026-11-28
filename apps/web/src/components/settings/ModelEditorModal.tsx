@@ -4,6 +4,7 @@ import type { CompatFieldInfo, ProviderDetail, ThinkingLevel } from "@eevee/prot
 import { type FormEvent, useReducer, useState } from "react";
 import { api } from "../../lib/api.ts";
 import { useI18n } from "../../lib/i18n.ts";
+import { hasSelectableThinkingLevels, thinkingLevelsOfModel } from "../../lib/model-choice.ts";
 import { ConfirmModal } from "../ConfirmModal.tsx";
 import { EvDropdown } from "../EvDropdown.tsx";
 import { ModelBasicSection } from "./model-editor/ModelBasicSection.tsx";
@@ -40,7 +41,16 @@ export function ModelEditorModal({
   const [draft, dispatch] = useReducer(modelEditorReducer, undefined, () =>
     createModelEditorDraft(target, compatSchemas),
   );
-  const [testLevel, setTestLevel] = useState<"" | ThinkingLevel>("");
+  const smokeThinkingLevels = hasSelectableThinkingLevels(model)
+    ? thinkingLevelsOfModel(model)
+    : [];
+  const [testLevel, setTestLevel] = useState<ThinkingLevel | undefined>(
+    () => smokeThinkingLevels[0],
+  );
+  const effectiveTestLevel =
+    testLevel !== undefined && smokeThinkingLevels.includes(testLevel)
+      ? testLevel
+      : smokeThinkingLevels[0];
   const [testTools, setTestTools] = useState(false);
   const { tests, runTest } = useModelSmokeTests();
 
@@ -90,7 +100,7 @@ export function ModelEditorModal({
   const runSmokeTest = () => {
     if (!model) return;
     void runTest(target.providerId, model.id, {
-      ...(testLevel ? { thinkingLevel: testLevel } : {}),
+      ...(effectiveTestLevel ? { thinkingLevel: effectiveTestLevel } : {}),
       ...(testTools ? { testTools: true } : {}),
     });
   };
@@ -161,20 +171,19 @@ export function ModelEditorModal({
                     <section className="ev-editor-section">
                       <div className="ev-editor-section-title">{t("modelEditor.smokeSection")}</div>
                       <div className="ev-smoke-controls">
-                        <EvDropdown
-                          density="compact"
-                          className="ev-smoke-thinking-select"
-                          ariaLabel="Thinking"
-                          value={testLevel}
-                          options={[
-                            { value: "", label: t("modelEditor.smokeDefaultThinking") },
-                            ...model.supportedThinkingLevels.map((level) => ({
+                        {smokeThinkingLevels.length > 0 && effectiveTestLevel && (
+                          <EvDropdown
+                            density="compact"
+                            className="ev-smoke-thinking-select"
+                            ariaLabel="Thinking"
+                            value={effectiveTestLevel}
+                            options={smokeThinkingLevels.map((level) => ({
                               value: level,
                               label: level,
-                            })),
-                          ]}
-                          onChange={(next) => setTestLevel(next as "" | ThinkingLevel)}
-                        />
+                            }))}
+                            onChange={(next) => setTestLevel(next as ThinkingLevel)}
+                          />
+                        )}
                         <label className="ev-check-row">
                           <input
                             type="checkbox"

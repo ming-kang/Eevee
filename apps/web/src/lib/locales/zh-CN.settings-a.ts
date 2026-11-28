@@ -65,7 +65,6 @@ export const ZH_CN_SETTINGS_A = {
   "models.defaultProfileDescription": "适用任务与成本特征…",
   "models.profilesTitle": "模型画像",
   "models.profileId": "ID",
-  "models.thinkingUnsupportedOption": "{level}（不支持）",
   "models.test": "测试",
   "models.deleteProfile": "删除画像",
   "models.thinkingUnsupportedHint": "「{level}」不在支持列表（{supported}）中。",

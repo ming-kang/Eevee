@@ -377,7 +377,6 @@ export function Composer({
               <ModelChoiceMenu
                 value={globalSettings?.models?.router}
                 models={availableModels}
-                modelSlots={globalSettings?.models}
                 placeholder={modelLabel ?? t("modelMenu.choose")}
                 placement="up"
                 variant="inline"

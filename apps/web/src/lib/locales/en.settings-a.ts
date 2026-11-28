@@ -67,7 +67,6 @@ export const EN_SETTINGS_A: Readonly<Record<keyof typeof ZH_CN_SETTINGS_A, strin
   "models.defaultProfileDescription": "Best suited tasks and cost profile…",
   "models.profilesTitle": "Model profiles",
   "models.profileId": "ID",
-  "models.thinkingUnsupportedOption": "{level} (unsupported)",
   "models.test": "Test",
   "models.deleteProfile": "Delete profile",
   "models.thinkingUnsupportedHint": "“{level}” is unsupported ({supported}).",

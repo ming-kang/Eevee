@@ -122,7 +122,6 @@ export const EN_SETTINGS_B: Readonly<Record<keyof typeof ZH_CN_SETTINGS_B, strin
   "modelEditor.field.costCacheWrite": "Cache Write $/M",
   "modelEditor.thinkingSection": "Thinking levels",
   "modelEditor.smokeSection": "Connection test",
-  "modelEditor.smokeDefaultThinking": "Default",
   "modelEditor.smokeTestTools": "Test tools",
   "modelEditor.smokeTestButton": "Test",
   "modelEditor.deleteModel": "Delete",

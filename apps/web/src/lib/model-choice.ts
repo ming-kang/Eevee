@@ -34,38 +34,51 @@ export function findModelInfo(
   return models.find((m) => m.provider === choice.provider && m.id === choice.modelId);
 }
 
+export function thinkingLevelsOfModel(
+  model: Pick<ModelInfo, "reasoning" | "supportedThinkingLevels"> | undefined,
+): readonly ThinkingLevel[] {
+  if (!model) return [];
+  if (model.supportedThinkingLevels && model.supportedThinkingLevels.length > 0) {
+    return model.supportedThinkingLevels;
+  }
+  return model.reasoning ? THINKING_LEVELS : [];
+}
+
+export function hasSelectableThinkingLevels(
+  model: Pick<ModelInfo, "reasoning" | "supportedThinkingLevels"> | undefined,
+): boolean {
+  return thinkingLevelsOfModel(model).some((level) => level !== "off");
+}
+
 export function supportedThinkingLevelsOf(
   models: readonly ModelInfo[],
   choice: ModelChoice | undefined,
 ): readonly ThinkingLevel[] {
   const info = findModelInfo(models, choice);
-  if (!info) return [];
-  if (info.supportedThinkingLevels && info.supportedThinkingLevels.length > 0) {
-    return info.supportedThinkingLevels;
+  return hasSelectableThinkingLevels(info) ? thinkingLevelsOfModel(info) : [];
+}
+
+export function selectModelWithThinking(
+  model: ModelInfo,
+  level: ThinkingLevel | undefined,
+): ModelChoice {
+  if (!hasSelectableThinkingLevels(model)) {
+    return { provider: model.provider, modelId: model.id };
   }
-  return info.reasoning ? THINKING_LEVELS : [];
+  const levels = thinkingLevelsOfModel(model);
+  const resolved = level !== undefined && levels.includes(level) ? level : levels[0];
+  return {
+    provider: model.provider,
+    modelId: model.id,
+    ...(resolved === undefined ? {} : { thinkingLevel: resolved }),
+  };
 }
 
 export function switchModelChoice(
   current: ModelChoice | undefined,
   nextModel: ModelInfo,
 ): ModelChoice {
-  const levels =
-    nextModel.supportedThinkingLevels && nextModel.supportedThinkingLevels.length > 0
-      ? nextModel.supportedThinkingLevels
-      : nextModel.reasoning
-        ? THINKING_LEVELS
-        : [];
-  const prevLevel = current?.thinkingLevel;
-  const keepLevel =
-    prevLevel !== undefined && levels.length > 0 && levels.includes(prevLevel)
-      ? prevLevel
-      : undefined;
-  return {
-    provider: nextModel.provider,
-    modelId: nextModel.id,
-    ...(keepLevel === undefined ? {} : { thinkingLevel: keepLevel }),
-  };
+  return selectModelWithThinking(nextModel, current?.thinkingLevel);
 }
 
 export function withThinkingLevel(

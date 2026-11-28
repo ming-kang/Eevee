@@ -705,23 +705,13 @@
 }
 
 .ev-profile-field-id {
-  flex: 0 1 150px;
-  min-width: 130px;
-}
-
-.ev-profile-field-provider {
-  flex: 0 1 160px;
+  flex: 0 1 180px;
   min-width: 140px;
 }
 
 .ev-profile-field-model {
-  flex: 1 1 210px;
-  min-width: 180px;
-}
-
-.ev-profile-field-thinking {
-  flex: 0 1 140px;
-  min-width: 120px;
+  flex: 1 1 280px;
+  min-width: 220px;
 }
 
 .ev-profile-actions {
@@ -793,9 +783,7 @@
     grid-template-columns: minmax(80px, 1fr) 96px minmax(0, 1.2fr);
   }
   .ev-profile-field-id,
-  .ev-profile-field-provider,
-  .ev-profile-field-model,
-  .ev-profile-field-thinking {
+  .ev-profile-field-model {
     flex: 1 1 100%;
   }
 }

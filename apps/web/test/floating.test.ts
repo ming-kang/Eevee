@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { computePopoverPosition } from "../src/lib/floating.ts";
+import {
+  computePopoverPosition,
+  computeSubmenuPosition,
+  isPointInSafeTriangle,
+} from "../src/lib/floating.ts";
 
 test("computePopoverPosition keeps preferred placement when viewport has enough room", () => {
   const down = computePopoverPosition({
@@ -88,4 +92,58 @@ test("computePopoverPosition clamps horizontally within narrow and edge-aligned 
   });
   assert.equal(narrowMobile.width, 336);
   assert.equal(narrowMobile.left, 12);
+});
+
+test("computeSubmenuPosition places submenu on right, flips to left near edge, and returns undefined on narrow viewports", () => {
+  const right = computeSubmenuPosition({
+    parent: { left: 200, right: 560, top: 100, bottom: 400 },
+    rowTop: 180,
+    submenuWidth: 156,
+    estimatedHeight: 160,
+    viewport: { width: 1280, height: 800 },
+  });
+  assert.ok(right);
+  assert.equal(right.side, "right");
+  assert.equal(right.left, 566);
+  assert.equal(right.top, 174);
+
+  const flippedLeft = computeSubmenuPosition({
+    parent: { left: 880, right: 1240, top: 100, bottom: 400 },
+    rowTop: 720,
+    submenuWidth: 156,
+    estimatedHeight: 160,
+    viewport: { width: 1280, height: 800 },
+  });
+  assert.ok(flippedLeft);
+  assert.equal(flippedLeft.side, "left");
+  assert.equal(flippedLeft.left, 880 - 6 - 156);
+  assert.equal(flippedLeft.top, 800 - 12 - 160);
+
+  const narrow = computeSubmenuPosition({
+    parent: { left: 20, right: 360, top: 80, bottom: 380 },
+    rowTop: 140,
+    submenuWidth: 156,
+    estimatedHeight: 160,
+    viewport: { width: 420, height: 700 },
+  });
+  assert.equal(narrow, undefined);
+});
+
+test("isPointInSafeTriangle tracks diagonal movement toward right or left submenu", () => {
+  const rightSubmenu = { left: 566, right: 722, top: 150, bottom: 310 };
+  const originRight = { x: 420, y: 180 };
+  assert.equal(isPointInSafeTriangle({ x: 490, y: 215 }, originRight, rightSubmenu, "right"), true);
+  assert.equal(
+    isPointInSafeTriangle({ x: 420, y: 230 }, originRight, rightSubmenu, "right"),
+    false,
+  );
+  assert.equal(
+    isPointInSafeTriangle({ x: 490, y: 380 }, originRight, rightSubmenu, "right"),
+    false,
+  );
+
+  const leftSubmenu = { left: 200, right: 356, top: 150, bottom: 310 };
+  const originLeft = { x: 480, y: 180 };
+  assert.equal(isPointInSafeTriangle({ x: 410, y: 215 }, originLeft, leftSubmenu, "left"), true);
+  assert.equal(isPointInSafeTriangle({ x: 500, y: 200 }, originLeft, leftSubmenu, "left"), false);
 });

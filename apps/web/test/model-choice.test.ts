@@ -3,9 +3,12 @@ import { test } from "node:test";
 import type { ModelInfo } from "@eevee/protocol";
 import {
   groupModelsByProvider,
+  hasSelectableThinkingLevels,
   resolvePinnedModels,
+  selectModelWithThinking,
   supportedThinkingLevelsOf,
   switchModelChoice,
+  thinkingLevelsOfModel,
   togglePinnedKey,
   withThinkingLevel,
 } from "../src/lib/model-choice.ts";
@@ -33,6 +36,7 @@ const MODELS: readonly ModelInfo[] = [
     maxTokens: 16_384,
     cost: { input: 2.5, output: 10, cacheRead: 1.25, cacheWrite: 0 },
     available: true,
+    supportedThinkingLevels: ["off"],
   },
   {
     provider: "openai",
@@ -97,6 +101,7 @@ test("switchModelChoice preserves compatible thinking level and drops unsupporte
   assert.deepEqual(switchModelChoice(fromClaudeOff, o3), {
     provider: "openai",
     modelId: "o3",
+    thinkingLevel: "low",
   });
 
   assert.deepEqual(withThinkingLevel(fromClaudeHigh, undefined), {
@@ -106,6 +111,27 @@ test("switchModelChoice preserves compatible thinking level and drops unsupporte
   assert.deepEqual(switchModelChoice(undefined, claude), {
     provider: "anthropic",
     modelId: "claude-sonnet-4",
+    thinkingLevel: "off",
+  });
+
+  assert.equal(hasSelectableThinkingLevels(o3), true);
+  assert.equal(hasSelectableThinkingLevels(claude), true);
+  assert.equal(hasSelectableThinkingLevels(gpt4o), false);
+  assert.deepEqual(thinkingLevelsOfModel(o3), ["low", "medium", "high"]);
+  assert.deepEqual(thinkingLevelsOfModel(gpt4o), ["off"]);
+  assert.deepEqual(selectModelWithThinking(o3, "high"), {
+    provider: "openai",
+    modelId: "o3",
+    thinkingLevel: "high",
+  });
+  assert.deepEqual(selectModelWithThinking(o3, undefined), {
+    provider: "openai",
+    modelId: "o3",
+    thinkingLevel: "low",
+  });
+  assert.deepEqual(selectModelWithThinking(gpt4o, "high"), {
+    provider: "openai",
+    modelId: "gpt-4o",
   });
 });
 

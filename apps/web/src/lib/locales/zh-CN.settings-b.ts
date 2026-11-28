@@ -120,7 +120,6 @@ export const ZH_CN_SETTINGS_B = {
   "modelEditor.field.costCacheWrite": "Cache Write $/M",
   "modelEditor.thinkingSection": "Thinking 档位",
   "modelEditor.smokeSection": "连接测试",
-  "modelEditor.smokeDefaultThinking": "默认",
   "modelEditor.smokeTestTools": "测试工具",
   "modelEditor.smokeTestButton": "测试",
   "modelEditor.deleteModel": "删除",
