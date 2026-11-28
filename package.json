@@ -2,8 +2,16 @@
   "name": "@astralyn/eevee",
   "version": "0.0.1",
   "private": true,
-  "description": "A proactive agent built on Pi-Durable: one Router with binary-forest memory, and reusable Workers running in the background.",
+  "description": "A proactive agent that delegates long-running work to background Workers you can watch and steer, and only interrupts you when it matters.",
   "license": "MIT",
+  "homepage": "https://github.com/ming-kang/Eevee#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ming-kang/Eevee.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ming-kang/Eevee/issues"
+  },
   "type": "module",
   "workspaces": [
     "packages/*",

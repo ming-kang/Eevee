@@ -1,38 +1,60 @@
 # Eevee
 
-Eevee 是基于 [Pi Durable](https://github.com/earendil-works/pi) 构建的主动型智能体：统一 Agent 底座之上，Router 持有只读工具与二叉森林会话记忆负责统筹调度，可复用的 Worker 在后台并发执行并持有附属 Ticket。
+**English** | [简体中文](README.zh-CN.md)
 
-> 当前已完成本地 Engine、CLI 与 Web UI 产品闭环：项目管理、Router/Worker 协作、观察介入、模型与 MCP 管理、同源浏览器工作台，以及后台常驻和崩溃恢复。
+A proactive agent that delegates long-running work to background Workers you can watch and steer, and only interrupts you when it matters.
 
-## 文档
+You talk to a single Router, which plans the work and hands it off as Tickets to reusable Workers running in parallel in the background. You can open any Worker at any time to read its full transcript and task logs, send it guidance, or stop it. Eevee is built on [Pi Durable](https://github.com/earendil-works/pi).
 
-- [设计文档](DESIGN.md) — 愿景、原则与核心概念
-- [架构文档](docs/architecture.md) — 包划分、依赖边界、角色扩展装配与构建方式
+> **Status:** early development (v0.0.1). The local Engine, CLI, and Web UI work end to end, but APIs and data formats may change.
 
-## 开发命令
+## Features
 
-需要 Node.js 26 或更高版本：
+- **Router and Workers**: a read-only Router coordinates the work while reusable Workers run in parallel in the background and keep their context warm between Tickets.
+- **Observable and steerable**: inspect, guide, or stop any Worker or background task in real time.
+- **Long-term memory**: a silent Dreamer organizes Router conversations into a binary forest that can be expanded one level at a time.
+- **Projects**: each project can bind multiple working directories and has its own memory and durable session store.
+- **Models and MCP**: manage providers, models, MCP servers, and skills from the CLI or the Web UI.
+- **Local daemon**: a supervised background Engine with crash recovery, serving a same-origin browser workbench.
+
+## Getting Started
+
+Requires Node.js 26 or later.
 
 ```bash
+git clone https://github.com/ming-kang/Eevee.git
+cd Eevee
 npm install --ignore-scripts
-npm run check          # 依赖检查、架构边界检查、typecheck、lint 与测试
-npm run build          # TypeScript Project References 与 Web UI 全量构建
-npm run dev -- info    # 直接从源码运行 CLI
-npm run dev:web        # 启动 Web UI Vite 开发服务器（代理至本机 Engine）
+npm run build
+cd apps/cli && npm link     # puts the `eevee` command on your PATH
 ```
 
-## 运行
+Then start the Engine and open the Web UI:
 
 ```bash
-eevee start             # 后台启动 Supervisor 与 Engine
-eevee web --open        # 签发一次性免密链接并打开同源 Web UI
-eevee status            # 查看进程、地址与重启次数
-eevee project create    # 创建项目
-eevee stop              # 优雅停止并清理运行状态
+eevee start             # start the Supervisor and Engine in the background
+eevee web --open        # issue a one-time login link and open the Web UI
+eevee status            # show process, address, and restart count
+eevee project create    # create a project
+eevee stop              # stop gracefully and clean up runtime state
 ```
 
-开发与调试时使用 `eevee start --foreground`，只运行前台 Engine，不启动 Supervisor。Engine 数据默认位于 `~/.eevee`，可通过 `EEVEE_HOME` 覆盖。
+Use `eevee start --foreground` while developing or debugging to run only the Engine in the foreground, without the Supervisor. Engine data lives in `~/.eevee` by default; override it with `EEVEE_HOME`.
+
+## Development
+
+```bash
+npm run check          # dependency and boundary checks, typecheck, lint, and tests
+npm run build          # full build of TypeScript project references and the Web UI
+npm run dev -- info    # run the CLI directly from source
+npm run dev:web        # start the Web UI Vite dev server (proxies to the local Engine)
+```
+
+## Documentation
+
+- [Design](DESIGN.md): vision, principles, and core concepts
+- [Architecture](docs/architecture.md): packages, dependency boundaries, role extension assembly, and builds
 
 ## License
 
-[MIT License](./LICENSE)
+[MIT](LICENSE)
