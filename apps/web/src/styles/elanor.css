@@ -35,9 +35,10 @@
   --ev-preview-dark-fg: oklch(91% 0.007 84);
   --ev-danger: var(--primitive-color-coral-red-640);
   --ev-success: var(--primitive-color-turquoise-green-640);
-  --ev-warning: var(--primitive-color-cream-yellow-360);
+  --ev-warning: oklch(69.02% 0.1368 82.36);
   --ev-warning-fg: var(--primitive-color-cream-yellow-700);
   --ev-accent-soft: color-mix(in oklab, var(--ev-accent) 11%, transparent);
+  --ev-focus-halo: color-mix(in oklab, var(--ev-accent) 35%, transparent);
   --ev-danger-soft: color-mix(in oklab, var(--ev-danger) 10%, transparent);
   --ev-success-soft: color-mix(in oklab, var(--ev-success) 10%, transparent);
   --ev-warning-soft: color-mix(in oklab, var(--ev-warning) 16%, transparent);
@@ -122,6 +123,7 @@
   --ev-warning: oklch(82% 0.125 80);
   --ev-warning-fg: oklch(87% 0.105 82);
   --ev-accent-soft: color-mix(in oklab, var(--ev-accent) 16%, transparent);
+  --ev-focus-halo: color-mix(in oklab, var(--ev-accent) 50%, transparent);
   --ev-danger-soft: color-mix(in oklab, var(--ev-danger) 15%, transparent);
   --ev-success-soft: color-mix(in oklab, var(--ev-success) 15%, transparent);
   --ev-warning-soft: color-mix(in oklab, var(--ev-warning) 18%, transparent);
@@ -158,6 +160,7 @@
   --semantic-color-border-secondary: var(--ev-border);
   --semantic-color-border-primary: var(--ev-border-strong);
   --semantic-color-focus-ring: var(--ev-accent);
+  --semantic-color-focus-halo: var(--ev-focus-halo);
   --semantic-color-background-fill-primary: var(--ev-fg);
   --semantic-color-background-fill-primary-hover: color-mix(
     in oklab,

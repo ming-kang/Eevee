@@ -193,7 +193,7 @@ export function OverviewPage({
               <div className="ev-inbox-list">
                 {[0, 1, 2].map((row) => (
                   <div key={row} className="ev-skeleton-row">
-                    <Skeleton className="ev-skeleton-chip">w0</Skeleton>
+                    <Skeleton className="ev-skeleton-chip" />
                     <div className="ev-skeleton-row-body">
                       <SkeletonText lines={2} />
                     </div>

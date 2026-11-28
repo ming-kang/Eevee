@@ -11,10 +11,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@earendil-works/design-tokens": "0.1.0",
+    "@earendil-works/design-tokens": "0.1.1",
     "@earendil-works/elanor-fonts": "0.1.0",
     "@earendil-works/elanor-icons-react": "0.1.0",
-    "@earendil-works/elanor-react": "0.1.1",
+    "@earendil-works/elanor-react": "0.1.2",
     "@eevee/protocol": "0.0.1",
     "lowlight": "3.3.0",
     "marked": "18.3.0",

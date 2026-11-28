@@ -267,7 +267,7 @@ export function ProvidersTab() {
         <div className="ev-provider-detail-pane">
           {!selectedId && loading ? (
             <div className="ev-settings-card ev-skeleton-stack" aria-busy="true">
-              <Skeleton className="ev-skeleton-title">Provider Details</Skeleton>
+              <Skeleton className="ev-skeleton-title" />
               <SkeletonText lines={4} />
             </div>
           ) : !selectedId ? (
@@ -276,7 +276,7 @@ export function ProvidersTab() {
             </div>
           ) : loadingDetail && (!detail || detail.id !== selectedId) ? (
             <div className="ev-settings-card ev-skeleton-stack" aria-busy="true">
-              <Skeleton className="ev-skeleton-title">Provider Details</Skeleton>
+              <Skeleton className="ev-skeleton-title" />
               <SkeletonText lines={4} />
             </div>
           ) : detail && detail.id === selectedId ? (

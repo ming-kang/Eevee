@@ -279,7 +279,7 @@ export function SkillsTab({
         >
           {[0, 1, 2].map((row) => (
             <div key={row} className="ev-settings-row ev-skeleton-row">
-              <Skeleton className="ev-skeleton-chip">skill</Skeleton>
+              <Skeleton className="ev-skeleton-chip" />
               <div className="ev-skeleton-row-body">
                 <SkeletonText lines={2} />
               </div>
