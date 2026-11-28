@@ -115,6 +115,7 @@ export function createCachedCompactionExtension(options?: CachedCompactionOption
                 maxTokens,
                 signal: context.abortSignal,
                 telemetry: context.telemetry,
+                disableContinuation: true,
                 ...(sessionId === undefined ? {} : { sessionId }),
                 ...(thinkingLevel === "off" ? {} : { reasoning: thinkingLevel }),
               },

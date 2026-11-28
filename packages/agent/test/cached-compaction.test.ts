@@ -410,6 +410,7 @@ test("manual compaction hits cached prefix with same sessionId, tracks file ops,
     assert.equal(compactCall.options?.sessionId, lastGenCall.options?.sessionId);
     assert.notEqual(compactCall.options?.sessionId, undefined);
     assert.notEqual(compactCall.options?.cacheRetention, "none");
+    assert.equal(compactCall.options?.disableContinuation, true);
 
     const instruction = compactCall.messages.at(-1);
     assert.equal(instruction?.role, "user");
@@ -482,6 +483,7 @@ test("automatic threshold compaction uses cached compaction hook", async () => {
     assert.deepEqual(compactCall.messages.slice(0, gen1.messages.length), gen1.messages);
     assert.equal(compactCall.options?.sessionId, gen1.options?.sessionId);
     assert.notEqual(compactCall.options?.cacheRetention, "none");
+    assert.equal(compactCall.options?.disableContinuation, true);
 
     const summaries = await compactionEntries(conversation);
     assert.equal(summaries.length, 1);
