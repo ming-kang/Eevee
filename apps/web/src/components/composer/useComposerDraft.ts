@@ -17,17 +17,19 @@ import {
   shouldConvertPasteToAttachment,
 } from "../../lib/attachments.ts";
 import {
-  draftStorageKey,
+  readDraft,
   restoreFailedDraft,
   restoreFailedDraftToStorage,
+  writeDraft,
 } from "../../lib/composer-draft.ts";
+import { messageText } from "../../lib/composer-value.ts";
 import { formatBytes } from "../../lib/format.ts";
 import { useI18n } from "../../lib/i18n.ts";
 import { showToast } from "../../lib/toasts.ts";
 
 function readStoredDraft(draftKey: string): string {
   try {
-    return window.localStorage.getItem(draftStorageKey(draftKey)) ?? "";
+    return messageText(readDraft(window.localStorage, draftKey));
   } catch {
     return "";
   }
@@ -72,9 +74,7 @@ export function useComposerDraft(draftKey: string, disabled: boolean) {
       textRef.current = next;
       setText(next);
       try {
-        const key = draftStorageKey(draftKey);
-        if (next) window.localStorage.setItem(key, next);
-        else window.localStorage.removeItem(key);
+        writeDraft(window.localStorage, draftKey, next ? [next] : []);
       } catch {}
     },
     [draftKey],
@@ -208,7 +208,9 @@ export function useComposerDraft(draftKey: string, disabled: boolean) {
     ): { readonly restoredCurrent: boolean; readonly cursorToEnd?: number } => {
       if (mountedRef.current && draftKeyRef.current === submittedDraftKey) {
         const wasEmpty = textRef.current === "";
-        const restored = restoreFailedDraft(submittedText, textRef.current);
+        const restored = messageText(
+          restoreFailedDraft([submittedText], textRef.current ? [textRef.current] : []),
+        );
         updateText(restored);
         if (submittedAttachments.length > 0) {
           const restoredAtts = restoreFailedAttachments(submittedDraftKey, submittedAttachments);
@@ -218,7 +220,7 @@ export function useComposerDraft(draftKey: string, disabled: boolean) {
         return { restoredCurrent: true, ...(wasEmpty ? { cursorToEnd: restored.length } : {}) };
       }
       try {
-        restoreFailedDraftToStorage(window.localStorage, submittedDraftKey, submittedText);
+        restoreFailedDraftToStorage(window.localStorage, submittedDraftKey, [submittedText]);
       } catch {}
       if (submittedAttachments.length > 0) {
         restoreFailedAttachments(submittedDraftKey, submittedAttachments);
