@@ -98,7 +98,7 @@
   }
 }
 
-:where(button[data-density="compact"]:not(.ev-dropdown-trigger)) {
+:where(button[data-density="compact"]:not(.ev-dropdown-trigger, [data-icon-button])) {
   min-height: 32px;
   padding-inline: 11px;
 }
