@@ -52,12 +52,12 @@ export function readHostThemeColors(): HostThemeColors {
   const get = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
   return {
     scheme,
-    bg: get("--ev-bg", scheme === "dark" ? "#1c1b18" : "#f7f6f2"),
-    surface: get("--ev-surface", scheme === "dark" ? "#252420" : "#ffffff"),
-    fg: get("--ev-fg", scheme === "dark" ? "#efece6" : "#1f1d1a"),
-    muted: get("--ev-fg-muted", scheme === "dark" ? "#b4afa5" : "#5e5a52"),
-    border: get("--ev-border", scheme === "dark" ? "#3b3831" : "#dedad0"),
-    accent: get("--ev-accent", "#3b82f6"),
+    bg: get("--ev-bg", scheme === "dark" ? "#282522" : "#f8f6f3"),
+    surface: get("--ev-surface", scheme === "dark" ? "#322f2b" : "#fefdfc"),
+    fg: get("--ev-fg", scheme === "dark" ? "#e3e1dc" : "#1c1915"),
+    muted: get("--ev-fg-muted", scheme === "dark" ? "#bbb8b4" : "#56524d"),
+    border: get("--ev-border", scheme === "dark" ? "#47433e" : "#dedad0"),
+    accent: get("--ev-accent", scheme === "dark" ? "#e1996d" : "#a35431"),
     fontSans: get("--primitive-font-family-sans-serif", "system-ui, sans-serif"),
     fontMono: get("--primitive-font-family-mono", "ui-monospace, monospace"),
   };

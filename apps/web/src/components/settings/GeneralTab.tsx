@@ -23,6 +23,7 @@ import {
   UI_SIZE_BOUNDS,
   useTypography,
 } from "../../lib/typography.ts";
+import { EvTooltip } from "../EvTooltip.tsx";
 
 function FontSizeStepper({
   label,
@@ -73,56 +74,26 @@ function ModePreviewCard({
   readonly selected: boolean;
   readonly onSelect: () => void;
 }) {
-  if (mode === "system") {
-    return (
+  return (
+    <EvTooltip content={label} side="top">
       <button
         type="button"
-        className="ev-mode-card ev-mode-card-system"
+        className={`ev-mode-card ev-mode-card-${mode}`}
+        aria-label={label}
         aria-pressed={selected}
         onClick={onSelect}
       >
-        <span className="ev-mode-half ev-mode-half-light" aria-hidden="true">
-          <span className="ev-mode-mini-bars">
-            <span className="ev-mode-mini-bar short" />
-            <span className="ev-mode-mini-bar" />
-          </span>
-          <span className="ev-mode-card-label">{label}</span>
+        <span className="ev-mode-mini-bars" aria-hidden="true">
+          <span className="ev-mode-mini-bar short" />
+          <span className="ev-mode-mini-bar" />
         </span>
-        <span className="ev-mode-half ev-mode-half-dark" aria-hidden="true">
-          <span className="ev-mode-mini-bars">
-            <span className="ev-mode-mini-bar short" />
-            <span className="ev-mode-mini-bar" />
-          </span>
-          <span className="ev-mode-card-label">{label}</span>
-        </span>
-        <span className="ev-sr-only">{label}</span>
         {selected && (
           <span className="ev-card-check" aria-hidden="true">
             <CheckIcon width={12} height={12} />
           </span>
         )}
       </button>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      className={`ev-mode-card ev-mode-card-${mode}`}
-      aria-pressed={selected}
-      onClick={onSelect}
-    >
-      <span className="ev-mode-mini-bars" aria-hidden="true">
-        <span className="ev-mode-mini-bar short" />
-        <span className="ev-mode-mini-bar" />
-      </span>
-      <span className="ev-mode-card-label">{label}</span>
-      {selected && (
-        <span className="ev-card-check" aria-hidden="true">
-          <CheckIcon width={12} height={12} />
-        </span>
-      )}
-    </button>
+    </EvTooltip>
   );
 }
 
@@ -214,7 +185,7 @@ export function GeneralTab() {
             <div className="ev-pref-block">
               <div className="ev-pref-label">{t("general.theme")}</div>
               <fieldset className="ev-mode-card-grid" aria-label={t("general.theme")}>
-                {(["system", "light", "dark"] as const).map((mode) => (
+                {(["light", "system", "dark"] as const).map((mode) => (
                   <ModePreviewCard
                     key={mode}
                     mode={mode}

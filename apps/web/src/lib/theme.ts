@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 export type ThemePreference = "system" | "light" | "dark";
 export type ThemeScheme = "light" | "dark";
-export type ThemePreset = "paper" | "pi" | "graphite" | "lagoon";
+export type ThemePreset = "paper" | "slate" | "graphite" | "lagoon";
 export type ThemeTone = "warm" | "cool" | "neutral";
 
 export type ThemePresetMeta = {
@@ -20,38 +20,38 @@ export const THEME_PRESETS: readonly ThemePresetMeta[] = [
     tone: "warm",
     swatches: {
       light: [
-        "oklch(97.7% 0.004 92)",
-        "oklch(95.3% 0.005 86)",
-        "oklch(99.6% 0.001 92)",
+        "oklch(97.4% 0.005 88)",
+        "oklch(94.9% 0.006 84)",
+        "oklch(99.4% 0.002 90)",
         "oklch(21.5% 0.008 72)",
-        "oklch(47.5% 0.095 235)",
+        "oklch(53.5% 0.115 44)",
       ],
       dark: [
-        "oklch(19.5% 0.005 70)",
-        "oklch(16.8% 0.005 68)",
-        "oklch(23.2% 0.006 72)",
-        "oklch(92.5% 0.006 84)",
-        "oklch(73% 0.09 230)",
+        "oklch(26.8% 0.007 72)",
+        "oklch(23.5% 0.006 70)",
+        "oklch(30.8% 0.008 74)",
+        "oklch(91% 0.007 84)",
+        "oklch(74.5% 0.105 52)",
       ],
     },
   },
   {
-    id: "pi",
+    id: "slate",
     tone: "cool",
     swatches: {
       light: [
-        "oklch(97.85% 0 0)",
-        "oklch(95.71% 0 0)",
-        "oklch(99.8% 0 0)",
-        "oklch(20.1% 0 0)",
-        "oklch(44.62% 0.0663 231.49)",
+        "oklch(95.6% 0.012 245)",
+        "oklch(92.4% 0.016 245)",
+        "oklch(98.6% 0.005 245)",
+        "oklch(22% 0.016 250)",
+        "oklch(49% 0.125 248)",
       ],
       dark: [
-        "oklch(19.8% 0.006 245)",
-        "oklch(16.8% 0.006 245)",
-        "oklch(23.5% 0.008 245)",
-        "oklch(92.5% 0.004 245)",
-        "oklch(74.2% 0.077 231.49)",
+        "oklch(26.8% 0.022 250)",
+        "oklch(23.2% 0.02 250)",
+        "oklch(31.2% 0.024 250)",
+        "oklch(91.5% 0.01 245)",
+        "oklch(74.5% 0.115 242)",
       ],
     },
   },
@@ -60,18 +60,18 @@ export const THEME_PRESETS: readonly ThemePresetMeta[] = [
     tone: "neutral",
     swatches: {
       light: [
-        "oklch(97.85% 0 0)",
-        "oklch(95.71% 0 0)",
+        "oklch(97.2% 0 0)",
+        "oklch(94.2% 0 0)",
         "oklch(100% 0 0)",
-        "oklch(17.76% 0 0)",
-        "oklch(28.26% 0 0)",
+        "oklch(18% 0 0)",
+        "oklch(22% 0 0)",
       ],
       dark: [
-        "oklch(18.5% 0 0)",
-        "oklch(15.5% 0 0)",
-        "oklch(22.2% 0 0)",
-        "oklch(93% 0 0)",
-        "oklch(84% 0 0)",
+        "oklch(26.5% 0 0)",
+        "oklch(23% 0 0)",
+        "oklch(30.8% 0 0)",
+        "oklch(92% 0 0)",
+        "oklch(87% 0 0)",
       ],
     },
   },
@@ -80,18 +80,18 @@ export const THEME_PRESETS: readonly ThemePresetMeta[] = [
     tone: "cool",
     swatches: {
       light: [
-        "oklch(97.85% 0.0023 158.68)",
-        "oklch(95.71% 0.0056 158.68)",
-        "oklch(99.6% 0.001 160)",
-        "oklch(21% 0.01 165)",
-        "oklch(44.62% 0.075 158.68)",
+        "oklch(95.6% 0.013 155)",
+        "oklch(92.4% 0.018 155)",
+        "oklch(98.5% 0.006 155)",
+        "oklch(22% 0.016 162)",
+        "oklch(48% 0.105 160)",
       ],
       dark: [
-        "oklch(19.6% 0.008 168)",
-        "oklch(16.8% 0.008 168)",
-        "oklch(23.4% 0.01 168)",
-        "oklch(92.5% 0.006 165)",
-        "oklch(74.2% 0.095 158.68)",
+        "oklch(26.8% 0.022 166)",
+        "oklch(23.2% 0.02 166)",
+        "oklch(31.2% 0.024 166)",
+        "oklch(91.2% 0.012 162)",
+        "oklch(75.5% 0.115 160)",
       ],
     },
   },
@@ -107,7 +107,7 @@ export function parseThemePreference(raw: string | null | undefined): ThemePrefe
 }
 
 export function parseThemePreset(raw: string | null | undefined): ThemePreset {
-  if (raw === "paper" || raw === "pi" || raw === "graphite" || raw === "lagoon") return raw;
+  if (raw === "paper" || raw === "slate" || raw === "graphite" || raw === "lagoon") return raw;
   return DEFAULT_THEME_PRESET;
 }
 

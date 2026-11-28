@@ -1140,7 +1140,7 @@
   padding: 3px 5px;
   border-radius: 8px;
   border: var(--ev-hairline) solid var(--ev-border);
-  background: var(--ev-sidebar);
+  background: var(--ev-segment-track);
 }
 
 .ev-stepper-val {
@@ -1168,13 +1168,14 @@
 
 .ev-mode-card {
   position: relative;
-  height: 76px;
-  padding: 10px 12px;
+  height: 68px;
+  padding: 11px 13px;
   border-radius: 10px;
   border: 1.5px solid var(--ev-border);
+  background-clip: padding-box;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: flex-start;
   text-align: left;
   font: inherit;
@@ -1196,52 +1197,32 @@
 }
 
 .ev-mode-card-light {
-  background: oklch(98% 0.003 92);
-  color: oklch(22% 0.008 72);
+  background-color: var(--ev-preview-light-bg);
+  color: var(--ev-preview-light-fg);
 }
 
 .ev-mode-card-dark {
-  background: oklch(19.5% 0.005 70);
-  color: oklch(93% 0.006 84);
+  background-color: var(--ev-preview-dark-bg);
+  color: var(--ev-preview-dark-fg);
 }
 
 .ev-mode-card-system {
-  padding: 0;
-  background: transparent;
-}
-
-.ev-mode-half {
-  position: absolute;
-  inset: 0;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.ev-mode-half-light {
-  background: oklch(98% 0.003 92);
-  color: oklch(22% 0.008 72);
-  clip-path: polygon(0 0, 100% 0, 0 100%);
-}
-
-.ev-mode-half-dark {
-  background: oklch(19.5% 0.005 70);
-  color: oklch(93% 0.006 84);
-  clip-path: polygon(100% 0, 100% 100%, 0 100%);
-  align-items: flex-end;
-}
-
-.ev-mode-half-dark .ev-mode-mini-bars {
-  align-items: flex-end;
+  background-color: var(--ev-preview-dark-bg);
+  background-image: linear-gradient(
+    to bottom right,
+    var(--ev-preview-light-bg) calc(50% - 0.5px),
+    var(--ev-preview-dark-bg) calc(50% + 0.5px)
+  );
+  background-origin: border-box;
+  background-repeat: no-repeat;
+  color: var(--ev-preview-light-fg);
 }
 
 .ev-mode-mini-bars {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  width: 58%;
+  width: 50%;
 }
 
 .ev-mode-mini-bar {
@@ -1256,12 +1237,6 @@
 .ev-mode-mini-bar.short {
   width: 55%;
   opacity: 0.28;
-}
-
-.ev-mode-card-label {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  line-height: 1.2;
 }
 
 .ev-preset-card-grid {
@@ -1325,7 +1300,7 @@
 
 .ev-preset-swatch {
   border-radius: 4px;
-  box-shadow: inset 0 0 0 1px rgb(128 128 128 / 0.18);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 16%, transparent);
 }
 
 .ev-card-check {
@@ -1347,7 +1322,8 @@
   gap: 8px;
   padding: 13px 15px;
   border-radius: 9px;
-  background: var(--ev-sidebar);
+  border: var(--ev-hairline) solid var(--ev-border);
+  background: var(--ev-bg);
 }
 
 .ev-typography-preview-prose {

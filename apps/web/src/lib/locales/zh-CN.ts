@@ -416,7 +416,7 @@ export const ZH_CN = {
   "general.theme": "明暗模式",
   "general.preset": "主题色盘",
   "general.preset.paper": "Paper",
-  "general.preset.pi": "Pi · Slate",
+  "general.preset.slate": "Slate",
   "general.preset.graphite": "Graphite",
   "general.preset.lagoon": "Lagoon",
   "general.tone.warm": "暖调",

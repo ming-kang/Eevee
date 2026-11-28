@@ -417,7 +417,7 @@ export const EN: Readonly<Record<LocaleKey, string>> = {
   "general.theme": "Color mode",
   "general.preset": "Theme palette",
   "general.preset.paper": "Paper",
-  "general.preset.pi": "Pi · Slate",
+  "general.preset.slate": "Slate",
   "general.preset.graphite": "Graphite",
   "general.preset.lagoon": "Lagoon",
   "general.tone.warm": "Warm",
