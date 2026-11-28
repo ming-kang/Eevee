@@ -670,3 +670,24 @@ test("accumulateUsage and addUsage aggregate Usage and JsonRepresentation<Usage>
     await harness.close(BACKGROUND_CONTEXT);
   }
 });
+
+test("addUsage accumulates imageOutput across successive records", () => {
+  const totals: Record<string, JsonRepresentation<Usage>> = {};
+  accumulateUsage(totals, "mock/model", makeUsage(10, 5, { imageOutput: 3 }));
+  accumulateUsage(totals, "mock/model", makeUsage(20, 10, { imageOutput: 4 }));
+  assert.equal(totals["mock/model"]?.imageOutput, 7);
+
+  accumulateUsage(totals, "mock/model", makeUsage(5, 5));
+  assert.equal(totals["mock/model"]?.imageOutput, 7);
+
+  const direct: JsonRepresentation<Usage> = {
+    input: 1,
+    output: 1,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 2,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
+  addUsage(direct, makeUsage(1, 1, { imageOutput: 2 }));
+  assert.equal(direct.imageOutput, 2);
+});

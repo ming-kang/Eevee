@@ -79,6 +79,9 @@ export function addUsage(
   if (usage.reasoning !== undefined) {
     total.reasoning = (total.reasoning ?? 0) + usage.reasoning;
   }
+  if (usage.imageOutput !== undefined) {
+    total.imageOutput = (total.imageOutput ?? 0) + usage.imageOutput;
+  }
   total.cost.input += usage.cost.input;
   total.cost.output += usage.cost.output;
   total.cost.cacheRead += usage.cost.cacheRead;
