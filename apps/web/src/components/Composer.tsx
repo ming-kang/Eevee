@@ -4,7 +4,15 @@ import {
   SendIcon,
   StopIcon,
 } from "@earendil-works/elanor-icons-react";
-import { Button, IconButton, Meter, SegmentedControl, Stack } from "@earendil-works/elanor-react";
+import {
+  Button,
+  type ComposerActions,
+  type ComposerChipDeletion,
+  Composer as ElanorComposer,
+  Meter,
+  SegmentedControl,
+  Stack,
+} from "@earendil-works/elanor-react";
 import {
   type BoardViewPayload,
   type ConversationRef,
@@ -13,15 +21,14 @@ import {
   type ModelChoice,
   type WhenBusy,
 } from "@eevee/protocol";
-import {
-  type FormEvent,
-  type KeyboardEvent,
-  type SyntheticEvent,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toProtocolAttachments } from "../lib/attachments.ts";
+import {
+  isMessageEmpty,
+  type MessageChip,
+  type MessageValue,
+  messageText,
+} from "../lib/composer-value.ts";
 import { formatBytes, formatTokens } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
 import { findModelInfo } from "../lib/model-choice.ts";
@@ -30,11 +37,14 @@ import type { ContextUsage } from "../lib/transcript.ts";
 import { updateGlobalRouterModel, useEngineSettingsAndModels } from "../lib/useEngineSettings.ts";
 import { AttachmentLightbox, type LightboxImage } from "./AttachmentLightbox.tsx";
 import { AttachmentPills } from "./AttachmentPills.tsx";
-import { ComposerAutocompleteMenu } from "./composer/ComposerAutocompleteMenu.tsx";
-import { useComposerAutocomplete } from "./composer/useComposerAutocomplete.ts";
+import { ComposerSuggestions } from "./composer/ComposerSuggestions.tsx";
+import { MessagePrompt } from "./composer/MessagePrompt.tsx";
+import { renderMessageChip } from "./composer/messageChips.tsx";
 import { useComposerDraft } from "./composer/useComposerDraft.ts";
 import { EvTooltip } from "./EvTooltip.tsx";
 import { ModelChoiceMenu } from "./ModelChoiceMenu.tsx";
+
+const CHIP_DELETION: ComposerChipDeletion = "revert";
 
 export type ComposerProps = {
   readonly draftKey: string;
@@ -54,6 +64,10 @@ export type ComposerProps = {
   readonly onInterrupt: () => Promise<void>;
   readonly onRetry: () => Promise<void>;
 };
+
+function hasModifier(event: Event | undefined): boolean {
+  return event instanceof KeyboardEvent && (event.metaKey || event.ctrlKey);
+}
 
 export function Composer({
   draftKey,
@@ -78,98 +92,69 @@ export function Composer({
   } = useEngineSettingsAndModels(isRouterComposer);
 
   const draft = useComposerDraft(draftKey, disabled);
+  const actionsRef = useRef<ComposerActions<MessageChip> | null>(null);
   const [whenBusy, setWhenBusy] = useState<WhenBusy>("followUp");
   const [submitting, setSubmitting] = useState(false);
   const [switchingModel, setSwitchingModel] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
-  const [cursorOffset, setCursorOffset] = useState(() => draft.text.length);
   const [lightboxImage, setLightboxImage] = useState<LightboxImage | undefined>(undefined);
 
-  const formRef = useRef<HTMLFormElement | null>(null);
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [bodyHeight, setBodyHeight] = useState<number | undefined>(undefined);
-
-  useEffect(() => {
-    const el = bodyRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver((entries) => {
-      const h = entries[0]?.contentRect.height;
-      if (typeof h === "number" && h > 0) setBodyHeight(Math.ceil(h));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const autocomplete = useComposerAutocomplete({
-    projectId,
-    board,
-    text: draft.text,
-    cursorOffset,
-    disabled,
-    formRef,
-    textareaRef,
-    onReplaceText: (nextText, nextCursor) => {
-      draft.updateText(nextText);
-      setCursorOffset(nextCursor);
-    },
-  });
-
-  const resetAutocompleteDismissed = autocomplete.resetDismissed;
-  const draftTextRef = draft.textRef;
   useEffect(() => {
     void draftKey;
-    setCursorOffset(draftTextRef.current.length);
-    resetAutocompleteDismissed();
     setError(undefined);
-  }, [draftKey, draftTextRef, resetAutocompleteDismissed]);
+  }, [draftKey]);
 
-  useEffect(() => {
-    void draft.text;
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, [draft.text]);
+  const describeChip = useCallback(
+    (chip: MessageChip) => {
+      switch (chip.kind) {
+        case "file":
+          return `${t("composer.chip.file")}, ${chip.ref}`;
+        case "worker":
+          return t("composer.chip.worker");
+        case "ticket":
+          return t("composer.chip.ticket");
+        case "skill":
+          return t("composer.chip.skill");
+      }
+    },
+    [t],
+  );
 
-  const syncCursor = (event: SyntheticEvent<HTMLTextAreaElement>) => {
-    const pos = event.currentTarget.selectionStart;
-    if (typeof pos === "number") setCursorOffset(pos);
-  };
+  const chipRemovedMessage = useCallback(
+    (chip: MessageChip) => t("composer.chip.removed", { label: chip.label }),
+    [t],
+  );
 
-  const submit = async (overrideMode?: WhenBusy) => {
-    const trimmed = draft.text.trim();
+  const chipSelectedMessage = useCallback(
+    (chip: MessageChip, key: "Backspace" | "Delete") =>
+      t("composer.chip.selected", { label: chip.label, description: describeChip(chip), key }),
+    [t, describeChip],
+  );
+
+  const submit = async (value: MessageValue, event: Event | undefined) => {
+    const text = messageText(value).trim();
     const pendingAttachments = draft.attachmentsRef.current;
-    if ((trimmed.length === 0 && pendingAttachments.length === 0) || submitting || disabled) return;
-    const submittedText = draft.text;
+    if ((text.length === 0 && pendingAttachments.length === 0) || submitting || disabled) return;
+    const mode: WhenBusy =
+      busy && hasModifier(event) ? (whenBusy === "steer" ? "followUp" : "steer") : whenBusy;
     const submittedDraftKey = draftKey;
-    const submittedAttachments = pendingAttachments;
 
     setSubmitting(true);
     setError(undefined);
-    draft.updateText("");
+    actionsRef.current?.clearHistory();
+    draft.updateValue([]);
     draft.updateAttachments([]);
-    setCursorOffset(0);
-    autocomplete.resetDismissed();
 
     try {
       await onSend(
-        trimmed,
-        overrideMode ?? whenBusy,
-        submittedAttachments.length > 0 ? toProtocolAttachments(submittedAttachments) : undefined,
+        text,
+        mode,
+        pendingAttachments.length > 0 ? toProtocolAttachments(pendingAttachments) : undefined,
       );
+      if (value.length > 0) draft.recordSent(submittedDraftKey, value);
     } catch (err) {
-      const outcome = draft.restoreSubmitted(
-        submittedDraftKey,
-        submittedText,
-        submittedAttachments,
-      );
-      if (outcome.restoredCurrent) {
+      if (draft.restoreSubmitted(submittedDraftKey, value, pendingAttachments)) {
         setError(err instanceof Error ? err.message : String(err));
-        if (outcome.cursorToEnd !== undefined) {
-          setCursorOffset(outcome.cursorToEnd);
-        }
       }
     } finally {
       if (draft.mountedRef.current) {
@@ -178,23 +163,11 @@ export function Composer({
     }
   };
 
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    void submit();
-  };
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.nativeEvent.isComposing) return;
-    if (autocomplete.handleKeyDown(event)) return;
-
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      if (busy && (event.metaKey || event.ctrlKey)) {
-        void submit(whenBusy === "steer" ? "followUp" : "steer");
-      } else {
-        void submit();
-      }
-    }
+  const expandAttachmentToText = (id: string) => {
+    const target = draft.attachmentsRef.current.find((item) => item.id === id);
+    if (target?.pastedText === undefined) return;
+    actionsRef.current?.insert(target.pastedText, { at: "end", startLine: true });
+    draft.updateAttachments(draft.attachmentsRef.current.filter((item) => item.id !== id));
   };
 
   const runAction = async (fn: () => Promise<void>) => {
@@ -227,7 +200,7 @@ export function Composer({
       : t("composer.placeholder.worker", { ref: activeRef });
 
   const canSend =
-    (draft.text.trim().length > 0 || draft.attachments.length > 0) && !submitting && !disabled;
+    (!isMessageEmpty(draft.value) || draft.attachments.length > 0) && !submitting && !disabled;
 
   const activeModelInfo = isRouterComposer
     ? findModelInfo(availableModels, globalSettings?.models?.router)
@@ -246,67 +219,59 @@ export function Composer({
 
   return (
     <>
-      <form
-        ref={formRef}
-        className={`ev-composer-form${draft.dragging ? " dragging" : ""}`}
-        onSubmit={handleSubmit}
-        onDragEnter={draft.handleDragEnter}
-        onDragOver={draft.handleDragOver}
-        onDragLeave={draft.handleDragLeave}
-        onDrop={draft.handleDrop}
+      <ElanorComposer.Root
+        value={draft.value}
+        onValueChange={draft.updateValue}
+        historyKey={draftKey}
+        toText={messageText}
+        renderChip={renderMessageChip}
+        chipDeletion={CHIP_DELETION}
+        getChipDescription={describeChip}
+        getChipRemovedMessage={chipRemovedMessage}
+        getChipSelectedMessage={chipSelectedMessage}
+        onSubmit={(value, details) => void submit(value, details.event)}
+        onAttach={(files) => void draft.appendFiles(files)}
+        getPastedValue={draft.pastedValue}
+        disabled={disabled}
+        actionsRef={actionsRef}
       >
-        {draft.dragging && <div className="ev-composer-drop-overlay">{t("composer.dropHint")}</div>}
+        <ElanorComposer.Panel className="ev-composer-form">
+          {(busy || error) && (
+            <ElanorComposer.Header className="ev-composer-header">
+              {busy && (
+                <div className="ev-composer-busy-banner">
+                  <span className="ev-dot" data-stage="working" />
+                  <span className="ev-truncate ev-composer-busy-text">
+                    {t("composer.busyBanner")}
+                  </span>
+                  <SegmentedControl.Root
+                    density="compact"
+                    className="ev-composer-busy-seg"
+                    value={[whenBusy]}
+                    onValueChange={(values) => {
+                      const v = values[0];
+                      if (v === "followUp" || v === "steer") setWhenBusy(v);
+                    }}
+                  >
+                    <EvTooltip content={t("composer.mode.followUpHint")} side="top">
+                      <SegmentedControl.Item value="followUp">
+                        {t("composer.mode.followUp")}
+                      </SegmentedControl.Item>
+                    </EvTooltip>
+                    <EvTooltip content={t("composer.mode.steerHint")} side="top">
+                      <SegmentedControl.Item value="steer">
+                        {t("composer.mode.steer")}
+                      </SegmentedControl.Item>
+                    </EvTooltip>
+                  </SegmentedControl.Root>
+                </div>
+              )}
+              {error && <div className="ev-error-banner">{error}</div>}
+            </ElanorComposer.Header>
+          )}
 
-        <ComposerAutocompleteMenu
-          skillPopoverOpen={autocomplete.skillPopoverOpen}
-          mentionPopoverOpen={autocomplete.mentionPopoverOpen}
-          skills={autocomplete.skills}
-          matchingSkills={autocomplete.matchingSkills}
-          loadingSkills={autocomplete.loadingSkills}
-          skillsError={autocomplete.skillsError}
-          mentionOptions={autocomplete.mentionOptions}
-          loadingMentions={autocomplete.loadingMentions}
-          safeIndex={autocomplete.safeIndex}
-          optionRefs={autocomplete.optionRefs}
-          onHoverIndex={autocomplete.setActiveIndex}
-          onSelectSkill={autocomplete.selectSkill}
-          onSelectMention={autocomplete.selectMention}
-        />
-
-        {busy && (
-          <div className="ev-composer-busy-banner">
-            <span className="ev-dot" data-stage="working" />
-            <span className="ev-truncate ev-composer-busy-text">{t("composer.busyBanner")}</span>
-            <SegmentedControl.Root
-              density="compact"
-              className="ev-composer-busy-seg"
-              value={[whenBusy]}
-              onValueChange={(values) => {
-                const v = values[0];
-                if (v === "followUp" || v === "steer") setWhenBusy(v);
-              }}
-            >
-              <EvTooltip content={t("composer.mode.followUpHint")} side="top">
-                <SegmentedControl.Item value="followUp">
-                  {t("composer.mode.followUp")}
-                </SegmentedControl.Item>
-              </EvTooltip>
-              <EvTooltip content={t("composer.mode.steerHint")} side="top">
-                <SegmentedControl.Item value="steer">
-                  {t("composer.mode.steer")}
-                </SegmentedControl.Item>
-              </EvTooltip>
-            </SegmentedControl.Root>
-          </div>
-        )}
-
-        {error && <div className="ev-error-banner">{error}</div>}
-
-        <div
-          className="ev-composer-body-shell"
-          style={bodyHeight !== undefined ? { minHeight: bodyHeight } : undefined}
-        >
-          <div ref={bodyRef} className="ev-composer-body-inner">
+          <ElanorComposer.InputGroup className="ev-composer-frame">
+            <div className="ev-composer-drop-overlay">{t("composer.dropHint")}</div>
             <AttachmentPills
               attachments={draft.attachments}
               onPreview={(att) =>
@@ -318,139 +283,99 @@ export function Composer({
                     })
                   : undefined
               }
-              onExpandToText={draft.expandAttachmentToText}
+              onExpandToText={expandAttachmentToText}
               onRemove={(id) =>
                 draft.updateAttachments(draft.attachments.filter((item) => item.id !== id))
               }
             />
 
-            <textarea
-              ref={textareaRef}
-              className="ev-composer-textarea"
-              rows={2}
-              value={draft.text}
-              disabled={disabled}
-              placeholder={placeholder}
-              onChange={(event) => {
-                const nextValue = event.target.value;
-                const pos = event.target.selectionStart;
-                draft.updateText(nextValue);
-                if (typeof pos === "number") setCursorOffset(pos);
-              }}
-              onPaste={draft.handlePaste}
-              onClick={syncCursor}
-              onKeyUp={syncCursor}
-              onSelect={syncCursor}
-              onFocus={syncCursor}
-              onKeyDown={handleKeyDown}
-            />
-          </div>
-        </div>
+            <MessagePrompt placeholder={placeholder} sentMessages={draft.sentHistory} />
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          hidden
-          onChange={(event) => {
-            if (event.target.files && event.target.files.length > 0) {
-              void draft.appendFiles(event.target.files);
-            }
-            event.target.value = "";
-          }}
-        />
+            <ElanorComposer.Controls className="ev-composer-bar">
+              <Stack direction="row" gap="xSmall" align="center" className="ev-composer-bar-group">
+                <EvTooltip content={t("composer.attach")} side="top">
+                  <ElanorComposer.Attach
+                    aria-label={t("composer.attach")}
+                    disabled={draft.attachments.length >= MAX_MESSAGE_ATTACHMENTS}
+                  >
+                    <AttachFileIcon width={16} height={16} />
+                  </ElanorComposer.Attach>
+                </EvTooltip>
 
-        <div className="ev-composer-bar">
-          <Stack direction="row" gap="xSmall" align="center" className="ev-composer-bar-group">
-            <EvTooltip content={t("composer.attach")} side="top">
-              <IconButton
-                type="button"
-                aria-label={t("composer.attach")}
-                disabled={disabled || draft.attachments.length >= MAX_MESSAGE_ATTACHMENTS}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <AttachFileIcon width={16} height={16} />
-              </IconButton>
-            </EvTooltip>
+                {isRouterComposer && (
+                  <ModelChoiceMenu
+                    value={globalSettings?.models?.router}
+                    models={availableModels}
+                    placeholder={modelLabel ?? t("modelMenu.choose")}
+                    placement="up"
+                    variant="inline"
+                    disabled={disabled}
+                    busy={switchingModel}
+                    ariaLabel={t("config.routerModel")}
+                    onOpen={() => void refreshModels(false)}
+                    onChange={(next) => void handleRouterModelChange(next)}
+                  />
+                )}
+              </Stack>
 
-            {isRouterComposer && (
-              <ModelChoiceMenu
-                value={globalSettings?.models?.router}
-                models={availableModels}
-                placeholder={modelLabel ?? t("modelMenu.choose")}
-                placement="up"
-                variant="inline"
-                disabled={disabled}
-                busy={switchingModel}
-                ariaLabel={t("config.routerModel")}
-                onOpen={() => void refreshModels(false)}
-                onChange={(next) => void handleRouterModelChange(next)}
-              />
-            )}
-          </Stack>
-
-          <Stack direction="row" gap="xSmall" align="center" className="ev-push-end">
-            {contextUsage && (
-              <EvTooltip
-                content={t("composer.ctxTooltip", {
-                  used: formatTokens(contextUsage.used),
-                  cached: formatTokens(contextUsage.cached),
-                })}
-                side="top"
-              >
-                <span className="ev-mono ev-num ev-composer-meta">
-                  <span>CTX {formatTokens(contextUsage.used)}</span>
-                  {contextWindow !== undefined && contextWindow > 0 && (
-                    <Meter.Root
-                      className="ev-composer-meter"
-                      value={Math.min(contextUsage.used, contextWindow)}
-                      min={0}
-                      max={contextWindow}
-                      semantic={ctxSemantic}
-                      aria-label={`Context ${ctxPct ?? 0}%`}
+              <Stack direction="row" gap="xSmall" align="center" className="ev-push-end">
+                {contextUsage && (
+                  <EvTooltip
+                    content={t("composer.ctxTooltip", {
+                      used: formatTokens(contextUsage.used),
+                      cached: formatTokens(contextUsage.cached),
+                    })}
+                    side="top"
+                  >
+                    <span className="ev-mono ev-num ev-composer-meta">
+                      <span>CTX {formatTokens(contextUsage.used)}</span>
+                      {contextWindow !== undefined && contextWindow > 0 && (
+                        <Meter.Root
+                          className="ev-composer-meter"
+                          value={Math.min(contextUsage.used, contextWindow)}
+                          min={0}
+                          max={contextWindow}
+                          semantic={ctxSemantic}
+                          aria-label={`Context ${ctxPct ?? 0}%`}
+                        >
+                          <Meter.Track>
+                            <Meter.Indicator />
+                          </Meter.Track>
+                        </Meter.Root>
+                      )}
+                    </span>
+                  </EvTooltip>
+                )}
+                {hasRunFailure && !busy && (
+                  <Button
+                    type="button"
+                    hierarchy="secondary"
+                    density="compact"
+                    iconStart={<RefreshIcon width={15} height={15} />}
+                    onClick={() => void runAction(onRetry)}
+                  >
+                    {t("common.retry")}
+                  </Button>
+                )}
+                {busy && (
+                  <EvTooltip content={t("composer.interruptTitle")} side="top">
+                    <ElanorComposer.Stop
+                      aria-label={t("composer.interrupt")}
+                      onClick={() => void runAction(onInterrupt)}
                     >
-                      <Meter.Track>
-                        <Meter.Indicator />
-                      </Meter.Track>
-                    </Meter.Root>
-                  )}
-                </span>
-              </EvTooltip>
-            )}
-            {hasRunFailure && !busy && (
-              <Button
-                type="button"
-                hierarchy="secondary"
-                density="compact"
-                iconStart={<RefreshIcon width={15} height={15} />}
-                onClick={() => void runAction(onRetry)}
-              >
-                {t("common.retry")}
-              </Button>
-            )}
-            {busy && (
-              <EvTooltip content={t("composer.interruptTitle")} side="top">
-                <button
-                  type="button"
-                  className="ev-round-btn stop"
-                  aria-label={t("composer.interrupt")}
-                  onClick={() => void runAction(onInterrupt)}
-                >
-                  <StopIcon width={15} height={15} />
-                </button>
-              </EvTooltip>
-            )}
-            <button
-              type="submit"
-              className="ev-round-btn send"
-              aria-label={t("composer.send")}
-              disabled={!canSend}
-            >
-              <SendIcon width={15} height={15} />
-            </button>
-          </Stack>
-        </div>
-      </form>
+                      <StopIcon />
+                    </ElanorComposer.Stop>
+                  </EvTooltip>
+                )}
+                <ElanorComposer.Submit aria-label={t("composer.send")} disabled={!canSend}>
+                  <SendIcon />
+                </ElanorComposer.Submit>
+              </Stack>
+            </ElanorComposer.Controls>
+          </ElanorComposer.InputGroup>
+        </ElanorComposer.Panel>
+        <ComposerSuggestions projectId={projectId} board={board} />
+      </ElanorComposer.Root>
 
       <AttachmentLightbox image={lightboxImage} onClose={() => setLightboxImage(undefined)} />
     </>

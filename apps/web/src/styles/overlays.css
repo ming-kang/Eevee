@@ -646,48 +646,34 @@
   color: var(--ev-fg-subtle);
 }
 
-.ev-skill-autocomplete {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 8px);
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
+.ev-suggest-popup {
+  width: min(460px, calc(100vw - 32px));
+  padding: 6px;
+  border: var(--ev-hairline) solid var(--ev-border);
   border-radius: 12px;
   background: var(--ev-surface);
   box-shadow: var(--ev-shadow-prominent);
-  overflow: hidden;
-  animation: ev-rise var(--ev-dur-fast) var(--ev-ease-out);
 }
 
-.ev-skill-ac-list {
-  display: flex;
-  flex-direction: column;
+.ev-suggest-list {
   gap: 2px;
   max-height: min(280px, calc(100dvh - 220px));
   overflow-y: auto;
-  padding: 6px;
 }
 
-.ev-skill-ac-item {
-  width: 100%;
-  display: flex;
+.ev-suggest-item {
   flex-direction: column;
+  align-items: stretch;
   gap: 3px;
   min-height: 36px;
   padding: 8px 10px;
-  border: 0;
   border-radius: 8px;
-  background: transparent;
   color: var(--ev-fg);
-  text-align: left;
   cursor: pointer;
   transition: background-color var(--ev-dur-fast) var(--ev-ease-out);
 }
 
-.ev-skill-ac-item:hover,
-.ev-skill-ac-item[aria-selected="true"] {
+.ev-suggest-item[data-highlighted] {
   background: var(--ev-selected);
 }
 

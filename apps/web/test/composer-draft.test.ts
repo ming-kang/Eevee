@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  appendSentHistory,
   type DraftStorage,
   draftStorageKey,
   legacyDraftStorageKey,
   parseDraftValue,
   readDraft,
+  readSentHistory,
   restoreFailedDraft,
   restoreFailedDraftToStorage,
+  SENT_HISTORY_LIMIT,
+  sentHistoryStorageKey,
   writeDraft,
 } from "../src/lib/composer-draft.ts";
 import type { MessageChip } from "../src/lib/composer-value.ts";
@@ -81,4 +85,24 @@ test("restoreFailedDraftToStorage writes only when the target draft slot is empt
 
   const legacyStorage = memoryStorage({ [legacyDraftStorageKey("p1:router")]: "legacy draft" });
   assert.equal(restoreFailedDraftToStorage(legacyStorage, "p1:router", ["failed msg"]), false);
+});
+
+test("sent history keeps messages with chips per conversation, skips repeats, and stays bounded", () => {
+  const storage = memoryStorage();
+  appendSentHistory(storage, "p1:router", ["see ", chip]);
+  appendSentHistory(storage, "p1:router", ["see ", { ...chip, id: "file-2" }]);
+  appendSentHistory(storage, "p1:router", ["next"]);
+  appendSentHistory(storage, "p1:worker:w1", ["other"]);
+  assert.deepEqual(readSentHistory(storage, "p1:router"), [["see ", chip], ["next"]]);
+  assert.deepEqual(readSentHistory(storage, "p1:worker:w1"), [["other"]]);
+
+  for (let index = 0; index < SENT_HISTORY_LIMIT + 5; index += 1) {
+    appendSentHistory(storage, "p1:router", [`message ${index}`]);
+  }
+  const history = readSentHistory(storage, "p1:router");
+  assert.equal(history.length, SENT_HISTORY_LIMIT);
+  assert.deepEqual(history.at(-1), [`message ${SENT_HISTORY_LIMIT + 4}`]);
+
+  storage.setItem(sentHistoryStorageKey("p1:broken"), "not json");
+  assert.deepEqual(readSentHistory(storage, "p1:broken"), []);
 });

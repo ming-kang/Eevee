@@ -1,4 +1,5 @@
-import { CloseIcon, DescriptionIcon, ExpandContentIcon } from "@earendil-works/elanor-icons-react";
+import { DescriptionIcon, ExpandContentIcon } from "@earendil-works/elanor-icons-react";
+import { Chip, IconButton } from "@earendil-works/elanor-react";
 import type { DraftAttachment } from "../lib/attachments.ts";
 import { formatBytes } from "../lib/format.ts";
 import { useI18n } from "../lib/i18n.ts";
@@ -21,7 +22,7 @@ export function AttachmentPills({
   return (
     <div className="ev-attachment-pills">
       {attachments.map((item) => (
-        <div key={item.id} className="ev-attachment-pill">
+        <Chip.Root key={item.id} variant="outline" className="ev-attachment-chip">
           {item.previewUrl ? (
             <button
               type="button"
@@ -29,42 +30,38 @@ export function AttachmentPills({
               aria-label={t("composer.attachment.preview", { name: item.name })}
               onClick={() => onPreview?.(item)}
             >
-              <img className="ev-attachment-thumb" src={item.previewUrl} alt={item.name} />
-              <span className="ev-truncate ev-attachment-name">{item.name}</span>
-              <span className="ev-attachment-size ev-num">{formatBytes(item.size)}</span>
+              <img className="ev-attachment-thumb" src={item.previewUrl} alt="" />
+              <Chip.Label>{item.name}</Chip.Label>
             </button>
           ) : (
-            <div className="ev-attachment-file-meta">
-              <DescriptionIcon width={14} height={14} className="ev-attachment-icon" />
+            <>
+              <Chip.Icon>
+                <DescriptionIcon />
+              </Chip.Icon>
               <EvTooltip content={item.name} side="top">
-                <span className="ev-truncate ev-attachment-name">{item.name}</span>
+                <Chip.Label>{item.name}</Chip.Label>
               </EvTooltip>
-              <span className="ev-attachment-size ev-num">{formatBytes(item.size)}</span>
-            </div>
+            </>
           )}
+          <span className="ev-attachment-size ev-num">{formatBytes(item.size)}</span>
           {item.pastedText !== undefined && onExpandToText && (
             <EvTooltip content={t("composer.attachment.expandToText")} side="top">
-              <button
-                type="button"
+              <IconButton
                 className="ev-attachment-action"
                 aria-label={t("composer.attachment.expandToText")}
                 onClick={() => onExpandToText(item.id)}
               >
-                <ExpandContentIcon width={13} height={13} />
-              </button>
+                <ExpandContentIcon />
+              </IconButton>
             </EvTooltip>
           )}
           {onRemove && (
-            <button
-              type="button"
-              className="ev-attachment-remove"
+            <Chip.Remove
               aria-label={t("composer.attachment.remove", { name: item.name })}
               onClick={() => onRemove(item.id)}
-            >
-              <CloseIcon width={13} height={13} />
-            </button>
+            />
           )}
-        </div>
+        </Chip.Root>
       ))}
     </div>
   );

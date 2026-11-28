@@ -1,11 +1,4 @@
-import {
-  type ClipboardEvent,
-  type DragEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AttachmentValidationIssue,
   createPastedTextAttachment,
@@ -17,40 +10,51 @@ import {
   shouldConvertPasteToAttachment,
 } from "../../lib/attachments.ts";
 import {
+  appendSentHistory,
   readDraft,
+  readSentHistory,
   restoreFailedDraft,
   restoreFailedDraftToStorage,
   writeDraft,
 } from "../../lib/composer-draft.ts";
-import { messageText } from "../../lib/composer-value.ts";
+import type { MessageValue } from "../../lib/composer-value.ts";
 import { formatBytes } from "../../lib/format.ts";
 import { useI18n } from "../../lib/i18n.ts";
 import { showToast } from "../../lib/toasts.ts";
 
-function readStoredDraft(draftKey: string): string {
+function readStoredDraft(draftKey: string): MessageValue {
   try {
-    return messageText(readDraft(window.localStorage, draftKey));
+    return readDraft(window.localStorage, draftKey);
   } catch {
-    return "";
+    return [];
+  }
+}
+
+function readStoredHistory(draftKey: string): MessageValue[] {
+  try {
+    return readSentHistory(window.localStorage, draftKey);
+  } catch {
+    return [];
   }
 }
 
 export function useComposerDraft(draftKey: string, disabled: boolean) {
   const { t } = useI18n();
-  const [text, setText] = useState(() => readStoredDraft(draftKey));
+  const [value, setValue] = useState<MessageValue>(() => readStoredDraft(draftKey));
   const [attachments, setAttachmentsState] = useState<readonly DraftAttachment[]>(() =>
     getDraftAttachments(draftKey),
   );
-  const [dragging, setDragging] = useState(false);
+  const [sentHistory, setSentHistory] = useState<readonly MessageValue[]>(() =>
+    readStoredHistory(draftKey),
+  );
 
-  const textRef = useRef(text);
-  textRef.current = text;
+  const valueRef = useRef(value);
+  valueRef.current = value;
   const attachmentsRef = useRef(attachments);
   attachmentsRef.current = attachments;
   const draftKeyRef = useRef(draftKey);
   draftKeyRef.current = draftKey;
   const mountedRef = useRef(true);
-  const dragDepthRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -61,24 +65,22 @@ export function useComposerDraft(draftKey: string, disabled: boolean) {
 
   useEffect(() => {
     draftKeyRef.current = draftKey;
-    const nextDraft = readStoredDraft(draftKey);
+    const nextValue = readStoredDraft(draftKey);
     const nextAttachments = getDraftAttachments(draftKey);
-    textRef.current = nextDraft;
+    valueRef.current = nextValue;
     attachmentsRef.current = nextAttachments;
-    setText(nextDraft);
+    setValue(nextValue);
     setAttachmentsState(nextAttachments);
+    setSentHistory(readStoredHistory(draftKey));
   }, [draftKey]);
 
-  const updateText = useCallback(
-    (next: string) => {
-      textRef.current = next;
-      setText(next);
-      try {
-        writeDraft(window.localStorage, draftKey, next ? [next] : []);
-      } catch {}
-    },
-    [draftKey],
-  );
+  const updateValue = useCallback((next: MessageValue) => {
+    valueRef.current = next;
+    setValue(next);
+    try {
+      writeDraft(window.localStorage, draftKeyRef.current, next);
+    } catch {}
+  }, []);
 
   const updateAttachments = useCallback((next: readonly DraftAttachment[]) => {
     attachmentsRef.current = next;
@@ -108,7 +110,7 @@ export function useComposerDraft(draftKey: string, disabled: boolean) {
   );
 
   const appendFiles = useCallback(
-    async (files: FileList | readonly File[]) => {
+    async (files: readonly File[]) => {
       if (disabled || files.length === 0) return;
       const result = await readFilesAsDraftAttachments(files, attachmentsRef.current.length);
       if (!mountedRef.current) return;
@@ -122,130 +124,66 @@ export function useComposerDraft(draftKey: string, disabled: boolean) {
     [disabled, updateAttachments, reportAttachmentIssues],
   );
 
-  const handlePaste = useCallback(
-    (event: ClipboardEvent<HTMLTextAreaElement>) => {
-      const items = event.clipboardData?.items;
-      if (items) {
-        const pastedFiles: File[] = [];
-        for (const item of Array.from(items)) {
-          if (item.kind === "file") {
-            const file = item.getAsFile();
-            if (file) pastedFiles.push(file);
-          }
-        }
-        if (pastedFiles.length > 0) {
-          event.preventDefault();
-          void appendFiles(pastedFiles);
-          return;
-        }
-      }
-      if (disabled) return;
-      const plain = event.clipboardData?.getData("text/plain") ?? "";
-      if (!shouldConvertPasteToAttachment(plain)) return;
-      const { attachment, issue } = createPastedTextAttachment(plain, attachmentsRef.current);
+  const pastedValue = useCallback(
+    (text: string): MessageValue => {
+      if (!shouldConvertPasteToAttachment(text)) return [text];
+      const { attachment, issue } = createPastedTextAttachment(text, attachmentsRef.current);
       if (issue) {
         reportAttachmentIssues([issue]);
-        return;
+        return [text];
       }
-      if (!attachment) return;
-      event.preventDefault();
+      if (!attachment) return [text];
       updateAttachments([...attachmentsRef.current, attachment]);
       showToast(t("composer.attachment.pastedToFile", { name: attachment.name }));
+      return [];
     },
-    [appendFiles, disabled, reportAttachmentIssues, updateAttachments, t],
+    [reportAttachmentIssues, updateAttachments, t],
   );
 
-  const expandAttachmentToText = useCallback(
-    (id: string) => {
-      const target = attachmentsRef.current.find((a) => a.id === id);
-      if (!target || target.pastedText === undefined) return;
-      const current = textRef.current;
-      const sep = current.length > 0 && !current.endsWith("\n") ? "\n" : "";
-      updateText(`${current}${sep}${target.pastedText}`);
-      updateAttachments(attachmentsRef.current.filter((a) => a.id !== id));
-    },
-    [updateText, updateAttachments],
-  );
-
-  const handleDragEnter = useCallback((event: DragEvent<HTMLFormElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return;
-    event.preventDefault();
-    dragDepthRef.current += 1;
-    setDragging(true);
+  const recordSent = useCallback((sentDraftKey: string, sent: MessageValue) => {
+    try {
+      const next = appendSentHistory(window.localStorage, sentDraftKey, sent);
+      if (mountedRef.current && draftKeyRef.current === sentDraftKey) setSentHistory(next);
+    } catch {}
   }, []);
-
-  const handleDragOver = useCallback((event: DragEvent<HTMLFormElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-  }, []);
-
-  const handleDragLeave = useCallback((event: DragEvent<HTMLFormElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return;
-    event.preventDefault();
-    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-    if (dragDepthRef.current === 0) setDragging(false);
-  }, []);
-
-  const handleDrop = useCallback(
-    (event: DragEvent<HTMLFormElement>) => {
-      if (!event.dataTransfer.types.includes("Files")) return;
-      event.preventDefault();
-      dragDepthRef.current = 0;
-      setDragging(false);
-      if (event.dataTransfer.files.length > 0) {
-        void appendFiles(event.dataTransfer.files);
-      }
-    },
-    [appendFiles],
-  );
 
   const restoreSubmitted = useCallback(
     (
       submittedDraftKey: string,
-      submittedText: string,
+      submittedValue: MessageValue,
       submittedAttachments: readonly DraftAttachment[],
-    ): { readonly restoredCurrent: boolean; readonly cursorToEnd?: number } => {
+    ): boolean => {
       if (mountedRef.current && draftKeyRef.current === submittedDraftKey) {
-        const wasEmpty = textRef.current === "";
-        const restored = messageText(
-          restoreFailedDraft([submittedText], textRef.current ? [textRef.current] : []),
-        );
-        updateText(restored);
+        updateValue(restoreFailedDraft(submittedValue, valueRef.current));
         if (submittedAttachments.length > 0) {
           const restoredAtts = restoreFailedAttachments(submittedDraftKey, submittedAttachments);
           attachmentsRef.current = restoredAtts;
           setAttachmentsState(restoredAtts);
         }
-        return { restoredCurrent: true, ...(wasEmpty ? { cursorToEnd: restored.length } : {}) };
+        return true;
       }
       try {
-        restoreFailedDraftToStorage(window.localStorage, submittedDraftKey, [submittedText]);
+        restoreFailedDraftToStorage(window.localStorage, submittedDraftKey, submittedValue);
       } catch {}
       if (submittedAttachments.length > 0) {
         restoreFailedAttachments(submittedDraftKey, submittedAttachments);
       }
-      return { restoredCurrent: false };
+      return false;
     },
-    [updateText],
+    [updateValue],
   );
 
   return {
-    text,
-    textRef,
+    value,
     attachments,
     attachmentsRef,
-    dragging,
+    sentHistory,
     mountedRef,
-    updateText,
+    updateValue,
     updateAttachments,
     appendFiles,
-    expandAttachmentToText,
-    handlePaste,
-    handleDragEnter,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
+    pastedValue,
+    recordSent,
     restoreSubmitted,
   };
 }

@@ -1131,10 +1131,48 @@
 
 .ev-composer-form {
   position: relative;
-  display: flex;
-  flex-direction: column;
   gap: 8px;
   padding: 12px 12px 10px 14px;
+}
+
+.ev-composer-header {
+  gap: 8px;
+}
+
+.ev-composer-frame,
+.ev-composer-frame * {
+  --composer-border: 0px;
+  --composer-padding: 0px;
+  --composer-indent: 0px;
+  --composer-prompt-padding: 0px;
+}
+
+.ev-composer-frame {
+  gap: 6px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+}
+
+.ev-composer-frame:hover:not([data-disabled]),
+.ev-composer-frame:is(:active, [data-pressed]):not([data-disabled]) {
+  background: transparent;
+}
+
+.ev-composer-frame[data-drag-over] {
+  outline: 2px dashed var(--ev-accent);
+  outline-offset: 2px;
+}
+
+.ev-composer-prompt {
+  min-height: 46px;
+  color: var(--ev-fg);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.ev-composer-prompt[data-empty]:not([data-composing])::before {
+  color: var(--ev-fg-subtle);
 }
 
 .ev-composer-busy-banner {
@@ -1158,37 +1196,9 @@
   flex: none;
 }
 
-.ev-composer-body-shell {
-  transition: min-height var(--ev-dur-fast) var(--ev-ease-out);
-}
-
-.ev-composer-body-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .ev-composer-bar-group {
   flex-wrap: wrap;
   min-width: 0;
-}
-
-.ev-composer-textarea {
-  width: 100%;
-  min-height: 46px;
-  max-height: 220px;
-  resize: none;
-  border: 0;
-  background: transparent;
-  color: var(--ev-fg);
-  font-size: 1rem;
-  line-height: 1.55;
-  outline: none;
-  padding: 0;
-}
-
-.ev-composer-textarea::placeholder {
-  color: var(--ev-fg-subtle);
 }
 
 .ev-composer-bar {
@@ -1218,45 +1228,6 @@
   width: 100%;
   height: 4px;
   border-radius: 999px;
-}
-
-.ev-round-btn {
-  display: inline-grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  border: 0;
-  cursor: pointer;
-  flex: none;
-  transition:
-    background-color var(--ev-dur-fast) var(--ev-ease-out),
-    transform var(--ev-dur-fast) var(--ev-ease-out);
-}
-
-.ev-round-btn:active:not(:disabled) {
-  transform: scale(0.94);
-}
-
-.ev-round-btn.send {
-  background: var(--ev-fg);
-  color: var(--ev-bg);
-}
-
-.ev-round-btn.send:disabled {
-  background: var(--ev-surface-2);
-  color: var(--ev-fg-subtle);
-  cursor: default;
-}
-
-.ev-round-btn.stop {
-  border: var(--ev-hairline) solid var(--ev-border-strong);
-  background: var(--ev-surface);
-  color: var(--ev-fg);
-}
-
-.ev-round-btn.stop:hover {
-  background: var(--ev-hover);
 }
 
 .ev-qcard {
@@ -1462,16 +1433,11 @@
   min-width: 0;
 }
 
-.ev-composer-form.dragging {
-  outline: 2px dashed var(--ev-accent);
-  outline-offset: -2px;
-}
-
 .ev-composer-drop-overlay {
   position: absolute;
-  inset: 0;
+  inset: -2px;
   z-index: 25;
-  display: grid;
+  display: none;
   place-items: center;
   border-radius: inherit;
   background: color-mix(in oklab, var(--ev-surface) 88%, var(--ev-accent-soft));
@@ -1481,6 +1447,10 @@
   pointer-events: none;
 }
 
+.ev-composer-frame[data-drag-over] .ev-composer-drop-overlay {
+  display: grid;
+}
+
 .ev-attachment-pills {
   display: flex;
   flex-wrap: wrap;
@@ -1488,17 +1458,8 @@
   padding: 4px 2px 2px;
 }
 
-.ev-attachment-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.ev-attachment-chip {
   max-width: 260px;
-  padding: 4px 7px;
-  border-radius: 8px;
-  border: var(--ev-hairline) solid var(--ev-border);
-  background: var(--ev-sidebar);
-  font-size: 0.8125rem;
-  color: var(--ev-fg);
 }
 
 .ev-attachment-preview-btn {
@@ -1514,27 +1475,16 @@
 }
 
 .ev-attachment-thumb {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: 3px;
   flex: none;
-}
-
-.ev-attachment-file-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
 }
 
 .ev-attachment-icon {
   flex: none;
   color: var(--ev-fg-subtle);
-}
-
-.ev-attachment-name {
-  max-width: 140px;
 }
 
 .ev-attachment-size {
@@ -1543,24 +1493,29 @@
   color: var(--ev-fg-subtle);
 }
 
-.ev-attachment-action,
-.ev-attachment-remove {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  flex: none;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--ev-fg-subtle);
-  cursor: pointer;
+.ev-attachment-action {
+  block-size: var(--chip-remove-size);
+  inline-size: var(--chip-remove-size);
 }
 
-.ev-attachment-action:hover,
-.ev-attachment-remove:hover {
-  background: var(--ev-hover);
+.ev-attachment-chip [data-icon-button] {
+  color: var(--ev-fg-subtle);
+}
+
+.ev-attachment-chip [data-icon-button]:hover {
   color: var(--ev-fg);
+}
+
+.ev-attachment-chip [data-icon-button] > svg {
+  inline-size: 14px;
+  block-size: 14px;
+}
+
+.ev-attachment-action::before {
+  block-size: auto;
+  inline-size: auto;
+  inset: var(--chip-edge-width);
+  border-radius: calc(var(--semantic-dimension-radius-small) - var(--chip-edge-width));
 }
 
 .ev-user-images {
@@ -1600,17 +1555,11 @@
 }
 
 .ev-user-file-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  --chip-fill: var(--ev-surface);
   max-width: 100%;
   width: fit-content;
-  padding: 4px 9px;
-  border-radius: 7px;
-  border: var(--ev-hairline) solid var(--ev-border);
-  background: var(--ev-surface);
+  border: 0;
   color: var(--ev-fg);
-  font-size: 0.8125rem;
   cursor: pointer;
 }
 

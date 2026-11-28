@@ -1,5 +1,5 @@
 import { DescriptionIcon } from "@earendil-works/elanor-icons-react";
-import { Button } from "@earendil-works/elanor-react";
+import { Button, Chip } from "@earendil-works/elanor-react";
 import type { WorkerId } from "@eevee/protocol";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { formatBytes, shortPath } from "../lib/format.ts";
@@ -174,17 +174,24 @@ function UserMessageItem({
             return (
               <div key={fileKey} className="ev-user-file-item">
                 <EvTooltip content={label} side="top">
-                  <button
-                    type="button"
+                  <Chip.Root
+                    variant="outline"
                     className="ev-user-file-chip"
-                    disabled={!hasContent}
-                    aria-expanded={hasContent ? isOpen : undefined}
-                    onClick={() => setExpandedFileKey(isOpen ? undefined : fileKey)}
+                    render={
+                      <button
+                        type="button"
+                        disabled={!hasContent}
+                        aria-expanded={hasContent ? isOpen : undefined}
+                        onClick={() => setExpandedFileKey(isOpen ? undefined : fileKey)}
+                      />
+                    }
                   >
-                    <DescriptionIcon width={13} height={13} />
-                    <span className="ev-mono ev-truncate">{label}</span>
+                    <Chip.Icon>
+                      <DescriptionIcon />
+                    </Chip.Icon>
+                    <Chip.Label className="ev-mono">{label}</Chip.Label>
                     <span className="ev-attachment-size ev-num">{formatBytes(file.size)}</span>
-                  </button>
+                  </Chip.Root>
                 </EvTooltip>
                 {hasContent && isOpen && (
                   <pre className="ev-pre ev-user-file-pre">{file.content}</pre>

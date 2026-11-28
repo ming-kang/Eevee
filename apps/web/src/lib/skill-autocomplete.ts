@@ -1,21 +1,9 @@
 import type { SkillEntry } from "@eevee/protocol";
 
-export type SkillAutocompleteToken = {
-  readonly query: string;
-  readonly start: number;
-  readonly end: number;
-};
-
 export type CodeRange = {
   readonly start: number;
   readonly end: number;
 };
-
-const SKILL_COLON_PREFIX = "/skill:";
-const SKILL_WORD_PREFIX = "/skill";
-const CJK_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
-const IDENT_OR_PATH_LEFT_RE = /[\p{L}\p{N}_./\\-]/u;
-const AUTOCOMPLETE_STOP_RE = /[\s,.;:!?()[\]{}<>"'`/\\，。；：！？、（）【】「」『』《》“”‘’]/;
 
 function isEscapedByBackslash(text: string, index: number): boolean {
   let count = 0;
@@ -151,86 +139,6 @@ export function overlapsCodeRange(
   return false;
 }
 
-function isValidLeftBoundary(text: string, index: number): boolean {
-  if (index === 0) return true;
-  const prev = text[index - 1];
-  if (prev === undefined) return true;
-  if (CJK_RE.test(prev)) return true;
-  return !IDENT_OR_PATH_LEFT_RE.test(prev);
-}
-
-function isAutocompleteStopChar(ch: string): boolean {
-  return AUTOCOMPLETE_STOP_RE.test(ch) || CJK_RE.test(ch);
-}
-
-function hasAutocompleteStopChar(text: string): boolean {
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (ch !== undefined && isAutocompleteStopChar(ch)) return true;
-  }
-  return false;
-}
-
-function scanTokenEnd(text: string, cursor: number): number {
-  let end = cursor;
-  while (end < text.length) {
-    const ch = text[end];
-    if (ch === undefined || isAutocompleteStopChar(ch)) break;
-    end++;
-  }
-  return end;
-}
-
-export function extractSkillAutocompleteToken(
-  text: string,
-  cursorOffset: number,
-): SkillAutocompleteToken | undefined {
-  const cursor = Math.max(0, Math.min(cursorOffset, text.length));
-  const beforeCursor = text.slice(0, cursor);
-  const codeRanges = findCodeRanges(text);
-
-  const colonIndex = beforeCursor.lastIndexOf(SKILL_COLON_PREFIX);
-  if (colonIndex >= 0 && isValidLeftBoundary(text, colonIndex)) {
-    const queryStart = colonIndex + SKILL_COLON_PREFIX.length;
-    const query = text.slice(queryStart, cursor);
-    if (!hasAutocompleteStopChar(query)) {
-      const end = scanTokenEnd(text, cursor);
-      if (!overlapsCodeRange(colonIndex, Math.max(end, queryStart), codeRanges)) {
-        return { query, start: colonIndex, end };
-      }
-    }
-  }
-
-  const wordIndex = beforeCursor.lastIndexOf(SKILL_WORD_PREFIX);
-  if (wordIndex >= 0 && isValidLeftBoundary(text, wordIndex)) {
-    const afterPrefixIndex = wordIndex + SKILL_WORD_PREFIX.length;
-    if (text[afterPrefixIndex] !== ":") {
-      const afterPrefix = text.slice(afterPrefixIndex, cursor);
-      if (afterPrefix === "") {
-        const nextChar = text[cursor];
-        if (nextChar === undefined || isAutocompleteStopChar(nextChar)) {
-          if (!overlapsCodeRange(wordIndex, afterPrefixIndex, codeRanges)) {
-            return { query: "", start: wordIndex, end: cursor };
-          }
-        }
-      } else {
-        const spaceMatch = /^[ \t]+(.*)$/.exec(afterPrefix);
-        if (spaceMatch) {
-          const query = spaceMatch[1] ?? "";
-          if (!hasAutocompleteStopChar(query)) {
-            const end = scanTokenEnd(text, cursor);
-            if (!overlapsCodeRange(wordIndex, Math.max(end, cursor), codeRanges)) {
-              return { query, start: wordIndex, end };
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return undefined;
-}
-
 export function filterAutocompleteSkills(
   skills: readonly SkillEntry[],
   query: string,
@@ -257,17 +165,4 @@ export function filterAutocompleteSkills(
 
   scored.sort((a, b) => a.rank - b.rank || a.index - b.index);
   return scored.map((item) => item.skill);
-}
-
-export function applySkillAutocomplete(
-  text: string,
-  token: SkillAutocompleteToken,
-  skillName: string,
-): { readonly nextText: string; readonly nextCursor: number } {
-  const base = `${SKILL_COLON_PREFIX}${skillName}`;
-  const hasTrailingSpace = text[token.end] === " ";
-  const insertion = hasTrailingSpace ? base : `${base} `;
-  const nextText = `${text.slice(0, token.start)}${insertion}${text.slice(token.end)}`;
-  const nextCursor = token.start + base.length + 1;
-  return { nextText, nextCursor };
 }

@@ -1,46 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { BoardViewPayload } from "@eevee/protocol";
-import {
-  applyMentionAutocomplete,
-  extractMentionToken,
-  filterBoardMentions,
-} from "../src/lib/mention-autocomplete.ts";
-
-test("extractMentionToken detects file/scoped mentions and ignores emails and code blocks", () => {
-  assert.deepEqual(extractMentionToken("check @src/app", 14), {
-    rawQuery: "src/app",
-    query: "src/app",
-    scope: "all",
-    start: 6,
-    end: 14,
-  });
-
-  assert.deepEqual(extractMentionToken("请看@files:index", 14), {
-    rawQuery: "files:index",
-    query: "index",
-    scope: "files",
-    start: 2,
-    end: 14,
-  });
-
-  assert.equal(extractMentionToken("mail user@example.com", 21), undefined);
-  assert.equal(extractMentionToken("inline `@src/app`", 16), undefined);
-  assert.equal(extractMentionToken("```ts\n@src/app\n```", 14), undefined);
-});
-
-test("applyMentionAutocomplete quotes paths with spaces and appends trailing space", () => {
-  const token = extractMentionToken("open @my", 8);
-  assert.ok(token);
-  assert.deepEqual(applyMentionAutocomplete("open @my", token, "docs/my file.md"), {
-    nextText: 'open @"docs/my file.md" ',
-    nextCursor: 24,
-  });
-  assert.deepEqual(applyMentionAutocomplete("open @my", token, "src/index.ts"), {
-    nextText: "open @src/index.ts ",
-    nextCursor: 19,
-  });
-});
+import { filterBoardMentions } from "../src/lib/mention-autocomplete.ts";
 
 test("filterBoardMentions filters active workers and tickets respecting scope", () => {
   const board: BoardViewPayload = {
