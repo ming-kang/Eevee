@@ -27,7 +27,7 @@ export function EvDropdown({
   onChange,
   ariaLabel,
   placeholder,
-  density = "compact",
+  density = "default",
   disabled = false,
   className,
   align = "start",

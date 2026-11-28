@@ -95,44 +95,76 @@
   }
 }
 
-:is(
-  .ev-viewport,
-  .ev-control-overlay,
-  .ev-editor-dialog,
-  .ev-probe-dialog,
-  .ev-add-provider-dialog,
-  .ev-project-edit-dialog,
-  .ev-project-create-dialog
-)
-  [data-density="compact"] {
-  min-height: 30px;
+:where(button[data-density="compact"]:not(.ev-dropdown-trigger)) {
+  min-height: 32px;
   padding-inline: 11px;
 }
 
-:is(
-  .ev-viewport,
-  .ev-control-overlay,
-  .ev-editor-dialog,
-  .ev-probe-dialog,
-  .ev-add-provider-dialog,
-  .ev-project-edit-dialog,
-  .ev-project-create-dialog
-)
-  [data-density="compact"][data-icon-start] {
+:where(button[data-density="compact"][data-icon-start]:not(.ev-dropdown-trigger)) {
   padding-inline-start: 9px;
 }
 
-:is(
-  .ev-viewport,
-  .ev-control-overlay,
-  .ev-editor-dialog,
-  .ev-probe-dialog,
-  .ev-add-provider-dialog,
-  .ev-project-edit-dialog,
-  .ev-project-create-dialog
-)
-  :is(input:not(.ev-raw-input), textarea:not(.ev-composer-textarea)) {
+:where(
+  input:is([type="text"], [type="email"], [type="password"], [type="tel"], [type="url"]):not(
+    .ev-raw-input
+  ),
+  textarea:not(.ev-composer-textarea)
+) {
   border-radius: 8px;
+  border: 1px solid var(--ev-control-border);
+  background: var(--ev-control-bg);
+  color: var(--ev-fg);
+  font-size: 0.875rem;
+  transition:
+    border-color var(--ev-dur-fast) var(--ev-ease-out),
+    background-color var(--ev-dur-fast) var(--ev-ease-out),
+    box-shadow var(--ev-dur-fast) var(--ev-ease-out);
+}
+
+:where(
+  input:is([type="text"], [type="email"], [type="password"], [type="tel"], [type="url"]):not(
+    .ev-raw-input
+  )
+) {
+  min-height: 34px;
+  padding: 5px 10px;
+  line-height: 1.4;
+}
+
+:where(textarea:not(.ev-composer-textarea)) {
+  padding: 7px 10px;
+  line-height: 1.5;
+}
+
+:where(
+  input:is([type="text"], [type="email"], [type="password"], [type="tel"], [type="url"]):not(
+    .ev-raw-input
+  ),
+  textarea:not(.ev-composer-textarea)
+):where(:hover:not(:disabled, [data-disabled], :focus)) {
+  border-color: var(--ev-border-strong);
+  background: var(--ev-control-bg);
+}
+
+:where(
+  input:is([type="text"], [type="email"], [type="password"], [type="tel"], [type="url"]):not(
+    .ev-raw-input
+  ),
+  textarea:not(.ev-composer-textarea)
+):where(:focus) {
+  border-color: var(--ev-accent);
+  background: var(--ev-control-bg);
+  box-shadow: var(--ev-focus-ring);
+  outline: none;
+}
+
+:where(
+  input:is([type="text"], [type="email"], [type="password"], [type="tel"], [type="url"]):not(
+    .ev-raw-input
+  ),
+  textarea:not(.ev-composer-textarea)
+):where([data-invalid], [aria-invalid="true"]) {
+  border-color: var(--ev-danger);
 }
 
 .ev-palette-backdrop {

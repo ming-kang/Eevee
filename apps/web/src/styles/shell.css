@@ -1121,7 +1121,7 @@
   border: 0;
   margin: 0;
   border-radius: 8px;
-  background: var(--ev-sidebar);
+  background: var(--ev-segment-track);
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
@@ -1152,9 +1152,11 @@
 }
 
 .ev-lane-pill[aria-pressed="true"] {
-  background: var(--ev-surface);
+  background: var(--ev-segment-active);
   color: var(--ev-fg);
-  box-shadow: var(--ev-shadow-panel);
+  box-shadow:
+    var(--ev-shadow-stroke),
+    0 1px 2px oklch(20% 0.008 72 / calc(0.08 * var(--ev-shadow-strength)));
 }
 
 .ev-lane-pill-count {

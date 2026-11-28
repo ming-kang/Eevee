@@ -348,17 +348,21 @@
   height: 34px;
   padding-inline: 10px 7px;
   border-radius: 8px;
-  border: var(--ev-hairline) solid var(--ev-border);
-  background: var(--ev-surface);
+  border: 1px solid var(--ev-control-border);
+  background: var(--ev-control-bg);
   color: var(--ev-fg-subtle);
   transition:
     border-color var(--ev-dur-fast) var(--ev-ease-out),
     box-shadow var(--ev-dur-fast) var(--ev-ease-out);
 }
 
+.ev-search-field:hover:not(:focus-within) {
+  border-color: var(--ev-border-strong);
+}
+
 .ev-search-field.compact {
   height: 32px;
-  border-radius: 7px;
+  border-radius: 8px;
   padding-inline: 9px 6px;
 }
 
@@ -437,12 +441,16 @@
   height: 34px;
   padding: 0 9px 0 11px;
   border-radius: 8px;
-  border: var(--ev-hairline) solid var(--ev-border);
-  background: var(--ev-surface);
+  border: 1px solid var(--ev-control-border);
+  background: var(--ev-control-bg);
   color: var(--ev-fg);
   font-size: 0.875rem;
   justify-content: space-between;
   gap: 8px;
+  transition:
+    border-color var(--ev-dur-fast) var(--ev-ease-out),
+    background-color var(--ev-dur-fast) var(--ev-ease-out),
+    box-shadow var(--ev-dur-fast) var(--ev-ease-out);
 }
 
 .ev-overview-project-filter {
@@ -456,8 +464,15 @@
 }
 
 .ev-dropdown-trigger:hover:not(:disabled, [data-disabled]) {
-  background: var(--ev-hover);
+  background: var(--ev-control-bg);
   border-color: var(--ev-border-strong);
+}
+
+.ev-dropdown-trigger:focus-visible,
+.ev-dropdown-trigger[data-popup-open] {
+  border-color: var(--ev-accent);
+  box-shadow: var(--ev-focus-ring);
+  outline: none;
 }
 
 .ev-dropdown-popup {
@@ -557,16 +572,34 @@
   gap: 4px;
 }
 
+.ev-section-header > div {
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.ev-section-header > div > div {
+  align-items: center;
+  gap: 8px;
+}
+
 .ev-section-title {
   font-size: 1.0625rem;
-  font-weight: 500;
+  font-weight: 560;
+  letter-spacing: -0.01em;
   line-height: 1.35;
   margin: 0;
   color: var(--ev-fg);
 }
 
+.ev-filter-bar,
+.ev-inline-filter-bar {
+  container-type: normal;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
 .ev-filter-bar {
-  width: 100%;
+  inline-size: 100%;
 }
 
 .ev-filter-bar > div {
@@ -575,23 +608,84 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
-}
-
-.ev-filter-bar-filters {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  min-inline-size: 0;
 }
 
 .ev-inline-filter-bar {
-  width: auto;
-  max-width: 100%;
+  inline-size: auto;
+  flex: 0 1 auto;
 }
 
 .ev-inline-filter-bar > div {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: 8px;
+  min-inline-size: 0;
+}
+
+.ev-filter-bar-filters,
+.ev-inline-filter-bar .ev-catalog-toolbar,
+.ev-inline-filter-bar .ev-provider-models-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-inline-size: 0;
+}
+
+.ev-filter-bar-filters > :not(input),
+.ev-inline-filter-bar .ev-catalog-toolbar > :not(input),
+.ev-inline-filter-bar .ev-provider-models-toolbar > :not(input) {
+  flex: 0 0 auto;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+:where([role="group"][data-density]) {
+  align-items: stretch;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--ev-segment-track);
+  flex-shrink: 0;
+  max-inline-size: 100%;
+}
+
+:where([role="group"][data-density] > button) {
+  min-height: 28px;
+  padding: 0 11px;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ev-fg-muted);
+  font-size: 0.875rem;
+  font-weight: 450;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background-color var(--ev-dur-fast) var(--ev-ease-out),
+    color var(--ev-dur-fast) var(--ev-ease-out),
+    box-shadow var(--ev-dur-fast) var(--ev-ease-out);
+}
+
+:where([role="group"][data-density="compact"] > button) {
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 0.8125rem;
+}
+
+:where([role="group"][data-density] > button:hover:not([data-pressed], :disabled, [data-disabled])) {
+  color: var(--ev-fg);
+}
+
+:where([role="group"][data-density] > button[data-pressed]) {
+  background: var(--ev-segment-active);
+  color: var(--ev-fg);
+  font-weight: 550;
+  box-shadow:
+    var(--ev-shadow-stroke),
+    0 1px 2px oklch(20% 0.008 72 / calc(0.08 * var(--ev-shadow-strength)));
 }

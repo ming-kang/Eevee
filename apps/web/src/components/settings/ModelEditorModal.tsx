@@ -162,6 +162,8 @@ export function ModelEditorModal({
                       <div className="ev-editor-section-title">{t("modelEditor.smokeSection")}</div>
                       <div className="ev-smoke-controls">
                         <EvDropdown
+                          density="compact"
+                          className="ev-smoke-thinking-select"
                           ariaLabel="Thinking"
                           value={testLevel}
                           options={[

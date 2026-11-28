@@ -161,6 +161,7 @@ export function ToolsDrawer({
                     </td>
                     <td>
                       <EvDropdown
+                        density="compact"
                         ariaLabel={t("mcp.tools.exposureAriaLabel", { name: tool.name })}
                         disabled={isBusy}
                         value={explicit ?? ""}

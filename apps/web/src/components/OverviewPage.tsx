@@ -252,6 +252,7 @@ export function OverviewPage({
                   </fieldset>
                   {projects.length > 1 && (
                     <EvDropdown
+                      density="compact"
                       ariaLabel={t("overview.filterProject")}
                       value={projectFilter}
                       options={projectOptions}

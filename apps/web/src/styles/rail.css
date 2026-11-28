@@ -23,16 +23,6 @@
   flex: none;
 }
 
-.ev-viewport .ev-rail-scope-control[data-density="compact"] {
-  padding: 3px;
-  gap: 2px;
-}
-
-.ev-rail-scope-control > button {
-  padding-inline: 10px;
-  font-size: 0.8125rem;
-}
-
 .ev-rail-scroll {
   flex: 1;
   min-height: 0;

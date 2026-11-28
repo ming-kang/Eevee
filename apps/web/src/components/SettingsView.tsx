@@ -81,8 +81,6 @@ export function SettingsView({
     },
   });
 
-  const activeSectionMeta = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
-
   return (
     <div
       className="ev-control-overlay"
@@ -146,13 +144,6 @@ export function SettingsView({
 
         <div className="ev-page-scroll ev-settings-main">
           <div className="ev-page-wide">
-            {activeSectionMeta && (
-              <div className="ev-settings-section-banner">
-                <Heading level={2} size={5} className="ev-settings-section-title">
-                  {t(activeSectionMeta.labelKey)}
-                </Heading>
-              </div>
-            )}
             {section === "general" && <GeneralTab />}
             {section === "providers" && <ProvidersTab />}
             {section === "models" && <ModelsTab />}

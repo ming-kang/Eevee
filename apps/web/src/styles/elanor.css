@@ -19,6 +19,10 @@
   --ev-fg-subtle: oklch(56.5% 0.008 76);
   --ev-border: oklch(24% 0.008 72 / 0.09);
   --ev-border-strong: oklch(24% 0.008 72 / 0.16);
+  --ev-control-bg: var(--ev-surface);
+  --ev-control-border: color-mix(in oklab, var(--ev-border-strong) 78%, transparent);
+  --ev-segment-track: var(--ev-surface-2);
+  --ev-segment-active: var(--ev-surface);
   --ev-separator: color-mix(in oklab, var(--ev-fg) 6.5%, transparent);
   --ev-hover: color-mix(in oklab, var(--ev-fg) 4.5%, transparent);
   --ev-selected: color-mix(in oklab, var(--ev-fg) 7.5%, transparent);
@@ -84,7 +88,39 @@
   --primitive-font-family-sans-serif: var(--ev-font-wenkai);
   --semantic-font-family-ui: var(--primitive-font-family-sans-serif);
   --semantic-font-family-prose: var(--ev-font-wenkai);
+  color-scheme: light;
+}
 
+:root[data-theme="dark"],
+:root[data-color-scheme="dark"] {
+  /* Paper Dark (warm charcoal, zero cold blue tint) */
+  --ev-bg: oklch(19.5% 0.005 70);
+  --ev-sidebar: oklch(16.8% 0.005 68);
+  --ev-surface: oklch(23.2% 0.006 72);
+  --ev-surface-2: oklch(27.5% 0.007 72);
+  --ev-fg: oklch(92.5% 0.006 84);
+  --ev-fg-muted: oklch(75% 0.006 78);
+  --ev-fg-subtle: oklch(62% 0.006 76);
+  --ev-border: oklch(95% 0.006 84 / 0.09);
+  --ev-border-strong: oklch(95% 0.006 84 / 0.17);
+  --ev-control-bg: color-mix(in oklab, var(--ev-bg) 50%, var(--ev-surface));
+  --ev-segment-track: color-mix(in oklab, var(--ev-sidebar) 88%, var(--ev-bg));
+  --ev-segment-active: var(--ev-surface-2);
+  --ev-accent: oklch(73% 0.09 230);
+  --ev-accent-fg: oklch(17% 0.008 230);
+  --ev-danger: oklch(73% 0.14 22);
+  --ev-success: oklch(76% 0.12 158);
+  --ev-warning: oklch(80% 0.13 80);
+  --ev-warning-fg: oklch(85% 0.11 82);
+  --ev-shadow-strength: 1.9;
+  color-scheme: dark;
+}
+
+:root,
+:root[data-theme="light"],
+:root[data-color-scheme="light"],
+:root[data-theme="dark"],
+:root[data-color-scheme="dark"] {
   --semantic-color-background-canvas: var(--ev-bg);
   --semantic-color-background-surface: var(--ev-surface);
   --semantic-color-background-fill-secondary: var(--ev-surface-2);
@@ -93,11 +129,18 @@
     var(--ev-surface-2) 82%,
     var(--ev-fg) 6%
   );
+  --semantic-color-background-fill-secondary-active: color-mix(
+    in oklab,
+    var(--ev-surface-2) 76%,
+    var(--ev-fg) 10%
+  );
   --semantic-color-background-fill-ghost-neutral-hover: var(--ev-hover);
   --semantic-color-background-fill-ghost-neutral-active: var(--ev-selected);
   --semantic-color-background-skeleton: color-mix(in oklab, var(--ev-fg) 9%, var(--ev-bg));
   --semantic-color-text-primary: var(--ev-fg);
   --semantic-color-text-secondary: var(--ev-fg-muted);
+  --semantic-color-text-on-secondary-fill: var(--ev-fg-muted);
+  --semantic-color-text-link: var(--ev-accent);
   --semantic-color-border-secondary: var(--ev-border);
   --semantic-color-border-primary: var(--ev-border-strong);
   --semantic-color-focus-ring: var(--ev-accent);
@@ -120,29 +163,6 @@
   --semantic-color-background-fill-data-viz-100: var(--ev-accent);
   --semantic-color-border-warning: var(--ev-warning);
   --semantic-color-background-fill-primary-negative: var(--ev-danger);
-  color-scheme: light;
-}
-
-:root[data-theme="dark"],
-:root[data-color-scheme="dark"] {
-  /* Paper Dark (warm charcoal, zero cold blue tint) */
-  --ev-bg: oklch(19.5% 0.005 70);
-  --ev-sidebar: oklch(16.8% 0.005 68);
-  --ev-surface: oklch(23.2% 0.006 72);
-  --ev-surface-2: oklch(27.5% 0.007 72);
-  --ev-fg: oklch(92.5% 0.006 84);
-  --ev-fg-muted: oklch(75% 0.006 78);
-  --ev-fg-subtle: oklch(62% 0.006 76);
-  --ev-border: oklch(95% 0.006 84 / 0.09);
-  --ev-border-strong: oklch(95% 0.006 84 / 0.17);
-  --ev-accent: oklch(73% 0.09 230);
-  --ev-accent-fg: oklch(17% 0.008 230);
-  --ev-danger: oklch(73% 0.14 22);
-  --ev-success: oklch(76% 0.12 158);
-  --ev-warning: oklch(80% 0.13 80);
-  --ev-warning-fg: oklch(85% 0.11 82);
-  --ev-shadow-strength: 1.9;
-  color-scheme: dark;
 }
 
 /* Preset: Pi · Slate (Elanor pi.css graphite + cerulian-blue) */
